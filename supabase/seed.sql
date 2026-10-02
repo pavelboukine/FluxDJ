@@ -69,3 +69,102 @@ insert into public.event_clients (tenant_id, event_id, client_id, is_primary, ca
 insert into public.event_access (tenant_id, event_id, client_id, user_id) values
   ('11111111-0000-4000-8000-000000000001', '33333333-0000-4000-8000-000000000001',
    '22222222-0000-4000-8000-000000000001', 'c3333333-3333-4333-8333-333333333333');
+
+-- =============================================================================
+-- DEMO DATA: BOUPROD catalog and wedding template (Phase 1, step 3)
+-- =============================================================================
+-- Illustrative only. Prices, gear, questions and wording are placeholders for
+-- local development and have NOT been reviewed by Pavel (spec section 12).
+-- Every record is tagged "DEMO" in its name or description. Do not copy into
+-- production.
+--
+-- Mirrors the spec's pricing example: separate ceremony and cocktail spaces
+-- each require an additional-location speaker; the Signature package already
+-- includes one. The main reception system is a separate catalog key so it is
+-- never counted as an additional-location speaker.
+-- No media rows are seeded because no image files exist locally.
+
+insert into public.gear_items (id, tenant_id, key, name, description, unit_label, default_price_cents, tax_category) values
+  ('44444444-0000-4000-8000-000000000001', '11111111-0000-4000-8000-000000000001', 'main_sound_system',
+   'Main reception sound system', 'DEMO: two tops and a sub for the main room.', 'system', 0, 'standard'),
+  ('44444444-0000-4000-8000-000000000002', '11111111-0000-4000-8000-000000000001', 'additional_location_speaker',
+   'Additional-location speaker', 'DEMO: powered speaker on a stand for a separate ceremony or cocktail space.', 'speaker', 15000, 'standard'),
+  ('44444444-0000-4000-8000-000000000003', '11111111-0000-4000-8000-000000000001', 'wireless_mic',
+   'Wireless microphone', 'DEMO: handheld wireless mic for speeches.', 'mic', 5000, 'standard'),
+  ('44444444-0000-4000-8000-000000000004', '11111111-0000-4000-8000-000000000001', 'uplights_4',
+   'Uplights (pack of 4)', 'DEMO: one unit is four colour-matched uplights.', 'pack', 12000, 'standard'),
+  ('44444444-0000-4000-8000-000000000005', '11111111-0000-4000-8000-000000000001', 'dance_floor_lighting',
+   'Dance floor lighting', 'DEMO: moving heads and wash lights over the dance floor.', 'set', 20000, 'standard');
+
+insert into public.packages (id, tenant_id, key, name, description, base_price_cents, sort_order, is_popular) values
+  ('55555555-0000-4000-8000-000000000001', '11111111-0000-4000-8000-000000000001', 'essential',
+   'Essential', 'DEMO: reception DJ with main sound and one mic.', 150000, 1, false),
+  ('55555555-0000-4000-8000-000000000002', '11111111-0000-4000-8000-000000000001', 'signature',
+   'Signature', 'DEMO: adds dance floor lighting and one additional-location speaker.', 220000, 2, true),
+  ('55555555-0000-4000-8000-000000000003', '11111111-0000-4000-8000-000000000001', 'premium',
+   'Premium', 'DEMO: adds uplighting and a second additional-location speaker.', 300000, 3, false);
+
+insert into public.package_items (tenant_id, package_id, gear_item_id, quantity) values
+  -- Essential
+  ('11111111-0000-4000-8000-000000000001', '55555555-0000-4000-8000-000000000001', '44444444-0000-4000-8000-000000000001', 1),
+  ('11111111-0000-4000-8000-000000000001', '55555555-0000-4000-8000-000000000001', '44444444-0000-4000-8000-000000000003', 1),
+  -- Signature
+  ('11111111-0000-4000-8000-000000000001', '55555555-0000-4000-8000-000000000002', '44444444-0000-4000-8000-000000000001', 1),
+  ('11111111-0000-4000-8000-000000000001', '55555555-0000-4000-8000-000000000002', '44444444-0000-4000-8000-000000000003', 2),
+  ('11111111-0000-4000-8000-000000000001', '55555555-0000-4000-8000-000000000002', '44444444-0000-4000-8000-000000000002', 1),
+  ('11111111-0000-4000-8000-000000000001', '55555555-0000-4000-8000-000000000002', '44444444-0000-4000-8000-000000000005', 1),
+  -- Premium
+  ('11111111-0000-4000-8000-000000000001', '55555555-0000-4000-8000-000000000003', '44444444-0000-4000-8000-000000000001', 1),
+  ('11111111-0000-4000-8000-000000000001', '55555555-0000-4000-8000-000000000003', '44444444-0000-4000-8000-000000000003', 2),
+  ('11111111-0000-4000-8000-000000000001', '55555555-0000-4000-8000-000000000003', '44444444-0000-4000-8000-000000000002', 2),
+  ('11111111-0000-4000-8000-000000000001', '55555555-0000-4000-8000-000000000003', '44444444-0000-4000-8000-000000000005', 1),
+  ('11111111-0000-4000-8000-000000000001', '55555555-0000-4000-8000-000000000003', '44444444-0000-4000-8000-000000000004', 2);
+
+insert into public.logistics_questions (id, tenant_id, key, prompt, answer_type, options, sort_order, required) values
+  ('66666666-0000-4000-8000-000000000001', '11111111-0000-4000-8000-000000000001', 'ceremony_location',
+   'DEMO: Where will the ceremony take place?', 'single_choice',
+   '[{"value":"no_ceremony","label":"No ceremony"},{"value":"same_room","label":"Same room as the reception"},{"value":"separate_space","label":"A separate space"}]', 1, true),
+  ('66666666-0000-4000-8000-000000000002', '11111111-0000-4000-8000-000000000001', 'cocktail_location',
+   'DEMO: Where will cocktail hour take place?', 'single_choice',
+   '[{"value":"same_room","label":"Same room as the reception"},{"value":"separate_space","label":"A separate space"}]', 2, true),
+  ('66666666-0000-4000-8000-000000000003', '11111111-0000-4000-8000-000000000001', 'speeches_wireless_mic',
+   'DEMO: Will there be speeches that need a wireless microphone?', 'boolean', '[]', 3, true),
+  ('66666666-0000-4000-8000-000000000004', '11111111-0000-4000-8000-000000000001', 'venue_notes',
+   'DEMO: Anything we should know about the venue (load-in, stairs, curfew)?', 'short_text', '[]', 4, false);
+
+insert into public.logistics_rules (tenant_id, question_id, condition, gear_item_id, required_quantity, reason) values
+  ('11111111-0000-4000-8000-000000000001', '66666666-0000-4000-8000-000000000001',
+   '{"op":"equals","value":"separate_space"}', '44444444-0000-4000-8000-000000000002', 1,
+   'DEMO: Your ceremony is in a separate space, so it needs its own speaker.'),
+  ('11111111-0000-4000-8000-000000000001', '66666666-0000-4000-8000-000000000002',
+   '{"op":"equals","value":"separate_space"}', '44444444-0000-4000-8000-000000000002', 1,
+   'DEMO: Cocktail hour is in a separate space, so it needs its own speaker.'),
+  ('11111111-0000-4000-8000-000000000001', '66666666-0000-4000-8000-000000000003',
+   '{"op":"equals","value":true}', '44444444-0000-4000-8000-000000000003', 1,
+   'DEMO: Speeches need a wireless microphone.');
+
+insert into public.proposal_templates (id, tenant_id, name, intro, expiry_days) values
+  ('88888888-0000-4000-8000-000000000001', '11111111-0000-4000-8000-000000000001',
+   'Wedding (DEMO)', 'DEMO: Thank you for considering BOUPROD for your wedding. Choose a package, adjust the extras and submit it for review.', 14);
+
+insert into public.proposal_template_packages (tenant_id, template_id, package_id, sort_order) values
+  ('11111111-0000-4000-8000-000000000001', '88888888-0000-4000-8000-000000000001', '55555555-0000-4000-8000-000000000001', 1),
+  ('11111111-0000-4000-8000-000000000001', '88888888-0000-4000-8000-000000000001', '55555555-0000-4000-8000-000000000002', 2),
+  ('11111111-0000-4000-8000-000000000001', '88888888-0000-4000-8000-000000000001', '55555555-0000-4000-8000-000000000003', 3);
+
+-- Recommended (middle) package.
+update public.proposal_templates
+  set default_package_id = '55555555-0000-4000-8000-000000000002'
+  where id = '88888888-0000-4000-8000-000000000001';
+
+insert into public.proposal_template_addons (tenant_id, template_id, gear_item_id, recommended_quantity, max_quantity, sort_order) values
+  ('11111111-0000-4000-8000-000000000001', '88888888-0000-4000-8000-000000000001', '44444444-0000-4000-8000-000000000004', 1, 4, 1),
+  ('11111111-0000-4000-8000-000000000001', '88888888-0000-4000-8000-000000000001', '44444444-0000-4000-8000-000000000002', 0, 3, 2),
+  ('11111111-0000-4000-8000-000000000001', '88888888-0000-4000-8000-000000000001', '44444444-0000-4000-8000-000000000003', 0, 3, 3),
+  ('11111111-0000-4000-8000-000000000001', '88888888-0000-4000-8000-000000000001', '44444444-0000-4000-8000-000000000005', 0, 1, 4);
+
+insert into public.proposal_template_questions (tenant_id, template_id, question_id, sort_order) values
+  ('11111111-0000-4000-8000-000000000001', '88888888-0000-4000-8000-000000000001', '66666666-0000-4000-8000-000000000001', 1),
+  ('11111111-0000-4000-8000-000000000001', '88888888-0000-4000-8000-000000000001', '66666666-0000-4000-8000-000000000002', 2),
+  ('11111111-0000-4000-8000-000000000001', '88888888-0000-4000-8000-000000000001', '66666666-0000-4000-8000-000000000003', 3),
+  ('11111111-0000-4000-8000-000000000001', '88888888-0000-4000-8000-000000000001', '66666666-0000-4000-8000-000000000004', 4);

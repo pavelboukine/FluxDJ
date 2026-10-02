@@ -111,6 +111,268 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"gear_items": {
+                  Row: {
+                    "active": boolean,"created_at": string,"default_price_cents": number,"description": string | null,"id": string,"key": string,"name": string,"tax_category": string,"tenant_id": string,"unit_label": string,"updated_at": string
+                  }
+                  Insert: {
+                    "active"?: boolean,"created_at"?: string,"default_price_cents": number,"description"?: string | null,"id"?: string,"key": string,"name": string,"tax_category"?: string,"tenant_id": string,"unit_label"?: string,"updated_at"?: string
+                  }
+                  Update: {
+                    "active"?: boolean,"created_at"?: string,"default_price_cents"?: number,"description"?: string | null,"id"?: string,"key"?: string,"name"?: string,"tax_category"?: string,"tenant_id"?: string,"unit_label"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "gear_items_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"gear_media": {
+                  Row: {
+                    "active": boolean,"alt_text": string,"content_type": string,"created_at": string,"gear_item_id": string,"id": string,"kind": string,"sort_order": number,"storage_path": string,"tenant_id": string,"updated_at": string
+                  }
+                  Insert: {
+                    "active"?: boolean,"alt_text": string,"content_type": string,"created_at"?: string,"gear_item_id": string,"id"?: string,"kind": string,"sort_order"?: number,"storage_path": string,"tenant_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "active"?: boolean,"alt_text"?: string,"content_type"?: string,"created_at"?: string,"gear_item_id"?: string,"id"?: string,"kind"?: string,"sort_order"?: number,"storage_path"?: string,"tenant_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "gear_media_gear_item_fk"
+      columns: ["tenant_id","gear_item_id"]
+isOneToOne: false
+      referencedRelation: "gear_items"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "gear_media_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"logistics_questions": {
+                  Row: {
+                    "active": boolean,"answer_type": string,"created_at": string,"id": string,"key": string,"options": NonNullable<Json>,"prompt": string,"required": boolean,"sort_order": number,"tenant_id": string,"updated_at": string
+                  }
+                  Insert: {
+                    "active"?: boolean,"answer_type": string,"created_at"?: string,"id"?: string,"key": string,"options"?: NonNullable<Json>,"prompt": string,"required"?: boolean,"sort_order"?: number,"tenant_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "active"?: boolean,"answer_type"?: string,"created_at"?: string,"id"?: string,"key"?: string,"options"?: NonNullable<Json>,"prompt"?: string,"required"?: boolean,"sort_order"?: number,"tenant_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "logistics_questions_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"logistics_rules": {
+                  Row: {
+                    "active": boolean,"condition": NonNullable<Json>,"created_at": string,"gear_item_id": string,"id": string,"question_id": string,"reason": string,"required_quantity": number,"tenant_id": string,"updated_at": string
+                  }
+                  Insert: {
+                    "active"?: boolean,"condition": NonNullable<Json>,"created_at"?: string,"gear_item_id": string,"id"?: string,"question_id": string,"reason": string,"required_quantity": number,"tenant_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "active"?: boolean,"condition"?: NonNullable<Json>,"created_at"?: string,"gear_item_id"?: string,"id"?: string,"question_id"?: string,"reason"?: string,"required_quantity"?: number,"tenant_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "logistics_rules_gear_item_fk"
+      columns: ["tenant_id","gear_item_id"]
+isOneToOne: false
+      referencedRelation: "gear_items"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "logistics_rules_question_fk"
+      columns: ["tenant_id","question_id"]
+isOneToOne: false
+      referencedRelation: "logistics_questions"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "logistics_rules_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"package_items": {
+                  Row: {
+                    "created_at": string,"gear_item_id": string,"id": string,"package_id": string,"quantity": number,"tenant_id": string,"updated_at": string
+                  }
+                  Insert: {
+                    "created_at"?: string,"gear_item_id": string,"id"?: string,"package_id": string,"quantity": number,"tenant_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"gear_item_id"?: string,"id"?: string,"package_id"?: string,"quantity"?: number,"tenant_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "package_items_gear_item_fk"
+      columns: ["tenant_id","gear_item_id"]
+isOneToOne: false
+      referencedRelation: "gear_items"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "package_items_package_fk"
+      columns: ["tenant_id","package_id"]
+isOneToOne: false
+      referencedRelation: "packages"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "package_items_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"packages": {
+                  Row: {
+                    "active": boolean,"base_price_cents": number,"created_at": string,"description": string | null,"id": string,"is_popular": boolean,"key": string,"name": string,"sort_order": number,"tenant_id": string,"updated_at": string
+                  }
+                  Insert: {
+                    "active"?: boolean,"base_price_cents": number,"created_at"?: string,"description"?: string | null,"id"?: string,"is_popular"?: boolean,"key": string,"name": string,"sort_order"?: number,"tenant_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "active"?: boolean,"base_price_cents"?: number,"created_at"?: string,"description"?: string | null,"id"?: string,"is_popular"?: boolean,"key"?: string,"name"?: string,"sort_order"?: number,"tenant_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "packages_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"proposal_template_addons": {
+                  Row: {
+                    "created_at": string,"gear_item_id": string,"id": string,"max_quantity": number,"recommended_quantity": number,"sort_order": number,"template_id": string,"tenant_id": string,"updated_at": string
+                  }
+                  Insert: {
+                    "created_at"?: string,"gear_item_id": string,"id"?: string,"max_quantity": number,"recommended_quantity"?: number,"sort_order"?: number,"template_id": string,"tenant_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"gear_item_id"?: string,"id"?: string,"max_quantity"?: number,"recommended_quantity"?: number,"sort_order"?: number,"template_id"?: string,"tenant_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "proposal_template_addons_gear_item_fk"
+      columns: ["tenant_id","gear_item_id"]
+isOneToOne: false
+      referencedRelation: "gear_items"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "proposal_template_addons_template_fk"
+      columns: ["tenant_id","template_id"]
+isOneToOne: false
+      referencedRelation: "proposal_templates"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "proposal_template_addons_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"proposal_template_packages": {
+                  Row: {
+                    "created_at": string,"id": string,"package_id": string,"sort_order": number,"template_id": string,"tenant_id": string,"updated_at": string
+                  }
+                  Insert: {
+                    "created_at"?: string,"id"?: string,"package_id": string,"sort_order": number,"template_id": string,"tenant_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"id"?: string,"package_id"?: string,"sort_order"?: number,"template_id"?: string,"tenant_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "proposal_template_packages_package_fk"
+      columns: ["tenant_id","package_id"]
+isOneToOne: false
+      referencedRelation: "packages"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "proposal_template_packages_template_fk"
+      columns: ["tenant_id","template_id"]
+isOneToOne: false
+      referencedRelation: "proposal_templates"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "proposal_template_packages_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"proposal_template_questions": {
+                  Row: {
+                    "created_at": string,"id": string,"question_id": string,"sort_order": number,"template_id": string,"tenant_id": string,"updated_at": string
+                  }
+                  Insert: {
+                    "created_at"?: string,"id"?: string,"question_id": string,"sort_order"?: number,"template_id": string,"tenant_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"id"?: string,"question_id"?: string,"sort_order"?: number,"template_id"?: string,"tenant_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "proposal_template_questions_question_fk"
+      columns: ["tenant_id","question_id"]
+isOneToOne: false
+      referencedRelation: "logistics_questions"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "proposal_template_questions_template_fk"
+      columns: ["tenant_id","template_id"]
+isOneToOne: false
+      referencedRelation: "proposal_templates"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "proposal_template_questions_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"proposal_templates": {
+                  Row: {
+                    "active": boolean,"created_at": string,"default_package_id": string | null,"expiry_days": number,"id": string,"intro": string | null,"name": string,"tenant_id": string,"updated_at": string
+                  }
+                  Insert: {
+                    "active"?: boolean,"created_at"?: string,"default_package_id"?: string | null,"expiry_days"?: number,"id"?: string,"intro"?: string | null,"name": string,"tenant_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "active"?: boolean,"created_at"?: string,"default_package_id"?: string | null,"expiry_days"?: number,"id"?: string,"intro"?: string | null,"name"?: string,"tenant_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "proposal_templates_default_package_fk"
+      columns: ["tenant_id","id","default_package_id"]
+isOneToOne: false
+      referencedRelation: "proposal_template_packages"
+      referencedColumns: ["tenant_id","template_id","package_id"]
+    },{
+      foreignKeyName: "proposal_templates_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"tenant_memberships": {
                   Row: {
                     "created_at": string,"id": string,"role": string,"tenant_id": string,"updated_at": string,"user_id": string

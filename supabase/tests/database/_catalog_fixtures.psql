@@ -1,0 +1,69 @@
+-- Catalog fixtures for both test tenants. Include after _fixtures.psql.
+
+-- Object path helper: {tenant}/gear-items/{gear}/{object}.{ext}
+create function tests.media_path(tenant text, gear text, obj text, ext text) returns text
+language sql immutable as $$
+  select tests.id(tenant)::text || '/gear-items/' || tests.id(gear)::text || '/' || tests.id(obj)::text || '.' || ext;
+$$;
+grant execute on function tests.media_path(text, text, text, text) to anon, authenticated;
+
+insert into public.gear_items (id, tenant_id, key, name, default_price_cents) values
+  (tests.id('gear_a_speaker'),  tests.id('tenant_a'), 'additional_speaker', 'Additional-location speaker', 15000),
+  (tests.id('gear_a_uplights'), tests.id('tenant_a'), 'uplights_4',         'Uplights (pack of 4)',        12000),
+  (tests.id('gear_b_speaker'),  tests.id('tenant_b'), 'speaker',            'Speaker',                     20000);
+
+insert into public.packages (id, tenant_id, key, name, base_price_cents, is_popular) values
+  (tests.id('pkg_a_basic'), tests.id('tenant_a'), 'essential', 'Essential', 150000, false),
+  (tests.id('pkg_a_plus'),  tests.id('tenant_a'), 'signature', 'Signature', 220000, true),
+  (tests.id('pkg_b_basic'), tests.id('tenant_b'), 'basic',     'Basic',     100000, false);
+
+insert into public.package_items (tenant_id, package_id, gear_item_id, quantity) values
+  (tests.id('tenant_a'), tests.id('pkg_a_plus'),  tests.id('gear_a_speaker'), 1),
+  (tests.id('tenant_b'), tests.id('pkg_b_basic'), tests.id('gear_b_speaker'), 2);
+
+insert into public.logistics_questions (id, tenant_id, key, prompt, answer_type, options) values
+  (tests.id('q_a_ceremony'), tests.id('tenant_a'), 'ceremony_location', 'Where is the ceremony?', 'single_choice',
+   '[{"value":"none","label":"No ceremony"},{"value":"same_room","label":"Same room"},{"value":"separate_space","label":"Separate space"}]'),
+  (tests.id('q_a_mic'),      tests.id('tenant_a'), 'needs_wireless_mic', 'Speeches with a wireless mic?', 'boolean', '[]'),
+  (tests.id('q_a_extras'),   tests.id('tenant_a'), 'extras', 'Extras wanted', 'multi_choice',
+   '[{"value":"uplights","label":"Uplights"},{"value":"fog","label":"Fog"}]'),
+  (tests.id('q_b_ceremony'), tests.id('tenant_b'), 'ceremony_location', 'Ceremony?', 'boolean', '[]');
+
+insert into public.logistics_rules (id, tenant_id, question_id, condition, gear_item_id, required_quantity, reason) values
+  (tests.id('rule_a_ceremony'), tests.id('tenant_a'), tests.id('q_a_ceremony'), '{"op":"equals","value":"separate_space"}',
+   tests.id('gear_a_speaker'), 1, 'A separate ceremony space needs its own speaker.'),
+  (tests.id('rule_b_ceremony'), tests.id('tenant_b'), tests.id('q_b_ceremony'), '{"op":"equals","value":true}',
+   tests.id('gear_b_speaker'), 1, 'Ceremony needs a speaker.');
+
+insert into public.proposal_templates (id, tenant_id, name) values
+  (tests.id('tmpl_a'),  tests.id('tenant_a'), 'Wedding'),
+  (tests.id('tmpl_a2'), tests.id('tenant_a'), 'Corporate'),
+  (tests.id('tmpl_b'),  tests.id('tenant_b'), 'Party');
+
+insert into public.proposal_template_packages (tenant_id, template_id, package_id, sort_order) values
+  (tests.id('tenant_a'), tests.id('tmpl_a'), tests.id('pkg_a_basic'), 1),
+  (tests.id('tenant_a'), tests.id('tmpl_a'), tests.id('pkg_a_plus'),  2),
+  (tests.id('tenant_a'), tests.id('tmpl_a2'), tests.id('pkg_a_basic'), 1),
+  (tests.id('tenant_b'), tests.id('tmpl_b'), tests.id('pkg_b_basic'), 1);
+
+update public.proposal_templates set default_package_id = tests.id('pkg_a_plus') where id = tests.id('tmpl_a');
+update public.proposal_templates set default_package_id = tests.id('pkg_b_basic') where id = tests.id('tmpl_b');
+
+insert into public.proposal_template_addons (tenant_id, template_id, gear_item_id, recommended_quantity, max_quantity) values
+  (tests.id('tenant_a'), tests.id('tmpl_a'), tests.id('gear_a_uplights'), 1, 4),
+  (tests.id('tenant_b'), tests.id('tmpl_b'), tests.id('gear_b_speaker'),  0, 2);
+
+insert into public.proposal_template_questions (tenant_id, template_id, question_id, sort_order) values
+  (tests.id('tenant_a'), tests.id('tmpl_a'), tests.id('q_a_ceremony'), 1),
+  (tests.id('tenant_b'), tests.id('tmpl_b'), tests.id('q_b_ceremony'), 1);
+
+-- Media rows and matching Storage objects.
+insert into public.gear_media (id, tenant_id, gear_item_id, storage_path, kind, content_type, alt_text) values
+  (tests.id('media_a'), tests.id('tenant_a'), tests.id('gear_a_speaker'),
+   tests.media_path('tenant_a', 'gear_a_speaker', 'obj_a', 'jpg'), 'image', 'image/jpeg', 'Speaker on stand'),
+  (tests.id('media_b'), tests.id('tenant_b'), tests.id('gear_b_speaker'),
+   tests.media_path('tenant_b', 'gear_b_speaker', 'obj_b', 'mp4'), 'video', 'video/mp4', 'Speaker demo video');
+
+insert into storage.objects (bucket_id, name, metadata) values
+  ('gear-media', tests.media_path('tenant_a', 'gear_a_speaker', 'obj_a', 'jpg'), '{"mimetype":"image/jpeg"}'),
+  ('gear-media', tests.media_path('tenant_b', 'gear_b_speaker', 'obj_b', 'mp4'), '{"mimetype":"video/mp4"}');

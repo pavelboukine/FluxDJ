@@ -3,10 +3,16 @@
 Branded proposal, contract and event planning portal for independent DJs.
 The source of truth for scope and behavior is [docs/Flux-DJ-V1-Spec.md](docs/Flux-DJ-V1-Spec.md).
 
-**Current status: Phase 1, steps 1 and 2.** The stack is scaffolded and the
-multi-tenant data foundation is in place: tenants, memberships, clients,
-events, event contacts and event access, with row-level security and tests.
-Proposals, catalog, contracts and planning are not built yet.
+**Current status: Phase 1, steps 1 to 3.** The stack is scaffolded and the
+data foundation is in place:
+
+- Tenancy: tenants, memberships, clients, events, event contacts and event access.
+- Catalog: gear items with private image/video media, packages with included
+  gear, logistics questions with constrained rules, and reusable proposal
+  templates.
+
+Everything has row-level security and tests. Sent proposals, pricing,
+snapshots, contracts, planning and all screens are not built yet.
 
 ## Stack
 
@@ -57,6 +63,13 @@ linked to a hosted Supabase project. Do not run `supabase link` or
 | `bouprod` | owner@bouprod.example | One event with a verified client |
 | `other-dj` | owner@otherdj.example | One event for the same couple, with no client access |
 
+BOUPROD also gets a **demo catalog**: five gear items, three packages
+(Essential, Signature, Premium), four logistics questions with three rules,
+and a "Wedding (DEMO)" template. Every record is tagged DEMO. Prices and
+wording are placeholders that Pavel has not reviewed. The catalog mirrors
+the spec's pricing example, where separate ceremony and cocktail spaces each
+require an additional-location speaker. No media files are seeded.
+
 The client `client@couple.example` has verified access to the BOUPROD event
 only. Seeded users have no passwords. Login is magic-link only, and the login
 screens arrive in Phase 2.
@@ -75,6 +88,7 @@ This runs, in order:
 | TypeScript | `pnpm typecheck` | No |
 | Postgres schema lint | `pnpm db:lint` | Yes |
 | Database tests (pgTAP) | `pnpm db:test` | Yes |
+| Storage API integration tests | `pnpm test:integration` | Yes, with the Storage service running |
 
 `pnpm build` also verifies the production build.
 
@@ -94,6 +108,21 @@ in every relevant relationship.
 | `04_membership_and_privileges` | Staff cannot escalate; owners manage staff only in their own tenant; lifecycle and access columns are not directly writable |
 | `05_client_access` | A verified client sees only their linked events, including at two different DJs; unverified, revoked or email-only matches grant nothing; clients cannot alter staff data |
 | `06_anonymous_access` | Anon has no table or function access |
+| `07_catalog_isolation` | Every catalog and template table is visible and writable only by staff of the owning tenant; clients and anon get nothing |
+| `08_catalog_integrity` | Cross-tenant composite keys for package contents, rules, templates and media; the default package must belong to its template; at most three packages per template; immutable keys; rule conditions limited to equality and membership, and checked against the question's options; media type, extension and path checks |
+| `09_storage_gear_media` | Storage policies on the `gear-media` bucket: private bucket, tenant-scoped reads, uploads only under the uploader's own gear items, no overwrite or delete |
+
+`_catalog_fixtures.psql` adds catalog rows and Storage objects for both test
+tenants.
+
+### Storage integration tests
+
+`tests/integration/storage-gear-media.test.mts` runs through the real Storage
+HTTP API. It creates throwaway users and gets real sessions through the
+magic-link token flow, so there are no passwords and no hand-made JWTs. It
+checks uploads, downloads, signed URLs, cross-tenant access, overwrites,
+deletes, MIME types, clients and anonymous users, then removes everything it
+created. It refuses to run unless the Supabase URL is local.
 
 ## How tenant isolation works
 
@@ -111,6 +140,22 @@ Isolation is enforced by the database, not by application code.
    operations.
 4. **Deny by default.** A migration revokes default privileges for `anon`
    and `authenticated`. Every new table needs explicit grants, RLS and tests.
+
+### Gear media in Storage
+
+Gear images and videos live in the private `gear-media` bucket. The object
+path is `{tenant_id}/gear-items/{gear_item_id}/{random uuid}.{ext}`.
+
+- Staff can upload only under a gear item that belongs to their own tenant.
+  They can read only their own tenant's objects.
+- No user can update or delete an object, and upserts fail. A sent offer can
+  therefore never lose or silently change its media.
+- Clients and anonymous users have no direct access. Proposal pages will
+  receive short-lived signed URLs from the server after authorization.
+- Allowed types are JPEG, PNG, WebP, AVIF, MP4 and WebM, up to 100 MiB. The
+  `gear_media` row must agree on path, kind, MIME type and extension.
+
+### Client access
 
 Clients never read `events` directly, because RLS limits rows, not columns.
 They call `public.my_events()`, a hardened security definer function that
@@ -137,7 +182,8 @@ src/components/ui/             shadcn/ui components
 src/lib/env.ts, env.server.ts  Validated public and server-only environment
 src/lib/supabase/              Browser, server and admin clients, generated DB types
 supabase/migrations/           SQL migrations (source of truth for the schema)
-supabase/tests/database/       pgTAP RLS and constraint tests
+supabase/tests/database/       pgTAP RLS, constraint and Storage policy tests
+tests/integration/             Storage HTTP API tests against local Supabase
 supabase/seed.sql              Local-only seed data
 ```
 
@@ -146,8 +192,12 @@ supabase/seed.sql              Local-only seed data
 1. Add `tenant_id uuid not null`, `unique (tenant_id, id)` and composite
    foreign keys to parents.
 2. Add the `set_updated_at` and `forbid_column_changes` triggers.
-3. Enable RLS and grant only the needed privileges, column by column for
-   writes.
-4. Add tests for SELECT, INSERT, UPDATE and DELETE from another tenant, and
+   Add stable keys and parent references to the immutable list.
+3. If a CHECK constraint calls a new function, grant EXECUTE on it to
+   `authenticated` and `service_role`. Default privileges deny it, and a
+   schema guard test fails if it is missing.
+4. Enable RLS and grant only the needed privileges, column by column for
+   writes. Catalog-style records get no DELETE; archive them with `active`.
+5. Add tests for SELECT, INSERT, UPDATE and DELETE from another tenant, and
    for client and anon access.
-5. Run `pnpm db:types` and `pnpm check`.
+6. Run `pnpm db:types` and `pnpm check`.

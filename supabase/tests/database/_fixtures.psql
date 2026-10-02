@@ -56,6 +56,26 @@ language sql immutable as $$
     when 'event_a1'  then '30000000-0000-4000-8000-0000000000a1'
     when 'event_a2'  then '30000000-0000-4000-8000-0000000000a2'
     when 'event_b1'  then '30000000-0000-4000-8000-0000000000b1'
+    -- catalog (see _catalog_fixtures.psql)
+    when 'gear_a_speaker'  then '40000000-0000-4000-8000-0000000000a1'
+    when 'gear_a_uplights' then '40000000-0000-4000-8000-0000000000a2'
+    when 'gear_b_speaker'  then '40000000-0000-4000-8000-0000000000b1'
+    when 'pkg_a_basic'     then '50000000-0000-4000-8000-0000000000a1'
+    when 'pkg_a_plus'      then '50000000-0000-4000-8000-0000000000a2'
+    when 'pkg_b_basic'     then '50000000-0000-4000-8000-0000000000b1'
+    when 'q_a_ceremony'    then '60000000-0000-4000-8000-0000000000a1'
+    when 'q_a_mic'         then '60000000-0000-4000-8000-0000000000a2'
+    when 'q_a_extras'      then '60000000-0000-4000-8000-0000000000a3'
+    when 'q_b_ceremony'    then '60000000-0000-4000-8000-0000000000b1'
+    when 'rule_a_ceremony' then '70000000-0000-4000-8000-0000000000a1'
+    when 'rule_b_ceremony' then '70000000-0000-4000-8000-0000000000b1'
+    when 'tmpl_a'          then '80000000-0000-4000-8000-0000000000a1'
+    when 'tmpl_a2'         then '80000000-0000-4000-8000-0000000000a2'
+    when 'tmpl_b'          then '80000000-0000-4000-8000-0000000000b1'
+    when 'media_a'         then '90000000-0000-4000-8000-0000000000a1'
+    when 'media_b'         then '90000000-0000-4000-8000-0000000000b1'
+    when 'obj_a'           then 'e0000000-0000-4000-8000-0000000000a1'
+    when 'obj_b'           then 'e0000000-0000-4000-8000-0000000000b1'
   end::uuid;
 $$;
 grant execute on function tests.id(text) to anon, authenticated;
