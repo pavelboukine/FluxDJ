@@ -3,16 +3,18 @@
 Branded proposal, contract and event planning portal for independent DJs.
 The source of truth for scope and behavior is [docs/Flux-DJ-V1-Spec.md](docs/Flux-DJ-V1-Spec.md).
 
-**Current status: Phase 1, steps 1 to 3.** The stack is scaffolded and the
+**Current status: Phase 1, steps 1 to 4.** The stack is scaffolded and the
 data foundation is in place:
 
 - Tenancy: tenants, memberships, clients, events, event contacts and event access.
 - Catalog: gear items with private image/video media, packages with included
   gear, logistics questions with constrained rules, and reusable proposal
   templates.
+- Offers and pricing: draft proposals with frozen offer snapshots, a shared
+  deterministic pricing module, and immutable priced selections.
 
-Everything has row-level security and tests. Sent proposals, pricing,
-snapshots, contracts, planning and all screens are not built yet.
+Everything has row-level security and tests. Sending, public proposal links,
+approval, contracts, planning and all screens are not built yet.
 
 ## Stack
 
@@ -63,6 +65,9 @@ linked to a hosted Supabase project. Do not run `supabase link` or
 | `bouprod` | owner@bouprod.example | One event with a verified client |
 | `other-dj` | owner@otherdj.example | One event for the same couple, with no client access |
 
+Both tenants have tax categories configured: BOUPROD maps `standard` to
+GST and QST, and Other DJ maps it to HST.
+
 BOUPROD also gets a **demo catalog**: five gear items, three packages
 (Essential, Signature, Premium), four logistics questions with three rules,
 and a "Wedding (DEMO)" template. Every record is tagged DEMO. Prices and
@@ -86,9 +91,10 @@ This runs, in order:
 |---|---|---|
 | ESLint | `pnpm lint` | No |
 | TypeScript | `pnpm typecheck` | No |
+| Pricing unit tests (Vitest) | `pnpm test:unit` | No |
 | Postgres schema lint | `pnpm db:lint` | Yes |
 | Database tests (pgTAP) | `pnpm db:test` | Yes |
-| Storage API integration tests | `pnpm test:integration` | Yes, with the Storage service running |
+| Integration tests (Vitest) | `pnpm test:integration` | Yes, with the Storage service running |
 
 `pnpm build` also verifies the production build.
 
@@ -112,12 +118,49 @@ in every relevant relationship.
 | `08_catalog_integrity` | Cross-tenant composite keys for package contents, rules, templates and media; the default package must belong to its template; at most three packages per template; immutable keys; rule conditions limited to equality and membership, and checked against the question's options; media type, extension and path checks |
 | `09_storage_gear_media` | Storage policies on the `gear-media` bucket: private bucket, tenant-scoped reads, uploads only under the uploader's own gear items, no overwrite or delete |
 
+| `10_offer_snapshots` | Offer creation rules: exactly three distinct packages and one most popular; every referenced package, gear item and question is active; only active rules of offered questions are frozen; every tax category resolves. Also covers authorization, template prefill, and snapshots and hashes that survive every catalog, tax and branding change |
+| `11_selection_recording` | Only the service role records selections; optimistic versions; immutable selections and lines. The database rejects tampered prices, line totals, subtotals, tax rates, tax rounding, currency, offer hash and packages |
+
 `_catalog_fixtures.psql` adds catalog rows and Storage objects for both test
-tenants.
+tenants. `_offer_fixtures.psql` adds a third package and an offer-input
+helper.
 
-### Storage integration tests
+The selection tests force deferred constraint checks with
+`set constraints all immediate`. The test transaction never commits, so
+otherwise those checks would never run.
 
-`tests/integration/storage-gear-media.test.mts` runs through the real Storage
+### Unit tests
+
+`tests/unit/pricing.test.ts` covers the pricing module:
+
+- The spec's speaker example, and charging required gear once when the
+  client also selects it as an addon.
+- Addon quantity bounds, missing answers and invalid selections.
+- Rejection of client-supplied prices and totals.
+- Half-up tax rounding per line, and determinism.
+- Offer-snapshot validation.
+
+### Integration tests
+
+Integration tests run with Vitest against the local stack and refuse any
+non-local URL.
+
+`tests/integration/offers-pricing.test.ts` runs the whole step 4 flow:
+
+1. A staff user with a real magic-link session freezes an offer from a
+   template.
+2. The snapshot is read back through RLS and validated by the TypeScript
+   schema.
+3. The spec example is priced and committed, so the database's deferred
+   verification runs for real.
+4. It checks that stale versions, invalid input and a writer that lowers a
+   price are all rejected.
+5. It changes the catalog and confirms the frozen offer is unchanged.
+
+Proposals can't be deleted, so this test leaves its uniquely named tenant
+behind, archived. `pnpm db:reset` clears it.
+
+`tests/integration/storage-gear-media.test.ts` runs through the real Storage
 HTTP API. It creates throwaway users and gets real sessions through the
 magic-link token flow, so there are no passwords and no hand-made JWTs. It
 checks uploads, downloads, signed URLs, cross-tenant access, overwrites,
@@ -140,6 +183,41 @@ Isolation is enforced by the database, not by application code.
    operations.
 4. **Deny by default.** A migration revokes default privileges for `anon`
    and `authenticated`. Every new table needs explicit grants, RLS and tests.
+
+### Offers, snapshots and pricing
+
+- **Freezing an offer.** Staff call `create_proposal_offer(event, offer)`,
+  optionally prefilled by `proposal_offer_input_from_template(template)`.
+  Under a row lock it enforces the offer rules and copies everything into
+  `proposals.offer_snapshot`:
+  - packages, included quantities, gear prices and descriptions, and active
+    media references
+  - addons, questions and active rules of offered questions
+  - tax rates and categories, currency, branding and expiry
+  - the database computes `offer_sha256` itself
+  - the snapshot and hash can never change afterwards
+- **Pricing.** `src/lib/pricing` is pure, deterministic TypeScript, shared by
+  the server and a future browser preview. It follows spec section 5:
+  - input is only a package key, addon quantities and answers, and unknown
+    fields such as prices are rejected
+  - required gear is aggregated across rules, then reduced by package
+    inclusions
+  - gear that is both required and optional is charged
+    `max(optional, required extra)`, so it is never charged twice
+- **Tax policy.** For each line and each tax code in that line's category,
+  `round_half_up(line_total × rate_ppm / 1,000,000)`, summed per code. Every
+  configured rate is listed, including zero amounts.
+- **Tax categories.** `tenants.tax_categories` maps a category key to tax
+  codes. There is no implicit default, and an unmapped category blocks offer
+  creation.
+- **Recording.** `priceAndRecordSelection`, in
+  `src/lib/proposals/selections.server.ts`, prices untrusted input and calls
+  `record_proposal_selection`. That function is executable only by the
+  service role.
+  - It does no caller authorization. The step 6 submission flow must check
+    the session, state and expiry first.
+  - At commit, a deferred trigger re-verifies unit prices, line totals, the
+    subtotal, every tax amount and the total against the frozen snapshot.
 
 ### Gear media in Storage
 
@@ -183,7 +261,10 @@ src/lib/env.ts, env.server.ts  Validated public and server-only environment
 src/lib/supabase/              Browser, server and admin clients, generated DB types
 supabase/migrations/           SQL migrations (source of truth for the schema)
 supabase/tests/database/       pgTAP RLS, constraint and Storage policy tests
-tests/integration/             Storage HTTP API tests against local Supabase
+src/lib/pricing/               Pure pricing module and offer snapshot schema
+src/lib/proposals/             Server-only selection pricing and recording
+tests/unit/                    Vitest unit tests (pricing)
+tests/integration/             Vitest tests against local Supabase (offers, Storage)
 supabase/seed.sql              Local-only seed data
 ```
 

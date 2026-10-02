@@ -1,0 +1,30 @@
+-- Offer fixtures. Include after _fixtures.psql and _catalog_fixtures.psql.
+-- Adds a third tenant A package and tax categories, and a helper that builds
+-- a valid create_proposal_offer input:
+--   packages: essential, signature (most popular, includes 1 speaker), premium
+--   addons:   uplights_4 (1 of max 4), additional_speaker (0 of max 3)
+--   questions: ceremony_location, needs_wireless_mic
+
+insert into public.packages (id, tenant_id, key, name, base_price_cents) values
+  (tests.id('pkg_a_premium'), tests.id('tenant_a'), 'premium', 'Premium', 300000);
+insert into public.package_items (tenant_id, package_id, gear_item_id, quantity) values
+  (tests.id('tenant_a'), tests.id('pkg_a_premium'), tests.id('gear_a_speaker'), 2);
+
+create function tests.base_offer() returns jsonb
+language sql stable as $$
+  select jsonb_build_object(
+    'expiry_days', 14,
+    'intro', 'Test intro',
+    'packages', jsonb_build_array(
+      jsonb_build_object('package_id', tests.id('pkg_a_basic'),   'is_popular', false),
+      jsonb_build_object('package_id', tests.id('pkg_a_plus'),    'is_popular', true),
+      jsonb_build_object('package_id', tests.id('pkg_a_premium'), 'is_popular', false)
+    ),
+    'addons', jsonb_build_array(
+      jsonb_build_object('gear_item_id', tests.id('gear_a_uplights'), 'recommended_quantity', 1, 'max_quantity', 4),
+      jsonb_build_object('gear_item_id', tests.id('gear_a_speaker'),  'recommended_quantity', 0, 'max_quantity', 3)
+    ),
+    'question_ids', jsonb_build_array(tests.id('q_a_ceremony'), tests.id('q_a_mic'))
+  );
+$$;
+grant execute on function tests.base_offer() to anon, authenticated, service_role;

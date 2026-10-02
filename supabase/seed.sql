@@ -34,13 +34,15 @@ where u.id in ('a1111111-1111-4111-8111-111111111111',
 -- Tenants ------------------------------------------------------------------------
 -- Tax rates below are illustrative local values only. Each DJ configures
 -- their own; nothing in the schema hardcodes them.
-insert into public.tenants (id, slug, business_name, display_name, brand_colors, reply_to_email, tax_config) values
+insert into public.tenants (id, slug, business_name, display_name, brand_colors, reply_to_email, tax_config, tax_categories) values
   ('11111111-0000-4000-8000-000000000001', 'bouprod', 'BOUPROD', 'BOUPROD',
    '{"primary":"#111827","accent":"#E11D48"}', 'owner@bouprod.example',
-   '[{"code":"GST","label":"GST","rate_ppm":50000},{"code":"QST","label":"QST","rate_ppm":99750}]'),
+   '[{"code":"GST","label":"GST","rate_ppm":50000},{"code":"QST","label":"QST","rate_ppm":99750}]',
+   '{"standard":["GST","QST"]}'),
   ('11111111-0000-4000-8000-000000000002', 'other-dj', 'Other DJ Co.', 'Other DJ',
    '{"primary":"#0F172A","accent":"#0EA5E9"}', 'owner@otherdj.example',
-   '[{"code":"HST","label":"HST","rate_ppm":130000}]');
+   '[{"code":"HST","label":"HST","rate_ppm":130000}]',
+   '{"standard":["HST"]}');
 
 insert into public.tenant_memberships (tenant_id, user_id, role) values
   ('11111111-0000-4000-8000-000000000001', 'a1111111-1111-4111-8111-111111111111', 'owner'),

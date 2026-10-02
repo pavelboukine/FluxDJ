@@ -6,9 +6,9 @@
  * JWTs), then exercise uploads, downloads, signed URLs, overwrites and deletes
  * through the real Storage HTTP API. All fixtures are removed afterwards.
  *
- * Run: pnpm test:integration
+ * Run: pnpm test:integration (Vitest)
  */
-import { after, before, describe, it } from "node:test";
+import { afterAll, beforeAll, describe, it } from "vitest";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -66,7 +66,7 @@ async function must<T extends { error: unknown }>(p: PromiseLike<T>): Promise<T>
 }
 
 describe("gear-media Storage authorization (local Supabase)", () => {
-  before(async () => {
+  beforeAll(async () => {
     env = localStatus();
     const opts = { auth: { persistSession: false, autoRefreshToken: false } };
     admin = createClient(env.API_URL, env.SERVICE_ROLE_KEY, opts);
@@ -96,7 +96,7 @@ describe("gear-media Storage authorization (local Supabase)", () => {
     );
   });
 
-  after(async () => {
+  afterAll(async () => {
     if (!admin) return;
     const { data: objects } = await admin.storage.from(BUCKET).list(`${ids.tenantA}/gear-items/${ids.gearA}`);
     const { data: objectsB } = await admin.storage.from(BUCKET).list(`${ids.tenantB}/gear-items/${ids.gearB}`);

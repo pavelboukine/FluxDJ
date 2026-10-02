@@ -14,8 +14,9 @@
     "db:test": "supabase test db",
     "db:lint": "supabase db lint --level warning --fail-on warning",
     "db:types": "supabase gen types typescript --local --schema public > src/lib/supabase/database.types.ts",
-    "check": "pnpm lint && pnpm typecheck && pnpm db:lint && pnpm db:test && pnpm test:integration",
-    "test:integration": "node --test \"tests/integration/**/*.test.mts\""
+    "check": "pnpm lint && pnpm typecheck && pnpm test:unit && pnpm db:lint && pnpm db:test && pnpm test:integration",
+    "test:integration": "vitest run tests/integration --no-file-parallelism",
+    "test:unit": "vitest run tests/unit"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
@@ -41,7 +42,8 @@
     "eslint-config-next": "16.3.8",
     "supabase": "2.119.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "5.0.3"
   },
   "packageManager": "pnpm@12.8.1",
   "engines": {
