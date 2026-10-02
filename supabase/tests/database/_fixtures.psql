@@ -1,0 +1,110 @@
+-- Shared fixtures for database tests. Included with \ir from each test file,
+-- inside that file's transaction, so everything is rolled back afterwards.
+--
+-- Two tenants (A = BOUPROD, B = another DJ) plus users with every relevant
+-- relationship:
+--   owner_a, staff_a   members of tenant A
+--   owner_b            member of tenant B
+--   client_x           verified client with access to one event in A AND one in B
+--   client_y           verified client with access to A2; revoked access to A1
+--   client_u           unverified email, has an access row for A1
+--   stranger           authenticated, no membership or access
+
+create extension if not exists pgtap with schema extensions;
+
+-- Role switching helpers ------------------------------------------------------
+create schema tests;
+grant usage on schema tests to anon, authenticated;
+
+create function tests.login_as(uid uuid) returns void
+language plpgsql as $$
+begin
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', uid, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+end;
+$$;
+
+create function tests.login_as_anon() returns void
+language plpgsql as $$
+begin
+  perform set_config('request.jwt.claims', '{"role":"anon"}', true);
+  execute 'set local role anon';
+end;
+$$;
+
+grant execute on function tests.login_as(uuid) to anon, authenticated;
+grant execute on function tests.login_as_anon() to anon, authenticated;
+
+-- Readable fixed ids ------------------------------------------------------------
+create function tests.id(name text) returns uuid
+language sql immutable as $$
+  select case name
+    when 'owner_a'   then 'a0000000-0000-4000-8000-000000000001'
+    when 'staff_a'   then 'a0000000-0000-4000-8000-000000000002'
+    when 'owner_b'   then 'b0000000-0000-4000-8000-000000000001'
+    when 'client_x'  then 'c0000000-0000-4000-8000-000000000001'
+    when 'client_y'  then 'c0000000-0000-4000-8000-000000000002'
+    when 'client_u'  then 'c0000000-0000-4000-8000-000000000003'
+    when 'stranger'  then 'd0000000-0000-4000-8000-000000000001'
+    when 'tenant_a'  then '10000000-0000-4000-8000-00000000000a'
+    when 'tenant_b'  then '10000000-0000-4000-8000-00000000000b'
+    when 'a_client_x' then '20000000-0000-4000-8000-0000000000a1'
+    when 'a_client_y' then '20000000-0000-4000-8000-0000000000a2'
+    when 'a_client_u' then '20000000-0000-4000-8000-0000000000a3'
+    when 'b_client_x' then '20000000-0000-4000-8000-0000000000b1'
+    when 'event_a1'  then '30000000-0000-4000-8000-0000000000a1'
+    when 'event_a2'  then '30000000-0000-4000-8000-0000000000a2'
+    when 'event_b1'  then '30000000-0000-4000-8000-0000000000b1'
+  end::uuid;
+$$;
+grant execute on function tests.id(text) to anon, authenticated;
+
+-- Auth users -----------------------------------------------------------------------
+insert into auth.users (id, instance_id, aud, role, email, email_confirmed_at, created_at, updated_at)
+values
+  (tests.id('owner_a'),  '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'owner-a@example.test',  now(), now(), now()),
+  (tests.id('staff_a'),  '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'staff-a@example.test',  now(), now(), now()),
+  (tests.id('owner_b'),  '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'owner-b@example.test',  now(), now(), now()),
+  (tests.id('client_x'), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'client-x@example.test', now(), now(), now()),
+  (tests.id('client_y'), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'client-y@example.test', now(), now(), now()),
+  (tests.id('client_u'), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'client-u@example.test', null,  now(), now()),
+  (tests.id('stranger'), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'stranger@example.test', now(), now(), now());
+
+-- Tenants and memberships ---------------------------------------------------------------
+insert into public.tenants (id, slug, business_name, display_name, tax_config) values
+  (tests.id('tenant_a'), 'test-bouprod', 'BOUPROD Test Inc.', 'BOUPROD',
+   '[{"code":"GST","label":"GST","rate_ppm":50000},{"code":"QST","label":"QST","rate_ppm":99750}]'),
+  (tests.id('tenant_b'), 'test-other-dj', 'Other DJ Test', 'Other DJ', '[]');
+
+insert into public.tenant_memberships (tenant_id, user_id, role) values
+  (tests.id('tenant_a'), tests.id('owner_a'), 'owner'),
+  (tests.id('tenant_a'), tests.id('staff_a'), 'staff'),
+  (tests.id('tenant_b'), tests.id('owner_b'), 'owner');
+
+-- Clients ------------------------------------------------------------------------------
+insert into public.clients (id, tenant_id, name, email) values
+  (tests.id('a_client_x'), tests.id('tenant_a'), 'Client X (A)', 'client-x@example.test'),
+  (tests.id('a_client_y'), tests.id('tenant_a'), 'Client Y (A)', 'client-y@example.test'),
+  (tests.id('a_client_u'), tests.id('tenant_a'), 'Client U (A)', 'client-u@example.test'),
+  (tests.id('b_client_x'), tests.id('tenant_b'), 'Client X (B)', 'client-x@example.test');
+
+-- Events -------------------------------------------------------------------------------
+insert into public.events (id, tenant_id, title, event_type, event_date, internal_notes) values
+  (tests.id('event_a1'), tests.id('tenant_a'), 'A1 Wedding',   'wedding',   '2027-06-12', 'A1 secret staff note'),
+  (tests.id('event_a2'), tests.id('tenant_a'), 'A2 Corporate', 'corporate', '2027-07-01', 'A2 secret staff note'),
+  (tests.id('event_b1'), tests.id('tenant_b'), 'B1 Party',     'party',     '2027-08-20', 'B1 secret staff note');
+
+insert into public.event_clients (tenant_id, event_id, client_id, is_primary, can_sign) values
+  (tests.id('tenant_a'), tests.id('event_a1'), tests.id('a_client_x'), true,  true),
+  (tests.id('tenant_a'), tests.id('event_a1'), tests.id('a_client_y'), false, false),
+  (tests.id('tenant_a'), tests.id('event_a1'), tests.id('a_client_u'), false, false),
+  (tests.id('tenant_a'), tests.id('event_a2'), tests.id('a_client_y'), true,  true),
+  (tests.id('tenant_b'), tests.id('event_b1'), tests.id('b_client_x'), true,  true);
+
+insert into public.event_access (tenant_id, event_id, client_id, user_id, revoked_at) values
+  (tests.id('tenant_a'), tests.id('event_a1'), tests.id('a_client_x'), tests.id('client_x'), null),
+  (tests.id('tenant_b'), tests.id('event_b1'), tests.id('b_client_x'), tests.id('client_x'), null),
+  (tests.id('tenant_a'), tests.id('event_a2'), tests.id('a_client_y'), tests.id('client_y'), null),
+  (tests.id('tenant_a'), tests.id('event_a1'), tests.id('a_client_y'), tests.id('client_y'), now()),
+  (tests.id('tenant_a'), tests.id('event_a1'), tests.id('a_client_u'), tests.id('client_u'), null);
