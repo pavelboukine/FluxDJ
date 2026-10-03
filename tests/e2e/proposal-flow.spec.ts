@@ -186,7 +186,7 @@ test.describe.serial("send, open, edit, submit, approve", () => {
     await expect(staff.getByText("2 × Additional-location speaker required")).toBeVisible();
     await staff.getByRole("button", { name: "Approve…" }).click();
     await staff.getByRole("dialog", { name: "Confirm approval" }).getByRole("button", { name: "Approve selection" }).click();
-    await expect(staff.getByText(/Next: the contract \(not built yet\)\. The event is not booked\./)).toBeVisible();
+    await expect(staff.getByText(/Next: generate the contract draft\. The event is not booked\./)).toBeVisible();
     await expect(staff.getByText(/Event status: awaiting signature \(not booked\)/)).toBeVisible();
 
     const ack = await waitForEmail(clientEmail, { after: before, subject: /approved your selection/ });

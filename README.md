@@ -3,8 +3,9 @@
 Branded proposal, contract and event planning portal for independent DJs.
 The source of truth for scope and behavior is [docs/Flux-DJ-V1-Spec.md](docs/Flux-DJ-V1-Spec.md).
 
-**Current status: Phase 1 complete (steps 1 to 6).** The stack is scaffolded and the
-data foundation is in place:
+**Current status: Phase 1 complete (steps 1 to 6) and Phase 2 step 1 (contract
+templates and contract drafts).** The stack is scaffolded and the data
+foundation is in place:
 
 - Tenancy: tenants, memberships, clients, events, event contacts and event access.
 - Catalog: gear items with private image/video media, packages with included
@@ -20,8 +21,13 @@ data foundation is in place:
   approve the exact submission or send a revised offer. A durable email
   outbox delivers locally through Mailpit.
 
-Everything has row-level security and tests. Not built yet: contracts,
-signing, client login and planning. Approval is not a booking.
+- Contracts, step 1: versioned contract templates with immutable published
+  versions, and contract drafts generated from an approved selection and
+  previewed by staff. Drafts are frozen when generated. They are never sent.
+
+Everything has row-level security and tests. Not built yet: sending
+contracts, signing, signed PDFs, client login, booking confirmation, payments
+and planning. Approval and contract drafts are not bookings.
 
 ## Stack
 
@@ -110,6 +116,7 @@ Unknown emails get the same on-screen message, but no email and no account.
 | Packages | http://127.0.0.1:3000/staff/bouprod/packages |
 | Questions and rules | http://127.0.0.1:3000/staff/bouprod/questions |
 | Templates | http://127.0.0.1:3000/staff/bouprod/templates |
+| Contract templates | http://127.0.0.1:3000/staff/bouprod/contract-templates |
 | Clients | http://127.0.0.1:3000/staff/bouprod/clients |
 | Events, which is where proposals start | http://127.0.0.1:3000/staff/bouprod/events |
 
@@ -144,6 +151,32 @@ preview at `/staff/bouprod/proposals/{id}/preview`.
 7. To change terms, click **Start a revised offer** on the proposal, edit
    it and send it. The client's old link and page then say a newer
    proposal is available.
+
+### Contract templates and contract drafts
+
+1. Open http://127.0.0.1:3000/staff/bouprod/contract-templates. The **New
+   contract template** form is prefilled with DEMO text marked "DEMO, NOT FOR
+   CLIENT USE". It is not a reviewed agreement. Click **Create template
+   draft**.
+2. On the template page, the right-hand column lists every allowed
+   placeholder. Type `{{client.nickname}}` into a section and click **Save
+   draft** to see it rejected. Remove it and save.
+3. Click **Publish…**, then **Publish version 1**. The version is now
+   read-only. **Start draft version 2** copies it into a new editable draft.
+4. Approve a proposal as described in the previous section. The approved
+   proposal page, and the event page, now show a **Contract** card.
+5. Choose the template version and click **Generate contract draft**. With
+   the seeded event this works once you enter a **Balance due date**, because
+   the DEMO text uses one. To see the missing-information message, clear the
+   event's venue address or the client's phone first.
+6. The draft opens at `/staff/bouprod/contracts/{id}`. Check the totals,
+   the 50% deposit and the balance, then narrow the window to phone width.
+7. Back on the proposal, **Regenerate draft…** asks for confirmation and
+   keeps the old draft as "replaced". Sending a revised offer marks the draft
+   "superseded", and the old approval can no longer be used.
+
+Generating a draft sends no email, does not book the event and gives the
+client no access. Clients and anonymous users cannot see templates or drafts.
 
 Delivery problems show under **Emails**
 (http://127.0.0.1:3000/staff/bouprod/emails), with **Retry** and **Deliver
@@ -195,6 +228,8 @@ in every relevant relationship.
 | `07_catalog_isolation` | Every catalog and template table is visible and writable only by staff of the owning tenant; clients and anon get nothing |
 | `08_catalog_integrity` | Cross-tenant composite keys for package contents, rules, templates and media; the default package must belong to its template; at most three packages per template; immutable keys; rule conditions limited to equality and membership, and checked against the question's options; media type, extension and path checks |
 | `12_send_submit_approve` | Send authorization, stale versions and missing contacts; staff can't see token hashes or sessions. Link exchange across tenants, unknown, revoked and superseded links. Safe client view, draft conflicts and invalid input. Submissions with omitted required gear, out-of-range quantities, missing answers or tampered prices, stale tabs, idempotency, approval, revision, expiry while open, the outbox and rate limits |
+| `13_contract_templates` | Templates are visible and writable only by staff of their tenant; clients and anon get nothing. Unknown, malformed or expression-like placeholders are rejected, also by a CHECK constraint. Optimistic draft versions, publishing, and published versions that no role can edit, unpublish or delete. Editing opens one new draft version |
+| `14_contract_generation` | Deposit rounding. Authorization for other tenants, clients, strangers and anon. Unpublished and other tenants' template versions. Missing values listed with what to complete, and no signer. Amounts and lines from the approved selection, the documented hash, no booking and no access. Repeat clicks, explicit replacement and conflicts. Snapshot independence after client, event, business, tax, catalog and template changes. Frozen rows, cross-tenant foreign keys with the guard trigger disabled, literal rendering of client values, and superseded approvals |
 | `09_storage_gear_media` | Storage policies on the `gear-media` bucket: private bucket, tenant-scoped reads, uploads only under the uploader's own gear items, no overwrite or delete |
 
 | `10_offer_snapshots` | Offer creation rules: exactly three distinct packages and one most popular; every referenced package, gear item and question is active; only active rules of offered questions are frozen; every tax category resolves. Also covers authorization, template prefill, and snapshots and hashes that survive every catalog, tax and branding change |
@@ -253,6 +288,24 @@ signed-out browser:
 9. A revision supersedes the old link and session.
 10. Invalid and cross-tenant links show generic messages.
 11. Expiry while the page is open blocks submission.
+
+### Contract tests
+
+- `tests/unit/contract-templates.test.ts` covers the "## Heading" editor
+  format, the DEMO text markers and the error messages.
+- `tests/integration/contracts.test.ts` runs through PostgREST with real
+  sessions. It checks that the DEMO text is accepted, and that contract
+  amounts equal the TypeScript pricing engine's. Two simultaneous generations
+  create one draft. Later catalog, client and event edits leave the contract
+  unchanged. Other tenants, the event's own verified client and anonymous
+  REST calls get nothing.
+- `tests/e2e/contract-flow.spec.ts` drives the staff UI. It covers
+  publishing a template with a rejected placeholder, approving a real
+  submission, missing-information guidance, and generation with a
+  double-click. It checks the preview, including a client name with markup
+  shown literally, and the layout at 390px with no sideways scrolling. It
+  also covers confirmed replacement, signed-out redirects and 404s for the
+  other DJ.
 
 ### Integration tests
 
@@ -462,6 +515,81 @@ capped at 1 MB and hosting platforms limit request bodies.
   hosting. `EMAIL_TRANSPORT=resend` with `RESEND_API_KEY`. Resend isn't used
   locally or in tests.
 
+### Contract templates and drafts
+
+- **Templates.** `contract_templates` holds a name and an active flag.
+  `contract_template_versions` holds numbered versions of the text: a title
+  and 1 to 60 plain-text `{heading, body}` sections.
+  - A version is an editable draft until published, with optimistic
+    `draft_version` checks. At most one draft exists per template.
+  - Publishing stamps the time and computes `content_sha256`, the SHA-256 of
+    the canonical jsonb text of `{"title", "sections"}`. After that no role
+    can change, unpublish or delete the version.
+  - "Editing" a published template opens a new draft version copied from the
+    latest one.
+  - The template does not store a pointer to a current version. Staff choose
+    any published version of an active template when generating.
+- **Placeholders.** The only dynamic syntax is `{{group.name}}` from the fixed
+  registry `private.contract_placeholders()`. The editor shows the same list.
+  - Unknown or malformed placeholders are rejected on save and by a CHECK
+    constraint. There is no HTML, markup, filter or expression.
+  - The staff editor uses one text field in which `## Heading` lines start
+    sections.
+- **Generation.** `generate_contract_draft` renders the contract inside the
+  database, in one transaction under the event lock. It uses only three
+  sources:
+  - the published template version
+  - the approved, immutable selection and its lines, for every commercial
+    value
+  - the signer, event, venue and business records as they are at that
+    moment, copied into `party_snapshot`
+- **Substitution** is a single pass, so a client name containing `{{...}}`
+  or `<b>` is stored and shown literally. React renders it as text.
+- **Missing values.** Every placeholder a template uses must have a
+  non-blank value, and the event needs a signer. Otherwise nothing is stored
+  and staff get a list of what to complete.
+- **Balance due date.** It is entered by staff when the template uses
+  `{{payment.balance_due_date}}`, and refused when it doesn't. Nothing is
+  assumed.
+- **Deposit.** It is 50% of the approved total including taxes, rounded half
+  up to the cent (`private.contract_deposit_cents`). The balance is the total
+  minus the deposit, and a CHECK constraint enforces that they add up.
+- **One draft per event.** An identical request returns the existing draft,
+  which covers double clicks and concurrent calls.
+  - A different draft needs explicit replacement, which inserts a new row and
+    marks the old one `replaced` with `replaces_id` provenance.
+  - Generation and replacement are audited.
+- **Stale terms.** Generation requires the event's active proposal to be
+  approved. When a revised offer is sent, a trigger marks that proposal's
+  drafts `superseded` in the same transaction.
+- **Freezing.** Every contract row is content-immutable from insert, for
+  every role including the service role. That covers rendered content,
+  commercial and party snapshots, provenance, signer, amounts and hash. Only
+  `status` moves, and this step allows only `draft` to `replaced` or
+  `superseded`.
+  - The `sent`, `signed` and `void` statuses exist for later steps, but no
+    transition reaches them yet.
+  - Contracts are never deleted, and published template versions they use
+    can't be removed.
+- **Content hash.** `contracts.content_sha256` is the SHA-256 (hex) of the
+  UTF-8 bytes of the canonical Postgres jsonb text of:
+
+  ```
+  {"schema_version": 1,
+   "content":    rendered_content,     -- title and sections exactly as shown
+   "commercial": commercial_snapshot,  -- lines, taxes, totals, deposit, balance, due date, source approval
+   "parties":    party_snapshot,       -- business, signer, event, venue
+   "template":   {"version_id", "content_sha256"}}
+  ```
+
+  The database computes it on insert. Verify it in SQL with
+  `private.contract_content_sha256(rendered_content, commercial_snapshot,
+  party_snapshot, template_version_id, template_content_sha256)`. It is
+  separate from the future hash of signed PDF bytes.
+- **Access.** Staff of the tenant can read templates, versions and contracts.
+  All writes go through membership-checked functions, except renaming or
+  archiving a template. Clients and anonymous users have no access.
+
 ### Gear media in Storage
 
 Gear images and videos live in the private `gear-media` bucket. The object
@@ -532,6 +660,10 @@ src/components/proposal/       Responsive proposal preview (live pricing)
 src/lib/media/                 File-signature detection for uploads
 src/lib/proposals/             Link tokens and the client proposal session
 src/lib/email/                 Email templates, transports (Mailpit/Resend) and outbox worker
+src/lib/contracts/             Template text format, rendered-content schema, DEMO template text
+src/components/contract/       Readable, escaped contract document view
+src/app/staff/[tenant]/contract-templates/  Template list, editor and publishing
+src/app/staff/[tenant]/contracts/          Contract generation panel and draft preview
 src/app/[tenant]/p/            Link opener and token exchange (public)
 src/app/[tenant]/proposals/    Client proposal page (session cookie)
 src/app/api/internal/outbox/   Outbox worker endpoint (secret required)

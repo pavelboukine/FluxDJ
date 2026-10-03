@@ -1,0 +1,103 @@
+-- Contract fixtures. Include after _fixtures.psql, _catalog_fixtures.psql and
+-- _offer_fixtures.psql. Provides:
+--   tests.demo_sections()   template sections using every kind of placeholder
+--   tests.simple_sections() sections using only always-available values
+--   tests.approved(event)   drives a real send -> client submit -> staff
+--                           approval for a tenant A event and returns the
+--                           approval id. Restores the caller to postgres.
+
+update public.tenants set tax_categories = '{"standard":["GST","QST"]}' where id = tests.id('tenant_a');
+
+create function tests.hex(value text) returns text language sql immutable as $$
+  select encode(sha256(convert_to(value, 'UTF8')), 'hex') $$;
+
+create function tests.line(source text, item text, name text, qty int, unit bigint, req int default 0, reasons jsonb default '[]')
+returns jsonb language sql immutable as $$
+  select jsonb_build_object('source', source, 'item_key', item, 'name', name, 'description', null, 'quantity', qty,
+    'unit_price_cents', unit, 'line_total_cents', qty * unit, 'required_quantity', req, 'required_reasons', reasons,
+    'tax_category', 'standard') $$;
+
+-- Signature, no extras, ceremony in the same room: 220000 + GST 11000 + QST 21945 = 252945.
+create function tests.valid_selection(pid uuid) returns jsonb language sql stable as $$
+  select jsonb_build_object(
+    'pricing_version', 'flux-pricing-1', 'currency', 'CAD', 'package_key', 'signature',
+    'addon_quantities', '{}'::jsonb,
+    'logistics_answers', '{"ceremony_location":"same_room","needs_wireless_mic":false}'::jsonb,
+    'requirements', '[]'::jsonb,
+    'lines', jsonb_build_array(tests.line('package','signature','Signature',1,220000),
+                               tests.line('included','additional_speaker','Additional-location speaker',1,0)),
+    'subtotal_cents', 220000,
+    'tax_breakdown', jsonb_build_array(
+      jsonb_build_object('code','GST','label','GST','rate_ppm',50000,'taxable_cents',220000,'amount_cents',11000),
+      jsonb_build_object('code','QST','label','QST','rate_ppm',99750,'taxable_cents',220000,'amount_cents',21945)),
+    'tax_cents', 32945, 'total_cents', 252945,
+    'offer_sha256', (select offer_sha256 from public.proposals where id = pid)) $$;
+
+create function tests.demo_sections() returns jsonb language sql immutable as $$
+  select jsonb_build_array(
+    jsonb_build_object('heading', 'About this document', 'body', 'DEMO, NOT FOR CLIENT USE.'),
+    jsonb_build_object('heading', 'Parties', 'body', E'Business: {{business.name}}\nClient: {{client.name}}, {{client.email}}, {{client.phone}}'),
+    jsonb_build_object('heading', 'Event', 'body', E'{{event.title}} on {{event.date}} at {{venue.name}}, {{venue.address}}'),
+    jsonb_build_object('heading', 'Services', 'body', E'{{package.name}} ({{package.price}})\n{{package.included}}\n{{gear.extras}}'),
+    jsonb_build_object('heading', 'Price', 'body', E'Subtotal {{pricing.subtotal}}\n{{pricing.taxes}}\nTaxes {{pricing.tax_total}}\nTotal {{pricing.total}} ({{pricing.currency}})'),
+    jsonb_build_object('heading', 'Payment', 'body', E'Deposit ({{payment.deposit_percent}}): {{payment.deposit}}\nBalance: {{payment.balance}}, due {{payment.balance_due_date}}')
+  ) $$;
+
+create function tests.simple_sections() returns jsonb language sql immutable as $$
+  select jsonb_build_array(
+    jsonb_build_object('heading', 'Parties', 'body', 'Between {{business.name}} and {{client.name}}.'),
+    jsonb_build_object('heading', 'Payment', 'body', E'Total {{pricing.total}}. Deposit {{payment.deposit}}. Balance {{payment.balance}}.')
+  ) $$;
+
+create function tests.approved(event_name text default 'event_a1') returns uuid
+language plpgsql as $$
+declare
+  pid uuid;
+  link uuid;
+  sess text;
+  sub jsonb;
+  v_approval uuid;
+begin
+  perform tests.login_as(tests.id('owner_a'));
+  pid := public.open_proposal_draft(tests.id(event_name), tests.base_offer());
+  perform tests.send(pid);
+  link := current_setting('tests.last_link_id')::uuid;
+  perform tests.login_as_service();
+  sess := tests.hex('session-' || pid);
+  perform public.exchange_proposal_link(tests.hex('token-' || link), sess, 'test-bouprod', 3600);
+  perform public.client_save_selection_draft(sess, pid, 'test-bouprod', 0, 'signature', '{}',
+    '{"ceremony_location":"same_room","needs_wireless_mic":false}');
+  sub := public.client_submit_selection(sess, pid, 'test-bouprod', 1, 'key-' || replace(pid::text, '-', ''), tests.valid_selection(pid));
+  -- client_submit_selection makes these checks immediate for the rest of the
+  -- transaction (harmless in production, where each submission commits).
+  -- Restore them so a second fixture submission in this test works.
+  set constraints public.proposal_selections_verify, public.proposal_selection_lines_verify deferred;
+  if sub ->> 'status' <> 'submitted' then
+    raise exception 'fixture submission failed: %', sub;
+  end if;
+  perform tests.login_as(tests.id('owner_a'));
+  v_approval := (public.approve_proposal_selection(pid, (sub ->> 'selection_id')::uuid) ->> 'approval_id')::uuid;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  return v_approval;
+end;
+$$;
+
+-- Creates and publishes a template as the given staff user; returns the version id.
+create function tests.published_version(owner text, tenant text, sections jsonb, title text default 'DEMO agreement for {{event.title}}')
+returns uuid language plpgsql as $$
+declare
+  tid uuid;
+  vid uuid;
+begin
+  perform tests.login_as(tests.id(owner));
+  tid := public.create_contract_template(tests.id(tenant), 'Template ' || left(md5(random()::text), 6), title, sections);
+  select id into vid from public.contract_template_versions where template_id = tid;
+  perform public.publish_contract_template_version(vid, 0);
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  return vid;
+end;
+$$;
+
+grant execute on all functions in schema tests to anon, authenticated, service_role;

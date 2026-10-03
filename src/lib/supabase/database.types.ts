@@ -74,6 +74,129 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"contract_template_versions": {
+                  Row: {
+                    "content_sha256": string | null,"created_at": string,"created_by_membership_id": string | null,"draft_version": number,"id": string,"placeholders": (string)[],"published_at": string | null,"published_by_membership_id": string | null,"sections": NonNullable<Json>,"template_id": string,"tenant_id": string,"title": string,"updated_at": string,"version_number": number
+                  }
+                  Insert: {
+                    "content_sha256"?: string | null,"created_at"?: string,"created_by_membership_id"?: string | null,"draft_version"?: number,"id"?: string,"placeholders"?: (string)[],"published_at"?: string | null,"published_by_membership_id"?: string | null,"sections": NonNullable<Json>,"template_id": string,"tenant_id": string,"title": string,"updated_at"?: string,"version_number": number
+                  }
+                  Update: {
+                    "content_sha256"?: string | null,"created_at"?: string,"created_by_membership_id"?: string | null,"draft_version"?: number,"id"?: string,"placeholders"?: (string)[],"published_at"?: string | null,"published_by_membership_id"?: string | null,"sections"?: NonNullable<Json>,"template_id"?: string,"tenant_id"?: string,"title"?: string,"updated_at"?: string,"version_number"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "contract_template_versions_created_by_fk"
+      columns: ["tenant_id","created_by_membership_id"]
+isOneToOne: false
+      referencedRelation: "tenant_memberships"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "contract_template_versions_published_by_fk"
+      columns: ["tenant_id","published_by_membership_id"]
+isOneToOne: false
+      referencedRelation: "tenant_memberships"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "contract_template_versions_template_fk"
+      columns: ["tenant_id","template_id"]
+isOneToOne: false
+      referencedRelation: "contract_templates"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "contract_template_versions_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"contract_templates": {
+                  Row: {
+                    "active": boolean,"created_at": string,"created_by_membership_id": string | null,"id": string,"name": string,"tenant_id": string,"updated_at": string
+                  }
+                  Insert: {
+                    "active"?: boolean,"created_at"?: string,"created_by_membership_id"?: string | null,"id"?: string,"name": string,"tenant_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "active"?: boolean,"created_at"?: string,"created_by_membership_id"?: string | null,"id"?: string,"name"?: string,"tenant_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "contract_templates_created_by_fk"
+      columns: ["tenant_id","created_by_membership_id"]
+isOneToOne: false
+      referencedRelation: "tenant_memberships"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "contract_templates_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"contracts": {
+                  Row: {
+                    "approval_id": string,"balance_cents": number,"balance_due_date": string | null,"commercial_snapshot": NonNullable<Json>,"content_sha256": string,"created_at": string,"currency": string,"deposit_cents": number,"event_id": string,"generated_by_membership_id": string | null,"generated_by_user_id": string,"id": string,"party_snapshot": NonNullable<Json>,"proposal_id": string,"rendered_content": NonNullable<Json>,"replaces_id": string | null,"selection_id": string,"signer_client_id": string,"signer_email": string,"signer_name": string,"status": string,"status_changed_at": string | null,"template_content_sha256": string,"template_id": string,"template_version_id": string,"tenant_id": string,"total_cents": number,"updated_at": string
+                  }
+                  Insert: {
+                    "approval_id": string,"balance_cents": number,"balance_due_date"?: string | null,"commercial_snapshot": NonNullable<Json>,"content_sha256": string,"created_at"?: string,"currency": string,"deposit_cents": number,"event_id": string,"generated_by_membership_id"?: string | null,"generated_by_user_id": string,"id"?: string,"party_snapshot": NonNullable<Json>,"proposal_id": string,"rendered_content": NonNullable<Json>,"replaces_id"?: string | null,"selection_id": string,"signer_client_id": string,"signer_email": string,"signer_name": string,"status"?: string,"status_changed_at"?: string | null,"template_content_sha256": string,"template_id": string,"template_version_id": string,"tenant_id": string,"total_cents": number,"updated_at"?: string
+                  }
+                  Update: {
+                    "approval_id"?: string,"balance_cents"?: number,"balance_due_date"?: string | null,"commercial_snapshot"?: NonNullable<Json>,"content_sha256"?: string,"created_at"?: string,"currency"?: string,"deposit_cents"?: number,"event_id"?: string,"generated_by_membership_id"?: string | null,"generated_by_user_id"?: string,"id"?: string,"party_snapshot"?: NonNullable<Json>,"proposal_id"?: string,"rendered_content"?: NonNullable<Json>,"replaces_id"?: string | null,"selection_id"?: string,"signer_client_id"?: string,"signer_email"?: string,"signer_name"?: string,"status"?: string,"status_changed_at"?: string | null,"template_content_sha256"?: string,"template_id"?: string,"template_version_id"?: string,"tenant_id"?: string,"total_cents"?: number,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "contracts_approval_fk"
+      columns: ["tenant_id","proposal_id","selection_id","approval_id"]
+isOneToOne: false
+      referencedRelation: "proposal_approvals"
+      referencedColumns: ["tenant_id","proposal_id","selection_id","id"]
+    },{
+      foreignKeyName: "contracts_event_fk"
+      columns: ["tenant_id","event_id"]
+isOneToOne: false
+      referencedRelation: "events"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "contracts_generated_by_fk"
+      columns: ["tenant_id","generated_by_membership_id"]
+isOneToOne: false
+      referencedRelation: "tenant_memberships"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "contracts_proposal_fk"
+      columns: ["tenant_id","event_id","proposal_id"]
+isOneToOne: false
+      referencedRelation: "proposals"
+      referencedColumns: ["tenant_id","event_id","id"]
+    },{
+      foreignKeyName: "contracts_replaces_fk"
+      columns: ["tenant_id","event_id","replaces_id"]
+isOneToOne: false
+      referencedRelation: "contracts"
+      referencedColumns: ["tenant_id","event_id","id"]
+    },{
+      foreignKeyName: "contracts_signer_fk"
+      columns: ["tenant_id","signer_client_id"]
+isOneToOne: false
+      referencedRelation: "clients"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "contracts_template_version_fk"
+      columns: ["tenant_id","template_id","template_version_id"]
+isOneToOne: false
+      referencedRelation: "contract_template_versions"
+      referencedColumns: ["tenant_id","template_id","id"]
+    },{
+      foreignKeyName: "contracts_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"email_outbox": {
                   Row: {
                     "access_link_id": string | null,"attempts": number,"created_at": string,"dedup_key": string,"entity_id": string,"entity_type": string,"event_type": string,"id": string,"last_error": string | null,"locked_until": string | null,"max_attempts": number,"next_attempt_at": string,"payload": NonNullable<Json>,"provider_message_id": string | null,"recipient_email": string,"sent_at": string | null,"status": string,"tenant_id": string,"updated_at": string
@@ -729,16 +852,30 @@ isOneToOne: false
 "consume_rate_limit":
 { Args: { "p_bucket": string,"p_limit": number,"p_subject_hash": string,"p_window_seconds": number }; Returns: boolean
                            },
+"contract_placeholder_catalog":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "description": string,"key": string,"label": string,"sort_order": number
+            }[]
+                           },
+"create_contract_template":
+{ Args: { "p_name": string,"p_sections": Json,"p_tenant_id": string,"p_title": string }; Returns: string
+                           },
 "exchange_proposal_link":
 { Args: { "p_session_hash": string,"p_session_seconds": number,"p_tenant_slug": string,"p_token_hash": string }; Returns: Json
                            },
 "fail_email_outbox":
 { Args: { "p_error": string,"p_id": string,"p_permanent"?: boolean }; Returns: undefined
                            },
+"generate_contract_draft":
+{ Args: { "p_approval_id": string,"p_balance_due_date"?: string,"p_replace_contract_id"?: string,"p_template_version_id": string }; Returns: Json
+                           },
 "my_events":
 { Args: Record<PropertyKey, never>; Returns: {
               "event_date": string,"event_id": string,"event_type": string,"lifecycle_status": string,"tenant_display_name": string,"tenant_slug": string,"timezone": string,"title": string,"venue_address": string,"venue_name": string
             }[]
+                           },
+"open_contract_template_draft":
+{ Args: { "p_template_id": string }; Returns: string
                            },
 "open_proposal_draft":
 { Args: { "p_event_id": string,"p_offer"?: Json }; Returns: string
@@ -752,8 +889,14 @@ isOneToOne: false
 "public_tenant_brand":
 { Args: { "p_tenant_slug": string }; Returns: Json
                            },
+"publish_contract_template_version":
+{ Args: { "p_expected_draft_version": number,"p_version_id": string }; Returns: Json
+                           },
 "retry_email_outbox":
 { Args: { "p_id": string }; Returns: boolean
+                           },
+"save_contract_template_draft":
+{ Args: { "p_expected_draft_version": number,"p_sections": Json,"p_title": string,"p_version_id": string }; Returns: number
                            },
 "send_proposal":
 { Args: { "p_access_link_id": string,"p_expected_draft_version": number,"p_proposal_id": string,"p_token_hash": string }; Returns: Json

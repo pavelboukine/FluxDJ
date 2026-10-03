@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ActionForm } from "@/components/app/action-form";
 import { CheckboxField, PageHeader, SelectField } from "@/components/app/fields";
 import { requireStaff } from "@/lib/auth/staff";
+import { ContractCard } from "../../contracts/contract-card";
 import { UUID_RE } from "@/lib/forms";
 import { addEventContact, openProposalDraft, removeEventContact, updateEvent } from "../actions";
 import { EventFields } from "../event-fields";
@@ -14,7 +15,8 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
   const { tenant: slug, eventId } = await params;
   const { contact } = await searchParams;
   if (!UUID_RE.test(eventId)) notFound();
-  const { supabase, tenant } = await requireStaff(slug);
+  const staff = await requireStaff(slug);
+  const { supabase, tenant } = staff;
   const { data: event } = await supabase
     .from("events")
     .select("id, title, event_type, event_date, timezone, venue_name, venue_address, internal_notes, lifecycle_status, active_proposal_id, event_clients(id, is_primary, can_sign, clients(id, name, email)), proposals!proposals_event_fk(id, revision, status, offer_frozen_at, updated_at, expires_at)")
@@ -26,6 +28,16 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
     supabase.from("clients").select("id, name, email").eq("tenant_id", tenant.id).is("archived_at", null).order("name"),
     supabase.from("proposal_templates").select("id, name").eq("tenant_id", tenant.id).eq("active", true).order("name"),
   ]);
+  // The current approval, if the active proposal is approved; contracts are generated from it.
+  const activeApproved = event.proposals.find((p) => p.id === event.active_proposal_id && p.status === "approved");
+  const [{ data: approval }, { count: contractCount }] = await Promise.all([
+    activeApproved
+      ? supabase.from("proposal_approvals").select("id").eq("tenant_id", tenant.id).eq("proposal_id", activeApproved.id).maybeSingle()
+      : Promise.resolve({ data: null }),
+    supabase.from("contracts").select("id", { count: "exact", head: true }).eq("tenant_id", tenant.id).eq("event_id", event.id),
+  ]);
+  const approvalId = approval?.id ?? null;
+  const hasContracts = (contractCount ?? 0) > 0;
   const onEvent = new Set(event.event_clients.map((c) => c.clients?.id));
   const draft = event.proposals.find((p) => p.status === "draft");
   const proposals = [...event.proposals].sort((a, b) => b.revision - a.revision);
@@ -73,6 +85,10 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
           ) : null}
         </CardContent>
       </Card>
+
+      {approvalId || hasContracts ? (
+        <ContractCard staff={staff} slug={slug} eventId={event.id} approvalId={approvalId} />
+      ) : null}
 
       <Card>
         <CardHeader><CardTitle>Contacts</CardTitle></CardHeader>

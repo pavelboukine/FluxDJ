@@ -9,6 +9,7 @@ import { SelectionSummary } from "@/components/proposal/selection-summary";
 import type { StaffContext } from "@/lib/auth/staff";
 import { formatCents } from "@/lib/money";
 import type { PricedSelection } from "@/lib/pricing";
+import { ContractCard } from "../../contracts/contract-card";
 import { reviseProposal } from "../actions";
 import { ApprovePanel } from "./approve-panel";
 import { loadPreview } from "./load";
@@ -41,7 +42,7 @@ export async function SentProposalView({ staff, slug, proposalId }: { staff: Sta
     supabase.from("access_links").select("expires_at, revoked_at, clients!access_links_client_fk(name, email)").eq("proposal_id", p.id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("proposal_views").select("id", { count: "exact", head: true }).eq("proposal_id", p.id),
     supabase.from("proposal_selections").select("id, version, submitted_at, total_cents, currency, selection_snapshot").eq("proposal_id", p.id).order("version", { ascending: false }).limit(1).maybeSingle(),
-    supabase.from("proposal_approvals").select("approved_at, selection_id").eq("proposal_id", p.id).maybeSingle(),
+    supabase.from("proposal_approvals").select("id, approved_at, selection_id").eq("proposal_id", p.id).maybeSingle(),
     supabase.from("email_outbox").select("id, event_type, recipient_email, status, attempts, last_error, sent_at").eq("entity_id", p.id).order("created_at"),
     supabase.from("proposals").select("id, revision").eq("event_id", event.id).eq("status", "draft").maybeSingle(),
     loadPreview(staff, p.id),
@@ -116,7 +117,7 @@ export async function SentProposalView({ staff, slug, proposalId }: { staff: Sta
                   <SelectionSummary offer={preview.offer} selection={selection.selection_snapshot as unknown as PricedSelection} />
                   {approval ? (
                     <p role="status" className="text-sm font-medium">
-                      Approved {fmt(approval.approved_at)}. Next: the contract (not built yet). The event is not booked.
+                      Approved {fmt(approval.approved_at)}. {active ? "Next: generate the contract draft." : "A newer offer replaced this approval."} The event is not booked.
                     </p>
                   ) : active && p.status === "submitted" ? (
                     <ApprovePanel slug={slug} proposalId={p.id} selectionId={selection.id} total={formatCents(selection.total_cents, selection.currency)} />
@@ -127,6 +128,10 @@ export async function SentProposalView({ staff, slug, proposalId }: { staff: Sta
               )}
             </CardContent>
           </Card>
+
+          {active && approval && p.status === "approved" ? (
+            <ContractCard staff={staff} slug={slug} eventId={event.id} approvalId={approval.id} />
+          ) : null}
 
           {active ? (
             <Card>

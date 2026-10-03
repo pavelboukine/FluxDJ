@@ -4,6 +4,10 @@ export function describeDbError(error: { code?: string; message?: string } | nul
   const message = error.message ?? "";
   const offer = /offer_invalid: (.*)$/.exec(message);
   if (offer) return `This offer isn't ready: ${offer[1]}.`;
+  const template = /contract_template_invalid: (.*)$/.exec(message);
+  if (template) return `This template can't be used: ${template[1]}.`;
+  const contract = /contract_(?:stale_approval|not_allowed|input_invalid): (.*)$/.exec(message);
+  if (contract) return `A contract can't be generated: ${contract[1]}.`;
   switch (error.code) {
     case "23505":
       return "That key or value is already used. Choose another.";
