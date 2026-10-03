@@ -28,3 +28,19 @@ language sql stable as $$
   );
 $$;
 grant execute on function tests.base_offer() to anon, authenticated, service_role;
+
+-- Saves an offer into the event's draft (opening it if needed) and returns
+-- the preview snapshot. Runs with the caller's role.
+create function tests.preview(offer jsonb, event_name text default 'event_a1') returns jsonb
+language plpgsql as $$
+declare
+  pid uuid;
+  v int;
+begin
+  pid := public.open_proposal_draft(tests.id(event_name));
+  select draft_version into v from public.proposals where id = pid;
+  perform public.update_proposal_draft(pid, v, offer);
+  return public.preview_proposal_offer(pid);
+end;
+$$;
+grant execute on function tests.preview(jsonb, text) to anon, authenticated, service_role;

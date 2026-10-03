@@ -3,18 +3,22 @@
 Branded proposal, contract and event planning portal for independent DJs.
 The source of truth for scope and behavior is [docs/Flux-DJ-V1-Spec.md](docs/Flux-DJ-V1-Spec.md).
 
-**Current status: Phase 1, steps 1 to 4.** The stack is scaffolded and the
+**Current status: Phase 1, steps 1 to 5 (staff side).** The stack is scaffolded and the
 data foundation is in place:
 
 - Tenancy: tenants, memberships, clients, events, event contacts and event access.
 - Catalog: gear items with private image/video media, packages with included
   gear, logistics questions with constrained rules, and reusable proposal
   templates.
-- Offers and pricing: draft proposals with frozen offer snapshots, a shared
-  deterministic pricing module, and immutable priced selections.
+- Offers and pricing: a shared deterministic pricing module, one editable
+  proposal draft per event, previews, and offer snapshots that freeze once.
+- Staff interface: magic-link login, and screens for gear (with photos and
+  videos), packages, questions and rules, templates, clients and events. It
+  also has a proposal builder with a responsive live preview.
 
-Everything has row-level security and tests. Sending, public proposal links,
-approval, contracts, planning and all screens are not built yet.
+Everything has row-level security and tests. Not built yet: sending, public
+proposal links, client login, submission, approval, contracts and planning.
+Clients cannot see anything yet.
 
 ## Stack
 
@@ -79,6 +83,37 @@ The client `client@couple.example` has verified access to the BOUPROD event
 only. Seeded users have no passwords. Login is magic-link only, and the login
 screens arrive in Phase 2.
 
+## Trying it in the browser
+
+With `pnpm db:start` done and `.env.local` filled in, follow these steps:
+
+1. Run `pnpm dev` and open http://127.0.0.1:3000/login. Use `127.0.0.1`, not
+   `localhost`, so the magic-link cookie matches the configured site URL.
+2. Enter `owner@bouprod.example` and click **Email me a sign-in link**.
+3. Open Mailpit at http://127.0.0.1:54324, open the newest "Your Flux DJ
+   sign-in link" email, and click **Continue to sign in**. Use the same
+   browser.
+4. Click **Sign in** on the confirmation page. You land on
+   http://127.0.0.1:3000/staff/bouprod.
+
+`owner@otherdj.example` signs in to the second tenant. Its workspace is at
+`/staff/other-dj`, and each owner gets a 404 for the other's workspace.
+Unknown emails get the same on-screen message, but no email and no account.
+
+| Screen | URL (BOUPROD) |
+|---|---|
+| Dashboard | http://127.0.0.1:3000/staff/bouprod |
+| Gear (photos and videos on each item) | http://127.0.0.1:3000/staff/bouprod/gear |
+| Packages | http://127.0.0.1:3000/staff/bouprod/packages |
+| Questions and rules | http://127.0.0.1:3000/staff/bouprod/questions |
+| Templates | http://127.0.0.1:3000/staff/bouprod/templates |
+| Clients | http://127.0.0.1:3000/staff/bouprod/clients |
+| Events, which is where proposals start | http://127.0.0.1:3000/staff/bouprod/events |
+
+The seeded event "Alex & Sam Wedding" can start a proposal from the
+"Wedding (DEMO)" template. Each proposal builder links to a full-page
+preview at `/staff/bouprod/proposals/{id}/preview`.
+
 ## Running the checks
 
 ```bash
@@ -95,6 +130,12 @@ This runs, in order:
 | Postgres schema lint | `pnpm db:lint` | Yes |
 | Database tests (pgTAP) | `pnpm db:test` | Yes |
 | Integration tests (Vitest) | `pnpm test:integration` | Yes, with the Storage service running |
+| Browser tests (Playwright) | `pnpm test:e2e` | Yes. It starts `pnpm dev` if it isn't running |
+
+Before the first browser test run, install the browser once with
+`pnpm exec playwright install chromium`. Browser and integration tests add
+uniquely named records to the local database, and `pnpm db:reset` clears
+them.
 
 `pnpm build` also verifies the production build.
 
@@ -140,6 +181,24 @@ otherwise those checks would never run.
 - Half-up tax rounding per line, and determinism.
 - Offer-snapshot validation.
 
+### Browser tests
+
+`tests/e2e/staff-flow.spec.ts` drives the real UI in Chromium:
+
+1. It signs in through a real magic link read from Mailpit, and confirms
+   unknown emails get no link and no account.
+2. It confirms the other tenant's workspace returns 404.
+3. It creates gear, changes its price, and uploads a real PNG. It then
+   confirms that HTML renamed to `.png` is rejected and deleted from Storage.
+4. It builds a package, a question with a rule, and a template, then creates
+   an event with a new client.
+5. It opens a proposal draft and checks the spec's speaker example in the
+   live preview, a total of $2,701.91.
+6. It saves the draft twice. It checks that the same row was updated, that
+   nothing froze, and that a stale tab gets a conflict message.
+7. It checks the preview has no sideways scrolling at 390px wide, and that
+   signed-out visitors are redirected to login.
+
 ### Integration tests
 
 Integration tests run with Vitest against the local stack and refuse any
@@ -184,12 +243,53 @@ Isolation is enforced by the database, not by application code.
 4. **Deny by default.** A migration revokes default privileges for `anon`
    and `authenticated`. Every new table needs explicit grants, RLS and tests.
 
+### Staff authentication
+
+- **Magic links only.** Login uses magic links and no passwords. Public
+  sign-ups are disabled in `supabase/config.toml`, so the admin API creates
+  every user. The login form never creates accounts and always shows the
+  same message.
+- **Scanner-safe links.** The email template points at `/auth/confirm`,
+  which needs a click on **Sign in** (a POST) before it verifies the token.
+  A link scanner that prefetches the URL therefore can't use it up.
+- **Server checks.** `src/proxy.ts` refreshes the session and sends
+  signed-out visitors to `/login`. That is a convenience only. Every staff
+  page and action calls `requireStaff(slug)`, which checks the user with the
+  auth server and the membership through RLS.
+- **Hosted projects** need the same email template, redirect URLs and
+  sign-up setting configured separately.
+
+### Gear uploads
+
+Files go straight from the browser to Storage, because Server Actions are
+capped at 1 MB and hosting platforms limit request bodies.
+
+1. A server action checks the declared type and size, then picks a random
+   object path.
+2. The browser uploads the file with the staff session. Storage RLS allows
+   only the staff member's own tenant and gear item.
+3. A second server action reads the object's first 4 KB through a
+   short-lived signed URL and checks the real file signature. Accepted
+   formats are JPEG, PNG, WebP, AVIF, MP4 and WebM. The signature must match
+   the declared type and the size must be within limits.
+4. Only then is a `gear_media` row created. Anything else is deleted with
+   the service role. Offers only reference registered media, so they never
+   include an unchecked file.
+
 ### Offers, snapshots and pricing
 
-- **Freezing an offer.** Staff call `create_proposal_offer(event, offer)`,
-  optionally prefilled by `proposal_offer_input_from_template(template)`.
-  Under a row lock it enforces the offer rules and copies everything into
-  `proposals.offer_snapshot`:
+- **Drafting.** Each event has one editable draft, `proposals.draft_offer`,
+  saved in place with an optimistic `draft_version`. Staff use
+  `open_proposal_draft`, `update_proposal_draft` and
+  `proposal_offer_input_from_template`. Editing never freezes anything or
+  creates revisions.
+- **Previewing.** `preview_proposal_offer` builds the snapshot in memory,
+  using exactly the validation and builder that freezing uses. It stores
+  nothing.
+- **Freezing an offer.** `freeze_proposal_offer` is executable only by the
+  service role and will run in the step 6 send flow. It stores the snapshot
+  exactly once. Under a row lock it enforces the offer rules and copies
+  everything into `proposals.offer_snapshot`:
   - packages, included quantities, gear prices and descriptions, and active
     media references
   - addons, questions and active rules of offered questions
@@ -210,6 +310,10 @@ Isolation is enforced by the database, not by application code.
 - **Tax categories.** `tenants.tax_categories` maps a category key to tax
   codes. There is no implicit default, and an unmapped category blocks offer
   creation.
+- **Selections.** A proposal's single editable client selection lives in
+  `proposal_selection_drafts`, written with `save_proposal_selection_draft`
+  by the service role in step 6. Immutable `proposal_selections` rows are
+  submissions only, and each one is stamped `submitted_at`.
 - **Recording.** `priceAndRecordSelection`, in
   `src/lib/proposals/selections.server.ts`, prices untrusted input and calls
   `record_proposal_selection`. That function is executable only by the
@@ -263,7 +367,12 @@ supabase/migrations/           SQL migrations (source of truth for the schema)
 supabase/tests/database/       pgTAP RLS, constraint and Storage policy tests
 src/lib/pricing/               Pure pricing module and offer snapshot schema
 src/lib/proposals/             Server-only selection pricing and recording
-tests/unit/                    Vitest unit tests (pricing)
+src/app/staff/                 Staff screens and Server Actions
+src/app/login, src/app/auth/   Magic-link login and confirmation
+src/components/proposal/       Responsive proposal preview (live pricing)
+src/lib/media/                 File-signature detection for uploads
+tests/unit/                    Vitest unit tests (pricing, uploads, money)
+tests/e2e/                     Playwright browser tests
 tests/integration/             Vitest tests against local Supabase (offers, Storage)
 supabase/seed.sql              Local-only seed data
 ```

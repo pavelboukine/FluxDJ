@@ -45,45 +45,45 @@ The following is the logical schema. Expand enumerations and constraints in migr
 
 ### Accounts, clients and events
 
-| Table | Essential columns and constraints |
-|---|---|
-| `tenants` | `id`, unique `slug`, `business_name`, `display_name`, `logo_storage_path`, validated `brand_colors`, `reply_to_email`, `timezone`, `currency`, `planning_lock_days`, `booking_confirmation_policy`, `tax_config`, `archived_at` |
-| `tenant_memberships` | `id`, `user_id` referencing Auth, `role` owner/staff, unique `(tenant_id,user_id)`; only owners manage membership |
-| `clients` | `id`, `name`, `email`, optional phone, `archived_at`; contacts belong to a business and are not globally shared between DJs |
-| `events` | `id`, `title`, `event_type`, `event_date`, `timezone`, venue name/address, `lifecycle_status`, nullable `active_proposal_id`, `booking_confirmed_at`, `planning_lock_at`, `planning_override_until`, `internal_notes` |
-| `event_clients` | `id`, `event_id`, `client_id`, `is_primary`, `can_sign`; unique event/client pair and at most one primary per event |
-| `event_access` | `id`, `event_id`, `client_id`, `user_id`, `revoked_at`; grants an authenticated client access to a specific event, never to the entire tenant |
+| Table                | Essential columns and constraints                                                                                                                                                                                               |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tenants`            | `id`, unique `slug`, `business_name`, `display_name`, `logo_storage_path`, validated `brand_colors`, `reply_to_email`, `timezone`, `currency`, `planning_lock_days`, `booking_confirmation_policy`, `tax_config`, `archived_at` |
+| `tenant_memberships` | `id`, `user_id` referencing Auth, `role` owner/staff, unique `(tenant_id,user_id)`; only owners manage membership                                                                                                               |
+| `clients`            | `id`, `name`, `email`, optional phone, `archived_at`; contacts belong to a business and are not globally shared between DJs                                                                                                     |
+| `events`             | `id`, `title`, `event_type`, `event_date`, `timezone`, venue name/address, `lifecycle_status`, nullable `active_proposal_id`, `booking_confirmed_at`, `planning_lock_at`, `planning_override_until`, `internal_notes`           |
+| `event_clients`      | `id`, `event_id`, `client_id`, `is_primary`, `can_sign`; unique event/client pair and at most one primary per event                                                                                                             |
+| `event_access`       | `id`, `event_id`, `client_id`, `user_id`, `revoked_at`; grants an authenticated client access to a specific event, never to the entire tenant                                                                                   |
 
 Create clients and events before sending a proposal. Create event access only after verifying the contact's email. Do not create a fake Auth password or treat a lead as an authenticated client. Never expose `internal_notes` in client queries.
 
 ### Catalog and reusable templates
 
-| Table | Essential columns and constraints |
-|---|---|
-| `gear_items` | `id`, name, description, `unit_label`, `default_price_cents`, `tax_category`, `active`; represents a sellable item such as a ceremony speaker or four tube lights |
-| `gear_media` | `id`, `gear_item_id`, private storage path, `kind` image/video, alt text, sort order |
-| `packages` | `id`, name, description, `base_price_cents`, sort order, `is_popular`, `active` |
-| `package_items` | `id`, `package_id`, `gear_item_id`, positive quantity; unique package/item pair; describes included gear, without adding its retail price again |
-| `logistics_questions` | `id`, stable key, prompt, answer type, validated options, sort order, required, active |
-| `logistics_rules` | `id`, `question_id`, constrained condition JSON, `gear_item_id`, positive required quantity, client-facing reason, active |
-| `proposal_templates` | `id`, name, intro, expiry duration, optional default package, active |
-| `proposal_template_packages` | `id`, `template_id`, `package_id`, sort order |
-| `proposal_template_addons` | `id`, `template_id`, `gear_item_id`, recommended quantity, max quantity, sort order |
-| `proposal_template_questions` | `id`, `template_id`, `question_id`, sort order |
-| `contract_templates` | `id`, name, active; points to a published template version |
-| `contract_template_versions` | `id`, `template_id`, version number, structured content, allowed placeholders, `published_at`; published versions are immutable |
+| Table                         | Essential columns and constraints                                                                                                                                 |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gear_items`                  | `id`, name, description, `unit_label`, `default_price_cents`, `tax_category`, `active`; represents a sellable item such as a ceremony speaker or four tube lights |
+| `gear_media`                  | `id`, `gear_item_id`, private storage path, `kind` image/video, alt text, sort order                                                                              |
+| `packages`                    | `id`, name, description, `base_price_cents`, sort order, `is_popular`, `active`                                                                                   |
+| `package_items`               | `id`, `package_id`, `gear_item_id`, positive quantity; unique package/item pair; describes included gear, without adding its retail price again                   |
+| `logistics_questions`         | `id`, stable key, prompt, answer type, validated options, sort order, required, active                                                                            |
+| `logistics_rules`             | `id`, `question_id`, constrained condition JSON, `gear_item_id`, positive required quantity, client-facing reason, active                                         |
+| `proposal_templates`          | `id`, name, intro, expiry duration, optional default package, active                                                                                              |
+| `proposal_template_packages`  | `id`, `template_id`, `package_id`, sort order                                                                                                                     |
+| `proposal_template_addons`    | `id`, `template_id`, `gear_item_id`, recommended quantity, max quantity, sort order                                                                               |
+| `proposal_template_questions` | `id`, `template_id`, `question_id`, sort order                                                                                                                    |
+| `contract_templates`          | `id`, name, active; points to a published template version                                                                                                        |
+| `contract_template_versions`  | `id`, `template_id`, version number, structured content, allowed placeholders, `published_at`; published versions are immutable                                   |
 
 V1 logistics rules support only explicit equality and membership checks against answers. No executable expressions, arbitrary SQL, JavaScript or complex branching engine. Missing required answers block submission rather than being interpreted as false.
 
 ### Proposals and selected pricing
 
-| Table | Essential columns and constraints |
-|---|---|
-| `proposals` | `id`, `event_id`, `revision`, status, `expires_at`, `sent_at`, `first_viewed_at`, nullable `supersedes_id`, frozen `offer_snapshot`, `offer_sha256`, `current_selection_version`; unique event/revision |
-| `proposal_selections` | `id`, `proposal_id`, version, selected package key, addon quantities, logistics answers, calculated subtotal/tax/total cents, currency, `selection_snapshot`, `submitted_at`; unique proposal/version |
-| `proposal_selection_lines` | `id`, `selection_id`, stable gear key, name/description snapshot, quantity, unit price cents, line total cents, `source` package/optional/required, required reason, tax category |
-| `proposal_approvals` | `id`, `proposal_id`, `selection_id`, approved-by membership, `approved_at`, snapshot hash; unique approval for the selected submission |
-| `access_links` | `id`, purpose proposal/signing, parent proposal or contract reference, `token_hash`, intended client, `expires_at`, `revoked_at`, `consumed_at`; never store raw bearer tokens |
+| Table                      | Essential columns and constraints                                                                                                                                                                       |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `proposals`                | `id`, `event_id`, `revision`, status, `expires_at`, `sent_at`, `first_viewed_at`, nullable `supersedes_id`, frozen `offer_snapshot`, `offer_sha256`, `current_selection_version`; unique event/revision |
+| `proposal_selections`      | `id`, `proposal_id`, version, selected package key, addon quantities, logistics answers, calculated subtotal/tax/total cents, currency, `selection_snapshot`, `submitted_at`; unique proposal/version   |
+| `proposal_selection_lines` | `id`, `selection_id`, stable gear key, name/description snapshot, quantity, unit price cents, line total cents, `source` package/optional/required, required reason, tax category                       |
+| `proposal_approvals`       | `id`, `proposal_id`, `selection_id`, approved-by membership, `approved_at`, snapshot hash; unique approval for the selected submission                                                                  |
+| `access_links`             | `id`, purpose proposal/signing, parent proposal or contract reference, `token_hash`, intended client, `expires_at`, `revoked_at`, `consumed_at`; never store raw bearer tokens                          |
 
 The offer snapshot copies packages, included quantities, optional gear, prices, descriptions, media references, questions, rules, tax configuration, expiry and branding shown to the client. Media referenced by sent offers must remain available; do not overwrite the original storage objects.
 
@@ -93,13 +93,13 @@ Do not permit multiple actionable proposals for the same event. A transactional 
 
 ### Contracts, payment status and evidence
 
-| Table | Essential columns and constraints |
-|---|---|
-| `contracts` | `id`, `event_id`, `approval_id`, `template_version_id`, status, frozen rendered content and commercial snapshot, `content_sha256`, expected signer client/email, `sent_at`, `signed_at`, signed PDF path/hash, `pdf_generation_status` |
-| `contract_signatures` | `id`, `contract_id`, typed name, verified email, signature image path, signed timestamp, trusted-source IP when available, user agent, consent text/version, frozen content hash, `auth_user_id`; unique contract for one-signer V1 |
-| `event_payment_status` | `id`, unique `event_id`, invoice URL, agreed total cents, deposit due cents/date, deposit received cents/date, balance due cents/date, balance received cents/date, updated-by membership; no banking/card information |
-| `audit_events` | `id`, entity type/id, action, actor identity/type, minimal metadata, occurred-at; append-only and staff-readable only |
-| `email_outbox` | `id`, event type, recipient, entity reference, unique deduplication key, status, attempts, next attempt time, provider message ID, sent-at |
+| Table                  | Essential columns and constraints                                                                                                                                                                                                      |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `contracts`            | `id`, `event_id`, `approval_id`, `template_version_id`, status, frozen rendered content and commercial snapshot, `content_sha256`, expected signer client/email, `sent_at`, `signed_at`, signed PDF path/hash, `pdf_generation_status` |
+| `contract_signatures`  | `id`, `contract_id`, typed name, verified email, signature image path, signed timestamp, trusted-source IP when available, user agent, consent text/version, frozen content hash, `auth_user_id`; unique contract for one-signer V1    |
+| `event_payment_status` | `id`, unique `event_id`, invoice URL, agreed total cents, deposit due cents/date, deposit received cents/date, balance due cents/date, balance received cents/date, updated-by membership; no banking/card information                 |
+| `audit_events`         | `id`, entity type/id, action, actor identity/type, minimal metadata, occurred-at; append-only and staff-readable only                                                                                                                  |
+| `email_outbox`         | `id`, event type, recipient, entity reference, unique deduplication key, status, attempts, next attempt time, provider message ID, sent-at                                                                                             |
 
 Deposit defaults to 50% of the final agreed total including taxes, rounded to integer cents. The remaining amount is total minus deposit. Partial payments are supported through amounts; display status is derived. Only staff edits payment status. Validate invoice URLs as HTTPS and restrict to configured Wave hosts before showing them as trusted invoice links.
 
@@ -107,13 +107,13 @@ Contracts cannot be edited after sending. To correct an unsigned contract, void 
 
 ### Planning
 
-| Table | Essential columns and constraints |
-|---|---|
-| `planning_sections` | `id`, `event_id`, section key, schema version, validated answers JSON, `revision`, `completed_at`; unique event/section |
-| `timeline_items` | `id`, `event_id`, local date/time, optional end date/time, title, location, notes, sort order, optional `key_moment_key` |
-| `songs` | `id`, `event_id`, title, artist, optional HTTPS reference URL, version/edit notes, `usage` key_moment/must_play/do_not_play, optional timeline item, `moment_key`, sort order |
-| `announcements` | `id`, `event_id`, name, phonetic pronunciation, role, announcement text, sort order |
-| `vendors` | `id`, `event_id`, role, business/contact name, email, phone, notes |
+| Table               | Essential columns and constraints                                                                                                                                             |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `planning_sections` | `id`, `event_id`, section key, schema version, validated answers JSON, `revision`, `completed_at`; unique event/section                                                       |
+| `timeline_items`    | `id`, `event_id`, local date/time, optional end date/time, title, location, notes, sort order, optional `key_moment_key`                                                      |
+| `songs`             | `id`, `event_id`, title, artist, optional HTTPS reference URL, version/edit notes, `usage` key_moment/must_play/do_not_play, optional timeline item, `moment_key`, sort order |
+| `announcements`     | `id`, `event_id`, name, phonetic pronunciation, role, announcement text, sort order                                                                                           |
+| `vendors`           | `id`, `event_id`, role, business/contact name, email, phone, notes                                                                                                            |
 
 Section keys: basics, timeline, key_moments, music, announcements, vendors. Typed timeline/song/vendor records are the authoritative source for their sections. Do not maintain a duplicate timeline in section JSON. JSON contains only section-specific answers that lack a dedicated table.
 

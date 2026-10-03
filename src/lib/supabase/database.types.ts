@@ -255,6 +255,31 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"proposal_selection_drafts": {
+                  Row: {
+                    "addon_quantities": NonNullable<Json>,"created_at": string,"id": string,"logistics_answers": NonNullable<Json>,"package_key": string | null,"proposal_id": string,"tenant_id": string,"updated_at": string,"version": number
+                  }
+                  Insert: {
+                    "addon_quantities"?: NonNullable<Json>,"created_at"?: string,"id"?: string,"logistics_answers"?: NonNullable<Json>,"package_key"?: string | null,"proposal_id": string,"tenant_id": string,"updated_at"?: string,"version"?: number
+                  }
+                  Update: {
+                    "addon_quantities"?: NonNullable<Json>,"created_at"?: string,"id"?: string,"logistics_answers"?: NonNullable<Json>,"package_key"?: string | null,"proposal_id"?: string,"tenant_id"?: string,"updated_at"?: string,"version"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "proposal_selection_drafts_proposal_fk"
+      columns: ["tenant_id","proposal_id"]
+isOneToOne: false
+      referencedRelation: "proposals"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "proposal_selection_drafts_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"proposal_selection_lines": {
                   Row: {
                     "created_at": string,"description": string | null,"id": string,"item_key": string,"line_no": number,"line_total_cents": number,"name": string,"quantity": number,"required_quantity": number,"required_reasons": (string)[],"selection_id": string,"source": string,"tax_category": string,"tenant_id": string,"unit_price_cents": number
@@ -425,13 +450,13 @@ isOneToOne: false
                   ]
                 },"proposals": {
                   Row: {
-                    "created_at": string,"created_by_membership_id": string | null,"current_selection_version": number,"event_id": string,"expires_at": string | null,"first_viewed_at": string | null,"id": string,"offer_sha256": string,"offer_snapshot": NonNullable<Json>,"revision": number,"sent_at": string | null,"source_template_id": string | null,"status": string,"supersedes_id": string | null,"tenant_id": string,"updated_at": string
+                    "created_at": string,"created_by_membership_id": string | null,"current_selection_version": number,"draft_offer": NonNullable<Json>,"draft_version": number,"event_id": string,"expires_at": string | null,"first_viewed_at": string | null,"id": string,"offer_frozen_at": string | null,"offer_sha256": string | null,"offer_snapshot": Json | null,"revision": number,"sent_at": string | null,"source_template_id": string | null,"status": string,"supersedes_id": string | null,"tenant_id": string,"updated_at": string
                   }
                   Insert: {
-                    "created_at"?: string,"created_by_membership_id"?: string | null,"current_selection_version"?: number,"event_id": string,"expires_at"?: string | null,"first_viewed_at"?: string | null,"id"?: string,"offer_sha256": string,"offer_snapshot": NonNullable<Json>,"revision": number,"sent_at"?: string | null,"source_template_id"?: string | null,"status"?: string,"supersedes_id"?: string | null,"tenant_id": string,"updated_at"?: string
+                    "created_at"?: string,"created_by_membership_id"?: string | null,"current_selection_version"?: number,"draft_offer"?: NonNullable<Json>,"draft_version"?: number,"event_id": string,"expires_at"?: string | null,"first_viewed_at"?: string | null,"id"?: string,"offer_frozen_at"?: string | null,"offer_sha256"?: string | null,"offer_snapshot"?: Json | null,"revision": number,"sent_at"?: string | null,"source_template_id"?: string | null,"status"?: string,"supersedes_id"?: string | null,"tenant_id": string,"updated_at"?: string
                   }
                   Update: {
-                    "created_at"?: string,"created_by_membership_id"?: string | null,"current_selection_version"?: number,"event_id"?: string,"expires_at"?: string | null,"first_viewed_at"?: string | null,"id"?: string,"offer_sha256"?: string,"offer_snapshot"?: NonNullable<Json>,"revision"?: number,"sent_at"?: string | null,"source_template_id"?: string | null,"status"?: string,"supersedes_id"?: string | null,"tenant_id"?: string,"updated_at"?: string
+                    "created_at"?: string,"created_by_membership_id"?: string | null,"current_selection_version"?: number,"draft_offer"?: NonNullable<Json>,"draft_version"?: number,"event_id"?: string,"expires_at"?: string | null,"first_viewed_at"?: string | null,"id"?: string,"offer_frozen_at"?: string | null,"offer_sha256"?: string | null,"offer_snapshot"?: Json | null,"revision"?: number,"sent_at"?: string | null,"source_template_id"?: string | null,"status"?: string,"supersedes_id"?: string | null,"tenant_id"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -504,19 +529,37 @@ isOneToOne: false
             [_ in never]: never
           }
           Functions: {
-            "create_proposal_offer":
-{ Args: { "p_event_id": string,"p_offer": Json }; Returns: string
+            "freeze_proposal_offer":
+{ Args: { "p_proposal_id": string }; Returns: string
                            },
 "my_events":
 { Args: Record<PropertyKey, never>; Returns: {
               "event_date": string,"event_id": string,"event_type": string,"lifecycle_status": string,"tenant_display_name": string,"tenant_slug": string,"timezone": string,"title": string,"venue_address": string,"venue_name": string
             }[]
                            },
+"open_proposal_draft":
+{ Args: { "p_event_id": string,"p_offer"?: Json }; Returns: string
+                           },
+"preview_proposal_offer":
+{ Args: { "p_proposal_id": string }; Returns: Json
+                           },
 "proposal_offer_input_from_template":
 { Args: { "p_template_id": string }; Returns: Json
                            },
 "record_proposal_selection":
 { Args: { "p_expected_version": number,"p_proposal_id": string,"p_selection": Json }; Returns: string
+                           },
+"save_proposal_selection_draft":
+{ Args: { "p_addon_quantities": Json,"p_expected_version": number,"p_logistics_answers": Json,"p_package_key": string,"p_proposal_id": string }; Returns: number
+                           },
+"set_package_items":
+{ Args: { "p_items": Json,"p_package_id": string }; Returns: undefined
+                           },
+"set_proposal_template_composition":
+{ Args: { "p_addons": Json,"p_default_package_id": string,"p_package_ids": Json,"p_question_ids": Json,"p_template_id": string }; Returns: undefined
+                           },
+"update_proposal_draft":
+{ Args: { "p_expected_version": number,"p_offer": Json,"p_proposal_id": string }; Returns: number
                            }
           }
           Enums: {

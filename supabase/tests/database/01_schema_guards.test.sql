@@ -1,7 +1,7 @@
 -- Structural guarantees that protect every future table, not only today's.
 begin;
 \ir _fixtures.psql
-select plan(34);
+select plan(35);
 
 -- RLS is on for every table in the exposed schema.
 select is_empty(
@@ -46,7 +46,7 @@ from unnest(array['package_items', 'proposal_template_packages', 'proposal_templ
 
 -- Proposals and selections are written only through security definer functions.
 select table_privs_are('public', t, 'authenticated', array['SELECT'], t || ': read-only for authenticated')
-from unnest(array['proposals', 'proposal_selections', 'proposal_selection_lines']) t;
+from unnest(array['proposals', 'proposal_selections', 'proposal_selection_lines', 'proposal_selection_drafts']) t;
 
 -- Any function a CHECK constraint calls must be executable by the roles that
 -- write rows, or legitimate writes fail with "permission denied".

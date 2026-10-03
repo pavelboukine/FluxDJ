@@ -1,8 +1,8 @@
 /**
  * End-to-end offer and pricing test against the LOCAL Supabase stack.
  *
- * A staff user (real magic-link session) freezes an offer from a template via
- * create_proposal_offer. The snapshot is read back through RLS, validated by
+ * A staff user (real magic-link session) drafts and previews an offer from a
+ * template; trusted code freezes it with freeze_proposal_offer. The snapshot is read back through RLS, validated by
  * the TypeScript schema, priced by the shared pricing module, and recorded
  * with priceAndRecordSelection. The commit runs the database's deferred
  * verification for real, so this also proves the TypeScript engine and the
@@ -172,17 +172,26 @@ describe("frozen offers and server pricing (local Supabase)", () => {
     if (admin) await admin.from("tenants").update({ archived_at: new Date().toISOString() }).eq("id", tenantId);
   });
 
-  it("freezes an offer from a template as staff and reads back a valid snapshot", async () => {
+  it("drafts and previews as staff without freezing, then freezes once via trusted code", async () => {
     const { data: input } = await must(staff.rpc("proposal_offer_input_from_template", { p_template_id: templateId }));
-    const { data: id } = await must(staff.rpc("create_proposal_offer", { p_event_id: eventId, p_offer: input! }));
+    const { data: id } = await must(staff.rpc("open_proposal_draft", { p_event_id: eventId, p_offer: input! }));
     proposalId = id as string;
+
+    const { data: preview } = await must(staff.rpc("preview_proposal_offer", { p_proposal_id: proposalId }));
+    expect(parseOfferSnapshot(preview).packages).toHaveLength(3);
+    const { data: draft } = await must(staff.from("proposals").select("offer_snapshot").eq("id", proposalId).single());
+    expect(draft!.offer_snapshot).toBeNull();
+
+    const freezeAsStaff = await staff.rpc("freeze_proposal_offer", { p_proposal_id: proposalId });
+    expect(freezeAsStaff.error?.code).toBe("42501");
+    await must(admin.rpc("freeze_proposal_offer", { p_proposal_id: proposalId }));
 
     const { data: proposal } = await must(
       staff.from("proposals").select("offer_snapshot, offer_sha256, status").eq("id", proposalId).single(),
     );
     expect(proposal!.status).toBe("draft");
     offer = parseOfferSnapshot(proposal!.offer_snapshot);
-    offerSha = proposal!.offer_sha256;
+    offerSha = proposal!.offer_sha256!;
     expect(offer.packages.map((p) => p.key)).toEqual(["essential", "signature", "premium"]);
     expect(offer.packages.find((p) => p.is_popular)?.key).toBe("signature");
   });
@@ -288,11 +297,13 @@ describe("frozen offers and server pricing (local Supabase)", () => {
     const result = await priceAndRecordSelection(admin, proposalId, 4, { package_key: "signature", answers: bothSeparate });
     expect(result.ok).toBe(true);
 
-    // A new offer, by contrast, freezes the current catalog.
+    // A new draft (after the first is sent), by contrast, previews the current catalog.
+    await must(admin.from("proposals").update({ status: "sent" }).eq("id", proposalId));
     const { data: input } = await must(staff.rpc("proposal_offer_input_from_template", { p_template_id: templateId }));
-    const { data: newId } = await must(staff.rpc("create_proposal_offer", { p_event_id: eventId, p_offer: input! }));
-    const { data: fresh } = await must(admin.from("proposals").select("offer_snapshot, revision").eq("id", newId as string).single());
-    const freshOffer = parseOfferSnapshot(fresh!.offer_snapshot);
+    const { data: newId } = await must(staff.rpc("open_proposal_draft", { p_event_id: eventId, p_offer: input! }));
+    const { data: fresh } = await must(admin.from("proposals").select("revision").eq("id", newId as string).single());
+    const { data: freshPreview } = await must(staff.rpc("preview_proposal_offer", { p_proposal_id: newId as string }));
+    const freshOffer = parseOfferSnapshot(freshPreview);
     expect(fresh!.revision).toBe(2);
     expect(freshOffer.gear.additional_location_speaker.unit_price_cents).toBe(99_999);
     expect(freshOffer.tax.rates).toEqual([{ code: "GST", label: "GST", rate_ppm: 70_000 }]);

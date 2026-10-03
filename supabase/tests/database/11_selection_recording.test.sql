@@ -6,11 +6,20 @@ begin;
 \ir _fixtures.psql
 \ir _catalog_fixtures.psql
 \ir _offer_fixtures.psql
-select plan(33);
+select plan(43);
 
 update public.tenants set tax_categories = '{"standard":["GST","QST"]}' where id = tests.id('tenant_a');
 select tests.login_as(tests.id('owner_a'));
-select set_config('tests.pid', public.create_proposal_offer(tests.id('event_a1'), tests.base_offer())::text, true);
+select set_config('tests.pid', public.open_proposal_draft(tests.id('event_a1'), tests.base_offer())::text, true);
+reset role;
+
+-- Submissions require a frozen offer.
+select tests.login_as_service();
+select throws_like($$ select public.record_proposal_selection(current_setting('tests.pid')::uuid, 0, '{}') $$,
+  '%not frozen%', 'a selection cannot be submitted against an unfrozen draft');
+select throws_like($$ select public.save_proposal_selection_draft(current_setting('tests.pid')::uuid, 0, null, '{}', '{}') $$,
+  '%not frozen%', 'a selection draft needs a frozen offer');
+select public.freeze_proposal_offer(current_setting('tests.pid')::uuid);
 reset role;
 
 create function tests.pid() returns uuid language sql stable as $$ select current_setting('tests.pid')::uuid $$;
@@ -165,10 +174,24 @@ select throws_like(
        tests.id('tenant_a'), (select id from public.proposal_selections where proposal_id = tests.pid() and version = 1),
        'optional', 'uplights_4', 'Sneaked in', 'standard')) $$,
   '%subtotal does not equal%', 'a line cannot be appended to an existing selection');
-select lives_ok($$ update public.proposal_selections set submitted_at = now() where proposal_id = tests.pid() and version = 2 $$,
-  'submitted_at can be set once');
+select ok((select bool_and(submitted_at is not null) from public.proposal_selections where proposal_id = tests.pid()),
+  'every immutable selection is a submission stamped by the database');
 select throws_ok($$ update public.proposal_selections set submitted_at = null where proposal_id = tests.pid() and version = 2 $$,
   '23514', null, 'submitted_at cannot be cleared or changed');
+
+-- ---------------------------------------------------------------------------
+-- The single mutable selection draft (client autosave, step 6)
+-- ---------------------------------------------------------------------------
+select is(public.save_proposal_selection_draft(tests.pid(), 0, 'signature', '{"uplights_4":1}', '{}'), 1,
+  'first selection draft save creates version 1');
+select is(public.save_proposal_selection_draft(tests.pid(), 1, 'essential', '{}', '{"ceremony_location":"same_room"}'), 2,
+  'later saves update the same row');
+select results_eq($$ select count(*)::int, max(version), max(package_key) from public.proposal_selection_drafts where proposal_id = tests.pid() $$,
+  $$ values (1, 2, 'essential'::text) $$, 'one mutable draft per proposal, edited in place');
+select throws_ok($$ select public.save_proposal_selection_draft(tests.pid(), 1, 'premium', '{}', '{}') $$,
+  '40001', null, 'a stale selection draft version is rejected');
+select is((select count(*)::int from public.proposal_selections where proposal_id = tests.pid()), 2,
+  'autosaving the draft created no immutable selection versions');
 
 -- ---------------------------------------------------------------------------
 -- Visibility
@@ -176,8 +199,12 @@ select throws_ok($$ update public.proposal_selections set submitted_at = null wh
 reset role;
 select tests.login_as(tests.id('owner_a'));
 select is((select count(*)::int from public.proposal_selections), 2, 'tenant staff can read selections');
+select throws_ok($$ select public.save_proposal_selection_draft(tests.pid(), 2, 'premium', '{}', '{}') $$,
+  '42501', null, 'staff cannot write the client selection draft');
+select is((select count(*)::int from public.proposal_selection_drafts), 1, 'tenant staff can read the selection draft');
 select tests.login_as(tests.id('owner_b'));
 select is_empty($$ select * from public.proposal_selection_lines $$, 'another tenant cannot read selection lines');
+select is_empty($$ select * from public.proposal_selection_drafts $$, 'another tenant cannot read selection drafts');
 
 select * from finish();
 rollback;
