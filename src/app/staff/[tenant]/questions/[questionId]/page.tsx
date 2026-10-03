@@ -79,7 +79,7 @@ export default async function QuestionPage({ params }: PageProps<"/staff/[tenant
           {q.answer_type === "short_text" ? (
             <p className="text-sm text-muted-foreground">Free-text answers cannot drive rules.</p>
           ) : (
-            <ActionForm action={createRule.bind(null, slug, q.id)} submitLabel="Add rule">
+            <ActionForm action={createRule.bind(null, slug, q.id)} submitLabel="Add rule" resetOnSuccess>
               <div className="grid gap-4 sm:grid-cols-2">
                 {q.answer_type === "boolean" ? (
                   <SelectField label="When the answer is" name="bool_value" options={[{ value: "true", label: "Yes" }, { value: "false", label: "No" }]} />

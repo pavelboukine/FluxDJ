@@ -84,7 +84,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
             ))}
             {event.event_clients.length === 0 ? <li className="text-muted-foreground">No contacts yet.</li> : null}
           </ul>
-          <ActionForm action={addEventContact.bind(null, slug, event.id)} submitLabel="Add contact" className="sm:grid-cols-2">
+          <ActionForm action={addEventContact.bind(null, slug, event.id)} submitLabel="Add contact" className="sm:grid-cols-2" resetOnSuccess>
             <SelectField label="Client" name="client_id" options={(clients ?? []).filter((c) => !onEvent.has(c.id)).map((c) => ({ value: c.id, label: `${c.name} (${c.email})` }))} placeholder="— choose —" />
             <CheckboxField label="Make primary contact and signer" name="is_primary" />
           </ActionForm>

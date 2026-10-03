@@ -245,6 +245,68 @@ test.describe.serial("staff interface", () => {
     await stale.close();
   });
 
+  test("proposal: edits typed while a save is pending survive it and save next", async () => {
+    const eventId = eventUrl.split("/").pop()!;
+    const draftRow = async () => {
+      const { data } = await admin.from("proposals").select("draft_version, draft_offer").eq("event_id", eventId).single();
+      const offer = data!.draft_offer as { expiry_days?: number; intro?: string | null };
+      return { version: data!.draft_version, expiry: offer.expiry_days, intro: offer.intro ?? null };
+    };
+    await page.goto(proposalUrl);
+    const before = await draftRow();
+    const expiry = page.getByLabel("Offer valid for (days after sending)");
+    const intro = page.getByLabel("Intro shown to the client");
+    const saveButton = page.getByRole("button", { name: "Save draft" });
+
+    // Let save requests reach the server, but hold their responses until released.
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    await page.route(proposalUrl, async (route) => {
+      if (route.request().method() !== "POST" || !route.request().headers()["next-action"]) return route.continue();
+      const response = await route.fetch();
+      await gate;
+      await route.fulfill({ response });
+    });
+
+    await expiry.fill("30");
+    await saveButton.click();
+    await expect(page.getByRole("button", { name: "Saving…" })).toBeVisible();
+    // The server has committed the save; only the response is delayed.
+    await expect.poll(draftRow).toEqual({ version: before.version + 1, expiry: 30, intro: before.intro });
+
+    // Edit another field while the save is still pending.
+    await intro.fill("Typed while the save was pending");
+    release();
+    await expect(saveButton).toBeEnabled();
+    await expect(page.getByText("Draft saved. Nothing has been sent.")).toBeVisible();
+    await page.unroute(proposalUrl);
+
+    // The completed save did not replace the newer input, and it is flagged as unsaved.
+    await expect(intro).toHaveValue("Typed while the save was pending");
+    await expect(expiry).toHaveValue("30");
+    await expect(page.getByRole("status").filter({ hasText: "Unsaved changes" })).toBeVisible();
+    expect(await draftRow()).toEqual({ version: before.version + 1, expiry: 30, intro: before.intro });
+
+    // Saving again stores it, using the refreshed version (no false conflict).
+    await saveButton.click();
+    await expect.poll(draftRow).toEqual({ version: before.version + 2, expiry: 30, intro: "Typed while the save was pending" });
+    await expect(page.getByRole("status").filter({ hasText: "Unsaved changes" })).toHaveCount(0);
+    await expect(page.getByRole("alert").filter({ hasText: "Someone else saved" })).toHaveCount(0);
+
+    // Applying a template intentionally replaces the editor's contents, including unsaved choices.
+    await page.getByLabel("Package 1").selectOption({ label: "Premium ($3,000.00)" });
+    await page.getByLabel("Template").selectOption({ label: `E2E Wedding ${run}` });
+    await page.getByRole("button", { name: "Apply template" }).click();
+    await expect(page).toHaveURL(new RegExp(`\\?applied=${before.version + 3}$`));
+    await expect(page.getByLabel("Package 1").locator("option:checked")).toHaveText("Essential ($1,500.00)");
+    await expect(expiry).toHaveValue("14");
+    await expect.poll(draftRow).toEqual({ version: before.version + 3, expiry: 14, intro: null });
+
+    // ...and saving still works afterwards.
+    await saveButton.click();
+    await expect.poll(async () => (await draftRow()).version).toBe(before.version + 4);
+  });
+
   test("proposal preview is readable at phone width without sideways scrolling", async () => {
     const phone = await context.newPage();
     await phone.setViewportSize({ width: 390, height: 844 });

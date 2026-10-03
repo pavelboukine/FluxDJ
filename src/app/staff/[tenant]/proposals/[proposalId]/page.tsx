@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { ActionForm } from "@/components/app/action-form";
 import { PageHeader, SelectField, TextAreaField, TextField } from "@/components/app/fields";
 import { ProposalPreview } from "@/components/proposal/proposal-preview";
+import { DraftVersionProvider } from "@/components/app/draft-version";
 import { requireStaff } from "@/lib/auth/staff";
 import { formatCents } from "@/lib/money";
 import { applyTemplate, saveDraft } from "../actions";
@@ -19,8 +20,12 @@ type DraftOffer = {
   question_ids?: string[];
 };
 
-export default async function ProposalBuilder({ params }: PageProps<"/staff/[tenant]/proposals/[proposalId]">) {
+export default async function ProposalBuilder({ params, searchParams }: PageProps<"/staff/[tenant]/proposals/[proposalId]">) {
   const { tenant: slug, proposalId } = await params;
+  // Set by applyTemplate: remounts the editor so it shows the template's contents.
+  // Ordinary saves never change it, so edits typed during a save are kept.
+  const { applied } = await searchParams;
+  const editorKey = typeof applied === "string" ? `applied-${applied}` : "editor";
   const staff = await requireStaff(slug);
   const { supabase, tenant } = staff;
   const proposal = await loadProposal(staff, proposalId);
@@ -73,14 +78,21 @@ export default async function ProposalBuilder({ params }: PageProps<"/staff/[ten
               <CardContent className="text-sm">This offer is frozen and can no longer be edited.</CardContent>
             </Card>
           ) : (
-            <>
+            <DraftVersionProvider version={proposal.draft_version}>
               <Card>
                 <CardHeader>
                   <CardTitle>Start from a template</CardTitle>
                   <CardDescription>Replaces the packages, extras, questions, intro and expiry below.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <ActionForm action={applyTemplate.bind(null, slug, proposal.id)} version={proposal.draft_version} submitLabel="Apply template" variant="outline" inline>
+                  <ActionForm
+                    action={applyTemplate.bind(null, slug, proposal.id)}
+                    version={proposal.draft_version}
+                    navigateOnSuccess={`/staff/${slug}/proposals/${proposal.id}?applied={version}`}
+                    submitLabel="Apply template"
+                    variant="outline"
+                    inline
+                  >
                     <SelectField label="Template" name="template_id" options={(templates ?? []).map((t) => ({ value: t.id, label: t.name }))} placeholder="— choose —" className="min-w-48 flex-1" />
                   </ActionForm>
                 </CardContent>
@@ -91,7 +103,7 @@ export default async function ProposalBuilder({ params }: PageProps<"/staff/[ten
                   <CardDescription>Saved in place as a draft. Saving never sends or freezes the offer.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <ActionForm action={saveDraft.bind(null, slug, proposal.id)} version={proposal.draft_version} submitLabel="Save draft">
+                  <ActionForm key={editorKey} action={saveDraft.bind(null, slug, proposal.id)} version={proposal.draft_version} submitLabel="Save draft" trackUnsaved>
                     <fieldset className="grid gap-3">
                       <legend className="mb-1 text-sm font-medium">Three packages (exactly one most popular)</legend>
                       {[1, 2, 3].map((n) => (
@@ -138,7 +150,7 @@ export default async function ProposalBuilder({ params }: PageProps<"/staff/[ten
                   </ActionForm>
                 </CardContent>
               </Card>
-            </>
+            </DraftVersionProvider>
           )}
         </div>
 

@@ -23,7 +23,7 @@ export default async function Clients({ params }: PageProps<"/staff/[tenant]/cli
       <Card>
         <CardHeader><CardTitle>Add a client</CardTitle></CardHeader>
         <CardContent>
-          <ActionForm action={createClientRecord.bind(null, slug)} submitLabel="Add client">
+          <ActionForm action={createClientRecord.bind(null, slug)} submitLabel="Add client" resetOnSuccess>
             <ClientFields />
           </ActionForm>
         </CardContent>
