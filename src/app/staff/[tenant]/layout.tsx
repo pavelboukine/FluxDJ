@@ -11,6 +11,7 @@ const NAV = [
   ["/packages", "Packages"],
   ["/questions", "Questions"],
   ["/templates", "Templates"],
+  ["/emails", "Emails"],
 ] as const;
 
 export default async function StaffTenantLayout({ children, params }: LayoutProps<"/staff/[tenant]">) {

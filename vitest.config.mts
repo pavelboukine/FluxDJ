@@ -1,5 +1,10 @@
 import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
 import { defineConfig } from "vitest/config";
+
+// Integration tests run server modules (link secret, email transport, app URL)
+// with the same local configuration as `pnpm dev`.
+if (existsSync(".env.local")) process.loadEnvFile(".env.local");
 
 export default defineConfig({
   resolve: {

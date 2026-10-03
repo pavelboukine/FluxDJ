@@ -11,6 +11,8 @@ import { requireStaff } from "@/lib/auth/staff";
 import { formatCents } from "@/lib/money";
 import { applyTemplate, saveDraft } from "../actions";
 import { loadPreview, loadProposal } from "./load";
+import { SendPanel } from "./send-panel";
+import { SentProposalView } from "./sent-view";
 
 type DraftOffer = {
   intro?: string | null;
@@ -29,6 +31,7 @@ export default async function ProposalBuilder({ params, searchParams }: PageProp
   const staff = await requireStaff(slug);
   const { supabase, tenant } = staff;
   const proposal = await loadProposal(staff, proposalId);
+  if (proposal.status !== "draft") return <SentProposalView staff={staff} slug={slug} proposalId={proposal.id} />;
   const frozen = proposal.offer_frozen_at !== null;
   const draft = (proposal.draft_offer ?? {}) as DraftOffer;
 
@@ -39,6 +42,13 @@ export default async function ProposalBuilder({ params, searchParams }: PageProp
     supabase.from("proposal_templates").select("id, name").eq("tenant_id", tenant.id).eq("active", true).order("name"),
     loadPreview(staff, proposal.id),
   ]);
+  const { data: primary } = await supabase
+    .from("event_clients")
+    .select("clients(name, email, archived_at)")
+    .eq("event_id", proposal.event_id)
+    .eq("is_primary", true)
+    .maybeSingle();
+  const recipient = primary?.clients && !primary.clients.archived_at ? { name: primary.clients.name, email: primary.clients.email } : null;
 
   const chosenPackages = draft.packages ?? [];
   const addonByGear = new Map((draft.addons ?? []).map((a) => [a.gear_item_id, a]));
@@ -89,6 +99,7 @@ export default async function ProposalBuilder({ params, searchParams }: PageProp
                     action={applyTemplate.bind(null, slug, proposal.id)}
                     version={proposal.draft_version}
                     navigateOnSuccess={`/staff/${slug}/proposals/${proposal.id}?applied={version}`}
+                    confirmIfUnsaved="Applying a template replaces the packages, extras, questions, intro and expiry below. Your unsaved changes will be lost. Continue?"
                     submitLabel="Apply template"
                     variant="outline"
                     inline
@@ -148,6 +159,25 @@ export default async function ProposalBuilder({ params, searchParams }: PageProp
                     <TextField label="Offer valid for (days after sending)" name="expiry_days" type="number" min={1} max={365} defaultValue={draft.expiry_days ?? 14} />
                     <TextAreaField label="Intro shown to the client" name="intro" rows={4} maxLength={10000} defaultValue={draft.intro ?? ""} />
                   </ActionForm>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Send to client</CardTitle>
+                  <CardDescription>Freezes the saved offer and emails a private link to the primary contact.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <SendPanel
+                    slug={slug}
+                    proposalId={proposal.id}
+                    version={proposal.draft_version}
+                    revision={proposal.revision}
+                    recipient={recipient}
+                    event={{ title: event.title, event_date: event.event_date }}
+                    expiryDays={preview.ok ? preview.offer.expiry_days : null}
+                    notReadyReason={preview.ok ? null : preview.message}
+                    replacesSentOffer={event.active_proposal_id !== null}
+                  />
                 </CardContent>
               </Card>
             </DraftVersionProvider>

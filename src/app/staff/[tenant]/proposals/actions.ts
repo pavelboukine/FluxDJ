@@ -1,6 +1,11 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { after } from "next/server";
+import { processOutboxQuietly } from "@/lib/email/outbox.server";
+import { proposalLinkToken, sha256Hex } from "@/lib/proposals/tokens.server";
 import { requireStaff } from "@/lib/auth/staff";
 import { describeDbError } from "@/lib/db-errors";
 import { fail, int, ok, optionalText, text, UUID_RE, type ActionState } from "@/lib/forms";
@@ -70,4 +75,52 @@ export async function applyTemplate(slug: string, proposalId: string, _state: Ac
   if (error) return fail(describeDbError(error));
   revalidatePath(`/staff/${slug}/proposals/${proposalId}`);
   return ok("Template applied.", version);
+}
+
+/**
+ * Sends the saved draft to the event's primary contact. One database
+ * transaction freezes the offer, supersedes and revokes the previous offer,
+ * creates the access link and queues the email; delivery happens afterwards.
+ * The link token is derived from a fresh link id and only its hash is passed
+ * to the database. The token itself is discarded here and re-derived by the
+ * email worker. Sending is not a booking.
+ */
+export async function sendProposal(slug: string, proposalId: string, expectedVersion: number): Promise<ActionState> {
+  const { supabase, tenant } = await requireStaff(slug);
+  if (!UUID_RE.test(proposalId) || !Number.isInteger(expectedVersion)) return fail("Reload the page and try again.");
+  const linkId = randomUUID();
+  const { data, error } = await supabase.rpc("send_proposal", {
+    p_proposal_id: proposalId,
+    p_expected_draft_version: expectedVersion,
+    p_access_link_id: linkId,
+    p_token_hash: sha256Hex(proposalLinkToken(linkId)),
+  });
+  if (error) {
+    if (/proposal_already_sent/.test(error.message)) return fail("This proposal has already been sent.");
+    return fail(describeDbError(error));
+  }
+  after(() => processOutboxQuietly(tenant.id));
+  revalidatePath(`/staff/${slug}/proposals/${proposalId}`);
+  const result = data as { recipient_email?: string };
+  return ok(`Sent to ${result.recipient_email ?? "the client"}.`);
+}
+
+/** Approves the exact submitted selection. Prepares the contract phase; does not book the event. */
+export async function approveSelection(slug: string, proposalId: string, selectionId: string): Promise<ActionState> {
+  const { supabase, tenant } = await requireStaff(slug);
+  if (!UUID_RE.test(proposalId) || !UUID_RE.test(selectionId)) return fail("Reload the page and try again.");
+  const { error } = await supabase.rpc("approve_proposal_selection", { p_proposal_id: proposalId, p_selection_id: selectionId });
+  if (error) return fail(describeDbError(error));
+  after(() => processOutboxQuietly(tenant.id));
+  revalidatePath(`/staff/${slug}/proposals/${proposalId}`);
+  return ok("Approved. The client has been notified that the contract will follow.");
+}
+
+/** Opens a revision draft prefilled from the current offer. Sending it later supersedes the current offer. */
+export async function reviseProposal(slug: string, eventId: string): Promise<ActionState> {
+  const { supabase } = await requireStaff(slug);
+  if (!UUID_RE.test(eventId)) return fail("Event not found.");
+  const { data, error } = await supabase.rpc("open_proposal_draft", { p_event_id: eventId });
+  if (error) return fail(describeDbError(error));
+  redirect(`/staff/${slug}/proposals/${data}`);
 }

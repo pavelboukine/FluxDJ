@@ -1,30 +1,39 @@
 "use client";
 
-import { useMemo, useState, type CSSProperties } from "react";
+import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { priceSelection, type AnswerValue, type OfferSnapshot, type PricingResult } from "@/lib/pricing";
+import { priceSelection, recommendedSelection, type AnswerValue, type OfferSnapshot, type PricingResult, type ProposalSelectionState } from "@/lib/pricing";
 import { formatCents } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
-type Props = {
+export type { ProposalSelectionState } from "@/lib/pricing";
+
+type ViewProps = {
   offer: OfferSnapshot;
   mediaUrls: Record<string, string>;
   event: { title: string; event_date: string; venue_name: string | null };
+  selection: ProposalSelectionState;
+  onChange: (next: ProposalSelectionState) => void;
+  /** Disables every control (expired offers). */
+  readOnly?: boolean;
+  /** Rendered under the total (save status, submit button, deadline). */
+  footer?: ReactNode;
 };
 
 /**
- * Client-facing proposal layout, rendered for staff as a preview. Prices are
- * computed with the shared pricing module from the frozen-offer shape, exactly
- * as the server will price a submission. Nothing here is submitted.
+ * Client-facing proposal layout, shared by the staff preview and the client
+ * page. Prices are computed live with the shared pricing module from the
+ * frozen-offer shape, exactly as the server prices a submission. Required
+ * gear cannot be reduced below its required quantity.
  */
-export function ProposalPreview({ offer, mediaUrls, event }: Props) {
-  const popular = offer.packages.find((p) => p.is_popular) ?? offer.packages[0];
-  const [packageKey, setPackageKey] = useState(popular.key);
-  const [addons, setAddons] = useState<Record<string, number>>(() =>
-    Object.fromEntries(offer.addons.map((a) => [a.gear_key, a.recommended_quantity])),
-  );
-  const [answers, setAnswers] = useState<Record<string, AnswerValue>>({});
+export function ProposalView({ offer, mediaUrls, event, selection, onChange, readOnly, footer }: ViewProps) {
+  const packageKey = selection.package_key;
+  const addons = selection.addons;
+  const answers = selection.answers;
+  const setPackageKey = (key: string) => onChange({ ...selection, package_key: key });
+  const setAddons = (next: Record<string, number>) => onChange({ ...selection, addons: next });
+  const setAnswers = (next: Record<string, AnswerValue>) => onChange({ ...selection, answers: next });
 
   const input = { package_key: packageKey, addons, answers };
   const result = useMemo(() => priceSelection(offer, input), [offer, packageKey, addons, answers]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -56,6 +65,7 @@ export function ProposalPreview({ offer, mediaUrls, event }: Props) {
 
   return (
     <div style={style} className="grid gap-6 text-sm">
+      <fieldset disabled={readOnly} className="m-0 grid min-w-0 gap-6 border-0 p-0">
       <header className="grid gap-2 rounded-2xl p-5 text-white" style={{ background: "var(--brand)" }}>
         <p className="text-xs tracking-wide uppercase opacity-80">{offer.branding.display_name}</p>
         <h2 className="text-xl font-semibold">{event.title}</h2>
@@ -90,6 +100,9 @@ export function ProposalPreview({ offer, mediaUrls, event }: Props) {
                     <li key={i.gear_key}>✓ {i.quantity} × {offer.gear[i.gear_key]?.name}</li>
                   ))}
                 </ul>
+                {p.included.some((i) => offer.gear[i.gear_key]?.media.length) ? (
+                  <span className="flex flex-wrap gap-2">{p.included.map((i) => <span key={i.gear_key}>{thumbnail(i.gear_key)}</span>)}</span>
+                ) : null}
               </button>
             );
           })}
@@ -240,11 +253,31 @@ export function ProposalPreview({ offer, mediaUrls, event }: Props) {
             ) : null}
           </>
         ) : null}
-        <p className="text-muted-foreground">This offer is valid for {offer.expiry_days} days after it is sent.</p>
-        <Button type="button" disabled className="mt-2" title="Clients can submit once the proposal is sent (next step).">
-          Submit for DJ review
-        </Button>
       </section>
+      </fieldset>
+      {footer}
     </div>
+  );
+}
+
+/** Staff preview: local, unsaved selection state; nothing is sent or stored. */
+export function ProposalPreview({ offer, mediaUrls, event }: { offer: OfferSnapshot; mediaUrls: Record<string, string>; event: ViewProps["event"] }) {
+  const [selection, setSelection] = useState(() => recommendedSelection(offer));
+  return (
+    <ProposalView
+      offer={offer}
+      mediaUrls={mediaUrls}
+      event={event}
+      selection={selection}
+      onChange={setSelection}
+      footer={
+        <div className="grid gap-2">
+          <p className="text-muted-foreground">This offer is valid for {offer.expiry_days} days after it is sent.</p>
+          <Button type="button" disabled title="Staff preview: clients submit from their own link.">
+            Submit for DJ review
+          </Button>
+        </div>
+      }
+    />
   );
 }

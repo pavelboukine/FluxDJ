@@ -44,3 +44,21 @@ begin
 end;
 $$;
 grant execute on function tests.preview(jsonb, text) to anon, authenticated, service_role;
+
+-- Sends a proposal as the current role with a fresh link id and token hash.
+-- The raw token for tests is 'token-' || link id, so tests can rebuild it.
+create function tests.send(pid uuid) returns jsonb
+language plpgsql as $$
+declare
+  v_link uuid := gen_random_uuid();
+begin
+  perform set_config('tests.last_link_id', v_link::text, true);
+  return public.send_proposal(
+    pid,
+    (select draft_version from public.proposals where id = pid),
+    v_link,
+    encode(sha256(convert_to('token-' || v_link, 'UTF8')), 'hex')
+  );
+end;
+$$;
+grant execute on function tests.send(uuid) to anon, authenticated, service_role;

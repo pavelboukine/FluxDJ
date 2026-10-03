@@ -3,7 +3,7 @@
 Branded proposal, contract and event planning portal for independent DJs.
 The source of truth for scope and behavior is [docs/Flux-DJ-V1-Spec.md](docs/Flux-DJ-V1-Spec.md).
 
-**Current status: Phase 1, steps 1 to 5 (staff side).** The stack is scaffolded and the
+**Current status: Phase 1 complete (steps 1 to 6).** The stack is scaffolded and the
 data foundation is in place:
 
 - Tenancy: tenants, memberships, clients, events, event contacts and event access.
@@ -15,10 +15,13 @@ data foundation is in place:
 - Staff interface: magic-link login, and screens for gear (with photos and
   videos), packages, questions and rules, templates, clients and events. It
   also has a proposal builder with a responsive live preview.
+- Proposals end to end: staff send an offer, the client opens a private link
+  with no account, edits with autosave, and submits for review. Staff then
+  approve the exact submission or send a revised offer. A durable email
+  outbox delivers locally through Mailpit.
 
-Everything has row-level security and tests. Not built yet: sending, public
-proposal links, client login, submission, approval, contracts and planning.
-Clients cannot see anything yet.
+Everything has row-level security and tests. Not built yet: contracts,
+signing, client login and planning. Approval is not a booking.
 
 ## Stack
 
@@ -114,6 +117,40 @@ The seeded event "Alex & Sam Wedding" can start a proposal from the
 "Wedding (DEMO)" template. Each proposal builder links to a full-page
 preview at `/staff/bouprod/proposals/{id}/preview`.
 
+### Sending a proposal and testing it as the client
+
+1. As staff, open http://127.0.0.1:3000/staff/bouprod/events, then
+   **Alex & Sam Wedding**. Choose **Wedding (DEMO)** and click **Start
+   proposal draft**.
+2. Adjust the offer and click **Save draft**. Sending is blocked while
+   there are unsaved changes. Click **Review and send…**, check the
+   recipient (`client@couple.example`), event and expiry, then click **Send
+   proposal now**.
+3. Open Mailpit at http://127.0.0.1:54324 and find "BOUPROD sent you a
+   proposal for Alex & Sam Wedding". Copy the **View your proposal** link.
+   It looks like `http://127.0.0.1:3000/bouprod/p#…`.
+4. Paste the link into a **signed-out browser**, such as a private window or
+   another browser. It opens `/bouprod/proposals/{id}` with no account and
+   no token in the URL.
+5. Pick a package, answer the questions and adjust extras. Required gear is
+   explained and can't go below its minimum. Changes save automatically,
+   and reloading keeps them. Click **Submit for BOUPROD to review**. The
+   page shows "Submitted for DJ review."
+6. Mailpit now has "Proposal link opened" and "Submitted for your review"
+   notices for staff. As staff, reload the proposal page, check the
+   submission, then click **Approve…** and confirm. The client gets an email
+   saying the contract will follow, and their page shows "Approved by
+   BOUPROD."
+7. To change terms, click **Start a revised offer** on the proposal, edit
+   it and send it. The client's old link and page then say a newer
+   proposal is available.
+
+Delivery problems show under **Emails**
+(http://127.0.0.1:3000/staff/bouprod/emails), with **Retry** and **Deliver
+due emails now** buttons. Emails go out right after each action. To retry
+pending mail in the background, run `pnpm outbox:work` alongside
+`pnpm dev`.
+
 ## Running the checks
 
 ```bash
@@ -157,6 +194,7 @@ in every relevant relationship.
 | `06_anonymous_access` | Anon has no table or function access |
 | `07_catalog_isolation` | Every catalog and template table is visible and writable only by staff of the owning tenant; clients and anon get nothing |
 | `08_catalog_integrity` | Cross-tenant composite keys for package contents, rules, templates and media; the default package must belong to its template; at most three packages per template; immutable keys; rule conditions limited to equality and membership, and checked against the question's options; media type, extension and path checks |
+| `12_send_submit_approve` | Send authorization, stale versions and missing contacts; staff can't see token hashes or sessions. Link exchange across tenants, unknown, revoked and superseded links. Safe client view, draft conflicts and invalid input. Submissions with omitted required gear, out-of-range quantities, missing answers or tampered prices, stale tabs, idempotency, approval, revision, expiry while open, the outbox and rate limits |
 | `09_storage_gear_media` | Storage policies on the `gear-media` bucket: private bucket, tenant-scoped reads, uploads only under the uploader's own gear items, no overwrite or delete |
 
 | `10_offer_snapshots` | Offer creation rules: exactly three distinct packages and one most popular; every referenced package, gear item and question is active; only active rules of offered questions are frozen; every tax category resolves. Also covers authorization, template prefill, and snapshots and hashes that survive every catalog, tax and branding change |
@@ -199,7 +237,37 @@ otherwise those checks would never run.
 7. It checks the preview has no sideways scrolling at 390px wide, and that
    signed-out visitors are redirected to login.
 
+Browser tests in `tests/e2e/proposal-flow.spec.ts` run the client side in a
+signed-out browser:
+
+1. Staff must save before sending, and the confirmation shows recipient,
+   event and expiry.
+2. The emailed link opens on a clean URL with the recommended selections.
+3. Required gear has a minimum the client can't go below.
+4. Edits made while a save is pending survive. A failed save shows Retry.
+5. A catalog price change doesn't affect the sent terms. The page fits a
+   phone screen.
+6. Double-clicking Submit creates one submission.
+7. Staff review and approve. The client is told the contract follows.
+8. The link grants no staff, event or direct database access.
+9. A revision supersedes the old link and session.
+10. Invalid and cross-tenant links show generic messages.
+11. Expiry while the page is open blocks submission.
+
 ### Integration tests
+
+`tests/integration/proposal-flow.test.ts` covers the outbox:
+- A failed email is retried with backoff using the identical link, with no
+  new links or records.
+- Emails exhaust their attempts, then staff retry them.
+- Emails for superseded offers are cancelled.
+- Links that no longer match the secret are refused.
+- The whole flow delivers to Mailpit.
+
+It also covers concurrent submissions, where exactly one wins, and checks
+that the client view and links leak nothing and grant no event access.
+`tests/integration/support/fixtures.ts` holds the shared setup.
+
 
 Integration tests run with Vitest against the local stack and refuse any
 non-local URL.
@@ -286,10 +354,10 @@ capped at 1 MB and hosting platforms limit request bodies.
 - **Previewing.** `preview_proposal_offer` builds the snapshot in memory,
   using exactly the validation and builder that freezing uses. It stores
   nothing.
-- **Freezing an offer.** `freeze_proposal_offer` is executable only by the
-  service role and will run in the step 6 send flow. It stores the snapshot
-  exactly once. Under a row lock it enforces the offer rules and copies
-  everything into `proposals.offer_snapshot`:
+- **Freezing an offer.** Only `send_proposal` freezes a snapshot, inside the
+  send transaction, and it does so exactly once. Under a row lock it
+  enforces the offer rules and copies everything into
+  `proposals.offer_snapshot`:
   - packages, included quantities, gear prices and descriptions, and active
     media references
   - addons, questions and active rules of offered questions
@@ -311,17 +379,88 @@ capped at 1 MB and hosting platforms limit request bodies.
   codes. There is no implicit default, and an unmapped category blocks offer
   creation.
 - **Selections.** A proposal's single editable client selection lives in
-  `proposal_selection_drafts`, written with `save_proposal_selection_draft`
-  by the service role in step 6. Immutable `proposal_selections` rows are
-  submissions only, and each one is stamped `submitted_at`.
-- **Recording.** `priceAndRecordSelection`, in
-  `src/lib/proposals/selections.server.ts`, prices untrusted input and calls
-  `record_proposal_selection`. That function is executable only by the
-  service role.
-  - It does no caller authorization. The step 6 submission flow must check
-    the session, state and expiry first.
-  - At commit, a deferred trigger re-verifies unit prices, line totals, the
-    subtotal, every tax amount and the total against the frozen snapshot.
+  `proposal_selection_drafts` and is autosaved with optimistic versions.
+  Immutable `proposal_selections` rows are submissions only.
+- **Verification.** The database re-checks every submission against the
+  frozen offer, not just the money. It checks unit prices, line totals,
+  subtotal, per-line tax rounding and total. It also checks the package,
+  addon keys and bounds, required and typed answers, and that the
+  chargeable and included lines match the rules, the package inclusions and
+  the addons.
+
+### Sending, client access and approval
+
+- **Sending.** `send_proposal` runs as the staff user, with membership
+  checked inside, in one transaction:
+  - it checks the editor's draft version (unsaved edits elsewhere cause a
+    conflict) and freezes the offer
+  - it sets the deadline
+  - it supersedes and revokes the previous offer, whose terms stay untouched
+  - it points `events.active_proposal_id` at the new offer, and a partial
+    unique index allows only one actionable proposal per event
+  - it creates the access link for the primary contact and queues the email
+  - it leaves the event as a lead, because sending is not a booking
+- **Link tokens.** The server picks the link id and derives the token as
+  `base64url(HMAC-SHA256(PROPOSAL_LINK_SECRET, "flux:proposal-link:v1:" + id))`,
+  which is 256 bits. The database stores only `sha256(token)`, in
+  `access_links.token_hash`, which staff can't even read. The outbox stores
+  only the link id. An email retry re-derives the identical token, so no
+  plaintext or encrypted token is ever stored and retries never create new
+  links. Before sending, the worker compares the hash, so a rotated secret
+  makes undelivered proposal emails fail visibly instead of sending a dead
+  link.
+- **Opening a link.** Emailed links put the token in the URL fragment
+  (`/bouprod/p#token`). Browsers never send fragments, so the token can't
+  reach request logs or analytics, and scanners that don't run JavaScript
+  can't open sessions.
+  - The page removes the token from the address bar at once and POSTs it to
+    `/{tenant}/p/exchange`.
+  - That route accepts same-origin JSON only and is rate limited per hashed
+    IP in Postgres.
+  - It creates a 12-hour proposal session: a random token in an HttpOnly,
+    SameSite=Lax cookie scoped to `/{tenant}/proposals/{id}`, stored only as
+    a hash. It then redirects to the clean URL.
+  - GET requests never change anything.
+- **Every client read and write** goes through service-role database
+  functions: `client_proposal_view`, `client_save_selection_draft` and
+  `client_submit_selection`.
+  - Each call re-resolves the session and rechecks tenant, proposal,
+    revocation, link and session expiry, offer deadline, active proposal
+    and state.
+  - Responses are explicit safe objects. They never include internal notes,
+    other contacts, draft input or staff fields.
+  - Media gets 10-minute signed URLs, only for paths inside the frozen
+    offer.
+  - Anonymous users still have no table or Storage grants.
+- **Submission** is one transaction:
+  - it locks the event, then the proposal
+  - an idempotency key makes repeat clicks return the original submission
+  - the draft version must be current, so a stale tab can't submit
+  - the database verifies prices and choices, records the submission, sets
+    the event to pending approval, and notifies staff
+  - submitting never grants event access, signing or planning
+- **Approval.** `approve_proposal_selection` approves the exact latest
+  submission. The approval records the selection's SHA-256, and repeats
+  return the same approval. It moves the event to awaiting signature, not
+  booked, and the client is told the contract will follow. To change terms,
+  start a revised offer: it opens a draft prefilled from the current offer,
+  and the client reviews and submits again.
+- **Email outbox.** Business state commits first, then a row is queued with
+  a unique dedup key.
+  - Delivery runs right after each action, through Next.js `after()`, and
+    from `pnpm outbox:work`, which calls `POST /api/internal/outbox` with
+    `OUTBOX_WORKER_SECRET`. A hosted cron job can call the same endpoint.
+  - Claims use `FOR UPDATE SKIP LOCKED` with expiring locks, and retries
+    back off from 1 minute up to 1 hour.
+  - After the last attempt an email is marked failed and shown to staff
+    with **Retry**. Proposal emails for superseded offers are cancelled.
+  - Delivery is at least once: a crash after sending but before recording
+    can resend one email. Retries never create proposals, submissions,
+    approvals or links.
+- **Email transports** are `src/lib/email/transport.server.ts`: Mailpit's
+  HTTP API locally, and Resend behind the same server-only interface for
+  hosting. `EMAIL_TRANSPORT=resend` with `RESEND_API_KEY`. Resend isn't used
+  locally or in tests.
 
 ### Gear media in Storage
 
@@ -351,6 +490,26 @@ access but not grant it.
 ## Environment variables
 
 See `.env.example`. Only `NEXT_PUBLIC_*` values reach the browser.
+
+| Variable | Purpose |
+|---|---|
+| `PROPOSAL_LINK_SECRET` | Derives proposal link tokens. 32 or more random characters. Rotating it fails undelivered proposal emails visibly; links already delivered keep working. |
+| `EMAIL_TRANSPORT` | `mailpit` (local default), `resend` (hosted) or `disabled` (queue only) |
+| `EMAIL_FROM_ADDRESS` | Sender address. Emails show "{DJ} via Flux DJ" with the DJ's reply-to address. |
+| `MAILPIT_URL` | Local Mailpit, http://127.0.0.1:54324 |
+| `RESEND_API_KEY` | Required only with `EMAIL_TRANSPORT=resend` |
+| `OUTBOX_WORKER_SECRET` | Bearer secret for `/api/internal/outbox`. The endpoint returns 404 when it isn't set. |
+
+Hosted configuration, still to review before real clients:
+- Set every variable above as a server-side environment variable.
+- Verify the sending domain in Resend.
+- Schedule `/api/internal/outbox` with the worker secret, for example with
+  Vercel Cron.
+- Check that the platform's proxy sets `X-Forwarded-For`, which rate
+  limiting uses.
+- The Supabase magic-link template, redirect URLs and the disabled sign-up
+  setting also need configuring.
+
 `SUPABASE_SERVICE_ROLE_KEY` bypasses RLS. It is read only through
 `src/lib/env.server.ts`, which is marked `server-only`, so importing it into
 client code fails the build. Never commit `.env.local`.
@@ -371,6 +530,12 @@ src/app/staff/                 Staff screens and Server Actions
 src/app/login, src/app/auth/   Magic-link login and confirmation
 src/components/proposal/       Responsive proposal preview (live pricing)
 src/lib/media/                 File-signature detection for uploads
+src/lib/proposals/             Link tokens and the client proposal session
+src/lib/email/                 Email templates, transports (Mailpit/Resend) and outbox worker
+src/app/[tenant]/p/            Link opener and token exchange (public)
+src/app/[tenant]/proposals/    Client proposal page (session cookie)
+src/app/api/internal/outbox/   Outbox worker endpoint (secret required)
+scripts/outbox-worker.mjs      Local worker loop (pnpm outbox:work)
 tests/unit/                    Vitest unit tests (pricing, uploads, money)
 tests/e2e/                     Playwright browser tests
 tests/integration/             Vitest tests against local Supabase (offers, Storage)

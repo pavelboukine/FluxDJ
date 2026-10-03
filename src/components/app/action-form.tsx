@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { useSharedDraftVersion } from "@/components/app/draft-version";
+import { useDraftEditorState, useSharedDraftVersion } from "@/components/app/draft-version";
 import { idleState, type ActionState } from "@/lib/forms";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +32,8 @@ type Props = {
    * version. Used when a save should deliberately reload other forms.
    */
   navigateOnSuccess?: string;
+  /** Ask for confirmation before submitting when the page's editor has unsaved changes. */
+  confirmIfUnsaved?: string;
 };
 
 /** Serializes the user-editable fields, so "unsaved changes" can be detected. */
@@ -63,9 +65,11 @@ export function ActionForm({
   resetOnSuccess,
   trackUnsaved,
   navigateOnSuccess,
+  confirmIfUnsaved,
 }: Props) {
   const router = useRouter();
   const sharedVersion = useSharedDraftVersion();
+  const editor = useDraftEditorState();
   const formRef = useRef<HTMLFormElement>(null);
   const [state, setState] = useState<ActionState>(idleState);
   const [pending, startTransition] = useTransition();
@@ -79,13 +83,22 @@ export function ActionForm({
 
   function refreshDirty() {
     if (trackUnsaved && formRef.current && baseline.current !== null) {
-      setDirty(snapshot(formRef.current) !== baseline.current);
+      const next = snapshot(formRef.current) !== baseline.current;
+      setDirty(next);
+      editor?.setUnsaved(next);
     }
   }
+
+  // This form unmounting (e.g. remounted after a template) leaves no unsaved edits behind.
+  useEffect(() => {
+    if (!trackUnsaved) return;
+    return () => editor?.setUnsaved(false);
+  }, [trackUnsaved]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending) return;
+    if (confirmIfUnsaved && editor?.unsaved && !window.confirm(confirmIfUnsaved)) return;
     const form = event.currentTarget;
     const data = new FormData(form);
     if (version !== undefined) {

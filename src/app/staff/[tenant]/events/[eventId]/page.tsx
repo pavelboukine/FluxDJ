@@ -17,7 +17,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
   const { supabase, tenant } = await requireStaff(slug);
   const { data: event } = await supabase
     .from("events")
-    .select("id, title, event_type, event_date, timezone, venue_name, venue_address, internal_notes, lifecycle_status, event_clients(id, is_primary, can_sign, clients(id, name, email)), proposals(id, revision, status, offer_frozen_at, updated_at)")
+    .select("id, title, event_type, event_date, timezone, venue_name, venue_address, internal_notes, lifecycle_status, active_proposal_id, event_clients(id, is_primary, can_sign, clients(id, name, email)), proposals!proposals_event_fk(id, revision, status, offer_frozen_at, updated_at, expires_at)")
     .eq("id", eventId)
     .eq("tenant_id", tenant.id)
     .maybeSingle();
@@ -52,8 +52,13 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
               Continue the draft (revision {draft.revision})
             </Link>
           ) : (
-            <ActionForm action={openProposalDraft.bind(null, slug, event.id)} submitLabel="Start proposal draft" pendingLabel="Opening…">
-              <SelectField label="Start from template" name="template_id" options={(templates ?? []).map((t) => ({ value: t.id, label: t.name }))} placeholder="— blank proposal —" />
+            <ActionForm action={openProposalDraft.bind(null, slug, event.id)} submitLabel={event.active_proposal_id ? "Start a revised offer" : "Start proposal draft"} pendingLabel="Opening…">
+              <SelectField
+                label="Start from template"
+                name="template_id"
+                options={(templates ?? []).map((t) => ({ value: t.id, label: t.name }))}
+                placeholder={event.active_proposal_id ? "— the current offer —" : "— blank proposal —"}
+              />
             </ActionForm>
           )}
           {proposals.length > 0 ? (

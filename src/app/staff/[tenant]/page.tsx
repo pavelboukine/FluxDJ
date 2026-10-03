@@ -21,7 +21,7 @@ export default async function Dashboard({ params }: PageProps<"/staff/[tenant]">
   ]);
   const { data: drafts } = await supabase
     .from("proposals")
-    .select("id, revision, updated_at, events(title, event_date)")
+    .select("id, revision, updated_at, events!proposals_event_fk(title, event_date)")
     .eq("tenant_id", tenant.id)
     .eq("status", "draft")
     .order("updated_at", { ascending: false })

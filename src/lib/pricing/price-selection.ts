@@ -265,7 +265,62 @@ export function priceSelection(offer: OfferSnapshot, rawInput: unknown): Pricing
   };
 }
 
-/** The record stored by record_proposal_selection. */
+export const selectionDraftSchema = z.strictObject({
+  package_key: z.string().nullable(),
+  addons: z.record(z.string(), z.unknown()).optional(),
+  answers: z.record(z.string(), z.unknown()).optional(),
+});
+
+export type SelectionDraft = {
+  package_key: string | null;
+  addon_quantities: Record<string, number>;
+  logistics_answers: Record<string, AnswerValue>;
+};
+
+/**
+ * Validates an in-progress (autosaved) selection: the same rules as
+ * priceSelection, except that unanswered questions are allowed. Returns the
+ * normalized draft (offered addons with quantity > 0, answered questions only).
+ */
+export function normalizeSelectionDraft(offer: OfferSnapshot, rawInput: unknown): { ok: true; draft: SelectionDraft } | { ok: false; errors: PricingError[] } {
+  const parsed = selectionDraftSchema.safeParse(rawInput);
+  if (!parsed.success) {
+    return { ok: false, errors: parsed.error.issues.map((i) => ({ code: "input_invalid", path: i.path.join(".") || "(root)", message: i.message })) };
+  }
+  const input = parsed.data;
+  const errors: PricingError[] = [];
+  if (input.package_key !== null && !offer.packages.some((p) => p.key === input.package_key)) {
+    errors.push({ code: "package_not_offered", path: "package_key", message: "Package is not part of this offer." });
+  }
+  const offeredAddons = new Map(offer.addons.map((a) => [a.gear_key, a]));
+  const addonQuantities: Record<string, number> = {};
+  for (const [gearKey, quantity] of Object.entries(input.addons ?? {})) {
+    const addon = offeredAddons.get(gearKey);
+    if (!addon) {
+      errors.push({ code: "addon_not_offered", path: `addons.${gearKey}`, message: "Addon is not part of this offer." });
+    } else if (typeof quantity !== "number" || !Number.isInteger(quantity) || quantity < 0 || quantity > addon.max_quantity) {
+      errors.push({ code: "addon_quantity_invalid", path: `addons.${gearKey}`, message: `Quantity must be a whole number from 0 to ${addon.max_quantity}.` });
+    } else if (quantity > 0) {
+      addonQuantities[gearKey] = quantity;
+    }
+  }
+  const questions = new Map(offer.questions.map((q) => [q.key, q]));
+  const answers: Record<string, AnswerValue> = {};
+  for (const [key, raw] of Object.entries(input.answers ?? {})) {
+    const question = questions.get(key);
+    if (!question) {
+      errors.push({ code: "answer_unknown_question", path: `answers.${key}`, message: "Question is not part of this offer." });
+      continue;
+    }
+    const normalized = normalizeAnswer(question, raw);
+    if (normalized.kind === "invalid") errors.push({ code: "answer_invalid", path: `answers.${key}`, message: normalized.message });
+    else if (normalized.kind === "value") answers[key] = normalized.value;
+  }
+  if (errors.length > 0) return { ok: false, errors };
+  return { ok: true, draft: { package_key: input.package_key, addon_quantities: addonQuantities, logistics_answers: answers } };
+}
+
+/** The record stored by client_submit_selection. */
 export function toSelectionRecord(selection: PricedSelection, offerSha256: string) {
   return { ...selection, offer_sha256: offerSha256 };
 }

@@ -1,7 +1,7 @@
 -- Draft lifecycle and frozen offer snapshots.
 --   * One mutable draft per event; editing never freezes or adds revisions.
 --   * preview_proposal_offer validates and builds the snapshot, storing nothing.
---   * freeze_proposal_offer (service_role) stores it exactly once; afterwards
+--   * send_proposal freezes it exactly once, inside the send transaction; afterwards
 --     no catalog, template, tax or branding change can alter it.
 begin;
 \ir _fixtures.psql
@@ -56,8 +56,7 @@ select is(public.preview_proposal_offer(current_setting('tests.p1')::uuid), curr
 select results_eq(
   $$ select count(*)::int, bool_and(offer_snapshot is null) from public.proposals where event_id = tests.id('event_a1') $$,
   $$ values (1, true) $$, 'saving and previewing never froze or created proposals');
-select throws_ok($$ select public.freeze_proposal_offer(current_setting('tests.p1')::uuid) $$,
-  '42501', null, 'staff cannot freeze an offer (only the step 6 send flow can)');
+select hasnt_function('public', 'freeze_proposal_offer', 'there is no freeze path outside send_proposal');
 select throws_ok($$ update public.proposals set offer_snapshot = '{}' where id = current_setting('tests.p1')::uuid $$,
   '42501', null, 'staff cannot write snapshots directly');
 
@@ -79,41 +78,37 @@ select is(current_setting('tests.preview1')::jsonb -> 'tax',
   'tax rates and categories');
 
 -- ---------------------------------------------------------------------------
--- Freezing (service role): exactly once, hash computed by the database.
+-- Freezing happens only when sending: exactly once, hash computed by the database.
 -- ---------------------------------------------------------------------------
-reset role;
-select tests.login_as_service();
-select set_config('tests.sha1', public.freeze_proposal_offer(current_setting('tests.p1')::uuid), true);
+select tests.login_as(tests.id('staff_a'));
+select set_config('tests.sent1', tests.send(current_setting('tests.p1')::uuid)::text, true);
 select results_eq(
-  $$ select offer_snapshot = current_setting('tests.preview1')::jsonb,
+  $$ select status, offer_snapshot = current_setting('tests.preview1')::jsonb,
             offer_sha256 = encode(sha256(convert_to(offer_snapshot::text, 'UTF8')), 'hex'),
-            offer_sha256 = current_setting('tests.sha1'),
+            offer_sha256 = current_setting('tests.sent1')::jsonb ->> 'offer_sha256',
             offer_frozen_at is not null
      from public.proposals where id = current_setting('tests.p1')::uuid $$,
-  $$ values (true, true, true, true) $$, 'freezing stores exactly the previewed snapshot and its SHA-256');
-select is(public.freeze_proposal_offer(current_setting('tests.p1')::uuid), current_setting('tests.sha1'),
-  'freezing again is idempotent');
-reset role;
-select tests.login_as(tests.id('staff_a'));
+  $$ values ('sent'::text, true, true, true, true) $$, 'sending stores exactly the previewed snapshot and its SHA-256');
+select throws_like($$ select tests.send(current_setting('tests.p1')::uuid) $$,
+  '%already been sent%', 'a proposal can be sent (and frozen) only once');
 select throws_like($$ select public.update_proposal_draft(current_setting('tests.p1')::uuid, 3, '{}') $$,
-  '%frozen%', 'a frozen draft can no longer be edited');
+  '%frozen%', 'a sent offer can no longer be edited');
 reset role;
 select throws_ok($$ update public.proposals set draft_offer = '{}' where id = current_setting('tests.p1')::uuid $$,
   '23514', null, 'even privileged code cannot change the draft after freezing');
 select throws_ok(
   $$ insert into public.proposals (tenant_id, event_id, revision, offer_snapshot) values (tests.id('tenant_a'), tests.id('event_a2'), 1, '{}') $$,
   '23514', null, 'proposals cannot be inserted already frozen');
-select throws_ok(
-  $$ insert into public.proposals (tenant_id, event_id, revision) values (tests.id('tenant_a'), tests.id('event_a1'), 9) $$,
-  '23505', null, 'an event has at most one draft');
 
--- After sending (simulated; step 6), the next draft is revision 2.
-update public.proposals set status = 'sent' where id = current_setting('tests.p1')::uuid;
+-- After sending, the next draft for the event is revision 2.
 select tests.login_as(tests.id('owner_a'));
 select set_config('tests.p2', public.open_proposal_draft(tests.id('event_a1'))::text, true);
 select is((select revision from public.proposals where id = current_setting('tests.p2')::uuid), 2,
   'the next draft for the event is revision 2');
 reset role;
+select throws_ok(
+  $$ insert into public.proposals (tenant_id, event_id, revision) values (tests.id('tenant_a'), tests.id('event_a1'), 9) $$,
+  '23505', null, 'an event has at most one draft');
 select throws_ok($$ update public.proposals set status = 'sent' where id = current_setting('tests.p2')::uuid $$,
   '23514', null, 'an unfrozen proposal cannot leave draft status');
 select tests.login_as(tests.id('owner_a'));

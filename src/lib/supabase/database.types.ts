@@ -5,7 +5,57 @@ export type Database = {
   
   "public": {
           Tables: {
-            "clients": {
+            "access_links": {
+                  Row: {
+                    "consumed_at": string | null,"created_at": string,"expires_at": string,"id": string,"intended_client_id": string,"proposal_id": string,"purpose": string,"revoked_at": string | null,"tenant_id": string,"token_hash": string,"updated_at": string
+                  }
+                  Insert: {
+                    "consumed_at"?: string | null,"created_at"?: string,"expires_at": string,"id": string,"intended_client_id": string,"proposal_id": string,"purpose": string,"revoked_at"?: string | null,"tenant_id": string,"token_hash": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "consumed_at"?: string | null,"created_at"?: string,"expires_at"?: string,"id"?: string,"intended_client_id"?: string,"proposal_id"?: string,"purpose"?: string,"revoked_at"?: string | null,"tenant_id"?: string,"token_hash"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "access_links_client_fk"
+      columns: ["tenant_id","intended_client_id"]
+isOneToOne: false
+      referencedRelation: "clients"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "access_links_proposal_fk"
+      columns: ["tenant_id","proposal_id"]
+isOneToOne: false
+      referencedRelation: "proposals"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "access_links_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"audit_events": {
+                  Row: {
+                    "action": string,"actor_id": string | null,"actor_type": string,"entity_id": string,"entity_type": string,"id": string,"metadata": NonNullable<Json>,"occurred_at": string,"tenant_id": string
+                  }
+                  Insert: {
+                    "action": string,"actor_id"?: string | null,"actor_type": string,"entity_id": string,"entity_type": string,"id"?: string,"metadata"?: NonNullable<Json>,"occurred_at"?: string,"tenant_id": string
+                  }
+                  Update: {
+                    "action"?: string,"actor_id"?: string | null,"actor_type"?: string,"entity_id"?: string,"entity_type"?: string,"id"?: string,"metadata"?: NonNullable<Json>,"occurred_at"?: string,"tenant_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "audit_events_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"clients": {
                   Row: {
                     "archived_at": string | null,"created_at": string,"email": string,"id": string,"name": string,"phone": string | null,"tenant_id": string,"updated_at": string
                   }
@@ -18,6 +68,31 @@ export type Database = {
                   Relationships: [
                     {
       foreignKeyName: "clients_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"email_outbox": {
+                  Row: {
+                    "access_link_id": string | null,"attempts": number,"created_at": string,"dedup_key": string,"entity_id": string,"entity_type": string,"event_type": string,"id": string,"last_error": string | null,"locked_until": string | null,"max_attempts": number,"next_attempt_at": string,"payload": NonNullable<Json>,"provider_message_id": string | null,"recipient_email": string,"sent_at": string | null,"status": string,"tenant_id": string,"updated_at": string
+                  }
+                  Insert: {
+                    "access_link_id"?: string | null,"attempts"?: number,"created_at"?: string,"dedup_key": string,"entity_id": string,"entity_type"?: string,"event_type": string,"id"?: string,"last_error"?: string | null,"locked_until"?: string | null,"max_attempts"?: number,"next_attempt_at"?: string,"payload"?: NonNullable<Json>,"provider_message_id"?: string | null,"recipient_email": string,"sent_at"?: string | null,"status"?: string,"tenant_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "access_link_id"?: string | null,"attempts"?: number,"created_at"?: string,"dedup_key"?: string,"entity_id"?: string,"entity_type"?: string,"event_type"?: string,"id"?: string,"last_error"?: string | null,"locked_until"?: string | null,"max_attempts"?: number,"next_attempt_at"?: string,"payload"?: NonNullable<Json>,"provider_message_id"?: string | null,"recipient_email"?: string,"sent_at"?: string | null,"status"?: string,"tenant_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "email_outbox_link_fk"
+      columns: ["tenant_id","access_link_id"]
+isOneToOne: false
+      referencedRelation: "access_links"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "email_outbox_tenant_id_fkey"
       columns: ["tenant_id"]
 isOneToOne: false
       referencedRelation: "tenants"
@@ -94,16 +169,22 @@ isOneToOne: false
                   ]
                 },"events": {
                   Row: {
-                    "booking_confirmed_at": string | null,"created_at": string,"event_date": string,"event_type": string,"id": string,"internal_notes": string | null,"lifecycle_status": string,"planning_lock_at": string | null,"planning_override_until": string | null,"tenant_id": string,"timezone": string,"title": string,"updated_at": string,"venue_address": string | null,"venue_name": string | null
+                    "active_proposal_id": string | null,"booking_confirmed_at": string | null,"created_at": string,"event_date": string,"event_type": string,"id": string,"internal_notes": string | null,"lifecycle_status": string,"planning_lock_at": string | null,"planning_override_until": string | null,"tenant_id": string,"timezone": string,"title": string,"updated_at": string,"venue_address": string | null,"venue_name": string | null
                   }
                   Insert: {
-                    "booking_confirmed_at"?: string | null,"created_at"?: string,"event_date": string,"event_type": string,"id"?: string,"internal_notes"?: string | null,"lifecycle_status"?: string,"planning_lock_at"?: string | null,"planning_override_until"?: string | null,"tenant_id": string,"timezone"?: string,"title": string,"updated_at"?: string,"venue_address"?: string | null,"venue_name"?: string | null
+                    "active_proposal_id"?: string | null,"booking_confirmed_at"?: string | null,"created_at"?: string,"event_date": string,"event_type": string,"id"?: string,"internal_notes"?: string | null,"lifecycle_status"?: string,"planning_lock_at"?: string | null,"planning_override_until"?: string | null,"tenant_id": string,"timezone"?: string,"title": string,"updated_at"?: string,"venue_address"?: string | null,"venue_name"?: string | null
                   }
                   Update: {
-                    "booking_confirmed_at"?: string | null,"created_at"?: string,"event_date"?: string,"event_type"?: string,"id"?: string,"internal_notes"?: string | null,"lifecycle_status"?: string,"planning_lock_at"?: string | null,"planning_override_until"?: string | null,"tenant_id"?: string,"timezone"?: string,"title"?: string,"updated_at"?: string,"venue_address"?: string | null,"venue_name"?: string | null
+                    "active_proposal_id"?: string | null,"booking_confirmed_at"?: string | null,"created_at"?: string,"event_date"?: string,"event_type"?: string,"id"?: string,"internal_notes"?: string | null,"lifecycle_status"?: string,"planning_lock_at"?: string | null,"planning_override_until"?: string | null,"tenant_id"?: string,"timezone"?: string,"title"?: string,"updated_at"?: string,"venue_address"?: string | null,"venue_name"?: string | null
                   }
                   Relationships: [
                     {
+      foreignKeyName: "events_active_proposal_fk"
+      columns: ["tenant_id","active_proposal_id"]
+isOneToOne: false
+      referencedRelation: "proposals"
+      referencedColumns: ["tenant_id","id"]
+    },{
       foreignKeyName: "events_tenant_id_fkey"
       columns: ["tenant_id"]
 isOneToOne: false
@@ -255,6 +336,37 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"proposal_approvals": {
+                  Row: {
+                    "approved_at": string,"approved_by_membership_id": string | null,"approved_by_user_id": string,"created_at": string,"id": string,"proposal_id": string,"selection_id": string,"selection_sha256": string,"tenant_id": string
+                  }
+                  Insert: {
+                    "approved_at"?: string,"approved_by_membership_id"?: string | null,"approved_by_user_id": string,"created_at"?: string,"id"?: string,"proposal_id": string,"selection_id": string,"selection_sha256": string,"tenant_id": string
+                  }
+                  Update: {
+                    "approved_at"?: string,"approved_by_membership_id"?: string | null,"approved_by_user_id"?: string,"created_at"?: string,"id"?: string,"proposal_id"?: string,"selection_id"?: string,"selection_sha256"?: string,"tenant_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "proposal_approvals_membership_fk"
+      columns: ["tenant_id","approved_by_membership_id"]
+isOneToOne: false
+      referencedRelation: "tenant_memberships"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "proposal_approvals_selection_fk"
+      columns: ["tenant_id","proposal_id","selection_id"]
+isOneToOne: false
+      referencedRelation: "proposal_selections"
+      referencedColumns: ["tenant_id","proposal_id","id"]
+    },{
+      foreignKeyName: "proposal_approvals_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"proposal_selection_drafts": {
                   Row: {
                     "addon_quantities": NonNullable<Json>,"created_at": string,"id": string,"logistics_answers": NonNullable<Json>,"package_key": string | null,"proposal_id": string,"tenant_id": string,"updated_at": string,"version": number
@@ -307,13 +419,13 @@ isOneToOne: false
                   ]
                 },"proposal_selections": {
                   Row: {
-                    "addon_quantities": NonNullable<Json>,"created_at": string,"currency": string,"id": string,"logistics_answers": NonNullable<Json>,"offer_sha256": string,"package_key": string,"pricing_version": string,"proposal_id": string,"selection_snapshot": NonNullable<Json>,"submitted_at": string | null,"subtotal_cents": number,"tax_breakdown": NonNullable<Json>,"tax_cents": number,"tenant_id": string,"total_cents": number,"updated_at": string,"version": number
+                    "addon_quantities": NonNullable<Json>,"created_at": string,"currency": string,"id": string,"idempotency_key": string | null,"logistics_answers": NonNullable<Json>,"offer_sha256": string,"package_key": string,"pricing_version": string,"proposal_id": string,"selection_snapshot": NonNullable<Json>,"submitted_at": string | null,"subtotal_cents": number,"tax_breakdown": NonNullable<Json>,"tax_cents": number,"tenant_id": string,"total_cents": number,"updated_at": string,"version": number
                   }
                   Insert: {
-                    "addon_quantities": NonNullable<Json>,"created_at"?: string,"currency": string,"id"?: string,"logistics_answers": NonNullable<Json>,"offer_sha256": string,"package_key": string,"pricing_version": string,"proposal_id": string,"selection_snapshot": NonNullable<Json>,"submitted_at"?: string | null,"subtotal_cents": number,"tax_breakdown": NonNullable<Json>,"tax_cents": number,"tenant_id": string,"total_cents": number,"updated_at"?: string,"version": number
+                    "addon_quantities": NonNullable<Json>,"created_at"?: string,"currency": string,"id"?: string,"idempotency_key"?: string | null,"logistics_answers": NonNullable<Json>,"offer_sha256": string,"package_key": string,"pricing_version": string,"proposal_id": string,"selection_snapshot": NonNullable<Json>,"submitted_at"?: string | null,"subtotal_cents": number,"tax_breakdown": NonNullable<Json>,"tax_cents": number,"tenant_id": string,"total_cents": number,"updated_at"?: string,"version": number
                   }
                   Update: {
-                    "addon_quantities"?: NonNullable<Json>,"created_at"?: string,"currency"?: string,"id"?: string,"logistics_answers"?: NonNullable<Json>,"offer_sha256"?: string,"package_key"?: string,"pricing_version"?: string,"proposal_id"?: string,"selection_snapshot"?: NonNullable<Json>,"submitted_at"?: string | null,"subtotal_cents"?: number,"tax_breakdown"?: NonNullable<Json>,"tax_cents"?: number,"tenant_id"?: string,"total_cents"?: number,"updated_at"?: string,"version"?: number
+                    "addon_quantities"?: NonNullable<Json>,"created_at"?: string,"currency"?: string,"id"?: string,"idempotency_key"?: string | null,"logistics_answers"?: NonNullable<Json>,"offer_sha256"?: string,"package_key"?: string,"pricing_version"?: string,"proposal_id"?: string,"selection_snapshot"?: NonNullable<Json>,"submitted_at"?: string | null,"subtotal_cents"?: number,"tax_breakdown"?: NonNullable<Json>,"tax_cents"?: number,"tenant_id"?: string,"total_cents"?: number,"updated_at"?: string,"version"?: number
                   }
                   Relationships: [
                     {
@@ -324,6 +436,37 @@ isOneToOne: false
       referencedColumns: ["tenant_id","id"]
     },{
       foreignKeyName: "proposal_selections_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"proposal_sessions": {
+                  Row: {
+                    "access_link_id": string,"created_at": string,"expires_at": string,"id": string,"proposal_id": string,"revoked_at": string | null,"session_hash": string,"tenant_id": string,"updated_at": string
+                  }
+                  Insert: {
+                    "access_link_id": string,"created_at"?: string,"expires_at": string,"id"?: string,"proposal_id": string,"revoked_at"?: string | null,"session_hash": string,"tenant_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "access_link_id"?: string,"created_at"?: string,"expires_at"?: string,"id"?: string,"proposal_id"?: string,"revoked_at"?: string | null,"session_hash"?: string,"tenant_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "proposal_sessions_link_fk"
+      columns: ["tenant_id","access_link_id"]
+isOneToOne: false
+      referencedRelation: "access_links"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "proposal_sessions_proposal_fk"
+      columns: ["tenant_id","proposal_id"]
+isOneToOne: false
+      referencedRelation: "proposals"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "proposal_sessions_tenant_id_fkey"
       columns: ["tenant_id"]
 isOneToOne: false
       referencedRelation: "tenants"
@@ -448,6 +591,37 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"proposal_views": {
+                  Row: {
+                    "access_link_id": string,"id": string,"kind": string,"opened_at": string,"proposal_id": string,"tenant_id": string
+                  }
+                  Insert: {
+                    "access_link_id": string,"id"?: string,"kind"?: string,"opened_at"?: string,"proposal_id": string,"tenant_id": string
+                  }
+                  Update: {
+                    "access_link_id"?: string,"id"?: string,"kind"?: string,"opened_at"?: string,"proposal_id"?: string,"tenant_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "proposal_views_link_fk"
+      columns: ["tenant_id","access_link_id"]
+isOneToOne: false
+      referencedRelation: "access_links"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "proposal_views_proposal_fk"
+      columns: ["tenant_id","proposal_id"]
+isOneToOne: false
+      referencedRelation: "proposals"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "proposal_views_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"proposals": {
                   Row: {
                     "created_at": string,"created_by_membership_id": string | null,"current_selection_version": number,"draft_offer": NonNullable<Json>,"draft_version": number,"event_id": string,"expires_at": string | null,"first_viewed_at": string | null,"id": string,"offer_frozen_at": string | null,"offer_sha256": string | null,"offer_snapshot": Json | null,"revision": number,"sent_at": string | null,"source_template_id": string | null,"status": string,"supersedes_id": string | null,"tenant_id": string,"updated_at": string
@@ -529,8 +703,37 @@ isOneToOne: false
             [_ in never]: never
           }
           Functions: {
-            "freeze_proposal_offer":
-{ Args: { "p_proposal_id": string }; Returns: string
+            "approve_proposal_selection":
+{ Args: { "p_proposal_id": string,"p_selection_id": string }; Returns: Json
+                           },
+"cancel_email_outbox":
+{ Args: { "p_id": string,"p_reason": string }; Returns: undefined
+                           },
+"claim_email_outbox":
+{ Args: { "p_limit"?: number,"p_lock_seconds"?: number,"p_tenant_id"?: string }; Returns: {
+              "access_link_id": string,"attempts": number,"entity_id": string,"event_type": string,"id": string,"link_token_hash": string,"link_usable": boolean,"payload": Json,"proposal_active": boolean,"recipient_email": string,"tenant_display_name": string,"tenant_id": string,"tenant_reply_to": string,"tenant_slug": string
+            }[]
+                           },
+"client_proposal_view":
+{ Args: { "p_proposal_id": string,"p_session_hash": string,"p_tenant_slug": string }; Returns: Json
+                           },
+"client_save_selection_draft":
+{ Args: { "p_addon_quantities": Json,"p_expected_version": number,"p_logistics_answers": Json,"p_package_key": string,"p_proposal_id": string,"p_session_hash": string,"p_tenant_slug": string }; Returns: Json
+                           },
+"client_submit_selection":
+{ Args: { "p_expected_draft_version": number,"p_idempotency_key": string,"p_proposal_id": string,"p_selection": Json,"p_session_hash": string,"p_tenant_slug": string }; Returns: Json
+                           },
+"complete_email_outbox":
+{ Args: { "p_id": string,"p_provider_message_id": string }; Returns: undefined
+                           },
+"consume_rate_limit":
+{ Args: { "p_bucket": string,"p_limit": number,"p_subject_hash": string,"p_window_seconds": number }; Returns: boolean
+                           },
+"exchange_proposal_link":
+{ Args: { "p_session_hash": string,"p_session_seconds": number,"p_tenant_slug": string,"p_token_hash": string }; Returns: Json
+                           },
+"fail_email_outbox":
+{ Args: { "p_error": string,"p_id": string,"p_permanent"?: boolean }; Returns: undefined
                            },
 "my_events":
 { Args: Record<PropertyKey, never>; Returns: {
@@ -546,11 +749,14 @@ isOneToOne: false
 "proposal_offer_input_from_template":
 { Args: { "p_template_id": string }; Returns: Json
                            },
-"record_proposal_selection":
-{ Args: { "p_expected_version": number,"p_proposal_id": string,"p_selection": Json }; Returns: string
+"public_tenant_brand":
+{ Args: { "p_tenant_slug": string }; Returns: Json
                            },
-"save_proposal_selection_draft":
-{ Args: { "p_addon_quantities": Json,"p_expected_version": number,"p_logistics_answers": Json,"p_package_key": string,"p_proposal_id": string }; Returns: number
+"retry_email_outbox":
+{ Args: { "p_id": string }; Returns: boolean
+                           },
+"send_proposal":
+{ Args: { "p_access_link_id": string,"p_expected_draft_version": number,"p_proposal_id": string,"p_token_hash": string }; Returns: Json
                            },
 "set_package_items":
 { Args: { "p_items": Json,"p_package_id": string }; Returns: undefined

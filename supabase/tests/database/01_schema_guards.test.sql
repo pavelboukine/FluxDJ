@@ -1,7 +1,7 @@
 -- Structural guarantees that protect every future table, not only today's.
 begin;
 \ir _fixtures.psql
-select plan(35);
+select plan(42);
 
 -- RLS is on for every table in the exposed schema.
 select is_empty(
@@ -47,6 +47,16 @@ from unnest(array['package_items', 'proposal_template_packages', 'proposal_templ
 -- Proposals and selections are written only through security definer functions.
 select table_privs_are('public', t, 'authenticated', array['SELECT'], t || ': read-only for authenticated')
 from unnest(array['proposals', 'proposal_selections', 'proposal_selection_lines', 'proposal_selection_drafts']) t;
+
+-- Step 6: link and session tables are server-only; staff read status only.
+select table_privs_are('public', t, 'authenticated', array['SELECT'], t || ': read-only for authenticated')
+from unnest(array['proposal_views', 'proposal_approvals', 'email_outbox', 'audit_events']) t;
+select table_privs_are('public', 'access_links', 'authenticated', array[]::text[], 'access_links: column-level read only (no token hashes)');
+select table_privs_are('public', 'proposal_sessions', 'authenticated', array[]::text[], 'proposal_sessions: no access for authenticated');
+select is_empty(
+  $$ select column_name from information_schema.column_privileges
+     where table_schema = 'public' and table_name = 'access_links' and grantee = 'authenticated' and column_name = 'token_hash' $$,
+  'staff can never read link token hashes');
 
 -- Any function a CHECK constraint calls must be executable by the roles that
 -- write rows, or legitimate writes fail with "permission denied".

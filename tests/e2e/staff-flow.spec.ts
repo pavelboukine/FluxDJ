@@ -296,6 +296,17 @@ test.describe.serial("staff interface", () => {
     // Applying a template intentionally replaces the editor's contents, including unsaved choices.
     await page.getByLabel("Package 1").selectOption({ label: "Premium ($3,000.00)" });
     await page.getByLabel("Template").selectOption({ label: `E2E Wedding ${run}` });
+    // With unsaved changes, applying asks first. Declining keeps the edits and changes nothing.
+    let prompt = "";
+    page.once("dialog", (dialog) => {
+      prompt = dialog.message();
+      void dialog.dismiss();
+    });
+    await page.getByRole("button", { name: "Apply template" }).click();
+    await expect.poll(() => prompt).toContain("unsaved changes will be lost");
+    await expect(page.getByLabel("Package 1").locator("option:checked")).toHaveText("Premium ($3,000.00)");
+    expect((await draftRow()).version).toBe(before.version + 2);
+    page.once("dialog", (dialog) => void dialog.accept());
     await page.getByRole("button", { name: "Apply template" }).click();
     await expect(page).toHaveURL(new RegExp(`\\?applied=${before.version + 3}$`));
     await expect(page.getByLabel("Package 1").locator("option:checked")).toHaveText("Essential ($1,500.00)");

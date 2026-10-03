@@ -17,7 +17,8 @@
     "check": "pnpm lint && pnpm typecheck && pnpm test:unit && pnpm db:lint && pnpm db:test && pnpm test:integration && pnpm test:e2e",
     "test:integration": "vitest run tests/integration --no-file-parallelism",
     "test:unit": "vitest run tests/unit",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "outbox:work": "node --env-file=.env.local scripts/outbox-worker.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

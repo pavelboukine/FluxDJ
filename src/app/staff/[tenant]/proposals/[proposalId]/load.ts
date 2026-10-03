@@ -11,7 +11,7 @@ export async function loadProposal({ supabase, tenant }: StaffContext, proposalI
   if (!UUID_RE.test(proposalId)) notFound();
   const { data: proposal } = await supabase
     .from("proposals")
-    .select("id, event_id, revision, status, draft_offer, draft_version, offer_frozen_at, source_template_id, events(id, title, event_date, venue_name)")
+    .select("id, event_id, revision, status, draft_offer, draft_version, offer_frozen_at, source_template_id, events!proposals_event_fk(id, title, event_date, venue_name, active_proposal_id)")
     .eq("id", proposalId)
     .eq("tenant_id", tenant.id)
     .maybeSingle();
