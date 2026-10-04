@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { safeNext, safeOtpType } from "@/lib/auth/redirects";
 
 /**
  * Verifies a magic-link token. Runs only on an explicit POST from the confirm
@@ -13,9 +14,11 @@ export async function confirmSignIn(form: FormData) {
   if (!/^(pkce_)?[0-9a-f]{20,128}$/i.test(tokenHash)) redirect("/login?error=link");
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: "email" });
+  // The type and destination come from the form, so both are re-validated:
+  // only "email" or "invite", and only allow-listed same-site paths.
+  const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: safeOtpType(form.get("type")) });
   if (error) redirect("/login?error=link");
-  redirect("/staff");
+  redirect(safeNext(form.get("next")));
 }
 
 export async function signOut() {

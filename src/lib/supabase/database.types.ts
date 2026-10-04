@@ -7,13 +7,13 @@ export type Database = {
           Tables: {
             "access_links": {
                   Row: {
-                    "consumed_at": string | null,"created_at": string,"expires_at": string,"id": string,"intended_client_id": string,"proposal_id": string,"purpose": string,"revoked_at": string | null,"tenant_id": string,"token_hash": string,"updated_at": string
+                    "consumed_at": string | null,"contract_id": string | null,"created_at": string,"expires_at": string,"id": string,"intended_client_id": string,"proposal_id": string,"purpose": string,"revoked_at": string | null,"tenant_id": string,"token_hash": string,"updated_at": string
                   }
                   Insert: {
-                    "consumed_at"?: string | null,"created_at"?: string,"expires_at": string,"id": string,"intended_client_id": string,"proposal_id": string,"purpose": string,"revoked_at"?: string | null,"tenant_id": string,"token_hash": string,"updated_at"?: string
+                    "consumed_at"?: string | null,"contract_id"?: string | null,"created_at"?: string,"expires_at": string,"id": string,"intended_client_id": string,"proposal_id": string,"purpose": string,"revoked_at"?: string | null,"tenant_id": string,"token_hash": string,"updated_at"?: string
                   }
                   Update: {
-                    "consumed_at"?: string | null,"created_at"?: string,"expires_at"?: string,"id"?: string,"intended_client_id"?: string,"proposal_id"?: string,"purpose"?: string,"revoked_at"?: string | null,"tenant_id"?: string,"token_hash"?: string,"updated_at"?: string
+                    "consumed_at"?: string | null,"contract_id"?: string | null,"created_at"?: string,"expires_at"?: string,"id"?: string,"intended_client_id"?: string,"proposal_id"?: string,"purpose"?: string,"revoked_at"?: string | null,"tenant_id"?: string,"token_hash"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -21,6 +21,12 @@ export type Database = {
       columns: ["tenant_id","intended_client_id"]
 isOneToOne: false
       referencedRelation: "clients"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "access_links_contract_fk"
+      columns: ["tenant_id","contract_id"]
+isOneToOne: false
+      referencedRelation: "contracts"
       referencedColumns: ["tenant_id","id"]
     },{
       foreignKeyName: "access_links_proposal_fk"
@@ -138,13 +144,13 @@ isOneToOne: false
                   ]
                 },"contracts": {
                   Row: {
-                    "approval_id": string,"balance_cents": number,"balance_due_date": string | null,"commercial_snapshot": NonNullable<Json>,"content_sha256": string,"created_at": string,"currency": string,"deposit_cents": number,"deposit_percent": number,"event_id": string,"generated_by_membership_id": string | null,"generated_by_user_id": string,"id": string,"party_snapshot": NonNullable<Json>,"proposal_id": string,"rendered_content": NonNullable<Json>,"replaces_id": string | null,"selection_id": string,"signer_client_id": string,"signer_email": string,"signer_name": string,"status": string,"status_changed_at": string | null,"template_content_sha256": string,"template_id": string,"template_version_id": string,"tenant_id": string,"total_cents": number,"updated_at": string
+                    "approval_id": string,"balance_cents": number,"balance_due_date": string | null,"commercial_snapshot": NonNullable<Json>,"content_sha256": string,"created_at": string,"currency": string,"deposit_cents": number,"deposit_percent": number,"event_id": string,"generated_by_membership_id": string | null,"generated_by_user_id": string,"id": string,"party_snapshot": NonNullable<Json>,"proposal_id": string,"rendered_content": NonNullable<Json>,"replaces_id": string | null,"selection_id": string,"sent_at": string | null,"signer_client_id": string,"signer_email": string,"signer_name": string,"status": string,"status_changed_at": string | null,"template_content_sha256": string,"template_id": string,"template_version_id": string,"tenant_id": string,"total_cents": number,"updated_at": string,"void_reason": string | null,"voided_at": string | null
                   }
                   Insert: {
-                    "approval_id": string,"balance_cents": number,"balance_due_date"?: string | null,"commercial_snapshot": NonNullable<Json>,"content_sha256": string,"created_at"?: string,"currency": string,"deposit_cents": number,"deposit_percent": number,"event_id": string,"generated_by_membership_id"?: string | null,"generated_by_user_id": string,"id"?: string,"party_snapshot": NonNullable<Json>,"proposal_id": string,"rendered_content": NonNullable<Json>,"replaces_id"?: string | null,"selection_id": string,"signer_client_id": string,"signer_email": string,"signer_name": string,"status"?: string,"status_changed_at"?: string | null,"template_content_sha256": string,"template_id": string,"template_version_id": string,"tenant_id": string,"total_cents": number,"updated_at"?: string
+                    "approval_id": string,"balance_cents": number,"balance_due_date"?: string | null,"commercial_snapshot": NonNullable<Json>,"content_sha256": string,"created_at"?: string,"currency": string,"deposit_cents": number,"deposit_percent": number,"event_id": string,"generated_by_membership_id"?: string | null,"generated_by_user_id": string,"id"?: string,"party_snapshot": NonNullable<Json>,"proposal_id": string,"rendered_content": NonNullable<Json>,"replaces_id"?: string | null,"selection_id": string,"sent_at"?: string | null,"signer_client_id": string,"signer_email": string,"signer_name": string,"status"?: string,"status_changed_at"?: string | null,"template_content_sha256": string,"template_id": string,"template_version_id": string,"tenant_id": string,"total_cents": number,"updated_at"?: string,"void_reason"?: string | null,"voided_at"?: string | null
                   }
                   Update: {
-                    "approval_id"?: string,"balance_cents"?: number,"balance_due_date"?: string | null,"commercial_snapshot"?: NonNullable<Json>,"content_sha256"?: string,"created_at"?: string,"currency"?: string,"deposit_cents"?: number,"deposit_percent"?: number,"event_id"?: string,"generated_by_membership_id"?: string | null,"generated_by_user_id"?: string,"id"?: string,"party_snapshot"?: NonNullable<Json>,"proposal_id"?: string,"rendered_content"?: NonNullable<Json>,"replaces_id"?: string | null,"selection_id"?: string,"signer_client_id"?: string,"signer_email"?: string,"signer_name"?: string,"status"?: string,"status_changed_at"?: string | null,"template_content_sha256"?: string,"template_id"?: string,"template_version_id"?: string,"tenant_id"?: string,"total_cents"?: number,"updated_at"?: string
+                    "approval_id"?: string,"balance_cents"?: number,"balance_due_date"?: string | null,"commercial_snapshot"?: NonNullable<Json>,"content_sha256"?: string,"created_at"?: string,"currency"?: string,"deposit_cents"?: number,"deposit_percent"?: number,"event_id"?: string,"generated_by_membership_id"?: string | null,"generated_by_user_id"?: string,"id"?: string,"party_snapshot"?: NonNullable<Json>,"proposal_id"?: string,"rendered_content"?: NonNullable<Json>,"replaces_id"?: string | null,"selection_id"?: string,"sent_at"?: string | null,"signer_client_id"?: string,"signer_email"?: string,"signer_name"?: string,"status"?: string,"status_changed_at"?: string | null,"template_content_sha256"?: string,"template_id"?: string,"template_version_id"?: string,"tenant_id"?: string,"total_cents"?: number,"updated_at"?: string,"void_reason"?: string | null,"voided_at"?: string | null
                   }
                   Relationships: [
                     {
@@ -826,7 +832,10 @@ isOneToOne: false
             [_ in never]: never
           }
           Functions: {
-            "approve_proposal_selection":
+            "accept_contract_invitation":
+{ Args: { "p_link_id": string,"p_tenant_slug": string }; Returns: Json
+                           },
+"approve_proposal_selection":
 { Args: { "p_proposal_id": string,"p_selection_id": string }; Returns: Json
                            },
 "cancel_email_outbox":
@@ -834,8 +843,14 @@ isOneToOne: false
                            },
 "claim_email_outbox":
 { Args: { "p_limit"?: number,"p_lock_seconds"?: number,"p_tenant_id"?: string }; Returns: {
-              "access_link_id": string,"attempts": number,"entity_id": string,"event_type": string,"id": string,"link_token_hash": string,"link_usable": boolean,"payload": Json,"proposal_active": boolean,"recipient_email": string,"tenant_display_name": string,"tenant_id": string,"tenant_reply_to": string,"tenant_slug": string
+              "access_link_id": string,"attempts": number,"contract_deliverable": boolean,"contract_id": string,"entity_id": string,"event_type": string,"id": string,"link_token_hash": string,"link_usable": boolean,"payload": Json,"proposal_active": boolean,"recipient_email": string,"tenant_display_name": string,"tenant_id": string,"tenant_reply_to": string,"tenant_slug": string
             }[]
+                           },
+"client_contract_view":
+{ Args: { "p_contract_id": string,"p_tenant_slug": string }; Returns: Json
+                           },
+"client_invitation_status":
+{ Args: { "p_link_id": string,"p_tenant_slug": string }; Returns: Json
                            },
 "client_proposal_view":
 { Args: { "p_proposal_id": string,"p_session_hash": string,"p_tenant_slug": string }; Returns: Json
@@ -869,6 +884,11 @@ isOneToOne: false
 "generate_contract_draft":
 { Args: { "p_approval_id": string,"p_balance_due_date"?: string,"p_replace_contract_id"?: string,"p_template_version_id": string }; Returns: Json
                            },
+"my_contracts":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "contract_id": string,"event_date": string,"event_title": string,"sent_at": string,"tenant_display_name": string,"tenant_slug": string
+            }[]
+                           },
 "my_events":
 { Args: Record<PropertyKey, never>; Returns: {
               "event_date": string,"event_id": string,"event_type": string,"lifecycle_status": string,"tenant_display_name": string,"tenant_slug": string,"timezone": string,"title": string,"venue_address": string,"venue_name": string
@@ -892,6 +912,12 @@ isOneToOne: false
 "publish_contract_template_version":
 { Args: { "p_expected_draft_version": number,"p_version_id": string }; Returns: Json
                            },
+"request_contract_sign_in":
+{ Args: { "p_tenant_slug": string,"p_token_hash": string }; Returns: Json
+                           },
+"resend_contract":
+{ Args: { "p_contract_id": string,"p_link_id": string,"p_token_hash": string }; Returns: Json
+                           },
 "retry_email_outbox":
 { Args: { "p_id": string }; Returns: boolean
                            },
@@ -900,6 +926,9 @@ isOneToOne: false
                            },
 "save_contract_template_draft":
 { Args: { "p_expected_draft_version": number,"p_sections": Json,"p_title": string,"p_version_id": string }; Returns: number
+                           },
+"send_contract":
+{ Args: { "p_contract_id": string,"p_link_id": string,"p_token_hash": string }; Returns: Json
                            },
 "send_proposal":
 { Args: { "p_access_link_id": string,"p_expected_draft_version": number,"p_proposal_id": string,"p_token_hash": string }; Returns: Json
@@ -918,6 +947,9 @@ isOneToOne: false
                            },
 "update_proposal_draft":
 { Args: { "p_expected_version": number,"p_offer": Json,"p_proposal_id": string }; Returns: number
+                           },
+"void_contract":
+{ Args: { "p_contract_id": string,"p_reason": string }; Returns: Json
                            }
           }
           Enums: {

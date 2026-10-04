@@ -36,6 +36,7 @@ export async function ContractCard({ staff, slug, eventId, approvalId }: { staff
   const label = (c: NonNullable<typeof contracts>[number]) =>
     `${c.contract_template_versions?.contract_templates?.name ?? "Contract"} v${c.contract_template_versions?.version_number ?? "?"}, generated ${fmt(c.created_at)}`;
   const draft = (contracts ?? []).find((c) => c.status === "draft");
+  const sent = (contracts ?? []).find((c) => c.status === "sent");
 
   return (
     <Card>
@@ -47,7 +48,12 @@ export async function ContractCard({ staff, slug, eventId, approvalId }: { staff
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
-        {approvalId ? (
+        {sent ? (
+          <p role="status" className="text-sm">
+            <Link className="underline" href={`/staff/${slug}/contracts/${sent.id}`}>{label(sent)}</Link> was sent. To change it, void it on its page,
+            then generate a replacement here.
+          </p>
+        ) : approvalId ? (
           <GenerateContractPanel slug={slug} approvalId={approvalId} versions={options} defaultVersionId={latest?.id ?? null} currentDraft={draft ? { id: draft.id, label: label(draft) } : null} />
         ) : (
           <p className="text-sm text-muted-foreground">A contract can be generated once the current proposal is approved.</p>

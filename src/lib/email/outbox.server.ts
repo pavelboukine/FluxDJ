@@ -2,9 +2,9 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { publicEnv } from "@/lib/env";
 import { serverEnv } from "@/lib/env.server";
-import { proposalLinkToken, sha256Hex } from "@/lib/proposals/tokens.server";
+import { contractInviteToken, proposalLinkToken, sha256Hex } from "@/lib/proposals/tokens.server";
 import { configuredTransport, type EmailTransport } from "./transport.server";
-import { renderEmail, type OutboxEventType } from "./templates";
+import { renderContractEmail, renderContractSignInEmail, renderContractVoidedEmail, renderEmail, type OutboxEventType, type RenderedEmail } from "./templates";
 
 export type OutboxRunResult = { claimed: number; sent: number; failed: number; cancelled: number };
 
@@ -20,6 +20,17 @@ export type OutboxRunResult = { claimed: number; sent: number; failed: number; c
  * Proposal emails rebuild their link from the access link id (see
  * tokens.server.ts). They are cancelled instead of sent if the offer was
  * superseded or its link revoked in the meantime.
+ *
+ * Contract emails are rechecked the same way at dispatch (contract still sent
+ * and current, invitation unrevoked and unexpired, event not archived):
+ *  - "contract_sent" rebuilds the invitation link from the link id.
+ *  - "contract_sign_in" asks Supabase Auth for a fresh verification link now,
+ *    so no Auth token is ever stored. New identities get an invite link
+ *    (Supabase creates the unconfirmed user; public signup stays disabled);
+ *    existing identities get a magic link. Each attempt issues a new link and
+ *    Supabase invalidates the previous one, so a retry after a crash can only
+ *    leave the newest email usable. Access is granted only later, after the
+ *    client verifies and confirms (accept_contract_invitation).
  */
 export async function processOutbox(options: { transport?: EmailTransport; tenantId?: string; limit?: number } = {}): Promise<OutboxRunResult> {
   const admin = createAdminClient();
@@ -38,6 +49,11 @@ export async function processOutbox(options: { transport?: EmailTransport; tenan
   for (const row of rows ?? []) {
     result.claimed += 1;
     try {
+      if (row.event_type === "contract_sent" || row.event_type === "contract_sign_in" || row.event_type === "contract_voided") {
+        const outcome = await deliverContractEmail(admin, transport, row, appUrl, fromAddress);
+        result[outcome] += 1;
+        continue;
+      }
       let proposalLink: string | undefined;
       if (row.event_type === "proposal_sent") {
         if (!row.proposal_active || !row.link_usable || !row.access_link_id) {
@@ -84,6 +100,113 @@ export async function processOutbox(options: { transport?: EmailTransport; tenan
     }
   }
   return result;
+}
+
+type ClaimedRow = {
+  id: string;
+  event_type: string;
+  recipient_email: string;
+  payload: unknown;
+  access_link_id: string | null;
+  link_token_hash: string | null;
+  contract_deliverable: boolean;
+  tenant_slug: string;
+  tenant_display_name: string;
+  tenant_reply_to: string | null;
+};
+
+const str = (value: unknown) => (typeof value === "string" ? value : "");
+
+/** Creates a single-use Supabase verification link for the signer, now. Never stored. */
+async function verificationLink(admin: ReturnType<typeof createAdminClient>, email: string, appUrl: string, next: string): Promise<string> {
+  // Invite creates the identity when none exists (or refreshes an unverified
+  // one); an already verified identity is reused through a magic link.
+  let type: "invite" | "email" = "invite";
+  let link = await admin.auth.admin.generateLink({ type: "invite", email });
+  if (link.error && link.error.code === "email_exists") {
+    type = "email";
+    link = await admin.auth.admin.generateLink({ type: "magiclink", email });
+  }
+  const hashed = link.data?.properties?.hashed_token;
+  if (link.error || !hashed) throw new Error(`Could not create a verification link (${link.error?.status ?? "no token"})`);
+  const params = new URLSearchParams({ token_hash: hashed, type, next });
+  return `${appUrl}/auth/confirm?${params.toString()}`;
+}
+
+async function deliverContractEmail(
+  admin: ReturnType<typeof createAdminClient>,
+  transport: EmailTransport,
+  row: ClaimedRow,
+  appUrl: string,
+  fromAddress: string,
+): Promise<"sent" | "cancelled" | "failed"> {
+  if (row.event_type === "contract_voided") {
+    // Sent only while the contract is still void (always, once voided); no link, no reason.
+    if (!row.contract_deliverable) {
+      await admin.rpc("cancel_email_outbox", { p_id: row.id, p_reason: "The contract is not void." });
+      return "cancelled";
+    }
+    const payload = (row.payload ?? {}) as Record<string, unknown>;
+    const email = renderContractVoidedEmail({
+      tenantDisplayName: row.tenant_display_name,
+      legalName: str(payload.legal_name) || row.tenant_display_name,
+      contactEmail: str(payload.contact_email) || null,
+      clientName: str(payload.client_name) || "there",
+      eventTitle: str(payload.event_title) || "your event",
+    });
+    const sent = await transport.send({ fromName: `${row.tenant_display_name} via Flux DJ`, fromAddress, to: row.recipient_email, replyTo: row.tenant_reply_to, ...email });
+    await admin.rpc("complete_email_outbox", { p_id: row.id, p_provider_message_id: sent.id });
+    return "sent";
+  }
+  if (!row.contract_deliverable || !row.access_link_id) {
+    await admin.rpc("cancel_email_outbox", {
+      p_id: row.id,
+      p_reason: "The contract is no longer sent and current, its invitation was revoked or expired, or the event was archived.",
+    });
+    return "cancelled";
+  }
+  const payload = (row.payload ?? {}) as Record<string, unknown>;
+  let email: RenderedEmail;
+  if (row.event_type === "contract_sent") {
+    const token = contractInviteToken(row.access_link_id);
+    if (sha256Hex(token) !== row.link_token_hash) {
+      await admin.rpc("fail_email_outbox", {
+        p_id: row.id,
+        p_error: "The link secret changed after this invitation was created. Resend the contract to issue a new invitation.",
+        p_permanent: true,
+      });
+      return "failed";
+    }
+    email = renderContractEmail({
+      tenantDisplayName: row.tenant_display_name,
+      legalName: str(payload.legal_name) || row.tenant_display_name,
+      contactEmail: str(payload.contact_email) || null,
+      clientName: str(payload.client_name) || "there",
+      eventTitle: str(payload.event_title) || "your event",
+      depositCents: Number(payload.deposit_cents ?? 0),
+      depositPercent: Number(payload.deposit_percent ?? 0),
+      currency: str(payload.currency) || "CAD",
+      invitationLink: `${appUrl}/${row.tenant_slug}/invite#${token}`,
+      expiresAt: str(payload.invitation_expires_at) || null,
+    });
+  } else {
+    const next = `/${row.tenant_slug}/invitations/${row.access_link_id}`;
+    email = renderContractSignInEmail({
+      tenantDisplayName: row.tenant_display_name,
+      clientName: str(payload.client_name) || "there",
+      eventTitle: str(payload.event_title) || "your event",
+      verificationLink: await verificationLink(admin, row.recipient_email, appUrl, next),
+    });
+  }
+  const sent = await transport.send({
+    fromName: `${row.tenant_display_name} via Flux DJ`,
+    fromAddress,
+    to: row.recipient_email,
+    replyTo: row.tenant_reply_to,
+    ...email,
+  });
+  await admin.rpc("complete_email_outbox", { p_id: row.id, p_provider_message_id: sent.id });
+  return "sent";
 }
 
 /** Runs the outbox after the response, swallowing errors (they are recorded per email). */

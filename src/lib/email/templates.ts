@@ -1,6 +1,7 @@
 import { formatCents } from "@/lib/money";
 
 export type OutboxEventType = "proposal_sent" | "proposal_link_opened" | "proposal_submitted" | "proposal_approved";
+export type ContractOutboxEventType = "contract_sent" | "contract_sign_in" | "contract_voided";
 
 export type TemplateInput = {
   eventType: OutboxEventType;
@@ -95,34 +96,76 @@ export function renderEmail(input: TemplateInput): RenderedEmail {
 }
 
 /**
- * Contract email, prepared for the next stage. NOT wired into the outbox:
- * nothing queues it until verified client sign-in and signing links exist.
- * The signing link will carry a bearer token: never log it.
+ * Contract email (outbox event "contract_sent"). The link opens the
+ * invitation page, whose token lives in the URL fragment. The token only lets
+ * the client ask for a verification email; reading needs a verified sign-in.
+ * The link carries a bearer token: never log it.
  */
 export type ContractEmailInput = {
   tenantDisplayName: string;
   legalName: string;
-  contactEmail: string;
+  contactEmail: string | null;
   clientName: string;
   eventTitle: string;
   depositCents: number;
   depositPercent: number;
   currency: string;
-  signingLink: string;
+  invitationLink: string;
+  expiresAt?: string | null;
 };
 
 export function renderContractEmail(input: ContractEmailInput): RenderedEmail {
   const dj = input.tenantDisplayName;
+  const expires = formatDate(input.expiresAt);
   const lines = [
     `Hi ${input.clientName},`,
-    `${dj} has sent your contract for ${input.eventTitle}. Please read it carefully before signing.`,
-    `A deposit of ${formatCents(input.depositCents, input.currency)} (${input.depositPercent}% of the total) is due on signing.`,
-    `You will confirm your email address before you can sign. Please don't forward this link.`,
-    `Questions? Contact ${input.legalName} at ${input.contactEmail}.`,
+    `${dj} has sent your contract for ${input.eventTitle}. Please read it carefully.`,
+    `A deposit of ${formatCents(input.depositCents, input.currency)} (${input.depositPercent}% of the total) will be due on signing.`,
+    "To keep your contract private, you will confirm your email address before you can read it. Online signing is not available yet.",
+    expires ? `This invitation link works until ${expires}. Please don't forward it.` : "Please don't forward this link.",
+    input.contactEmail ? `Questions? Contact ${input.legalName} at ${input.contactEmail}.` : `Questions? Reply to this email.`,
   ];
   return {
     subject: `${dj} sent your contract for ${input.eventTitle}`,
-    text: `${lines.join("\n\n")}\n\nReview and sign: ${input.signingLink}\n`,
-    html: layout(`Your contract from ${dj}`, lines, { label: "Review and sign", href: input.signingLink }),
+    text: `${lines.join("\n\n")}\n\nRead your contract: ${input.invitationLink}\n`,
+    html: layout(`Your contract from ${dj}`, lines, { label: "Read your contract", href: input.invitationLink }),
+  };
+}
+
+/**
+ * Verification email (outbox event "contract_sign_in"). The Supabase
+ * verification link is generated at delivery time and never stored. It opens
+ * the explicit "Sign in" confirmation page, so scanners cannot use it.
+ */
+export function renderContractSignInEmail(input: { tenantDisplayName: string; clientName: string; eventTitle: string; verificationLink: string }): RenderedEmail {
+  const lines = [
+    `Hi ${input.clientName},`,
+    `Use this link to confirm your email address and open your contract from ${input.tenantDisplayName} for ${input.eventTitle}.`,
+    "It works once and expires in one hour. You can open it on any device. If you didn't ask for it, you can ignore this email.",
+  ];
+  return {
+    subject: `Confirm your email to read your contract from ${input.tenantDisplayName}`,
+    text: `${lines.join("\n\n")}\n\nConfirm and continue: ${input.verificationLink}\n`,
+    html: layout("Confirm it's you", lines, { label: "Confirm and continue", href: input.verificationLink }),
+  };
+}
+
+/**
+ * Void notice (outbox event "contract_voided"). Says the agreement document is
+ * no longer available and the DJ will follow up. It deliberately carries no
+ * link, no internal void reason, and nothing suggesting the event is called off.
+ */
+export function renderContractVoidedEmail(input: { tenantDisplayName: string; legalName: string; contactEmail: string | null; clientName: string; eventTitle: string }): RenderedEmail {
+  const dj = input.tenantDisplayName;
+  const lines = [
+    `Hi ${input.clientName},`,
+    `The contract ${dj} sent you for ${input.eventTitle} has been withdrawn and is no longer available to read or sign.`,
+    `This concerns the contract document only. ${dj} will follow up with you about next steps.`,
+    input.contactEmail ? `Questions? Contact ${input.legalName} at ${input.contactEmail}.` : "Questions? Reply to this email.",
+  ];
+  return {
+    subject: `Your contract from ${dj} for ${input.eventTitle} is no longer available`,
+    text: `${lines.join("\n\n")}\n`,
+    html: layout("Contract no longer available", lines),
   };
 }

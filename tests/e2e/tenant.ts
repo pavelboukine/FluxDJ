@@ -226,3 +226,13 @@ export async function sendProposalFromEventPage(staff: Page, tenant: TestTenant,
   await expect(staff.getByText("Sent", { exact: true })).toBeVisible();
   return url;
 }
+
+/** Publishes a contract template version directly (the template editor is covered by contract-flow.spec.ts). */
+export async function publishContractTemplate(tenant: TestTenant, name: string, title: string, sections: { heading: string; body: string }[]): Promise<string> {
+  const templateId = randomUUID();
+  const versionId = randomUUID();
+  await must(admin.from("contract_templates").insert({ id: templateId, tenant_id: tenant.id, name }));
+  await must(admin.from("contract_template_versions").insert({ id: versionId, tenant_id: tenant.id, template_id: templateId, version_number: 1, title, sections }));
+  await must(admin.from("contract_template_versions").update({ published_at: new Date().toISOString() }).eq("id", versionId));
+  return versionId;
+}

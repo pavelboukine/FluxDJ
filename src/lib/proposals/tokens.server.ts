@@ -20,6 +20,16 @@ export function proposalLinkToken(linkId: string): string {
   return createHmac("sha256", serverEnv().PROPOSAL_LINK_SECRET).update(`flux:proposal-link:v1:${linkId}`).digest("base64url");
 }
 
+/**
+ * Contract invitation tokens use the same derivation with a separate domain
+ * prefix, so a proposal token can never be used as an invitation and vice
+ * versa. An invitation token only lets the frozen signer request a
+ * verification email; it never signs anyone in.
+ */
+export function contractInviteToken(linkId: string): string {
+  return createHmac("sha256", serverEnv().PROPOSAL_LINK_SECRET).update(`flux:contract-invite:v1:${linkId}`).digest("base64url");
+}
+
 export function sha256Hex(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }

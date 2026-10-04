@@ -45,7 +45,7 @@ async function signIn(page: Page, email: string) {
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
   await page.getByRole("button", { name: "Email me a sign-in link" }).click();
-  await expect(page.getByRole("status")).toContainText("If that email belongs to a staff account");
+  await expect(page.getByRole("status")).toContainText("If that email has a Flux DJ account");
   await page.goto(await latestMagicLink(email, started));
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL(`**/staff/${tenant.slug}`);
@@ -80,7 +80,7 @@ test.describe.serial("staff interface", () => {
     const stranger = `nobody-${run}@example.test`;
     await anonymous.getByLabel("Email").fill(stranger);
     await anonymous.getByRole("button", { name: "Email me a sign-in link" }).click();
-    await expect(anonymous.getByRole("status")).toContainText("If that email belongs to a staff account");
+    await expect(anonymous.getByRole("status")).toContainText("If that email has a Flux DJ account");
     const res = await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:"${stranger}"`)}`);
     expect(((await res.json()) as { messages: unknown[] }).messages).toHaveLength(0);
     const { data } = await admin.auth.admin.listUsers();

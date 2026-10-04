@@ -1,7 +1,7 @@
 /**
  * Business settings -> contract generation -> review for send, in a real
  * browser against local Supabase, inside a dedicated test tenant.
- * Sending itself must stay unavailable in this stage.
+ * Sending is covered by contract-send-flow.spec.ts; here a stale review blocks it.
  */
 import { randomUUID } from "node:crypto";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
@@ -135,7 +135,7 @@ test.describe.serial("business settings, contract generation and review", () => 
     });
   });
 
-  test("review shows exactly what would be sent, and the final Send stays unavailable", async () => {
+  test("review shows exactly what would be sent; a stale review blocks sending", async () => {
     await owner.getByRole("link", { name: "Review and send…" }).click();
     await owner.waitForURL(/\/review$/);
     await expect(owner.getByText("Ready to send")).toBeVisible();
@@ -151,9 +151,7 @@ test.describe.serial("business settings, contract generation and review", () => 
     await expect(article).toContainText("Deposit (30%):");
     await expect(article).toContainText("due August 1, 2027");
 
-    const send = owner.getByRole("button", { name: "Send contract" });
-    await expect(send).toBeDisabled();
-    await expect(owner.getByText(/Sending contracts is not available yet/)).toBeVisible();
+    await expect(owner.getByRole("button", { name: "Send contract…" })).toBeEnabled();
 
     // A settings change after generation makes the review stale until regenerated.
     await owner.goto(`/staff/${tenant.slug}/settings`);
@@ -165,7 +163,8 @@ test.describe.serial("business settings, contract generation and review", () => 
     await expect(owner.getByRole("alert").filter({ hasText: "can't be sent" })).toContainText(
       "The deposit setting is now 40%, but this contract uses 30%. Regenerate the contract to use the current setting.",
     );
-    await expect(owner.getByRole("button", { name: "Send contract" })).toBeDisabled();
+    await expect(owner.getByRole("button", { name: "Send contract…" })).toBeDisabled();
+    await expect(owner.getByText("Fix the problems above before sending.")).toBeVisible();
 
     const { data: contract } = await admin.from("contracts").select("status, deposit_percent").eq("id", contractId).single();
     expect(contract).toEqual({ status: "draft", deposit_percent: 30 });

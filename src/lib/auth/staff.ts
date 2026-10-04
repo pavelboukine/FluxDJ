@@ -23,7 +23,16 @@ export const requireStaff = cache(async (tenantSlug: string) => {
     .select("id, slug, display_name, business_name, currency, timezone, tax_categories, archived_at")
     .eq("slug", tenantSlug)
     .maybeSingle();
-  if (!tenant) notFound();
+  if (!tenant) {
+    // Signed in, but with no staff role anywhere: usually a client sign-in
+    // link was opened in this browser and replaced the staff session (one
+    // Supabase session per browser). Explain instead of a bare 404. This
+    // depends only on the user's own memberships, never on the slug, so it
+    // reveals nothing about other tenants; staff of other tenants still get 404.
+    const { count } = await supabase.from("tenant_memberships").select("id", { count: "exact", head: true }).eq("user_id", user.id);
+    if (!count) redirect("/login?notice=no-staff-access");
+    notFound();
+  }
   const { data: membership } = await supabase
     .from("tenant_memberships")
     .select("id, role")

@@ -238,6 +238,8 @@ in every relevant relationship.
 | `08_catalog_integrity` | Cross-tenant composite keys for package contents, rules, templates and media; the default package must belong to its template; at most three packages per template; immutable keys; rule conditions limited to equality and membership, and checked against the question's options; media type, extension and path checks |
 | `12_send_submit_approve` | Send authorization, stale versions and missing contacts; staff can't see token hashes or sessions. Link exchange across tenants, unknown, revoked and superseded links. Safe client view, draft conflicts and invalid input. Submissions with omitted required gear, out-of-range quantities, missing answers or tampered prices, stale tabs, idempotency, approval, revision, expiry while open, the outbox and rate limits |
 | `15_event_archiving` | Only staff of the event's tenant can archive or unarchive, never directly. Links and sessions are revoked and pending client emails cancelled, while history and lifecycle status stay. Viewing, saving, submitting, link exchange, sending, approval and contract generation are blocked while archived. Unarchiving is audited and doesn't resurrect links |
+| `17_contract_sending_client_access` | Send authorization, eligibility, idempotency and frozen content. Only `send_contract` can send, and generation is blocked while a contract is sent. The invitation token is hashed and scoped, and only asks for verification emails, rate limited. Wrong, unverified and multi-tenant accounts. Idempotent acceptance with no staff membership. Safe DTO fields, no leakage, client and anon reads. Dispatch rechecks. Resend, void and replacement with access kept. Archive and unarchive. Revised offers void sent contracts. Expired invitations |
+| `18_contract_void_notice` | One notice per voided sent contract, none on repeats. Frozen signer, no link, no reason. Cancelled invitation emails. Memberships, identities, access and other events untouched. Deliverable at dispatch. Archiving neither sends nor cancels it. Revised-offer voids notify. Unsent drafts never do |
 | `16_business_settings_send_review` | Owner-only settings for staff, other tenants, clients and anon. Validation and 0% and 100% boundaries. Half-up deposit rounding, and equality with the original 50% formula. Existing contracts are byte-for-byte unchanged with valid hashes. Explicit regeneration freezes new terms and identity. New placeholders and missing values. Every review rejection reason. Sending stays impossible |
 | `13_contract_templates` | Templates are visible and writable only by staff of their tenant; clients and anon get nothing. Unknown, malformed or expression-like placeholders are rejected, also by a CHECK constraint. Optimistic draft versions, publishing, and published versions that no role can edit, unpublish or delete. Editing opens one new draft version |
 | `14_contract_generation` | Deposit rounding. Authorization for other tenants, clients, strangers and anon. Unpublished and other tenants' template versions. Missing values listed with what to complete, and no signer. Amounts and lines from the approved selection, the documented hash, no booking and no access. Repeat clicks, explicit replacement and conflicts. Snapshot independence after client, event, business, tax, catalog and template changes. Frozen rows, cross-tenant foreign keys with the guard trigger disabled, literal rendering of client values, and superseded approvals |
@@ -526,6 +528,118 @@ capped at 1 MB and hosting platforms limit request bodies.
   hosting. `EMAIL_TRANSPORT=resend` with `RESEND_API_KEY`. Resend isn't used
   locally or in tests.
 
+### Contract sending and verified client access
+
+Clients can read a sent contract. They cannot sign it yet.
+
+- **Send.** **Send contract…** on the review screen runs `send_contract` in
+  one transaction:
+  - it locks the event, then the proposal, then the contract
+  - it re-runs `private.contract_send_problems`
+  - it marks the contract sent, with `sent_at` stamped once by the database
+  - it creates an invitation (`access_links` with purpose `contract`) that
+    expires after 14 days and is scoped to the tenant, event, contract and
+    frozen signer
+  - it queues the contract email with the dedup key `contract_sent:{link}`
+    and writes an audit record
+
+  Repeated or concurrent sends return the existing result. Content and
+  hashes never change, and the event stays awaiting signature. Only this
+  function can move a contract to `sent`; the transition trigger requires a
+  marker that only it sets.
+- **Invitation token.** It is `HMAC(PROPOSAL_LINK_SECRET,
+  "flux:contract-invite:v1:" + link id)`. Only its SHA-256 is stored, and the
+  worker re-derives it at delivery, as proposal links do. The email link is
+  `/{tenant}/invite#token`: the token stays in the fragment, out of server
+  logs, and is removed from the address bar. The token is not proof of
+  identity. Its only power is asking for a verification email to the frozen
+  signer address, rate-limited per IP and per invitation, three every 15
+  minutes. That first step needs JavaScript.
+- **Verification email.** The `contract_sign_in` outbox email gets its
+  Supabase link from the worker at delivery time, through the Auth admin
+  API:
+  - `invite` when the address has no verified identity. Trusted code creates
+    the identity, and public signup stays disabled.
+  - `magiclink` when a verified identity exists, for example a client of
+    another DJ or a staff user.
+
+  The link goes to `/auth/confirm` with `type` and `next`. Both are
+  allow-listed, and `next` may only be an invitation, contract, `/my` or
+  `/staff` path. Verification needs the explicit **Sign in** POST, which
+  works without JavaScript and sends a real Origin (`strict-origin`). It
+  works in any browser or device.
+- **Acceptance.** `/{tenant}/invitations/{id}` shows a page, and only its
+  **Open my contract** POST runs `accept_contract_invitation`. That
+  function:
+  - locks the event and rechecks the invitation, contract and event
+  - requires the session's verified email to equal the frozen signer email
+  - grants `event_access` idempotently, to the exact tenant, event and
+    signer client
+
+  A wrong account is shown only that the invitation belongs to a masked
+  other address. No client data is accepted from the browser.
+- **Reading.** `/{tenant}/contracts/{id}` calls `client_contract_view`, a
+  safe DTO of frozen data. It rechecks on every read:
+  - the verified identity
+  - active event access for the signer client
+  - the signer email
+  - that the contract is sent, its approval current, and the event and
+    tenant not archived
+
+  `/my` lists readable contracts. Returning clients sign in at `/login`
+  with the same magic-link form and land on `/my`. Signing in never grants
+  planning access or confirms a booking.
+- **Resend** (`resend_contract`). It revokes earlier invitations, cancels
+  their pending emails, issues a fresh invitation and email, and is audited.
+  `sent_at`, content, hashes and granted access are kept. It is limited to
+  once every 2 minutes and 10 times a day.
+- **Void** (`void_contract`, with a reason). It works on sent, unsigned
+  contracts only. Invitations are revoked and pending contract emails
+  cancelled. Clients can no longer read the contract, while event access,
+  other events and identities are untouched. A replacement can then be
+  generated; generation is refused while a contract is sent.
+- **Revised offers and archiving.** A revised offer voids the sent contract
+  automatically. Archiving revokes invitations and cancels contract emails,
+  and unarchiving revives neither.
+- **Withdrawn notice** (`contract_voided`). Every void of a sent contract,
+  whether by staff or by a revised offer, queues one email to the frozen
+  signer in the same transaction, deduplicated per contract. It says the
+  contract is no longer available and the DJ will follow up. It carries no
+  link and no internal reason, and doesn't suggest the event is cancelled.
+  Archiving never queues or cancels it.
+- **One sign-in per browser.** Supabase keeps a single session cookie, so
+  opening a client sign-in link in a browser where staff are signed in
+  replaces the staff session. Staff pages and actions then redirect to
+  `/login?notice=no-staff-access`, which names the signed-in account and
+  explains this, instead of a bare 404. Nothing is changed. The redirect
+  happens only when the account has no staff role anywhere, so it reveals
+  nothing about tenants; staff of another tenant still get 404. For manual
+  testing, open client links in a private window or another browser.
+
+**Ordering and recovery.** Postgres commits business state first: the
+contract, invitation, queued email and audit record. Email delivery and
+Supabase Auth calls happen afterwards in the worker, through `after()` or
+`pnpm outbox:work`, and are never inside a transaction.
+- **Dispatch rechecks.** Before sending, the worker rechecks that the
+  contract is still sent and current, the invitation unrevoked and
+  unexpired, and the event unarchived. Otherwise it cancels the email.
+- **Fresh links on every attempt.** Each `contract_sign_in` attempt creates
+  a new Supabase link, which invalidates the previous one. A crash after
+  sending but before recording can therefore resend one email, and only the
+  newest link works. Supabase verification links expire after one hour, and
+  invitations after 14 days.
+- **No tokens stored.** Neither the invitation token nor any Supabase token
+  is written to the outbox, logs or error text.
+- **Access is never premature.** It is granted only by the verified POST.
+- **Recovering a stuck invitation.** If a verification email is lost or
+  expires, the client asks for another from the invitation page. If the
+  invitation is lost or expires, staff resend. Failed emails appear under
+  **Emails** with **Retry**.
+
+No new environment variables are needed. Invitations reuse
+`PROPOSAL_LINK_SECRET` with their own domain prefix, and rotating it fails
+undelivered contract emails visibly.
+
 ### Business settings and contract send review
 
 - **Owner-only settings.** The owner manages `/staff/{tenant}/settings`:
@@ -561,10 +675,8 @@ capped at 1 MB and hosting platforms limit request bodies.
     not the current draft, superseded approval, changed or missing signer,
     incomplete settings, or business details or deposit changed since
     generation
-- **Sending is not built.** **Send contract** is disabled until verified
-  client onboarding exists. No contract is marked sent, and no link or email
-  is created. `renderContractEmail` is prepared and unit-tested, but nothing
-  queues it.
+- **Sending.** **Send contract…** sends from the review screen once every
+  check passes. See "Contract sending and verified client access".
 
 ### Archiving events
 

@@ -13,6 +13,8 @@ export default async function StaffHome() {
   const tenants = (memberships ?? []).flatMap((m) => (m.tenants ? [{ ...m.tenants, role: m.role }] : []));
 
   if (tenants.length === 1) redirect(`/staff/${tenants[0].slug}`);
+  // Signed in without any staff role: a client. Their home lists what they can read.
+  if (tenants.length === 0) redirect("/my");
 
   return (
     <main className="mx-auto grid w-full max-w-md gap-4 px-4 py-12">

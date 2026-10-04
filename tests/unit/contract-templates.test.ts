@@ -75,7 +75,7 @@ describe("contract error messages", () => {
   });
 });
 
-describe("contract email (prepared for the sending stage)", () => {
+describe("contract emails", () => {
   const input = {
     tenantDisplayName: "BOUPROD",
     legalName: "BOUPROD Legal Inc.",
@@ -85,30 +85,34 @@ describe("contract email (prepared for the sending stage)", () => {
     depositCents: 75_884,
     depositPercent: 30,
     currency: "CAD",
-    signingLink: "http://127.0.0.1:3000/bouprod/c#TOKEN",
+    invitationLink: "http://127.0.0.1:3000/bouprod/invite#TOKEN",
+    expiresAt: "2027-01-15T12:00:00Z",
   };
 
-  it("states the deposit, the business contact and that email verification comes before signing", async () => {
+  it("states the deposit, the business contact, verification first and that signing is not available yet", async () => {
     const { renderContractEmail } = await import("@/lib/email/templates");
     const email = renderContractEmail(input);
     expect(email.subject).toBe("BOUPROD sent your contract for Wedding");
-    expect(email.text).toContain("A deposit of $758.84 (30% of the total) is due on signing.");
+    expect(email.text).toContain("A deposit of $758.84 (30% of the total) will be due on signing.");
     expect(email.text).toContain("Contact BOUPROD Legal Inc. at legal@bouprod.test.");
-    expect(email.text).toContain("You will confirm your email address before you can sign.");
-    expect(email.text).toContain("Review and sign: http://127.0.0.1:3000/bouprod/c#TOKEN");
+    expect(email.text).toContain("you will confirm your email address before you can read it. Online signing is not available yet.");
+    expect(email.text).toContain("This invitation link works until January 15, 2027.");
+    expect(email.text).toContain("Read your contract: http://127.0.0.1:3000/bouprod/invite#TOKEN");
   });
 
   it("escapes client-provided values in HTML", async () => {
-    const { renderContractEmail } = await import("@/lib/email/templates");
-    const { html } = renderContractEmail(input);
-    expect(html).toContain("Robin &lt;b&gt;&amp;&lt;/b&gt; Kai");
-    expect(html).not.toContain("<b>&</b>");
+    const { renderContractEmail, renderContractSignInEmail } = await import("@/lib/email/templates");
+    expect(renderContractEmail(input).html).toContain("Robin &lt;b&gt;&amp;&lt;/b&gt; Kai");
+    const signIn = renderContractSignInEmail({ tenantDisplayName: "BOUPROD", clientName: "<i>x</i>", eventTitle: "Wedding", verificationLink: "http://127.0.0.1:3000/auth/confirm?token_hash=abc&type=invite&next=%2Fx" });
+    expect(signIn.html).not.toContain("<i>x</i>");
+    expect(signIn.html).toContain("token_hash=abc&amp;type=invite");
   });
 
-  it("is not an outbox event type, so nothing can queue it yet", async () => {
-    const source = (await import("node:fs")).readFileSync("src/lib/email/templates.ts", "utf8");
-    const union = /export type OutboxEventType = ([^;]+);/.exec(source)![1];
-    expect(union).not.toMatch(/contract/);
+  it("explains the one-hour, any-device verification email", async () => {
+    const { renderContractSignInEmail } = await import("@/lib/email/templates");
+    const email = renderContractSignInEmail({ tenantDisplayName: "BOUPROD", clientName: "Robin", eventTitle: "Wedding", verificationLink: "http://x/auth/confirm?token_hash=t" });
+    expect(email.subject).toBe("Confirm your email to read your contract from BOUPROD");
+    expect(email.text).toContain("It works once and expires in one hour. You can open it on any device.");
   });
 });
 
@@ -124,5 +128,19 @@ describe("settings error messages", () => {
     expect(describeDbError({ code: "22023", message: "settings_invalid: the deposit must be a whole percentage from 0 to 100" })).toBe(
       "Check the settings: the deposit must be a whole percentage from 0 to 100.",
     );
+  });
+});
+
+describe("contract withdrawn notice", () => {
+  it("says the contract is no longer available and the DJ will follow up, with no link or cancellation wording", async () => {
+    const { renderContractVoidedEmail } = await import("@/lib/email/templates");
+    const email = renderContractVoidedEmail({ tenantDisplayName: "BOUPROD", legalName: "BOUPROD Legal Inc.", contactEmail: "legal@bouprod.test", clientName: "<b>Robin</b>", eventTitle: "Wedding" });
+    expect(email.subject).toBe("Your contract from BOUPROD for Wedding is no longer available");
+    expect(email.text).toContain("has been withdrawn and is no longer available to read or sign.");
+    expect(email.text).toContain("BOUPROD will follow up with you about next steps.");
+    expect(email.text).not.toMatch(/https?:\/\//);
+    expect(email.text).not.toMatch(/cancel/i);
+    expect(email.html).not.toContain("<a ");
+    expect(email.html).toContain("&lt;b&gt;Robin&lt;/b&gt;");
   });
 });

@@ -159,8 +159,8 @@ select results_eq(
   $$ select (r ->> 'eligible')::boolean, (r ->> 'can_send')::boolean, r -> 'signer' ->> 'email', r -> 'business' ->> 'legal_name',
             (r ->> 'deposit_percent')::int, (r ->> 'deposit_cents')::bigint, (r ->> 'balance_cents')::bigint
      from (select public.review_contract_for_send(current_setting('tests.c100')::uuid) r) x $$,
-  $$ values (true, false, 'client-x@example.test'::text, 'BOUPROD Legal Inc.'::text, 100, 252945::bigint, 0::bigint) $$,
-  'staff review a current draft: eligible, with the frozen signer, identity and terms; sending itself is unavailable');
+  $$ values (true, true, 'client-x@example.test'::text, 'BOUPROD Legal Inc.'::text, 100, 252945::bigint, 0::bigint) $$,
+  'staff review a current draft: eligible and sendable, with the frozen signer, identity and terms');
 select is(tests.problems('tests.c_old'), array['business_identity_missing', 'deposit_changed', 'not_current_draft']::text[],
   'a replaced draft from before the settings existed is rejected with every reason');
 reset role;
@@ -223,8 +223,8 @@ select throws_ok($$ update public.contracts set status = 'sent' where id = curre
   'the database still refuses to mark any contract sent');
 select is((select count(*)::int from public.email_outbox where entity_id in (select id from public.contracts where tenant_id = tests.id('tenant_a'))), 0,
   'no contract email is queued');
-select is((select count(*)::int from public.access_links where purpose <> 'proposal'), 0, 'no signing links exist');
-select ok(not exists (select 1 from pg_proc where proname in ('send_contract', 'contract_send')), 'there is no send function yet');
+select is((select count(*)::int from public.access_links where purpose <> 'proposal' and tenant_id = tests.id('tenant_a')), 0, 'no signing links exist');
+select ok(not has_function_privilege('anon', 'public.send_contract(uuid, uuid, text)', 'execute'), 'anon cannot send contracts');
 select is((select count(*)::int from public.contract_template_versions where tenant_id = tests.id('tenant_a') and published_at is null), 0,
   'published versions were untouched by the work above');
 

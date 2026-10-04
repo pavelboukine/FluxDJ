@@ -1,10 +1,14 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { processOutboxQuietly } from "@/lib/email/outbox.server";
+import { contractInviteToken, sha256Hex } from "@/lib/proposals/tokens.server";
 import { requireStaff } from "@/lib/auth/staff";
 import type { MissingItem } from "@/lib/contracts/content";
 import { describeDbError } from "@/lib/db-errors";
-import { UUID_RE } from "@/lib/forms";
+import { fail, ok, UUID_RE, type ActionState } from "@/lib/forms";
 
 export type GenerateResult =
   | { status: "created" | "replayed"; contractId: string }
@@ -54,4 +58,57 @@ export async function generateContract(
     default:
       return { status: "error", message: "Something went wrong. Try again." };
   }
+}
+
+/**
+ * Sends the contract in one database transaction (send_contract): it locks the
+ * event, proposal and contract, re-runs the eligibility checks, marks the
+ * contract sent, creates the invitation and queues the email. The invitation
+ * token is derived from a fresh link id; only its hash goes to the database,
+ * and the email worker re-derives it at delivery.
+ */
+export async function sendContract(slug: string, contractId: string): Promise<ActionState> {
+  const { supabase, tenant } = await requireStaff(slug);
+  if (!UUID_RE.test(contractId)) return fail("Reload the page and try again.");
+  const linkId = randomUUID();
+  const { data, error } = await supabase.rpc("send_contract", {
+    p_contract_id: contractId,
+    p_link_id: linkId,
+    p_token_hash: sha256Hex(contractInviteToken(linkId)),
+  });
+  if (error) return fail(describeDbError(error));
+  after(() => processOutboxQuietly(tenant.id));
+  revalidatePath(`/staff/${slug}`, "layout");
+  const result = data as { recipient_email?: string; replayed?: boolean };
+  return ok(result.replayed ? `Already sent to ${result.recipient_email}.` : `Sent to ${result.recipient_email}.`);
+}
+
+/** Issues a fresh invitation for an unchanged sent contract and revokes the previous one. */
+export async function resendContract(slug: string, contractId: string): Promise<ActionState> {
+  const { supabase, tenant } = await requireStaff(slug);
+  if (!UUID_RE.test(contractId)) return fail("Reload the page and try again.");
+  const linkId = randomUUID();
+  const { data, error } = await supabase.rpc("resend_contract", {
+    p_contract_id: contractId,
+    p_link_id: linkId,
+    p_token_hash: sha256Hex(contractInviteToken(linkId)),
+  });
+  if (error) return fail(describeDbError(error));
+  after(() => processOutboxQuietly(tenant.id));
+  revalidatePath(`/staff/${slug}`, "layout");
+  return ok(`Resent to ${(data as { recipient_email?: string }).recipient_email}. The previous invitation link no longer works.`);
+}
+
+/** Voids an unsigned sent contract. Its content and history are kept; the client can no longer read it. */
+export async function voidContract(slug: string, contractId: string, _state: ActionState, form: FormData): Promise<ActionState> {
+  const { supabase, tenant } = await requireStaff(slug);
+  if (!UUID_RE.test(contractId)) return fail("Reload the page and try again.");
+  const reason = String(form.get("reason") ?? "").trim();
+  if (reason.length < 1 || reason.length > 500) return fail("Give a reason (up to 500 characters).");
+  const { error } = await supabase.rpc("void_contract", { p_contract_id: contractId, p_reason: reason });
+  if (error) return fail(describeDbError(error));
+  // Deliver the queued "contract withdrawn" notice now (the worker also retries it).
+  after(() => processOutboxQuietly(tenant.id));
+  revalidatePath(`/staff/${slug}`, "layout");
+  return ok("Contract voided. You can now generate a replacement from the current approval.");
 }

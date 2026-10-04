@@ -8,6 +8,9 @@ import { processQueue, retryEmail } from "./actions";
 
 const LABEL: Record<string, string> = {
   proposal_sent: "Proposal",
+  contract_sent: "Contract",
+  contract_sign_in: "Contract sign-in link",
+  contract_voided: "Contract withdrawn notice",
   proposal_link_opened: "Link opened (best effort)",
   proposal_submitted: "Submitted for review",
   proposal_approved: "Approval acknowledgement",

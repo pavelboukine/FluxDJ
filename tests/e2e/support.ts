@@ -35,7 +35,7 @@ export async function signInStaff(page: Page, email: string) {
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
   await page.getByRole("button", { name: "Email me a sign-in link" }).click();
-  await expect(page.getByRole("status")).toContainText("If that email belongs to a staff account");
+  await expect(page.getByRole("status")).toContainText("If that email has a Flux DJ account");
   const message = await waitForEmail(email, { after: started, subject: /sign-in link/ });
   const href = /href="([^"]+\/auth\/confirm[^"]+)"/.exec(message.html)![1].replaceAll("&amp;", "&");
   await page.goto(href);

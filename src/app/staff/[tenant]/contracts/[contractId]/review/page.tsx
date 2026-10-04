@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/app/fields";
 import { ContractDocument } from "@/components/contract/contract-document";
@@ -10,12 +9,15 @@ import { renderedContentSchema } from "@/lib/contracts/content";
 import { describeDbError } from "@/lib/db-errors";
 import { UUID_RE } from "@/lib/forms";
 import { formatCents } from "@/lib/money";
+import { SendPanel } from "./send-panel";
 
 type Review = {
+  status: string;
+  sent_at: string | null;
   eligible: boolean;
   problems: { code: string; message: string }[];
   can_send: boolean;
-  send_unavailable_reason: string;
+  send_unavailable_reason: string | null;
   signer: { name: string; email: string };
   business: { legal_name?: string | null; name?: string; address?: string | null; contact_email?: string | null; display_name?: string };
   deposit_percent: number;
@@ -57,7 +59,7 @@ export default async function ReviewContract({ params }: PageProps<"/staff/[tena
       <PageHeader
         title="Review contract before sending"
         description={<><Link className="underline" href={`/staff/${slug}/contracts/${contract.id}`}>Back to the contract</Link> · {contract.events?.title}</>}
-        actions={review.eligible ? <Badge variant="secondary">Ready to send</Badge> : <Badge variant="outline">Not ready</Badge>}
+        actions={review.status === "sent" ? <Badge variant="secondary">Sent</Badge> : review.eligible ? <Badge variant="secondary">Ready to send</Badge> : <Badge variant="outline">Not ready</Badge>}
       />
 
       {review.problems.length > 0 ? (
@@ -117,14 +119,8 @@ export default async function ReviewContract({ params }: PageProps<"/staff/[tena
           </Card>
           <Card>
             <CardHeader><CardTitle>Send</CardTitle></CardHeader>
-            <CardContent className="grid gap-3 text-sm">
-              <p role="status" className="text-muted-foreground">{review.send_unavailable_reason}</p>
-              <div>
-                <Button type="button" disabled aria-describedby="send-unavailable">Send contract</Button>
-              </div>
-              <p id="send-unavailable" className="text-xs text-muted-foreground">
-                Nothing is sent from this page. The contract stays a draft and no link or email is created.
-              </p>
+            <CardContent>
+              <SendPanel slug={slug} contractId={contract.id} canSend={review.can_send} reason={review.send_unavailable_reason} recipient={review.signer.email} />
             </CardContent>
           </Card>
         </div>

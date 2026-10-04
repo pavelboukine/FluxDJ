@@ -9,6 +9,7 @@ import { requireStaff } from "@/lib/auth/staff";
 import { CONTRACT_STATUS_LABEL, renderedContentSchema } from "@/lib/contracts/content";
 import { UUID_RE } from "@/lib/forms";
 import { formatCents } from "@/lib/money";
+import { SentControls } from "./sent-controls";
 
 const fmt = (iso: string) => new Intl.DateTimeFormat("en-CA", { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso));
 
@@ -20,7 +21,7 @@ export default async function ContractPreview({ params }: PageProps<"/staff/[ten
   const { data: contract } = await supabase
     .from("contracts")
     .select(
-      "id, status, created_at, event_id, proposal_id, replaces_id, signer_name, signer_email, currency, total_cents, deposit_percent, deposit_cents, balance_cents, balance_due_date, rendered_content, content_sha256, events!contracts_event_fk(title, event_date), proposals!contracts_proposal_fk(revision), proposal_approvals!contracts_approval_fk(approved_at), contract_template_versions!contracts_template_version_fk(version_number, contract_templates!contract_template_versions_template_fk(id, name))",
+      "id, status, created_at, sent_at, voided_at, void_reason, event_id, proposal_id, replaces_id, signer_name, signer_email, currency, total_cents, deposit_percent, deposit_cents, balance_cents, balance_due_date, rendered_content, content_sha256, events!contracts_event_fk(title, event_date), proposals!contracts_proposal_fk(revision), proposal_approvals!contracts_approval_fk(approved_at), contract_template_versions!contracts_template_version_fk(version_number, contract_templates!contract_template_versions_template_fk(id, name))",
     )
     .eq("id", contractId)
     .eq("tenant_id", tenant.id)
@@ -34,6 +35,16 @@ export default async function ContractPreview({ params }: PageProps<"/staff/[ten
   const money = (cents: number) => formatCents(cents, contract.currency);
   const template = contract.contract_template_versions;
   const isDraft = contract.status === "draft";
+  const isSent = contract.status === "sent";
+  const { data: invitation } = await supabase
+    .from("access_links")
+    .select("id, created_at, expires_at, revoked_at, consumed_at")
+    .eq("tenant_id", tenant.id)
+    .eq("contract_id", contract.id)
+    .eq("purpose", "contract")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
   return (
     <>
@@ -50,7 +61,21 @@ export default async function ContractPreview({ params }: PageProps<"/staff/[ten
         }
       />
 
-      {isDraft ? (
+      {isSent ? (
+        <div role="status" className="grid gap-1 rounded-lg border border-emerald-600/40 bg-emerald-600/5 p-3 text-sm">
+          <p className="font-medium">Sent {fmt(contract.sent_at!)} to {contract.signer_name} ({contract.signer_email}). Not signed; signing isn&apos;t available yet.</p>
+          {invitation ? (
+            <p className="text-muted-foreground">
+              Latest invitation: sent {fmt(invitation.created_at)}, {invitation.revoked_at ? "revoked" : `valid until ${fmt(invitation.expires_at)}`}.
+              {invitation.consumed_at ? ` The client confirmed their email and opened it ${fmt(invitation.consumed_at)}.` : " The client hasn't opened it with a confirmed email yet."}
+            </p>
+          ) : null}
+        </div>
+      ) : contract.status === "void" ? (
+        <p role="alert" className="rounded-lg border border-destructive/50 bg-destructive/5 p-3 text-sm">
+          Voided {fmt(contract.voided_at!)}: {contract.void_reason} The client can no longer read it. It was first sent {fmt(contract.sent_at!)}.
+        </p>
+      ) : isDraft ? (
         <p role="status" className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
           Draft preview for staff. It has not been sent, the client cannot see it, and signing is not available yet.
         </p>
@@ -72,6 +97,12 @@ export default async function ContractPreview({ params }: PageProps<"/staff/[ten
         </Card>
 
         <div className="grid content-start gap-6">
+          {isSent ? (
+            <Card>
+              <CardHeader><CardTitle>Sent contract</CardTitle></CardHeader>
+              <CardContent><SentControls slug={slug} contractId={contract.id} /></CardContent>
+            </Card>
+          ) : null}
           <Card>
             <CardHeader><CardTitle>Payment terms</CardTitle></CardHeader>
             <CardContent>

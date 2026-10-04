@@ -10,6 +10,8 @@ export function describeDbError(error: { code?: string; message?: string } | nul
   if (archived) return `${archived[1]}.`;
   const template = /contract_template_invalid: (.*)$/.exec(message);
   if (template) return `This template can't be used: ${template[1]}.`;
+  const sending = /contract_(?:not_sendable|not_resendable|resend_too_soon|void_invalid): (.*)$/.exec(message);
+  if (sending) return `${sending[1].charAt(0).toUpperCase()}${sending[1].slice(1)}${/[.!?]$/.test(sending[1]) ? "" : "."}`;
   const contract = /contract_(?:stale_approval|not_allowed|input_invalid): (.*)$/.exec(message);
   if (contract) return `A contract can't be generated: ${contract[1]}.`;
   switch (error.code) {

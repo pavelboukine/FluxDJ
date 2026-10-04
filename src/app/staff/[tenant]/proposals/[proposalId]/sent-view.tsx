@@ -19,6 +19,9 @@ const EMAIL_LABEL: Record<string, string> = {
   proposal_link_opened: "Link-opened notice to you",
   proposal_submitted: "Submission notice to you",
   proposal_approved: "Approval acknowledgement to client",
+  contract_sent: "Contract email to client",
+  contract_sign_in: "Contract sign-in email to client",
+  contract_voided: "Contract withdrawn notice to client",
 };
 
 const isPast = (iso: string | null) => iso !== null && Date.parse(iso) <= Date.now();
@@ -39,7 +42,7 @@ export async function SentProposalView({ staff, slug, proposalId }: { staff: Sta
   const event = p.events;
 
   const [{ data: link }, { count: openings }, { data: selection }, { data: approval }, { data: emails }, { data: draft }, preview] = await Promise.all([
-    supabase.from("access_links").select("expires_at, revoked_at, clients!access_links_client_fk(name, email)").eq("proposal_id", p.id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    supabase.from("access_links").select("expires_at, revoked_at, clients!access_links_client_fk(name, email)").eq("proposal_id", p.id).eq("purpose", "proposal").order("created_at", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("proposal_views").select("id", { count: "exact", head: true }).eq("proposal_id", p.id),
     supabase.from("proposal_selections").select("id, version, submitted_at, total_cents, currency, selection_snapshot").eq("proposal_id", p.id).order("version", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("proposal_approvals").select("id, approved_at, selection_id").eq("proposal_id", p.id).maybeSingle(),
