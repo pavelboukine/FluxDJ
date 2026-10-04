@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ProposalPreview } from "@/components/proposal/proposal-preview";
+import { TaxSetupLink } from "@/components/app/tax-setup-link";
 import { requireStaff } from "@/lib/auth/staff";
 import { loadPreview, loadProposal } from "../load";
 
@@ -17,7 +18,9 @@ export default async function FullPreview({ params }: PageProps<"/staff/[tenant]
       {preview.ok ? (
         <ProposalPreview offer={preview.offer} mediaUrls={preview.mediaUrls} event={proposal.events!} />
       ) : (
-        <p className="text-sm">{preview.message}</p>
+        <p className="text-sm">
+          {preview.message} <TaxSetupLink slug={slug} message={preview.message} />
+        </p>
       )}
     </div>
   );

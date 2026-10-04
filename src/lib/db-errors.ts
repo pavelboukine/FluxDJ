@@ -1,9 +1,19 @@
+const TAX_SETUP_HINT = "The owner can set them up in Settings, under Taxes.";
+
+/** Whether a message from describeDbError is fixed in the tax settings (pages add a link). */
+export function needsTaxSetup(message: string): boolean {
+  return message.includes(TAX_SETUP_HINT);
+}
+
 /** Turns Postgres/PostgREST errors into messages safe to show staff. */
 export function describeDbError(error: { code?: string; message?: string } | null | undefined): string {
   if (!error) return "Something went wrong.";
   const message = error.message ?? "";
   const offer = /offer_invalid: (.*)$/.exec(message);
-  if (offer) return `This offer isn't ready: ${offer[1]}.`;
+  if (offer) {
+    if (/^tax categories not configured/.test(offer[1])) return `This offer isn't ready: ${offer[1]}. ${TAX_SETUP_HINT}`;
+    return `This offer isn't ready: ${offer[1]}.`;
+  }
   const settings = /settings_invalid: (.*)$/.exec(message);
   if (settings) return `Check the settings: ${settings[1]}.`;
   const archived = /event_archived: (.*)$/.exec(message);

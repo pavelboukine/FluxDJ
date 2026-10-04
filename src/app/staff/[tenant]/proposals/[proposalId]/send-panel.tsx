@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useDraftEditorState } from "@/components/app/draft-version";
 import { FormMessage } from "@/components/app/action-form";
+import { TaxSetupLink } from "@/components/app/tax-setup-link";
 import { idleState, type ActionState } from "@/lib/forms";
 import { sendProposal } from "../actions";
 
@@ -58,7 +59,7 @@ export function SendPanel(props: Props) {
     <div className="grid gap-3 text-sm">
       {blocked ? (
         <p role="status" className="text-amber-700 dark:text-amber-400">
-          {blocked}
+          {blocked} <TaxSetupLink slug={props.slug} message={blocked} />
         </p>
       ) : null}
       {confirming && !blocked ? (
@@ -92,6 +93,7 @@ export function SendPanel(props: Props) {
         </div>
       )}
       <FormMessage state={state} />
+      {state.status === "error" ? <TaxSetupLink slug={props.slug} message={state.message} /> : null}
     </div>
   );
 }

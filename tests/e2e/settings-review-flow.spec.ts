@@ -77,7 +77,7 @@ test.describe.serial("business settings, contract generation and review", () => 
     const staffContext = await browser.newContext();
     const staff = await staffContext.newPage();
     await signInStaff(staff, staffEmail);
-    await expect(staff.getByRole("navigation", { name: "Staff" }).getByRole("link", { name: "Settings" })).toHaveCount(0);
+    await expect(staff.getByRole("navigation", { name: "Staff" }).getByRole("link", { name: "Settings" })).toBeVisible();
     await staff.goto(`/staff/${tenant.slug}/settings`);
     await expect(staff.getByText("Only the owner can change business settings.")).toBeVisible();
     await expect(staff.getByRole("button", { name: "Save settings" })).toHaveCount(0);

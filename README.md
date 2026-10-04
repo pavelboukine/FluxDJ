@@ -242,6 +242,7 @@ in every relevant relationship.
 | `15_event_archiving` | Only staff of the event's tenant can archive or unarchive, never directly. Links and sessions are revoked and pending client emails cancelled, while history and lifecycle status stay. Viewing, saving, submitting, link exchange, sending, approval and contract generation are blocked while archived. Unarchiving is audited and doesn't resurrect links |
 | `17_contract_sending_client_access` | Send authorization, eligibility, idempotency and frozen content. Only `send_contract` can send, and generation is blocked while a contract is sent. The invitation token is hashed and scoped, and only asks for verification emails, rate limited. Wrong, unverified and multi-tenant accounts. Idempotent acceptance with no staff membership. Safe DTO fields, no leakage, client and anon reads. Dispatch rechecks. Resend, void and replacement with access kept. Archive and unarchive. Revised offers void sent contracts. Expired invitations |
 | `18_contract_void_notice` | One notice per voided sent contract, none on repeats. Frozen signer, no link, no reason. Cancelled invitation emails. Memberships, identities, access and other events untouched. Deliverable at dispatch. Archiving neither sends nor cancels it. Revised-offer voids notify. Unsent drafts never do |
+| `19_tax_settings` | Owner-only tax settings for staff, other tenants, clients and anon; no direct column writes. Malformed, fractional, negative and over-100% rates, codes, names, keys and unknown taxes. Stale versions. Multiple taxes on standard. Removal rules for used taxes and categories. Explicit no tax versus missing. New offers read the new settings; the sent snapshot and hash are unchanged. Audit |
 | `16_business_settings_send_review` | Owner-only settings for staff, other tenants, clients and anon. Validation and 0% and 100% boundaries. Half-up deposit rounding, and equality with the original 50% formula. Existing contracts are byte-for-byte unchanged with valid hashes. Explicit regeneration freezes new terms and identity. New placeholders and missing values. Every review rejection reason. Sending stays impossible |
 | `13_contract_templates` | Templates are visible and writable only by staff of their tenant; clients and anon get nothing. Unknown, malformed or expression-like placeholders are rejected, also by a CHECK constraint. Optimistic draft versions, publishing, and published versions that no role can edit, unpublish or delete. Editing opens one new draft version |
 | `14_contract_generation` | Deposit rounding. Authorization for other tenants, clients, strangers and anon. Unpublished and other tenants' template versions. Missing values listed with what to complete, and no signer. Amounts and lines from the approved selection, the documented hash, no booking and no access. Repeat clicks, explicit replacement and conflicts. Snapshot independence after client, event, business, tax, catalog and template changes. Frozen rows, cross-tenant foreign keys with the guard trigger disabled, literal rendering of client values, and superseded approvals |
@@ -446,6 +447,14 @@ capped at 1 MB and hosting platforms limit request bodies.
 - **Tax categories.** `tenants.tax_categories` maps a category key to tax
   codes. There is no implicit default, and an unmapped category blocks offer
   creation.
+- **Tax settings.** Owners edit taxes and category mappings in Settings,
+  under Taxes; other staff see them read-only. Rates are typed as percentages
+  with up to 4 decimals and converted exactly to `rate_ppm` (no floats).
+  `update_tax_settings` is the only write path. It checks the owner role and
+  `tax_settings_version` (stale tabs get a conflict), refuses a tax still
+  used by a category and unmapping a category used by active gear or
+  packages, and audits each change. Each category is not configured, no tax
+  (`[]`), or a set of taxes. Only new offers read these settings.
 - **Selections.** A proposal's single editable client selection lives in
   `proposal_selection_drafts` and is autosaved with optimistic versions.
   Immutable `proposal_selections` rows are submissions only.

@@ -7,6 +7,7 @@ import { ActionForm } from "@/components/app/action-form";
 import { PageHeader, SelectField, TextAreaField, TextField } from "@/components/app/fields";
 import { ProposalPreview } from "@/components/proposal/proposal-preview";
 import { DraftVersionProvider } from "@/components/app/draft-version";
+import { TaxSetupLink } from "@/components/app/tax-setup-link";
 import { requireStaff } from "@/lib/auth/staff";
 import { formatCents } from "@/lib/money";
 import { applyTemplate, saveDraft } from "../actions";
@@ -194,7 +195,7 @@ export default async function ProposalBuilder({ params, searchParams }: PageProp
               <ProposalPreview offer={preview.offer} mediaUrls={preview.mediaUrls} event={event} />
             ) : (
               <p role="status" className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
-                {preview.message}
+                {preview.message} <TaxSetupLink slug={slug} message={preview.message} />
               </p>
             )}
           </CardContent>

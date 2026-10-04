@@ -13,6 +13,7 @@ const NAV = [
   ["/templates", "Templates"],
   ["/contract-templates", "Contract templates"],
   ["/emails", "Emails"],
+  ["/settings", "Settings"],
 ] as const;
 
 export default async function StaffTenantLayout({ children, params }: LayoutProps<"/staff/[tenant]">) {
@@ -38,7 +39,7 @@ export default async function StaffTenantLayout({ children, params }: LayoutProp
         </div>
         <nav aria-label="Staff" className="mx-auto w-full max-w-6xl overflow-x-auto px-4">
           <ul className="flex gap-1 pb-2 text-sm">
-            {[...NAV, ...(membership.role === "owner" ? ([["/settings", "Settings"]] as const) : [])].map(([path, label]) => (
+            {NAV.map(([path, label]) => (
               <li key={path}>
                 <Link className="block rounded-md px-2.5 py-1.5 whitespace-nowrap hover:bg-muted" href={`/staff/${tenant.slug}${path}`}>
                   {label}

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireStaff } from "@/lib/auth/staff";
 import { describeDbError } from "@/lib/db-errors";
 import { fail, ok, text, type ActionState } from "@/lib/forms";
+import { parseTaxSettingsForm } from "@/lib/pricing/tax-settings";
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -35,4 +36,29 @@ export async function saveBusinessSettings(slug: string, _state: ActionState, fo
   if (error) return fail(describeDbError(error));
   revalidatePath(`/staff/${slug}`, "layout");
   return ok("Settings saved. Existing contract drafts keep their details until you regenerate them.");
+}
+
+/**
+ * Replaces the tax list and the category mapping together. Owner only: the
+ * page shows staff a read-only view, and update_tax_settings checks the owner
+ * role, the settings version and every rule again in the database. Only new
+ * offers read these settings; sent offers and contracts keep their snapshots.
+ */
+export async function saveTaxSettings(slug: string, _state: ActionState, form: FormData): Promise<ActionState> {
+  const { supabase, tenant, membership } = await requireStaff(slug);
+  if (membership.role !== "owner") return fail("Only the owner can change tax settings.");
+  const expectedVersion = Number(text(form, "draft_version"));
+  if (!Number.isInteger(expectedVersion) || expectedVersion < 1) return fail("Reload the page and try again.");
+  const parsed = parseTaxSettingsForm(form);
+  if (!parsed.ok) return fail(parsed.message);
+
+  const { data: version, error } = await supabase.rpc("update_tax_settings", {
+    p_tenant_id: tenant.id,
+    p_expected_version: expectedVersion,
+    p_tax_config: parsed.config,
+    p_tax_categories: parsed.categories,
+  });
+  if (error) return fail(describeDbError(error));
+  revalidatePath(`/staff/${slug}`, "layout");
+  return ok("Tax settings saved. They apply to offers sent from now on; sent proposals and contracts keep their taxes.", version);
 }
