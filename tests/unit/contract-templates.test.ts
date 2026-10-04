@@ -74,3 +74,55 @@ describe("contract error messages", () => {
     expect(describeDbError({ code: "22023", message: "contract_input_invalid: the balance due date is in the past" })).toMatch(/in the past/);
   });
 });
+
+describe("contract email (prepared for the sending stage)", () => {
+  const input = {
+    tenantDisplayName: "BOUPROD",
+    legalName: "BOUPROD Legal Inc.",
+    contactEmail: "legal@bouprod.test",
+    clientName: "Robin <b>&</b> Kai",
+    eventTitle: "Wedding",
+    depositCents: 75_884,
+    depositPercent: 30,
+    currency: "CAD",
+    signingLink: "http://127.0.0.1:3000/bouprod/c#TOKEN",
+  };
+
+  it("states the deposit, the business contact and that email verification comes before signing", async () => {
+    const { renderContractEmail } = await import("@/lib/email/templates");
+    const email = renderContractEmail(input);
+    expect(email.subject).toBe("BOUPROD sent your contract for Wedding");
+    expect(email.text).toContain("A deposit of $758.84 (30% of the total) is due on signing.");
+    expect(email.text).toContain("Contact BOUPROD Legal Inc. at legal@bouprod.test.");
+    expect(email.text).toContain("You will confirm your email address before you can sign.");
+    expect(email.text).toContain("Review and sign: http://127.0.0.1:3000/bouprod/c#TOKEN");
+  });
+
+  it("escapes client-provided values in HTML", async () => {
+    const { renderContractEmail } = await import("@/lib/email/templates");
+    const { html } = renderContractEmail(input);
+    expect(html).toContain("Robin &lt;b&gt;&amp;&lt;/b&gt; Kai");
+    expect(html).not.toContain("<b>&</b>");
+  });
+
+  it("is not an outbox event type, so nothing can queue it yet", async () => {
+    const source = (await import("node:fs")).readFileSync("src/lib/email/templates.ts", "utf8");
+    const union = /export type OutboxEventType = ([^;]+);/.exec(source)![1];
+    expect(union).not.toMatch(/contract/);
+  });
+});
+
+describe("DEMO template business identity", () => {
+  it("uses the legal identity placeholders, not the display name", () => {
+    expect(DEMO_TEMPLATE_TEXT).toContain("{{business.legal_name}}, {{business.address}}, {{business.email}}");
+    expect(DEMO_TEMPLATE_TEXT).not.toContain("{{business.display_name}}");
+  });
+});
+
+describe("settings error messages", () => {
+  it("explains invalid settings from the database", () => {
+    expect(describeDbError({ code: "22023", message: "settings_invalid: the deposit must be a whole percentage from 0 to 100" })).toBe(
+      "Check the settings: the deposit must be a whole percentage from 0 to 100.",
+    );
+  });
+});

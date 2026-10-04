@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/app/fields";
 import { ContractDocument } from "@/components/contract/contract-document";
@@ -19,7 +20,7 @@ export default async function ContractPreview({ params }: PageProps<"/staff/[ten
   const { data: contract } = await supabase
     .from("contracts")
     .select(
-      "id, status, created_at, event_id, proposal_id, replaces_id, signer_name, signer_email, currency, total_cents, deposit_cents, balance_cents, balance_due_date, rendered_content, content_sha256, events!contracts_event_fk(title, event_date), proposals!contracts_proposal_fk(revision), proposal_approvals!contracts_approval_fk(approved_at), contract_template_versions!contracts_template_version_fk(version_number, contract_templates!contract_template_versions_template_fk(id, name))",
+      "id, status, created_at, event_id, proposal_id, replaces_id, signer_name, signer_email, currency, total_cents, deposit_percent, deposit_cents, balance_cents, balance_due_date, rendered_content, content_sha256, events!contracts_event_fk(title, event_date), proposals!contracts_proposal_fk(revision), proposal_approvals!contracts_approval_fk(approved_at), contract_template_versions!contracts_template_version_fk(version_number, contract_templates!contract_template_versions_template_fk(id, name))",
     )
     .eq("id", contractId)
     .eq("tenant_id", tenant.id)
@@ -39,7 +40,14 @@ export default async function ContractPreview({ params }: PageProps<"/staff/[ten
       <PageHeader
         title={`Contract for ${contract.events?.title ?? "event"}`}
         description={<><Link className="underline" href={`/staff/${slug}/events/${contract.event_id}`}>Back to event</Link> · <Link className="underline" href={`/staff/${slug}/proposals/${contract.proposal_id}`}>Approved proposal</Link></>}
-        actions={<Badge variant={isDraft ? "secondary" : "outline"}>{CONTRACT_STATUS_LABEL[contract.status] ?? contract.status}</Badge>}
+        actions={
+          <>
+            <Badge variant={isDraft ? "secondary" : "outline"}>{CONTRACT_STATUS_LABEL[contract.status] ?? contract.status}</Badge>
+            {isDraft ? (
+              <Link className={buttonVariants()} href={`/staff/${slug}/contracts/${contract.id}/review`}>Review and send…</Link>
+            ) : null}
+          </>
+        }
       />
 
       {isDraft ? (
@@ -69,7 +77,7 @@ export default async function ContractPreview({ params }: PageProps<"/staff/[ten
             <CardContent>
               <dl className="grid gap-1 text-sm">
                 <div className="flex justify-between gap-2"><dt>Total, including taxes</dt><dd className="tabular-nums">{money(contract.total_cents)}</dd></div>
-                <div className="flex justify-between gap-2"><dt>Deposit on signing (50%)</dt><dd className="tabular-nums">{money(contract.deposit_cents)}</dd></div>
+                <div className="flex justify-between gap-2"><dt>Deposit on signing ({contract.deposit_percent}%)</dt><dd className="tabular-nums">{money(contract.deposit_cents)}</dd></div>
                 <div className="flex justify-between gap-2"><dt>Balance</dt><dd className="tabular-nums">{money(contract.balance_cents)}</dd></div>
                 <div className="flex justify-between gap-2"><dt>Balance due</dt><dd>{contract.balance_due_date ?? "Not specified by this template"}</dd></div>
               </dl>

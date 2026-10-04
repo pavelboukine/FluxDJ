@@ -138,13 +138,13 @@ isOneToOne: false
                   ]
                 },"contracts": {
                   Row: {
-                    "approval_id": string,"balance_cents": number,"balance_due_date": string | null,"commercial_snapshot": NonNullable<Json>,"content_sha256": string,"created_at": string,"currency": string,"deposit_cents": number,"event_id": string,"generated_by_membership_id": string | null,"generated_by_user_id": string,"id": string,"party_snapshot": NonNullable<Json>,"proposal_id": string,"rendered_content": NonNullable<Json>,"replaces_id": string | null,"selection_id": string,"signer_client_id": string,"signer_email": string,"signer_name": string,"status": string,"status_changed_at": string | null,"template_content_sha256": string,"template_id": string,"template_version_id": string,"tenant_id": string,"total_cents": number,"updated_at": string
+                    "approval_id": string,"balance_cents": number,"balance_due_date": string | null,"commercial_snapshot": NonNullable<Json>,"content_sha256": string,"created_at": string,"currency": string,"deposit_cents": number,"deposit_percent": number,"event_id": string,"generated_by_membership_id": string | null,"generated_by_user_id": string,"id": string,"party_snapshot": NonNullable<Json>,"proposal_id": string,"rendered_content": NonNullable<Json>,"replaces_id": string | null,"selection_id": string,"signer_client_id": string,"signer_email": string,"signer_name": string,"status": string,"status_changed_at": string | null,"template_content_sha256": string,"template_id": string,"template_version_id": string,"tenant_id": string,"total_cents": number,"updated_at": string
                   }
                   Insert: {
-                    "approval_id": string,"balance_cents": number,"balance_due_date"?: string | null,"commercial_snapshot": NonNullable<Json>,"content_sha256": string,"created_at"?: string,"currency": string,"deposit_cents": number,"event_id": string,"generated_by_membership_id"?: string | null,"generated_by_user_id": string,"id"?: string,"party_snapshot": NonNullable<Json>,"proposal_id": string,"rendered_content": NonNullable<Json>,"replaces_id"?: string | null,"selection_id": string,"signer_client_id": string,"signer_email": string,"signer_name": string,"status"?: string,"status_changed_at"?: string | null,"template_content_sha256": string,"template_id": string,"template_version_id": string,"tenant_id": string,"total_cents": number,"updated_at"?: string
+                    "approval_id": string,"balance_cents": number,"balance_due_date"?: string | null,"commercial_snapshot": NonNullable<Json>,"content_sha256": string,"created_at"?: string,"currency": string,"deposit_cents": number,"deposit_percent": number,"event_id": string,"generated_by_membership_id"?: string | null,"generated_by_user_id": string,"id"?: string,"party_snapshot": NonNullable<Json>,"proposal_id": string,"rendered_content": NonNullable<Json>,"replaces_id"?: string | null,"selection_id": string,"signer_client_id": string,"signer_email": string,"signer_name": string,"status"?: string,"status_changed_at"?: string | null,"template_content_sha256": string,"template_id": string,"template_version_id": string,"tenant_id": string,"total_cents": number,"updated_at"?: string
                   }
                   Update: {
-                    "approval_id"?: string,"balance_cents"?: number,"balance_due_date"?: string | null,"commercial_snapshot"?: NonNullable<Json>,"content_sha256"?: string,"created_at"?: string,"currency"?: string,"deposit_cents"?: number,"event_id"?: string,"generated_by_membership_id"?: string | null,"generated_by_user_id"?: string,"id"?: string,"party_snapshot"?: NonNullable<Json>,"proposal_id"?: string,"rendered_content"?: NonNullable<Json>,"replaces_id"?: string | null,"selection_id"?: string,"signer_client_id"?: string,"signer_email"?: string,"signer_name"?: string,"status"?: string,"status_changed_at"?: string | null,"template_content_sha256"?: string,"template_id"?: string,"template_version_id"?: string,"tenant_id"?: string,"total_cents"?: number,"updated_at"?: string
+                    "approval_id"?: string,"balance_cents"?: number,"balance_due_date"?: string | null,"commercial_snapshot"?: NonNullable<Json>,"content_sha256"?: string,"created_at"?: string,"currency"?: string,"deposit_cents"?: number,"deposit_percent"?: number,"event_id"?: string,"generated_by_membership_id"?: string | null,"generated_by_user_id"?: string,"id"?: string,"party_snapshot"?: NonNullable<Json>,"proposal_id"?: string,"rendered_content"?: NonNullable<Json>,"replaces_id"?: string | null,"selection_id"?: string,"signer_client_id"?: string,"signer_email"?: string,"signer_name"?: string,"status"?: string,"status_changed_at"?: string | null,"template_content_sha256"?: string,"template_id"?: string,"template_version_id"?: string,"tenant_id"?: string,"total_cents"?: number,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -809,13 +809,13 @@ isOneToOne: false
                   ]
                 },"tenants": {
                   Row: {
-                    "archived_at": string | null,"booking_confirmation_policy": string,"brand_colors": NonNullable<Json>,"business_name": string,"created_at": string,"currency": string,"display_name": string,"id": string,"logo_storage_path": string | null,"planning_lock_days": number,"reply_to_email": string | null,"slug": string,"tax_categories": NonNullable<Json>,"tax_config": NonNullable<Json>,"timezone": string,"updated_at": string
+                    "archived_at": string | null,"booking_confirmation_policy": string,"brand_colors": NonNullable<Json>,"business_address": string | null,"business_name": string,"contact_email": string | null,"created_at": string,"currency": string,"deposit_percent": number,"display_name": string,"id": string,"logo_storage_path": string | null,"planning_lock_days": number,"reply_to_email": string | null,"slug": string,"tax_categories": NonNullable<Json>,"tax_config": NonNullable<Json>,"timezone": string,"updated_at": string
                   }
                   Insert: {
-                    "archived_at"?: string | null,"booking_confirmation_policy"?: string,"brand_colors"?: NonNullable<Json>,"business_name": string,"created_at"?: string,"currency"?: string,"display_name": string,"id"?: string,"logo_storage_path"?: string | null,"planning_lock_days"?: number,"reply_to_email"?: string | null,"slug": string,"tax_categories"?: NonNullable<Json>,"tax_config"?: NonNullable<Json>,"timezone"?: string,"updated_at"?: string
+                    "archived_at"?: string | null,"booking_confirmation_policy"?: string,"brand_colors"?: NonNullable<Json>,"business_address"?: string | null,"business_name": string,"contact_email"?: string | null,"created_at"?: string,"currency"?: string,"deposit_percent"?: number,"display_name": string,"id"?: string,"logo_storage_path"?: string | null,"planning_lock_days"?: number,"reply_to_email"?: string | null,"slug": string,"tax_categories"?: NonNullable<Json>,"tax_config"?: NonNullable<Json>,"timezone"?: string,"updated_at"?: string
                   }
                   Update: {
-                    "archived_at"?: string | null,"booking_confirmation_policy"?: string,"brand_colors"?: NonNullable<Json>,"business_name"?: string,"created_at"?: string,"currency"?: string,"display_name"?: string,"id"?: string,"logo_storage_path"?: string | null,"planning_lock_days"?: number,"reply_to_email"?: string | null,"slug"?: string,"tax_categories"?: NonNullable<Json>,"tax_config"?: NonNullable<Json>,"timezone"?: string,"updated_at"?: string
+                    "archived_at"?: string | null,"booking_confirmation_policy"?: string,"brand_colors"?: NonNullable<Json>,"business_address"?: string | null,"business_name"?: string,"contact_email"?: string | null,"created_at"?: string,"currency"?: string,"deposit_percent"?: number,"display_name"?: string,"id"?: string,"logo_storage_path"?: string | null,"planning_lock_days"?: number,"reply_to_email"?: string | null,"slug"?: string,"tax_categories"?: NonNullable<Json>,"tax_config"?: NonNullable<Json>,"timezone"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     
@@ -895,6 +895,9 @@ isOneToOne: false
 "retry_email_outbox":
 { Args: { "p_id": string }; Returns: boolean
                            },
+"review_contract_for_send":
+{ Args: { "p_contract_id": string }; Returns: Json
+                           },
 "save_contract_template_draft":
 { Args: { "p_expected_draft_version": number,"p_sections": Json,"p_title": string,"p_version_id": string }; Returns: number
                            },
@@ -909,6 +912,9 @@ isOneToOne: false
                            },
 "set_proposal_template_composition":
 { Args: { "p_addons": Json,"p_default_package_id": string,"p_package_ids": Json,"p_question_ids": Json,"p_template_id": string }; Returns: undefined
+                           },
+"update_business_settings":
+{ Args: { "p_business_address": string,"p_contact_email": string,"p_deposit_percent": number,"p_legal_name": string,"p_tenant_id": string }; Returns: undefined
                            },
 "update_proposal_draft":
 { Args: { "p_expected_version": number,"p_offer": Json,"p_proposal_id": string }; Returns: number

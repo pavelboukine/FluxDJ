@@ -93,3 +93,36 @@ export function renderEmail(input: TemplateInput): RenderedEmail {
     }
   }
 }
+
+/**
+ * Contract email, prepared for the next stage. NOT wired into the outbox:
+ * nothing queues it until verified client sign-in and signing links exist.
+ * The signing link will carry a bearer token: never log it.
+ */
+export type ContractEmailInput = {
+  tenantDisplayName: string;
+  legalName: string;
+  contactEmail: string;
+  clientName: string;
+  eventTitle: string;
+  depositCents: number;
+  depositPercent: number;
+  currency: string;
+  signingLink: string;
+};
+
+export function renderContractEmail(input: ContractEmailInput): RenderedEmail {
+  const dj = input.tenantDisplayName;
+  const lines = [
+    `Hi ${input.clientName},`,
+    `${dj} has sent your contract for ${input.eventTitle}. Please read it carefully before signing.`,
+    `A deposit of ${formatCents(input.depositCents, input.currency)} (${input.depositPercent}% of the total) is due on signing.`,
+    `You will confirm your email address before you can sign. Please don't forward this link.`,
+    `Questions? Contact ${input.legalName} at ${input.contactEmail}.`,
+  ];
+  return {
+    subject: `${dj} sent your contract for ${input.eventTitle}`,
+    text: `${lines.join("\n\n")}\n\nReview and sign: ${input.signingLink}\n`,
+    html: layout(`Your contract from ${dj}`, lines, { label: "Review and sign", href: input.signingLink }),
+  };
+}

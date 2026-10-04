@@ -168,10 +168,10 @@ select results_eq(
   $$ values ('replaced'::text, true, current_setting('tests.c1'), 1, 1) $$,
   'the old draft is kept as replaced history and there is one active draft');
 select throws_ok($$ insert into public.contracts (tenant_id, event_id, proposal_id, selection_id, approval_id, template_id, template_version_id,
-                     template_content_sha256, signer_client_id, signer_name, signer_email, currency, total_cents, deposit_cents, balance_cents,
+                     template_content_sha256, signer_client_id, signer_name, signer_email, currency, total_cents, deposit_percent, deposit_cents, balance_cents,
                      rendered_content, commercial_snapshot, party_snapshot, content_sha256, generated_by_user_id)
                    select tenant_id, event_id, proposal_id, selection_id, approval_id, template_id, template_version_id,
-                     template_content_sha256, signer_client_id, signer_name, signer_email, currency, total_cents, deposit_cents, balance_cents,
+                     template_content_sha256, signer_client_id, signer_name, signer_email, currency, total_cents, deposit_percent, deposit_cents, balance_cents,
                      rendered_content, commercial_snapshot, party_snapshot, content_sha256, generated_by_user_id
                    from public.contracts where id = current_setting('tests.c2')::uuid $$,
   '23505', null, 'the database allows only one draft per event');
@@ -240,10 +240,10 @@ select throws_ok($$ select * from public.contracts $$, '42501', null, 'anon cann
 -- ===========================================================================
 reset role;
 select throws_like($$ insert into public.contracts (tenant_id, event_id, proposal_id, selection_id, approval_id, template_id, template_version_id,
-                     template_content_sha256, signer_client_id, signer_name, signer_email, currency, total_cents, deposit_cents, balance_cents,
+                     template_content_sha256, signer_client_id, signer_name, signer_email, currency, total_cents, deposit_percent, deposit_cents, balance_cents,
                      rendered_content, commercial_snapshot, party_snapshot, content_sha256, generated_by_user_id, status)
                    select tenant_id, event_id, proposal_id, selection_id, approval_id, template_id, template_version_id,
-                     template_content_sha256, signer_client_id, signer_name, signer_email, currency, total_cents, deposit_cents, balance_cents,
+                     template_content_sha256, signer_client_id, signer_name, signer_email, currency, total_cents, deposit_percent, deposit_cents, balance_cents,
                      rendered_content, commercial_snapshot, party_snapshot, content_sha256, generated_by_user_id, 'sent'
                    from public.contracts where id = current_setting('tests.c1')::uuid $$,
   '%created as drafts%', 'contracts cannot be inserted as sent');
@@ -251,10 +251,10 @@ insert into public.contract_template_versions (id, tenant_id, template_id, versi
   select '82000000-0000-4000-8000-0000000000a1', tenant_id, template_id, 9, 'Unpublished', tests.simple_sections()
   from public.contract_template_versions where id = current_setting('tests.v_demo')::uuid;
 select throws_like($$ insert into public.contracts (tenant_id, event_id, proposal_id, selection_id, approval_id, template_id, template_version_id,
-                     template_content_sha256, signer_client_id, signer_name, signer_email, currency, total_cents, deposit_cents, balance_cents,
+                     template_content_sha256, signer_client_id, signer_name, signer_email, currency, total_cents, deposit_percent, deposit_cents, balance_cents,
                      rendered_content, commercial_snapshot, party_snapshot, content_sha256, generated_by_user_id)
                    select c.tenant_id, c.event_id, c.proposal_id, c.selection_id, c.approval_id, c.template_id, '82000000-0000-4000-8000-0000000000a1',
-                     repeat('a', 64), c.signer_client_id, c.signer_name, c.signer_email, c.currency, c.total_cents, c.deposit_cents, c.balance_cents,
+                     repeat('a', 64), c.signer_client_id, c.signer_name, c.signer_email, c.currency, c.total_cents, c.deposit_percent, c.deposit_cents, c.balance_cents,
                      c.rendered_content, c.commercial_snapshot, c.party_snapshot, c.content_sha256, c.generated_by_user_id
                    from public.contracts c where c.id = current_setting('tests.c1')::uuid $$,
   '%published template version%', 'contracts cannot reference an unpublished template version');
@@ -262,35 +262,35 @@ select throws_like($$ insert into public.contracts (tenant_id, event_id, proposa
 -- references. Probe rows are non-drafts so the one-draft index is not what fails.
 alter table public.contracts disable trigger contracts_before_insert;
 select throws_ok($$ insert into public.contracts (tenant_id, event_id, proposal_id, selection_id, approval_id, template_id, template_version_id,
-                     template_content_sha256, signer_client_id, signer_name, signer_email, currency, total_cents, deposit_cents, balance_cents,
+                     template_content_sha256, signer_client_id, signer_name, signer_email, currency, total_cents, deposit_percent, deposit_cents, balance_cents,
                      rendered_content, commercial_snapshot, party_snapshot, content_sha256, generated_by_user_id, status)
                    select c.tenant_id, c.event_id, c.proposal_id, c.selection_id, c.approval_id, v.template_id, v.id,
-                     v.content_sha256, c.signer_client_id, c.signer_name, c.signer_email, c.currency, c.total_cents, c.deposit_cents, c.balance_cents,
+                     v.content_sha256, c.signer_client_id, c.signer_name, c.signer_email, c.currency, c.total_cents, c.deposit_percent, c.deposit_cents, c.balance_cents,
                      c.rendered_content, c.commercial_snapshot, c.party_snapshot, c.content_sha256, c.generated_by_user_id, 'replaced'
                    from public.contracts c, public.contract_template_versions v
                    where c.id = current_setting('tests.c1')::uuid and v.id = current_setting('tests.v_b')::uuid $$,
   '23503', null, 'a contract cannot use another tenant''s template version');
 select throws_ok($$ insert into public.contracts (tenant_id, event_id, proposal_id, selection_id, approval_id, template_id, template_version_id,
-                     template_content_sha256, signer_client_id, signer_name, signer_email, currency, total_cents, deposit_cents, balance_cents,
+                     template_content_sha256, signer_client_id, signer_name, signer_email, currency, total_cents, deposit_percent, deposit_cents, balance_cents,
                      rendered_content, commercial_snapshot, party_snapshot, content_sha256, generated_by_user_id, status)
                    select c.tenant_id, tests.id('event_a2'), c.proposal_id, c.selection_id, c.approval_id, c.template_id, c.template_version_id,
-                     c.template_content_sha256, c.signer_client_id, c.signer_name, c.signer_email, c.currency, c.total_cents, c.deposit_cents, c.balance_cents,
+                     c.template_content_sha256, c.signer_client_id, c.signer_name, c.signer_email, c.currency, c.total_cents, c.deposit_percent, c.deposit_cents, c.balance_cents,
                      c.rendered_content, c.commercial_snapshot, c.party_snapshot, c.content_sha256, c.generated_by_user_id, 'replaced'
                    from public.contracts c where c.id = current_setting('tests.c1')::uuid $$,
   '23503', null, 'a contract cannot pair an approval with a different event');
 select throws_ok($$ insert into public.contracts (tenant_id, event_id, proposal_id, selection_id, approval_id, template_id, template_version_id,
-                     template_content_sha256, signer_client_id, signer_name, signer_email, currency, total_cents, deposit_cents, balance_cents,
+                     template_content_sha256, signer_client_id, signer_name, signer_email, currency, total_cents, deposit_percent, deposit_cents, balance_cents,
                      rendered_content, commercial_snapshot, party_snapshot, content_sha256, generated_by_user_id, status)
                    select c.tenant_id, c.event_id, c.proposal_id, c.selection_id, c.approval_id, c.template_id, c.template_version_id,
-                     c.template_content_sha256, tests.id('b_client_x'), c.signer_name, c.signer_email, c.currency, c.total_cents, c.deposit_cents, c.balance_cents,
+                     c.template_content_sha256, tests.id('b_client_x'), c.signer_name, c.signer_email, c.currency, c.total_cents, c.deposit_percent, c.deposit_cents, c.balance_cents,
                      c.rendered_content, c.commercial_snapshot, c.party_snapshot, c.content_sha256, c.generated_by_user_id, 'replaced'
                    from public.contracts c where c.id = current_setting('tests.c1')::uuid $$,
   '23503', null, 'a contract cannot name another tenant''s client as signer');
 select throws_ok($$ insert into public.contracts (tenant_id, event_id, proposal_id, selection_id, approval_id, template_id, template_version_id,
-                     template_content_sha256, signer_client_id, signer_name, signer_email, currency, total_cents, deposit_cents, balance_cents,
+                     template_content_sha256, signer_client_id, signer_name, signer_email, currency, total_cents, deposit_percent, deposit_cents, balance_cents,
                      rendered_content, commercial_snapshot, party_snapshot, content_sha256, generated_by_user_id, status)
                    select c.tenant_id, c.event_id, c.proposal_id, c.selection_id, c.approval_id, c.template_id, c.template_version_id,
-                     c.template_content_sha256, c.signer_client_id, c.signer_name, c.signer_email, c.currency, c.total_cents, 1, c.balance_cents,
+                     c.template_content_sha256, c.signer_client_id, c.signer_name, c.signer_email, c.currency, c.total_cents, c.deposit_percent, 1, c.balance_cents,
                      c.rendered_content, c.commercial_snapshot, c.party_snapshot, c.content_sha256, c.generated_by_user_id, 'replaced'
                    from public.contracts c where c.id = current_setting('tests.c1')::uuid $$,
   '23514', null, 'deposit plus balance must equal the total');

@@ -4,6 +4,8 @@ export function describeDbError(error: { code?: string; message?: string } | nul
   const message = error.message ?? "";
   const offer = /offer_invalid: (.*)$/.exec(message);
   if (offer) return `This offer isn't ready: ${offer[1]}.`;
+  const settings = /settings_invalid: (.*)$/.exec(message);
+  if (settings) return `Check the settings: ${settings[1]}.`;
   const archived = /event_archived: (.*)$/.exec(message);
   if (archived) return `${archived[1]}.`;
   const template = /contract_template_invalid: (.*)$/.exec(message);

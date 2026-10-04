@@ -18,7 +18,7 @@ export const DEMO_TEMPLATE_SECTIONS: TemplateSection[] = [
   },
   {
     heading: "Parties",
-    body: "Business: {{business.name}}\nClient: {{client.name}}, {{client.email}}, {{client.phone}}",
+    body: "Business: {{business.legal_name}}, {{business.address}}, {{business.email}}\nClient: {{client.name}}, {{client.email}}, {{client.phone}}",
   },
   {
     heading: "Event",

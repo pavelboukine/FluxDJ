@@ -15,6 +15,7 @@ type Props = {
   slug: string;
   approvalId: string;
   versions: VersionOption[];
+  defaultVersionId: string | null;
   currentDraft: { id: string; label: string } | null;
 };
 
@@ -23,9 +24,9 @@ type Props = {
  * existing draft always needs an explicit confirmation. The server makes
  * repeated clicks safe: an identical request returns the existing draft.
  */
-export function GenerateContractPanel({ slug, approvalId, versions, currentDraft }: Props) {
+export function GenerateContractPanel({ slug, approvalId, versions, defaultVersionId, currentDraft }: Props) {
   const router = useRouter();
-  const [versionId, setVersionId] = useState(versions[0]?.id ?? "");
+  const [versionId, setVersionId] = useState(defaultVersionId ?? versions[0]?.id ?? "");
   const [balanceDueDate, setBalanceDueDate] = useState("");
   const [confirmReplace, setConfirmReplace] = useState<string | null>(null);
   const [missing, setMissing] = useState<MissingItem[]>([]);

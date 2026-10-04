@@ -238,6 +238,7 @@ in every relevant relationship.
 | `08_catalog_integrity` | Cross-tenant composite keys for package contents, rules, templates and media; the default package must belong to its template; at most three packages per template; immutable keys; rule conditions limited to equality and membership, and checked against the question's options; media type, extension and path checks |
 | `12_send_submit_approve` | Send authorization, stale versions and missing contacts; staff can't see token hashes or sessions. Link exchange across tenants, unknown, revoked and superseded links. Safe client view, draft conflicts and invalid input. Submissions with omitted required gear, out-of-range quantities, missing answers or tampered prices, stale tabs, idempotency, approval, revision, expiry while open, the outbox and rate limits |
 | `15_event_archiving` | Only staff of the event's tenant can archive or unarchive, never directly. Links and sessions are revoked and pending client emails cancelled, while history and lifecycle status stay. Viewing, saving, submitting, link exchange, sending, approval and contract generation are blocked while archived. Unarchiving is audited and doesn't resurrect links |
+| `16_business_settings_send_review` | Owner-only settings for staff, other tenants, clients and anon. Validation and 0% and 100% boundaries. Half-up deposit rounding, and equality with the original 50% formula. Existing contracts are byte-for-byte unchanged with valid hashes. Explicit regeneration freezes new terms and identity. New placeholders and missing values. Every review rejection reason. Sending stays impossible |
 | `13_contract_templates` | Templates are visible and writable only by staff of their tenant; clients and anon get nothing. Unknown, malformed or expression-like placeholders are rejected, also by a CHECK constraint. Optimistic draft versions, publishing, and published versions that no role can edit, unpublish or delete. Editing opens one new draft version |
 | `14_contract_generation` | Deposit rounding. Authorization for other tenants, clients, strangers and anon. Unpublished and other tenants' template versions. Missing values listed with what to complete, and no signer. Amounts and lines from the approved selection, the documented hash, no booking and no access. Repeat clicks, explicit replacement and conflicts. Snapshot independence after client, event, business, tax, catalog and template changes. Frozen rows, cross-tenant foreign keys with the guard trigger disabled, literal rendering of client values, and superseded approvals |
 | `09_storage_gear_media` | Storage policies on the `gear-media` bucket: private bucket, tenant-scoped reads, uploads only under the uploader's own gear items, no overwrite or delete |
@@ -524,6 +525,46 @@ capped at 1 MB and hosting platforms limit request bodies.
   HTTP API locally, and Resend behind the same server-only interface for
   hosting. `EMAIL_TRANSPORT=resend` with `RESEND_API_KEY`. Resend isn't used
   locally or in tests.
+
+### Business settings and contract send review
+
+- **Owner-only settings.** The owner manages `/staff/{tenant}/settings`:
+  - legal business name (`tenants.business_name`)
+  - business address
+  - contact email
+  - deposit percentage, a whole number from 0 to 100, default 50
+
+  The display name stays the client-facing brand. Changes go only through
+  `update_business_settings`, which checks the owner role in the database.
+  Staff can see the values but not edit them.
+- **New placeholders.** `{{business.legal_name}}`, `{{business.address}}`
+  and `{{business.email}}`. `{{business.name}}` is kept for existing
+  templates and means the legal name.
+- **Deposit.** It is `round_half_up(total × percent / 100)` in integer cents,
+  and the balance is the total minus the deposit. Each new contract freezes
+  the percentage (`contracts.deposit_percent` and the commercial snapshot),
+  the amounts and the business identity.
+- **Existing contracts.** They were backfilled at 50%, which their snapshots
+  record. No snapshot or hash was rewritten.
+- **Regeneration.** Changing settings never alters a draft. Regenerate it
+  explicitly to pick up new values.
+- **Version choice.** Generation defaults to the latest published template
+  version, which is labelled, and staff can choose another. The balance due
+  date is still entered per contract.
+- **Review and send.** **Review and send…** on a contract draft runs
+  `review_contract_for_send`, read-only. It shows:
+  - the intended signer and recipient email
+  - the frozen business identity
+  - the exact contract text
+  - the deposit, balance and deadline
+  - every problem found by `private.contract_send_problems`: archived event,
+    not the current draft, superseded approval, changed or missing signer,
+    incomplete settings, or business details or deposit changed since
+    generation
+- **Sending is not built.** **Send contract** is disabled until verified
+  client onboarding exists. No contract is marked sent, and no link or email
+  is created. `renderContractEmail` is prepared and unit-tested, but nothing
+  queues it.
 
 ### Archiving events
 

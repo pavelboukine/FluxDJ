@@ -12,7 +12,7 @@ export async function ContractCard({ staff, slug, eventId, approvalId }: { staff
   const [{ data: versions }, { data: contracts }] = await Promise.all([
     supabase
       .from("contract_template_versions")
-      .select("id, version_number, placeholders, contract_templates!contract_template_versions_template_fk(name, active)")
+      .select("id, version_number, placeholders, published_at, contract_templates!contract_template_versions_template_fk(name, active)")
       .eq("tenant_id", tenant.id)
       .not("published_at", "is", null)
       .order("version_number", { ascending: false }),
@@ -23,12 +23,14 @@ export async function ContractCard({ staff, slug, eventId, approvalId }: { staff
       .eq("event_id", eventId)
       .order("created_at", { ascending: false }),
   ]);
-  const options = (versions ?? [])
-    .filter((v) => v.contract_templates?.active)
+  const active = (versions ?? []).filter((v) => v.contract_templates?.active);
+  // Default to the most recently published version; staff may choose another.
+  const latest = active.reduce<(typeof active)[number] | null>((a, v) => (!a || (v.published_at ?? "") > (a.published_at ?? "") ? v : a), null);
+  const options = active
     .sort((a, b) => (a.contract_templates!.name.localeCompare(b.contract_templates!.name) || b.version_number - a.version_number))
     .map((v) => ({
       id: v.id,
-      label: `${v.contract_templates!.name} · version ${v.version_number}`,
+      label: `${v.contract_templates!.name} · version ${v.version_number}${v.id === latest?.id ? " (latest published)" : ""}`,
       needsBalanceDueDate: v.placeholders.includes("payment.balance_due_date"),
     }));
   const label = (c: NonNullable<typeof contracts>[number]) =>
@@ -46,7 +48,7 @@ export async function ContractCard({ staff, slug, eventId, approvalId }: { staff
       </CardHeader>
       <CardContent className="grid gap-4">
         {approvalId ? (
-          <GenerateContractPanel slug={slug} approvalId={approvalId} versions={options} currentDraft={draft ? { id: draft.id, label: label(draft) } : null} />
+          <GenerateContractPanel slug={slug} approvalId={approvalId} versions={options} defaultVersionId={latest?.id ?? null} currentDraft={draft ? { id: draft.id, label: label(draft) } : null} />
         ) : (
           <p className="text-sm text-muted-foreground">A contract can be generated once the current proposal is approved.</p>
         )}

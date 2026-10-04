@@ -5,12 +5,11 @@
  * The client's submission is made through the same service functions the
  * client page uses (that page is covered by proposal-flow.spec.ts).
  */
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { DEMO_TEMPLATE_TEXT, DEMO_TEMPLATE_TITLE } from "../../src/lib/contracts/demo-template";
-import { parseOfferSnapshot, priceSelection, toSelectionRecord, type OfferSnapshot } from "../../src/lib/pricing";
 import { admin, signInStaff } from "./support";
-import { archiveTestTenant, createTestTenant, type TestTenant } from "./tenant";
+import { archiveTestTenant, createTestTenant, sendProposalFromEventPage, submitAsClient, type TestTenant } from "./tenant";
 
 // Dedicated test tenants; never the seeded BOUPROD or Other DJ.
 let tenant: TestTenant;
@@ -20,20 +19,7 @@ const templateName = `E2E contract ${run}`;
 const clientName = `Robin <b>&</b> Kai {{pricing.total}}`;
 const eventTitle = `E2E Contract Wedding ${run}`;
 
-const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
 const cad = (cents: number) => `${new Intl.NumberFormat("en-US", { minimumFractionDigits: 2 }).format(cents / 100)} CAD`;
-
-/** A complete set of answers for whatever questions the offer asks. */
-function answersFor(offer: OfferSnapshot) {
-  const answers: Record<string, unknown> = {};
-  for (const q of offer.questions) {
-    if (q.answer_type === "boolean") answers[q.key] = false;
-    else if (q.answer_type === "single_choice") answers[q.key] = q.options.find((o) => o.value === "same_room")?.value ?? q.options[0].value;
-    else if (q.answer_type === "multi_choice") answers[q.key] = [];
-    else answers[q.key] = "E2E notes";
-  }
-  return answers;
-}
 
 test.describe.serial("contract templates and contract drafts", () => {
   let browser: Browser;
@@ -97,31 +83,8 @@ test.describe.serial("contract templates and contract drafts", () => {
   });
 
   test("staff approve a real submission; missing details block generation with clear guidance", async () => {
-    await staff.goto(`/staff/${tenant.slug}/events/${eventId}`);
-    await staff.getByLabel("Start from template").selectOption({ label: "Wedding (DEMO)" });
-    await staff.getByRole("button", { name: "Start proposal draft" }).click();
-    await staff.waitForURL("**/proposals/**");
-    proposalUrl = staff.url();
-    const proposalId = proposalUrl.split("/").pop()!;
-    await staff.getByRole("button", { name: "Review and send…" }).click();
-    await staff.getByRole("dialog", { name: "Confirm sending" }).getByRole("button", { name: "Send proposal now" }).click();
-    await expect(staff.getByText("Sent", { exact: true })).toBeVisible();
-
-    // The client opens the link and submits (the client page's own server calls).
-    const { data: link } = await admin.from("access_links").select("token_hash").eq("proposal_id", proposalId).single();
-    const sessionHash = sha256(randomBytes(32).toString("base64url"));
-    await admin.rpc("exchange_proposal_link", { p_token_hash: link!.token_hash, p_session_hash: sessionHash, p_tenant_slug: tenant.slug, p_session_seconds: 3600 });
-    const { data: view } = await admin.rpc("client_proposal_view", { p_session_hash: sessionHash, p_proposal_id: proposalId, p_tenant_slug: tenant.slug });
-    const { proposal } = view as { proposal: { offer: unknown; offer_sha256: string } };
-    const offer = parseOfferSnapshot(proposal.offer);
-    const priced = priceSelection(offer, { package_key: "signature", answers: answersFor(offer) });
-    if (!priced.ok) throw new Error(JSON.stringify(priced.errors));
-    totalCents = priced.selection.total_cents;
-    const { data: submitted } = await admin.rpc("client_submit_selection", {
-      p_session_hash: sessionHash, p_proposal_id: proposalId, p_tenant_slug: tenant.slug, p_expected_draft_version: 0,
-      p_idempotency_key: randomUUID().replaceAll("-", ""), p_selection: JSON.parse(JSON.stringify(toSelectionRecord(priced.selection, proposal.offer_sha256))),
-    });
-    expect((submitted as { status: string }).status).toBe("submitted");
+    proposalUrl = await sendProposalFromEventPage(staff, tenant, eventId);
+    ({ totalCents } = await submitAsClient(tenant, proposalUrl.split("/").pop()!));
 
     await staff.reload();
     await expect(staff.getByText("Generate contract draft")).toHaveCount(0);
@@ -129,7 +92,7 @@ test.describe.serial("contract templates and contract drafts", () => {
     await staff.getByRole("dialog", { name: "Confirm approval" }).getByRole("button", { name: "Approve selection" }).click();
     await expect(staff.getByText(/Next: generate the contract draft\. The event is not booked\./)).toBeVisible();
 
-    await staff.getByLabel("Template version").selectOption({ label: `${templateName} · version 1` });
+    await staff.getByLabel("Template version").selectOption({ label: `${templateName} · version 1 (latest published)` });
     await staff.getByRole("button", { name: "Generate contract draft" }).click();
     const missing = staff.getByRole("alert").filter({ hasText: "Nothing was generated" });
     await expect(missing).toContainText("Venue address: add it to the event.");
@@ -177,7 +140,7 @@ test.describe.serial("contract templates and contract drafts", () => {
 
   test("regenerating needs confirmation and keeps the replaced draft as history", async () => {
     await staff.goto(proposalUrl);
-    await staff.getByLabel("Template version").selectOption({ label: `${templateName} · version 1` });
+    await staff.getByLabel("Template version").selectOption({ label: `${templateName} · version 1 (latest published)` });
     await staff.getByLabel("Balance due date").fill("2027-08-25");
     await staff.getByRole("button", { name: "Regenerate draft…" }).click();
     const dialog = staff.getByRole("dialog", { name: "Confirm replacing the draft" });

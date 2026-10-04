@@ -72,6 +72,8 @@ export async function createTenantWithCatalog(admin: Db, ownerUserId: string, pr
       business_name: `IT ${prefix}`,
       display_name: `IT ${prefix}`,
       reply_to_email: `${slug}@example.test`,
+      business_address: "1 Test Street, Montréal, QC",
+      contact_email: `contact-${slug}@example.test`,
       tax_config: [
         { code: "GST", label: "GST", rate_ppm: 50_000 },
         { code: "QST", label: "QST", rate_ppm: 99_750 },

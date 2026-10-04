@@ -8,7 +8,9 @@
  * the suite finishes; proposals, contracts and audit rows are immutable
  * history, so they stay in the archived tenant instead of being deleted.
  */
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { expect, type Page } from "@playwright/test";
+import { parseOfferSnapshot, priceSelection, toSelectionRecord, type OfferSnapshot } from "../../src/lib/pricing";
 import { admin } from "./support";
 
 export type TestTenant = {
@@ -45,6 +47,8 @@ export async function createTestTenant(suite: string, opts: { catalog?: boolean 
       display_name: displayName,
       brand_colors: { primary: "#111827", accent: "#E11D48" },
       reply_to_email: ownerEmail,
+      business_address: "1 Test Street, Montréal, QC",
+      contact_email: `contact-${run}@example.test`,
       tax_config: [
         { code: "GST", label: "GST", rate_ppm: 50_000 },
         { code: "QST", label: "QST", rate_ppm: 99_750 },
@@ -166,4 +170,59 @@ async function addDemoCatalog(tenantId: string) {
       ]),
     ),
   );
+}
+
+// ---------------------------------------------------------------------------
+// Flow helpers shared by browser specs
+// ---------------------------------------------------------------------------
+
+const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
+
+/** A complete set of answers for whatever questions the offer asks. */
+function answersFor(offer: OfferSnapshot) {
+  const answers: Record<string, unknown> = {};
+  for (const q of offer.questions) {
+    if (q.answer_type === "boolean") answers[q.key] = false;
+    else if (q.answer_type === "single_choice") answers[q.key] = q.options.find((o) => o.value === "same_room")?.value ?? q.options[0].value;
+    else if (q.answer_type === "multi_choice") answers[q.key] = [];
+    else answers[q.key] = "E2E notes";
+  }
+  return answers;
+}
+
+/**
+ * The client opens the emailed link and submits the Signature package,
+ * through the same service functions the client page calls (that page is
+ * covered by proposal-flow.spec.ts). Returns the priced total.
+ */
+export async function submitAsClient(tenant: TestTenant, proposalId: string): Promise<{ totalCents: number }> {
+  const { data: link } = await must(admin.from("access_links").select("token_hash").eq("proposal_id", proposalId).single());
+  const sessionHash = sha256(randomBytes(32).toString("base64url"));
+  await must(admin.rpc("exchange_proposal_link", { p_token_hash: link!.token_hash, p_session_hash: sessionHash, p_tenant_slug: tenant.slug, p_session_seconds: 3600 }));
+  const { data: view } = await must(admin.rpc("client_proposal_view", { p_session_hash: sessionHash, p_proposal_id: proposalId, p_tenant_slug: tenant.slug }));
+  const { proposal } = view as { proposal: { offer: unknown; offer_sha256: string } };
+  const offer = parseOfferSnapshot(proposal.offer);
+  const priced = priceSelection(offer, { package_key: "signature", answers: answersFor(offer) });
+  if (!priced.ok) throw new Error(JSON.stringify(priced.errors));
+  const { data: submitted } = await must(
+    admin.rpc("client_submit_selection", {
+      p_session_hash: sessionHash, p_proposal_id: proposalId, p_tenant_slug: tenant.slug, p_expected_draft_version: 0,
+      p_idempotency_key: randomUUID().replaceAll("-", ""), p_selection: JSON.parse(JSON.stringify(toSelectionRecord(priced.selection, proposal.offer_sha256))),
+    }),
+  );
+  expect((submitted as { status: string }).status).toBe("submitted");
+  return { totalCents: priced.selection.total_cents };
+}
+
+/** Staff open a draft from "Wedding (DEMO)" on the event page and send it. Returns the proposal URL. */
+export async function sendProposalFromEventPage(staff: Page, tenant: TestTenant, eventId: string): Promise<string> {
+  await staff.goto(`/staff/${tenant.slug}/events/${eventId}`);
+  await staff.getByLabel("Start from template").selectOption({ label: "Wedding (DEMO)" });
+  await staff.getByRole("button", { name: "Start proposal draft" }).click();
+  await staff.waitForURL("**/proposals/**");
+  const url = staff.url();
+  await staff.getByRole("button", { name: "Review and send…" }).click();
+  await staff.getByRole("dialog", { name: "Confirm sending" }).getByRole("button", { name: "Send proposal now" }).click();
+  await expect(staff.getByText("Sent", { exact: true })).toBeVisible();
+  return url;
 }
