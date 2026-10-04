@@ -9,6 +9,7 @@ import { ContractCard } from "../../contracts/contract-card";
 import { UUID_RE } from "@/lib/forms";
 import { addEventContact, openProposalDraft, removeEventContact, updateEvent } from "../actions";
 import { EventFields } from "../event-fields";
+import { eventStatusLabel } from "@/lib/events/status";
 import { ArchivePanel } from "./archive-panel";
 import { RemoveContact } from "./remove-contact";
 
@@ -31,14 +32,16 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
   ]);
   // The current approval, if the active proposal is approved; contracts are generated from it.
   const activeApproved = event.proposals.find((p) => p.id === event.active_proposal_id && p.status === "approved");
-  const [{ data: approval }, { count: contractCount }] = await Promise.all([
+  const [{ data: approval }, { count: contractCount }, { count: signedCount }] = await Promise.all([
     activeApproved
       ? supabase.from("proposal_approvals").select("id").eq("tenant_id", tenant.id).eq("proposal_id", activeApproved.id).maybeSingle()
       : Promise.resolve({ data: null }),
     supabase.from("contracts").select("id", { count: "exact", head: true }).eq("tenant_id", tenant.id).eq("event_id", event.id),
+    supabase.from("contracts").select("id", { count: "exact", head: true }).eq("tenant_id", tenant.id).eq("event_id", event.id).eq("status", "signed"),
   ]);
   const approvalId = approval?.id ?? null;
   const hasContracts = (contractCount ?? 0) > 0;
+  const hasSignedContract = (signedCount ?? 0) > 0;
   const onEvent = new Set(event.event_clients.map((c) => c.clients?.id));
   const draft = event.proposals.find((p) => p.status === "draft");
   const proposals = [...event.proposals].sort((a, b) => b.revision - a.revision);
@@ -51,7 +54,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
         actions={
           <>
             {event.archived_at ? <Badge variant="secondary">Archived</Badge> : null}
-            <Badge variant="outline">{event.lifecycle_status.replace("_", " ")}</Badge>
+            <Badge variant="outline">{eventStatusLabel(event.lifecycle_status, hasSignedContract)}</Badge>
           </>
         }
       />
@@ -71,11 +74,16 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
+          {hasSignedContract ? (
+            <p role="status" className="text-sm">
+              A contract has been signed for this event, so its terms can&apos;t be revised. Amendments aren&apos;t available yet.
+            </p>
+          ) : null}
           {draft ? (
             <Link className="underline" href={`/staff/${slug}/proposals/${draft.id}`}>
               Continue the draft (revision {draft.revision})
             </Link>
-          ) : (
+          ) : hasSignedContract ? null : (
             <ActionForm action={openProposalDraft.bind(null, slug, event.id)} submitLabel={event.active_proposal_id ? "Start a revised offer" : "Start proposal draft"} pendingLabel="Opening…">
               <SelectField
                 label="Start from template"

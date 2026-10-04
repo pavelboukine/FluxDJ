@@ -4,6 +4,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PageHeader } from "@/components/app/fields";
 import { requireStaff } from "@/lib/auth/staff";
+import { eventStatusLabel } from "@/lib/events/status";
 
 export default async function Events({ params, searchParams }: PageProps<"/staff/[tenant]/events">) {
   const { tenant: slug } = await params;
@@ -16,7 +17,11 @@ export default async function Events({ params, searchParams }: PageProps<"/staff
     .select("id, title, event_date, lifecycle_status, archived_at, venue_name, event_clients(is_primary, clients(name))")
     .eq("tenant_id", tenant.id);
   if (!includeArchived) query = query.is("archived_at", null);
-  const { data: events } = await query.order("event_date");
+  const [{ data: events }, { data: signed }] = await Promise.all([
+    query.order("event_date"),
+    supabase.from("contracts").select("event_id").eq("tenant_id", tenant.id).eq("status", "signed"),
+  ]);
+  const signedEvents = new Set((signed ?? []).map((c) => c.event_id));
   return (
     <>
       <PageHeader
@@ -50,7 +55,7 @@ export default async function Events({ params, searchParams }: PageProps<"/staff
               <TableCell className="hidden sm:table-cell">{e.event_clients.find((c) => c.is_primary)?.clients?.name ?? "—"}</TableCell>
               <TableCell>
                 <span className="flex flex-wrap gap-1">
-                  <Badge variant="outline">{e.lifecycle_status.replace("_", " ")}</Badge>
+                  <Badge variant="outline">{eventStatusLabel(e.lifecycle_status, signedEvents.has(e.id))}</Badge>
                   {e.archived_at ? <Badge variant="secondary">Archived</Badge> : null}
                 </span>
               </TableCell>

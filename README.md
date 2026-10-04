@@ -25,9 +25,13 @@ foundation is in place:
   versions, and contract drafts generated from an approved selection and
   previewed by staff. Drafts are frozen when generated. They are never sent.
 
-Everything has row-level security and tests. Not built yet: sending
-contracts, signing, signed PDFs, client login, booking confirmation, payments
-and planning. Approval and contract drafts are not bookings.
+- Contracts, later steps: sending with verified client access, resend and
+  void, and signing by the frozen signer with immutable evidence (DEMO
+  agreements only for now).
+
+Everything has row-level security and tests. Not built yet: signed PDFs,
+booking confirmation, payments, planning and amendments. Approval, contract
+drafts and signing are not bookings.
 
 ## Stack
 
@@ -243,6 +247,7 @@ in every relevant relationship.
 | `17_contract_sending_client_access` | Send authorization, eligibility, idempotency and frozen content. Only `send_contract` can send, and generation is blocked while a contract is sent. The invitation token is hashed and scoped, and only asks for verification emails, rate limited. Wrong, unverified and multi-tenant accounts. Idempotent acceptance with no staff membership. Safe DTO fields, no leakage, client and anon reads. Dispatch rechecks. Resend, void and replacement with access kept. Archive and unarchive. Revised offers void sent contracts. Expired invitations |
 | `18_contract_void_notice` | One notice per voided sent contract, none on repeats. Frozen signer, no link, no reason. Cancelled invitation emails. Memberships, identities, access and other events untouched. Deliverable at dispatch. Archiving neither sends nor cancels it. Revised-offer voids notify. Unsent drafts never do |
 | `19_tax_settings` | Owner-only tax settings for staff, other tenants, clients and anon; no direct column writes. Malformed, fractional, negative and over-100% rates, codes, names, keys and unknown taxes. Stale versions. Multiple taxes on standard. Removal rules for used taxes and categories. Explicit no tax versus missing. New offers read the new settings; the sent snapshot and hash are unchanged. Audit |
+| `20_contract_signing` | Only the service role signs. Wrong signer, other event's client, staff, stranger, no identity, wrong tenant, unverified or changed email, revoked access, archived event. Consent, consent version, displayed hash, typed name, never-stored, wrong-size, non-PNG, oversized and out-of-folder images. The atomic signed state and evidence, one audit event, no booking. Replays return the first signature to the signer only. Immutable evidence and content; void, resend, regeneration and revisions refused. Client and staff reads, Storage visibility, orphans. Archiving keeps evidence. Void and superseded contracts can't be signed |
 | `16_business_settings_send_review` | Owner-only settings for staff, other tenants, clients and anon. Validation and 0% and 100% boundaries. Half-up deposit rounding, and equality with the original 50% formula. Existing contracts are byte-for-byte unchanged with valid hashes. Explicit regeneration freezes new terms and identity. New placeholders and missing values. Every review rejection reason. Sending stays impossible |
 | `13_contract_templates` | Templates are visible and writable only by staff of their tenant; clients and anon get nothing. Unknown, malformed or expression-like placeholders are rejected, also by a CHECK constraint. Optimistic draft versions, publishing, and published versions that no role can edit, unpublish or delete. Editing opens one new draft version |
 | `14_contract_generation` | Deposit rounding. Authorization for other tenants, clients, strangers and anon. Unpublished and other tenants' template versions. Missing values listed with what to complete, and no signer. Amounts and lines from the approved selection, the documented hash, no booking and no access. Repeat clicks, explicit replacement and conflicts. Snapshot independence after client, event, business, tax, catalog and template changes. Frozen rows, cross-tenant foreign keys with the guard trigger disabled, literal rendering of client values, and superseded approvals |
@@ -322,6 +327,23 @@ signed-out browser:
   shown literally, and the layout at 390px with no sideways scrolling. It
   also covers confirmed replacement, signed-out redirects and 404s for the
   other DJ.
+
+### Signing tests
+
+- `tests/unit/signature-image.test.ts` covers the PNG validator (blank,
+  tiny, filled, palette, 16-bit, interlaced, bad CRC, trailing bytes,
+  decompression bombs, SVG and JPEG, size limits), clean re-encoding, and
+  trusted IP capture.
+- `tests/integration/contract-signing.test.ts` runs against real Storage and
+  Postgres: the stored bytes match the evidence hash, Storage access for staff,
+  other tenants, the client and anon, replays after a lost response,
+  concurrent attempts, expired sessions, failed uploads, a void or revision
+  winning the race before the commit, a crash leaving only an unreadable
+  orphan, and real sign-versus-void races.
+- `tests/e2e/contract-signing-flow.spec.ts` signs on a phone-sized browser
+  with touch input: validation, clear, scroll and rotation without losing the
+  drawing, a failed request that keeps every input, consent and confirmation,
+  then the signed views for the client and staff.
 
 ### Integration tests
 
@@ -688,6 +710,77 @@ undelivered contract emails visibly.
     generation
 - **Sending.** **Send contract…** sends from the review screen once every
   check passes. See "Contract sending and verified client access".
+
+### Contract signing
+
+- **Who signs.** Only the contract's frozen signer, signed in with a current,
+  verified Supabase session whose email matches the frozen signer email, and
+  holding event access for that signer. The server reads the identity from
+  `auth.getUser()`, which checks the session with the Auth server. An
+  invitation token is never signer identity. There is no second email check
+  per signature.
+- **What the client provides.** A typed name, a drawn signature
+  (`signature_pad`, exported as a 900 × 300 PNG), the consent checkbox and the
+  content hash of the contract they were shown. The server and database derive
+  the signer email, user id, time, consent text and request context.
+- **Stage limit.** Signing is enabled only for agreements whose title starts
+  with "DEMO, NOT FOR CLIENT USE" (`private.contract_signing_enabled`). The
+  consent wording (`demo-v1`) is test wording and is labelled as not reviewed
+  by a lawyer. Lifting either is a deliberate migration after review.
+- **Image checks (server).** Only a base64 PNG data URL of at most 256 KiB.
+  The server accepts plain 8-bit, non-interlaced PNG only, with CRCs checked,
+  no unknown critical chunks or trailing bytes, an exact inflate cap,
+  dimensions within 300–1800 × 100–600, and enough dark ink over a minimum
+  span. It then re-encodes the pixels into a fresh PNG, so nothing else from
+  the upload is stored.
+- **Ordering and retries.** Storage and the database can't share a
+  transaction, so the order is:
+  1. Validate the request and image, and run the read-only eligibility check
+     as the user.
+  2. Upload with the service role to the private `contract-signatures` bucket
+     at a new `{tenant}/{contract}/{uuid}.png`, never overwriting.
+  3. Call `sign_contract` (service role only). One transaction locks event,
+     proposal and contract, rechecks everything, and confirms the object
+     exists with the declared size and type and is unused. It then inserts
+     the immutable `contract_signatures` row, moves the contract
+     `sent → signed`, retires invitations and writes one audit event.
+  - **Rejection or replay:** the database's answer is definitive, so the
+    upload is deleted.
+  - **Unknown outcome** (lost response): the upload is kept, because a
+    committed signature may reference it. A retry returns the existing
+    signature as a replay, to the same signer only.
+  - **Concurrent attempts** wait on the event lock. Exactly one commits.
+  - **Crash** between upload and commit: an orphan stays behind. Nobody but
+    the service role can read it, and `private.contract_signature_orphans`
+    lists it for manual cleanup. No automatic cleanup exists yet.
+  - A deferred check guarantees that a signed contract always has exactly one
+    evidence row.
+- **Evidence.** Typed name, verified email and user id, image path, SHA-256,
+  size and dimensions, database signing time, frozen content hash, exact
+  consent text and version, and user agent. The IP is recorded only on Vercel,
+  from `x-vercel-forwarded-for` (set by Vercel, not spoofable). Anywhere else
+  it is stored as unavailable. Evidence rows can't be updated or deleted, and
+  evidence stays out of the audit log and app logs.
+- **Viewing.** Staff of the tenant read evidence through row-level security,
+  and get two-minute signed URLs for committed signatures only, through a
+  Storage policy. The signer sees the signed name and time and a two-minute
+  link issued by the server after `client_signature_object` authorizes it.
+  Clients and anon have no Storage policy and can't read or list the bucket.
+  Nobody but the service role writes to it.
+- **Protected paths.** Nothing leaves `signed`. Void, resend, regeneration
+  and replacement refuse signed contracts. A signed contract blocks
+  commercial revisions: `open_proposal_draft` refuses, and a trigger refuses
+  superseding the signed proposal, so `send_proposal` rolls back. Archiving
+  hides the event and cuts client access but keeps the agreement and
+  evidence; unarchiving restores the signer's read access.
+- **Not a booking.** The event stays `awaiting_signature`. Signing grants no
+  planning access and records no payment. The client sees "Contract signed.
+  Your DJ will follow up with the next steps."
+- **Retention is undecided.** Nothing deletes signatures or evidence, and no
+  retention period is set. Decide one (and how to handle archived tenants and
+  deletion requests) before real clients sign. Collecting this evidence does
+  not by itself establish legal compliance for electronic signatures; that
+  needs review of the agreement, the consent wording and the process.
 
 ### Archiving events
 

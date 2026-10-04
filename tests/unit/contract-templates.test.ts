@@ -89,13 +89,13 @@ describe("contract emails", () => {
     expiresAt: "2027-01-15T12:00:00Z",
   };
 
-  it("states the deposit, the business contact, verification first and that signing is not available yet", async () => {
+  it("states the deposit, the business contact and verification first", async () => {
     const { renderContractEmail } = await import("@/lib/email/templates");
     const email = renderContractEmail(input);
     expect(email.subject).toBe("BOUPROD sent your contract for Wedding");
     expect(email.text).toContain("A deposit of $758.84 (30% of the total) will be due on signing.");
     expect(email.text).toContain("Contact BOUPROD Legal Inc. at legal@bouprod.test.");
-    expect(email.text).toContain("you will confirm your email address before you can read it. Online signing is not available yet.");
+    expect(email.text).toContain("you will confirm your email address before you can open it.");
     expect(email.text).toContain("This invitation link works until January 15, 2027.");
     expect(email.text).toContain("Read your contract: http://127.0.0.1:3000/bouprod/invite#TOKEN");
   });

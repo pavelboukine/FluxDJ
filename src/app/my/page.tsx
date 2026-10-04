@@ -21,7 +21,9 @@ export default async function MyContracts() {
           {contracts.map((c) => (
             <li key={c.contract_id} className="rounded-xl border p-3">
               <Link className="font-medium underline" href={`/${c.tenant_slug}/contracts/${c.contract_id}`}>{c.event_title}</Link>
-              <div className="text-muted-foreground">{c.tenant_display_name} · {c.event_date}</div>
+              <div className="text-muted-foreground">
+                {c.tenant_display_name} · {c.event_date} · {c.status === "signed" ? "Contract signed" : "Sent to you"}
+              </div>
             </li>
           ))}
         </ul>

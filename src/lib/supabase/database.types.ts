@@ -80,6 +80,37 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"contract_signatures": {
+                  Row: {
+                    "client_ip": unknown,"client_ip_source": string,"consent_text": string,"consent_version": string,"content_sha256": string,"contract_id": string,"created_at": string,"event_id": string,"id": string,"signature_bucket": string,"signature_bytes": number,"signature_height": number,"signature_path": string,"signature_sha256": string,"signature_width": number,"signed_at": string,"signer_client_id": string,"signer_email": string,"signer_user_id": string,"tenant_id": string,"typed_name": string,"user_agent": string | null
+                  }
+                  Insert: {
+                    "client_ip"?: unknown,"client_ip_source": string,"consent_text": string,"consent_version": string,"content_sha256": string,"contract_id": string,"created_at"?: string,"event_id": string,"id"?: string,"signature_bucket"?: string,"signature_bytes": number,"signature_height": number,"signature_path": string,"signature_sha256": string,"signature_width": number,"signed_at"?: string,"signer_client_id": string,"signer_email": string,"signer_user_id": string,"tenant_id": string,"typed_name": string,"user_agent"?: string | null
+                  }
+                  Update: {
+                    "client_ip"?: unknown,"client_ip_source"?: string,"consent_text"?: string,"consent_version"?: string,"content_sha256"?: string,"contract_id"?: string,"created_at"?: string,"event_id"?: string,"id"?: string,"signature_bucket"?: string,"signature_bytes"?: number,"signature_height"?: number,"signature_path"?: string,"signature_sha256"?: string,"signature_width"?: number,"signed_at"?: string,"signer_client_id"?: string,"signer_email"?: string,"signer_user_id"?: string,"tenant_id"?: string,"typed_name"?: string,"user_agent"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "contract_signatures_client_fk"
+      columns: ["tenant_id","signer_client_id"]
+isOneToOne: false
+      referencedRelation: "clients"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "contract_signatures_contract_fk"
+      columns: ["tenant_id","event_id","contract_id"]
+isOneToOne: false
+      referencedRelation: "contracts"
+      referencedColumns: ["tenant_id","event_id","id"]
+    },{
+      foreignKeyName: "contract_signatures_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"contract_template_versions": {
                   Row: {
                     "content_sha256": string | null,"created_at": string,"created_by_membership_id": string | null,"draft_version": number,"id": string,"placeholders": (string)[],"published_at": string | null,"published_by_membership_id": string | null,"sections": NonNullable<Json>,"template_id": string,"tenant_id": string,"title": string,"updated_at": string,"version_number": number
@@ -144,13 +175,13 @@ isOneToOne: false
                   ]
                 },"contracts": {
                   Row: {
-                    "approval_id": string,"balance_cents": number,"balance_due_date": string | null,"commercial_snapshot": NonNullable<Json>,"content_sha256": string,"created_at": string,"currency": string,"deposit_cents": number,"deposit_percent": number,"event_id": string,"generated_by_membership_id": string | null,"generated_by_user_id": string,"id": string,"party_snapshot": NonNullable<Json>,"proposal_id": string,"rendered_content": NonNullable<Json>,"replaces_id": string | null,"selection_id": string,"sent_at": string | null,"signer_client_id": string,"signer_email": string,"signer_name": string,"status": string,"status_changed_at": string | null,"template_content_sha256": string,"template_id": string,"template_version_id": string,"tenant_id": string,"total_cents": number,"updated_at": string,"void_reason": string | null,"voided_at": string | null
+                    "approval_id": string,"balance_cents": number,"balance_due_date": string | null,"commercial_snapshot": NonNullable<Json>,"content_sha256": string,"created_at": string,"currency": string,"deposit_cents": number,"deposit_percent": number,"event_id": string,"generated_by_membership_id": string | null,"generated_by_user_id": string,"id": string,"party_snapshot": NonNullable<Json>,"proposal_id": string,"rendered_content": NonNullable<Json>,"replaces_id": string | null,"selection_id": string,"sent_at": string | null,"signed_at": string | null,"signer_client_id": string,"signer_email": string,"signer_name": string,"status": string,"status_changed_at": string | null,"template_content_sha256": string,"template_id": string,"template_version_id": string,"tenant_id": string,"total_cents": number,"updated_at": string,"void_reason": string | null,"voided_at": string | null
                   }
                   Insert: {
-                    "approval_id": string,"balance_cents": number,"balance_due_date"?: string | null,"commercial_snapshot": NonNullable<Json>,"content_sha256": string,"created_at"?: string,"currency": string,"deposit_cents": number,"deposit_percent": number,"event_id": string,"generated_by_membership_id"?: string | null,"generated_by_user_id": string,"id"?: string,"party_snapshot": NonNullable<Json>,"proposal_id": string,"rendered_content": NonNullable<Json>,"replaces_id"?: string | null,"selection_id": string,"sent_at"?: string | null,"signer_client_id": string,"signer_email": string,"signer_name": string,"status"?: string,"status_changed_at"?: string | null,"template_content_sha256": string,"template_id": string,"template_version_id": string,"tenant_id": string,"total_cents": number,"updated_at"?: string,"void_reason"?: string | null,"voided_at"?: string | null
+                    "approval_id": string,"balance_cents": number,"balance_due_date"?: string | null,"commercial_snapshot": NonNullable<Json>,"content_sha256": string,"created_at"?: string,"currency": string,"deposit_cents": number,"deposit_percent": number,"event_id": string,"generated_by_membership_id"?: string | null,"generated_by_user_id": string,"id"?: string,"party_snapshot": NonNullable<Json>,"proposal_id": string,"rendered_content": NonNullable<Json>,"replaces_id"?: string | null,"selection_id": string,"sent_at"?: string | null,"signed_at"?: string | null,"signer_client_id": string,"signer_email": string,"signer_name": string,"status"?: string,"status_changed_at"?: string | null,"template_content_sha256": string,"template_id": string,"template_version_id": string,"tenant_id": string,"total_cents": number,"updated_at"?: string,"void_reason"?: string | null,"voided_at"?: string | null
                   }
                   Update: {
-                    "approval_id"?: string,"balance_cents"?: number,"balance_due_date"?: string | null,"commercial_snapshot"?: NonNullable<Json>,"content_sha256"?: string,"created_at"?: string,"currency"?: string,"deposit_cents"?: number,"deposit_percent"?: number,"event_id"?: string,"generated_by_membership_id"?: string | null,"generated_by_user_id"?: string,"id"?: string,"party_snapshot"?: NonNullable<Json>,"proposal_id"?: string,"rendered_content"?: NonNullable<Json>,"replaces_id"?: string | null,"selection_id"?: string,"sent_at"?: string | null,"signer_client_id"?: string,"signer_email"?: string,"signer_name"?: string,"status"?: string,"status_changed_at"?: string | null,"template_content_sha256"?: string,"template_id"?: string,"template_version_id"?: string,"tenant_id"?: string,"total_cents"?: number,"updated_at"?: string,"void_reason"?: string | null,"voided_at"?: string | null
+                    "approval_id"?: string,"balance_cents"?: number,"balance_due_date"?: string | null,"commercial_snapshot"?: NonNullable<Json>,"content_sha256"?: string,"created_at"?: string,"currency"?: string,"deposit_cents"?: number,"deposit_percent"?: number,"event_id"?: string,"generated_by_membership_id"?: string | null,"generated_by_user_id"?: string,"id"?: string,"party_snapshot"?: NonNullable<Json>,"proposal_id"?: string,"rendered_content"?: NonNullable<Json>,"replaces_id"?: string | null,"selection_id"?: string,"sent_at"?: string | null,"signed_at"?: string | null,"signer_client_id"?: string,"signer_email"?: string,"signer_name"?: string,"status"?: string,"status_changed_at"?: string | null,"template_content_sha256"?: string,"template_id"?: string,"template_version_id"?: string,"tenant_id"?: string,"total_cents"?: number,"updated_at"?: string,"void_reason"?: string | null,"voided_at"?: string | null
                   }
                   Relationships: [
                     {
@@ -858,6 +889,9 @@ isOneToOne: false
 "client_save_selection_draft":
 { Args: { "p_addon_quantities": Json,"p_expected_version": number,"p_logistics_answers": Json,"p_package_key": string,"p_proposal_id": string,"p_session_hash": string,"p_tenant_slug": string }; Returns: Json
                            },
+"client_signature_object":
+{ Args: { "p_contract_id": string,"p_tenant_slug": string }; Returns: string
+                           },
 "client_submit_selection":
 { Args: { "p_expected_draft_version": number,"p_idempotency_key": string,"p_proposal_id": string,"p_selection": Json,"p_session_hash": string,"p_tenant_slug": string }; Returns: Json
                            },
@@ -886,7 +920,7 @@ isOneToOne: false
                            },
 "my_contracts":
 { Args: Record<PropertyKey, never>; Returns: {
-              "contract_id": string,"event_date": string,"event_title": string,"sent_at": string,"tenant_display_name": string,"tenant_slug": string
+              "contract_id": string,"event_date": string,"event_title": string,"sent_at": string,"signed_at": string,"status": string,"tenant_display_name": string,"tenant_slug": string
             }[]
                            },
 "my_events":
@@ -941,6 +975,9 @@ isOneToOne: false
                            },
 "set_proposal_template_composition":
 { Args: { "p_addons": Json,"p_default_package_id": string,"p_package_ids": Json,"p_question_ids": Json,"p_template_id": string }; Returns: undefined
+                           },
+"sign_contract":
+{ Args: { "p_client_ip": string,"p_client_ip_source": string,"p_consent_accepted": boolean,"p_consent_version": string,"p_content_sha256": string,"p_contract_id": string,"p_signature_bytes": number,"p_signature_height": number,"p_signature_path": string,"p_signature_sha256": string,"p_signature_width": number,"p_tenant_slug": string,"p_typed_name": string,"p_user_agent": string,"p_user_id": string }; Returns: Json
                            },
 "update_business_settings":
 { Args: { "p_business_address": string,"p_contact_email": string,"p_deposit_percent": number,"p_legal_name": string,"p_tenant_id": string }; Returns: undefined

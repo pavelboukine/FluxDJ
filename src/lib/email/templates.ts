@@ -121,7 +121,7 @@ export function renderContractEmail(input: ContractEmailInput): RenderedEmail {
     `Hi ${input.clientName},`,
     `${dj} has sent your contract for ${input.eventTitle}. Please read it carefully.`,
     `A deposit of ${formatCents(input.depositCents, input.currency)} (${input.depositPercent}% of the total) will be due on signing.`,
-    "To keep your contract private, you will confirm your email address before you can read it. Online signing is not available yet.",
+    "To keep your contract private, you will confirm your email address before you can open it.",
     expires ? `This invitation link works until ${expires}. Please don't forward it.` : "Please don't forward this link.",
     input.contactEmail ? `Questions? Contact ${input.legalName} at ${input.contactEmail}.` : `Questions? Reply to this email.`,
   ];

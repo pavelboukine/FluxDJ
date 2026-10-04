@@ -18,7 +18,7 @@ export async function ContractCard({ staff, slug, eventId, approvalId }: { staff
       .order("version_number", { ascending: false }),
     supabase
       .from("contracts")
-      .select("id, status, created_at, template_version_id, contract_template_versions!contracts_template_version_fk(version_number, contract_templates!contract_template_versions_template_fk(name))")
+      .select("id, status, created_at, signed_at, template_version_id, contract_template_versions!contracts_template_version_fk(version_number, contract_templates!contract_template_versions_template_fk(name))")
       .eq("tenant_id", tenant.id)
       .eq("event_id", eventId)
       .order("created_at", { ascending: false }),
@@ -37,6 +37,7 @@ export async function ContractCard({ staff, slug, eventId, approvalId }: { staff
     `${c.contract_template_versions?.contract_templates?.name ?? "Contract"} v${c.contract_template_versions?.version_number ?? "?"}, generated ${fmt(c.created_at)}`;
   const draft = (contracts ?? []).find((c) => c.status === "draft");
   const sent = (contracts ?? []).find((c) => c.status === "sent");
+  const signed = (contracts ?? []).find((c) => c.status === "signed");
 
   return (
     <Card>
@@ -44,11 +45,16 @@ export async function ContractCard({ staff, slug, eventId, approvalId }: { staff
         <CardTitle>Contract</CardTitle>
         <CardDescription>
           Generated from the approved selection and a published template version. Generating a draft sends nothing, does not book the
-          event and gives the client no access. Sending and signing are not built yet.
+          event and gives the client no access. Signing records the signed agreement; it does not book the event.
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4">
-        {sent ? (
+        {signed ? (
+          <p role="status" className="text-sm">
+            <Link className="underline" href={`/staff/${slug}/contracts/${signed.id}`}>{label(signed)}</Link> was signed {fmt(signed.signed_at!)}. A
+            signed contract can&apos;t be voided, replaced or revised.
+          </p>
+        ) : sent ? (
           <p role="status" className="text-sm">
             <Link className="underline" href={`/staff/${slug}/contracts/${sent.id}`}>{label(sent)}</Link> was sent. To change it, void it on its page,
             then generate a replacement here.

@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/app/fields";
 import { ContractDocument } from "@/components/contract/contract-document";
 import { requireStaff } from "@/lib/auth/staff";
 import { CONTRACT_STATUS_LABEL, renderedContentSchema } from "@/lib/contracts/content";
+import { SIGNATURE_BUCKET } from "@/lib/contracts/signing";
 import { UUID_RE } from "@/lib/forms";
 import { formatCents } from "@/lib/money";
 import { SentControls } from "./sent-controls";
@@ -21,7 +22,7 @@ export default async function ContractPreview({ params }: PageProps<"/staff/[ten
   const { data: contract } = await supabase
     .from("contracts")
     .select(
-      "id, status, created_at, sent_at, voided_at, void_reason, event_id, proposal_id, replaces_id, signer_name, signer_email, currency, total_cents, deposit_percent, deposit_cents, balance_cents, balance_due_date, rendered_content, content_sha256, events!contracts_event_fk(title, event_date), proposals!contracts_proposal_fk(revision), proposal_approvals!contracts_approval_fk(approved_at), contract_template_versions!contracts_template_version_fk(version_number, contract_templates!contract_template_versions_template_fk(id, name))",
+      "id, status, created_at, sent_at, signed_at, voided_at, void_reason, event_id, proposal_id, replaces_id, signer_name, signer_email, currency, total_cents, deposit_percent, deposit_cents, balance_cents, balance_due_date, rendered_content, content_sha256, events!contracts_event_fk(title, event_date), proposals!contracts_proposal_fk(revision), proposal_approvals!contracts_approval_fk(approved_at), contract_template_versions!contracts_template_version_fk(version_number, contract_templates!contract_template_versions_template_fk(id, name))",
     )
     .eq("id", contractId)
     .eq("tenant_id", tenant.id)
@@ -36,6 +37,20 @@ export default async function ContractPreview({ params }: PageProps<"/staff/[ten
   const template = contract.contract_template_versions;
   const isDraft = contract.status === "draft";
   const isSent = contract.status === "sent";
+  const isSigned = contract.status === "signed";
+  // Evidence is staff-readable (row-level security limits it to this tenant).
+  const { data: signature } = isSigned
+    ? await supabase
+        .from("contract_signatures")
+        .select("typed_name, signer_email, signed_at, signature_path, signature_sha256, signature_width, signature_height, content_sha256, consent_version, consent_text, user_agent, client_ip, client_ip_source")
+        .eq("tenant_id", tenant.id)
+        .eq("contract_id", contract.id)
+        .maybeSingle()
+    : { data: null };
+  // Two-minute link, allowed by the Storage policy for committed signatures of this tenant.
+  const signatureUrl = signature
+    ? ((await supabase.storage.from(SIGNATURE_BUCKET).createSignedUrl(signature.signature_path, 120)).data?.signedUrl ?? null)
+    : null;
   const { data: invitation } = await supabase
     .from("access_links")
     .select("id, created_at, expires_at, revoked_at, consumed_at")
@@ -61,9 +76,19 @@ export default async function ContractPreview({ params }: PageProps<"/staff/[ten
         }
       />
 
-      {isSent ? (
+      {isSigned ? (
         <div role="status" className="grid gap-1 rounded-lg border border-emerald-600/40 bg-emerald-600/5 p-3 text-sm">
-          <p className="font-medium">Sent {fmt(contract.sent_at!)} to {contract.signer_name} ({contract.signer_email}). Not signed; signing isn&apos;t available yet.</p>
+          <p className="font-medium">
+            Signed {fmt(contract.signed_at!)} by {signature?.typed_name ?? contract.signer_name} ({signature?.signer_email ?? contract.signer_email}).
+          </p>
+          <p className="text-muted-foreground">
+            The signed agreement and its evidence can&apos;t be changed, voided or replaced, and the proposal can&apos;t be revised. The event is not
+            marked booked by signing.
+          </p>
+        </div>
+      ) : isSent ? (
+        <div role="status" className="grid gap-1 rounded-lg border border-emerald-600/40 bg-emerald-600/5 p-3 text-sm">
+          <p className="font-medium">Sent {fmt(contract.sent_at!)} to {contract.signer_name} ({contract.signer_email}). Not signed yet.</p>
           {invitation ? (
             <p className="text-muted-foreground">
               Latest invitation: sent {fmt(invitation.created_at)}, {invitation.revoked_at ? "revoked" : `valid until ${fmt(invitation.expires_at)}`}.
@@ -101,6 +126,31 @@ export default async function ContractPreview({ params }: PageProps<"/staff/[ten
             <Card>
               <CardHeader><CardTitle>Sent contract</CardTitle></CardHeader>
               <CardContent><SentControls slug={slug} contractId={contract.id} /></CardContent>
+            </Card>
+          ) : null}
+          {signature ? (
+            <Card>
+              <CardHeader><CardTitle>Signature and evidence</CardTitle></CardHeader>
+              <CardContent>
+                <dl className="grid gap-2 text-sm [overflow-wrap:anywhere]">
+                  {signatureUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL, not an optimizable asset
+                    <img src={signatureUrl} alt={`Signature of ${signature.typed_name}`} className="h-24 w-auto max-w-full rounded border bg-white" />
+                  ) : null}
+                  <div><dt className="text-muted-foreground">Typed name</dt><dd>{signature.typed_name}</dd></div>
+                  <div><dt className="text-muted-foreground">Verified signer email</dt><dd>{signature.signer_email}</dd></div>
+                  <div><dt className="text-muted-foreground">Signed (server time)</dt><dd>{fmt(signature.signed_at)}</dd></div>
+                  <div>
+                    <dt className="text-muted-foreground">Contract signed</dt>
+                    <dd className="font-mono text-xs">{signature.content_sha256}</dd>
+                    <dd className="text-xs text-muted-foreground">{signature.content_sha256 === contract.content_sha256 ? "Matches this contract's content SHA-256." : "Does not match this contract."}</dd>
+                  </div>
+                  <div><dt className="text-muted-foreground">Signature image SHA-256</dt><dd className="font-mono text-xs">{signature.signature_sha256}</dd><dd className="text-xs text-muted-foreground">PNG, {signature.signature_width} × {signature.signature_height}</dd></div>
+                  <div><dt className="text-muted-foreground">Consent ({signature.consent_version})</dt><dd>{signature.consent_text}</dd></div>
+                  <div><dt className="text-muted-foreground">IP address</dt><dd>{signature.client_ip_source === "vercel" ? String(signature.client_ip) : "Not available (not reliably known for this request)"}</dd></div>
+                  <div><dt className="text-muted-foreground">Browser</dt><dd className="text-xs">{signature.user_agent ?? "Not provided"}</dd></div>
+                </dl>
+              </CardContent>
             </Card>
           ) : null}
           <Card>

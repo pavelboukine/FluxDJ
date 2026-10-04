@@ -7,7 +7,10 @@ import { renderedContentSchema } from "@/lib/contracts/content";
 import { UUID_RE } from "@/lib/forms";
 import { formatCents } from "@/lib/money";
 import { SLUG_PATTERN } from "@/lib/proposals/client-session.server";
+import { SIGNATURE_BUCKET } from "@/lib/contracts/signing";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { SignPanel } from "./sign-panel";
 
 export const metadata: Metadata = { title: "Your contract", robots: { index: false, follow: false }, referrer: "strict-origin" };
 
@@ -17,10 +20,13 @@ type View =
       state: "available";
       brand: { display_name: string; brand_colors: { primary?: string; accent?: string } };
       contract: {
-        id: string; sent_at: string; content_sha256: string; rendered_content: unknown; signer_name: string; currency: string;
+        id: string; status: "sent" | "signed"; sent_at: string; content_sha256: string; rendered_content: unknown; signer_name: string; currency: string;
         total_cents: number; deposit_percent: number; deposit_cents: number; balance_cents: number; balance_due_date: string | null;
         event_title: string; event_date: string; legal_name: string;
       };
+      signing:
+        | { signed: true; typed_name: string; signed_at: string }
+        | { signed: false; enabled: boolean; consent_version: string; consent_text: string };
     };
 
 function Notice({ title, children }: { title: string; children: React.ReactNode }) {
@@ -33,9 +39,11 @@ function Notice({ title, children }: { title: string; children: React.ReactNode 
 }
 
 /**
- * The client's read-only contract. Every request is checked in the database:
- * verified identity, event access, intended signer, and that the contract is
- * still sent, current and not archived. Only frozen contract data is shown.
+ * The client's contract. Every request is checked in the database: verified
+ * identity, event access, intended signer, and that the contract is still
+ * sent and current (or signed) and not archived. Only frozen contract data is
+ * shown. The signer signs here; once signed, the page shows who signed and
+ * when, and the signature image through a short-lived link.
  */
 export default async function ClientContractPage({ params }: PageProps<"/[tenant]/contracts/[contractId]">) {
   const { tenant: slug, contractId } = await params;
@@ -63,6 +71,13 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
   const money = (cents: number) => formatCents(cents, c.currency);
   const brandStyle = { "--brand": view.brand.brand_colors.primary ?? "#111827" } as CSSProperties;
   const isDemo = /DEMO, NOT FOR CLIENT USE/.test(content.title);
+  const signing = view.signing;
+  let signatureUrl: string | null = null;
+  if (signing.signed) {
+    // Authorized in the database for this signer only; the link lasts two minutes.
+    const { data: path } = await supabase.rpc("client_signature_object", { p_contract_id: contractId, p_tenant_slug: slug });
+    if (path) signatureUrl = (await createAdminClient().storage.from(SIGNATURE_BUCKET).createSignedUrl(path, 120)).data?.signedUrl ?? null;
+  }
 
   return (
     <main style={brandStyle} className="mx-auto grid w-full max-w-3xl gap-6 px-4 py-8">
@@ -75,10 +90,23 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
           DEMO, NOT FOR CLIENT USE. This is test wording, not a real agreement.
         </p>
       ) : null}
-      <p role="status" className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
-        Please read your contract. Online signing isn&apos;t available yet, so there is nothing to sign here; {view.brand.display_name} will let you
-        know when it is.
-      </p>
+      {signing.signed ? (
+        <section role="status" className="grid gap-2 rounded-lg border-2 border-emerald-600 p-4 text-base">
+          <h2 className="text-lg font-semibold">Contract signed.</h2>
+          <p>Your DJ will follow up with the next steps.</p>
+          <p className="text-sm text-muted-foreground">
+            Signed by {signing.typed_name} on {new Intl.DateTimeFormat("en-CA", { dateStyle: "long", timeStyle: "short" }).format(new Date(signing.signed_at))}.
+          </p>
+          {signatureUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL, not an optimizable asset
+            <img src={signatureUrl} alt={`Signature of ${signing.typed_name}`} className="h-24 w-auto max-w-full self-start rounded border bg-white" />
+          ) : null}
+        </section>
+      ) : !signing.enabled ? (
+        <p role="status" className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
+          Please read your contract. Online signing isn&apos;t available for it yet; {view.brand.display_name} will let you know how to sign.
+        </p>
+      ) : null}
       <ContractDocument title={content.title} sections={content.sections} />
       <section className="mx-auto grid w-full max-w-prose gap-1 rounded-lg border p-4 text-base">
         <h2 className="font-semibold">Payment terms</h2>
@@ -87,6 +115,17 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
         <div className="flex justify-between gap-2"><span>Balance</span><span className="tabular-nums">{money(c.balance_cents)}</span></div>
         {c.balance_due_date ? <div className="flex justify-between gap-2"><span>Balance due</span><span>{c.balance_due_date}</span></div> : null}
       </section>
+      {!signing.signed && signing.enabled ? (
+        <SignPanel
+          slug={slug}
+          contractId={c.id}
+          contentSha256={c.content_sha256}
+          consentVersion={signing.consent_version}
+          consentText={signing.consent_text}
+          isDemo={isDemo}
+          expectedName={c.signer_name}
+        />
+      ) : null}
       <p className="mx-auto max-w-prose text-xs text-muted-foreground [overflow-wrap:anywhere]">
         {c.legal_name} · Contract fingerprint (SHA-256): {c.content_sha256}
       </p>

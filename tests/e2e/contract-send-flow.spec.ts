@@ -79,7 +79,7 @@ test.describe.serial("contract sending and verified client access", () => {
   test("the invitation alone shows nothing private and grants nothing", async () => {
     const email = await waitForEmail(clientEmail, { after: sentAt, subject: /sent your contract/ });
     const invite = new RegExp(`(${BASE}/${tenant.slug}/invite#[A-Za-z0-9_-]{43})`).exec(email.text)![1];
-    expect(email.text).toContain("Online signing is not available yet");
+    expect(email.text).toContain("you will confirm your email address before you can open it.");
 
     const deviceA = await browser.newContext();
     const a = await deviceA.newPage();
@@ -125,7 +125,8 @@ test.describe.serial("contract sending and verified client access", () => {
     clientContractUrl = b.url();
     await expect(b.getByRole("heading", { level: 1 })).toHaveText(`DEMO, NOT FOR CLIENT USE: Agreement for ${eventTitle}`);
     await expect(b.getByText("DEMO, NOT FOR CLIENT USE. This is test wording, not a real agreement.")).toBeVisible();
-    await expect(b.getByText(/Online signing isn't available yet/)).toBeVisible();
+    // JavaScript is off here: the agreement is fully readable; signing itself is covered by contract-signing-flow.spec.ts.
+    await expect(b.getByRole("heading", { name: "Sign this contract" })).toBeVisible();
     await expect(b.locator("main")).toContainText("Deposit on signing (50%)");
     await expect(b.locator("body")).not.toContainText(`E2E staff-only note ${run}`);
     expect(await b.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);

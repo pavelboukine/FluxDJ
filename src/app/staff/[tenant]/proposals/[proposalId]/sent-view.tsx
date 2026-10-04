@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { eventStatusLabel } from "@/lib/events/status";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,13 +42,14 @@ export async function SentProposalView({ staff, slug, proposalId }: { staff: Sta
   if (!p || !p.events) return null;
   const event = p.events;
 
-  const [{ data: link }, { count: openings }, { data: selection }, { data: approval }, { data: emails }, { data: draft }, preview] = await Promise.all([
+  const [{ data: link }, { count: openings }, { data: selection }, { data: approval }, { data: emails }, { data: draft }, { count: signedCount }, preview] = await Promise.all([
     supabase.from("access_links").select("expires_at, revoked_at, clients!access_links_client_fk(name, email)").eq("proposal_id", p.id).eq("purpose", "proposal").order("created_at", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("proposal_views").select("id", { count: "exact", head: true }).eq("proposal_id", p.id),
     supabase.from("proposal_selections").select("id, version, submitted_at, total_cents, currency, selection_snapshot").eq("proposal_id", p.id).order("version", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("proposal_approvals").select("id, approved_at, selection_id").eq("proposal_id", p.id).maybeSingle(),
     supabase.from("email_outbox").select("id, event_type, recipient_email, status, attempts, last_error, sent_at").eq("entity_id", p.id).order("created_at"),
     supabase.from("proposals").select("id, revision").eq("event_id", event.id).eq("status", "draft").maybeSingle(),
+    supabase.from("contracts").select("id", { count: "exact", head: true }).eq("tenant_id", tenant.id).eq("event_id", event.id).eq("status", "signed"),
     loadPreview(staff, p.id),
   ]);
 
@@ -85,7 +87,7 @@ export async function SentProposalView({ staff, slug, proposalId }: { staff: Sta
                   An opening only shows the link was used. Email scanners and previews can open links, so it is not proof the client read the proposal.
                 </span>
               </p>
-              <p>Client link: {link?.revoked_at ? "revoked" : "active"}. Event status: {event.lifecycle_status.replace("_", " ")} (not booked).</p>
+              <p>Client link: {link?.revoked_at ? "revoked" : "active"}. Event status: {eventStatusLabel(event.lifecycle_status, (signedCount ?? 0) > 0)} (not booked).</p>
             </CardContent>
           </Card>
 
