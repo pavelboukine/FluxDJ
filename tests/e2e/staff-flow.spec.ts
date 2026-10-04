@@ -93,6 +93,43 @@ test.describe.serial("staff interface", () => {
     await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
   });
 
+  test("sign-in links are not consumed by a GET, and Sign in works even before scripts run", async () => {
+    // A browser without JavaScript submits the confirm form natively, like a
+    // click before hydration. The form POST must carry a real Origin
+    // (a "no-referrer" policy makes it "null", which Server Actions reject).
+    const noJs = await browser.newContext({ javaScriptEnabled: false });
+    const p = await noJs.newPage();
+    // The other tenant's owner: Supabase allows one magic link per email per
+    // minute, and this file's main sign-in just used the first owner's.
+    const email = otherTenant.ownerEmail;
+    const started = Date.now();
+    await p.goto("/login");
+    await p.getByLabel("Email").fill(email);
+    await p.getByRole("button", { name: "Email me a sign-in link" }).click();
+    const link = await latestMagicLink(email, started);
+
+    // Opening the link (as an email scanner would) signs nothing in.
+    await p.goto(link);
+    const scanner = await browser.newContext();
+    const scan = await scanner.newPage();
+    await scan.goto(link);
+    const policy = await scan.locator('meta[name="referrer"]').getAttribute("content");
+    await scan.goto(`/staff/${otherTenant.slug}`);
+    await expect(scan).toHaveURL(/\/login$/);
+    await scanner.close();
+
+    const post = p.waitForRequest((r) => r.method() === "POST" && r.url().includes("/auth/confirm"));
+    await p.getByRole("button", { name: "Sign in" }).click();
+    const headers = await (await post).allHeaders();
+    expect(headers.origin).toBe("http://127.0.0.1:3000");
+    expect(headers.referer ?? "").not.toContain("token_hash");
+    // The policy that keeps the token out of every Referer.
+    expect(policy).toBe("strict-origin");
+    await p.waitForURL(`**/staff/${otherTenant.slug}`);
+    await expect(p.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+    await noJs.close();
+  });
+
   test("another tenant's workspace is not reachable", async () => {
     const res = await page.goto(`/staff/${otherTenant.slug}`);
     expect(res?.status()).toBe(404);

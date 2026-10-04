@@ -10,6 +10,10 @@ const privatePageHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Local URLs use 127.0.0.1 (it must match the magic-link site URL). Without
+  // this, a dev server started as plain `next dev` (localhost) blocks its own
+  // scripts and HMR for 127.0.0.1 pages. Development only.
+  allowedDevOrigins: ["127.0.0.1"],
   async headers() {
     return [
       { source: "/:tenant/p", headers: privatePageHeaders },

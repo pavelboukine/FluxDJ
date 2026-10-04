@@ -3,7 +3,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { confirmSignIn } from "./actions";
 
-export const metadata: Metadata = { title: "Confirm sign in · Flux DJ", referrer: "no-referrer" };
+// The URL carries the one-time token, so no Referer may contain it:
+// "strict-origin" sends at most the bare origin. Not "no-referrer": that makes
+// browsers send "Origin: null" on a native form POST (before or without
+// hydration), which the Server Actions CSRF check rightly rejects.
+export const metadata: Metadata = { title: "Confirm sign in · Flux DJ", referrer: "strict-origin" };
 
 export default async function ConfirmPage({ searchParams }: PageProps<"/auth/confirm">) {
   const { token_hash: tokenHash } = await searchParams;
