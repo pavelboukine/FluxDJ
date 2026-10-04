@@ -65,9 +65,11 @@ Useful commands:
 | `pnpm db:types` | Regenerate `src/lib/supabase/database.types.ts` after a migration |
 | `pnpm db:stop` | Stop the local Supabase containers |
 
-Everything above touches only the local Docker database. This repo is not
-linked to a hosted Supabase project. Do not run `supabase link` or
-`supabase db push` without a deliberate deployment review (spec section 12).
+Everything above touches only the local Docker database. A CLI link to the
+hosted project lives only in the git-ignored `supabase/.temp`. Commands with
+`--linked`, `db push` above all, act on the hosted database: run
+`db push --linked --dry-run` first, and never `db reset` or `--include-seed`
+against it. See "Hosted setup" below.
 
 ### Seed data
 
@@ -805,6 +807,10 @@ See `.env.example`. Only `NEXT_PUBLIC_*` values reach the browser.
 
 | Variable | Purpose |
 |---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase API URL (public) |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase publishable key, `sb_publishable_…` (public). The legacy `NEXT_PUBLIC_SUPABASE_ANON_KEY` is still read as a fallback. A secret or service-role key here is refused at startup. |
+| `SUPABASE_SECRET_KEY` | Supabase secret key, `sb_secret_…`. Server only; bypasses RLS. The legacy `SUPABASE_SERVICE_ROLE_KEY` is still read as a fallback. A publishable or anon key here is refused. |
+| `NEXT_PUBLIC_APP_URL` | The app's own origin, used in emailed links |
 | `PROPOSAL_LINK_SECRET` | Derives proposal link tokens. 32 or more random characters. Rotating it fails undelivered proposal emails visibly; links already delivered keep working. |
 | `EMAIL_TRANSPORT` | `mailpit` (local default), `resend` (hosted) or `disabled` (queue only) |
 | `EMAIL_FROM_ADDRESS` | Sender address. Emails show "{DJ} via Flux DJ" with the DJ's reply-to address. |
@@ -822,9 +828,64 @@ Hosted configuration, still to review before real clients:
 - The Supabase magic-link template, redirect URLs and the disabled sign-up
   setting also need configuring.
 
-`SUPABASE_SERVICE_ROLE_KEY` bypasses RLS. It is read only through
+The secret key bypasses RLS. It is read only through
 `src/lib/env.server.ts`, which is marked `server-only`, so importing it into
 client code fails the build. Never commit `.env.local`.
+
+### Hosted setup
+
+The production order, as followed for the hosted project. Apply migrations
+only after reviewing a dry run, and keep the review gates in spec section 12
+before real clients.
+
+1. **Check the Supabase GitHub integration first.** With "deploy to
+   production" enabled, pushing commits that contain `supabase/migrations`
+   applies them to the hosted database. Keep it off until you intend to
+   migrate.
+2. **Link the CLI.** Run `pnpm exec supabase login`, then
+   `pnpm exec supabase link --project-ref <ref>`. Linking records the project
+   in `supabase/.temp`, which is git-ignored, and applies nothing.
+3. **Inspect only.** `pnpm exec supabase migration list --linked` should
+   show every migration as local-only. `pnpm exec supabase db push --dry-run`
+   previews the push without applying it.
+4. **Configure Auth in the dashboard** rather than with `supabase config push`,
+   which would upload the local values, including the `127.0.0.1` URLs:
+   - Turn off "Allow new users to sign up". Invited clients are still
+     created by trusted server code.
+   - Set the Site URL to the production origin.
+   - Add `https://<domain>/auth/confirm` to the redirect URLs.
+   - Paste `supabase/templates/magic_link.html` into the Magic Link template.
+   - Keep the email OTP expiry at 3600 seconds.
+   - Configure custom SMTP (Resend). Supabase's built-in mailer is heavily
+     rate-limited and meant for testing.
+5. **Never run `supabase/seed.sql` on hosted.** It creates DEMO users and
+   tenants. `db push` does not seed unless you pass `--include-seed`.
+6. **Set Vercel environment variables:**
+   - the four from the table above (Supabase URL, publishable key, secret
+     key, app URL)
+   - a new `PROPOSAL_LINK_SECRET` and `OUTBOX_WORKER_SECRET`, each 32 or more
+     random characters, never reused from local
+   - `EMAIL_TRANSPORT=resend`, `RESEND_API_KEY` and a verified
+     `EMAIL_FROM_ADDRESS`
+7. **Schedule the outbox worker.** `vercel.json` runs `/api/internal/outbox`
+   every 5 minutes. Vercel cron sends `Authorization: Bearer $CRON_SECRET`, and
+   only when a `CRON_SECRET` variable exists. The route accepts exactly
+   `Bearer $OUTBOX_WORKER_SECRET`, so set `CRON_SECRET` (Production,
+   Sensitive) to the same value as `OUTBOX_WORKER_SECRET`. A mismatch shows as
+   404s in the cron logs.
+   - Emails still go out immediately after each action. The cron only retries
+     and catches up.
+   - Schedules more frequent than once a day need a Vercel Pro plan; on Hobby
+     the deployment fails.
+   - Vercel can occasionally skip or repeat a run, which the outbox tolerates:
+     claims skip locked rows, and every email has a dedup key.
+
+Locally verified with the new key formats: service-role RPCs, Auth admin
+(`generateLink`), Storage, anon denial, magic-link verification, RLS reads,
+the proxy's `getClaims`, the SSR client, and the integration suite through
+`SUPABASE_SECRET_KEY` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. The local
+gateway does not reject secret keys sent from a browser; hosted Supabase
+does.
 
 ## Project layout
 

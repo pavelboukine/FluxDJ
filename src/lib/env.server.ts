@@ -1,13 +1,21 @@
 import "server-only";
 import { z } from "zod";
+import { legacyKeyRole } from "@/lib/env";
 
 /**
  * Server-only configuration and secrets. Importing this module from a Client
  * Component fails the build because of the "server-only" import above.
  */
-const serverEnvSchema = z
+export const serverEnvSchema = z
   .object({
-    SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
+    // Supabase secret key ("sb_secret_..."); the legacy service_role JWT is
+    // accepted for older local setups. Bypasses row-level security.
+    SUPABASE_SECRET_KEY: z
+      .string()
+      .min(1, "Set SUPABASE_SECRET_KEY")
+      .refine((key) => !key.startsWith("sb_publishable_") && legacyKeyRole(key) !== "anon", {
+        message: "SUPABASE_SECRET_KEY must be the secret (or service_role) key, not the publishable key",
+      }),
     // Derives proposal link tokens: token = HMAC-SHA256(secret, link id).
     // Rotating it breaks retries of not-yet-delivered proposal emails (they
     // fail visibly); links already delivered keep working.
@@ -30,7 +38,8 @@ let cachedServerEnv: ServerEnv | undefined;
 
 export function serverEnv(): ServerEnv {
   cachedServerEnv ??= serverEnvSchema.parse({
-    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    // SUPABASE_SERVICE_ROLE_KEY is the legacy name, kept as a fallback.
+    SUPABASE_SECRET_KEY: process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY,
     PROPOSAL_LINK_SECRET: process.env.PROPOSAL_LINK_SECRET,
     EMAIL_TRANSPORT: process.env.EMAIL_TRANSPORT || undefined,
     EMAIL_FROM_ADDRESS: process.env.EMAIL_FROM_ADDRESS || undefined,
