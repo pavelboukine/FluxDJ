@@ -10,9 +10,11 @@ import { expect, test, type Browser, type BrowserContext, type Page } from "@pla
 import { DEMO_TEMPLATE_TEXT, DEMO_TEMPLATE_TITLE } from "../../src/lib/contracts/demo-template";
 import { parseOfferSnapshot, priceSelection, toSelectionRecord, type OfferSnapshot } from "../../src/lib/pricing";
 import { admin, signInStaff } from "./support";
+import { archiveTestTenant, createTestTenant, type TestTenant } from "./tenant";
 
-const BOUPROD = "11111111-0000-4000-8000-000000000001";
-const OWNER = "owner@bouprod.example";
+// Dedicated test tenants; never the seeded BOUPROD or Other DJ.
+let tenant: TestTenant;
+let otherTenant: TestTenant;
 const run = randomUUID().slice(0, 6);
 const templateName = `E2E contract ${run}`;
 const clientName = `Robin <b>&</b> Kai {{pricing.total}}`;
@@ -44,19 +46,26 @@ test.describe.serial("contract templates and contract drafts", () => {
 
   test.beforeAll(async ({ browser: b }) => {
     browser = b;
+    tenant = await createTestTenant("contract", { catalog: true });
+    otherTenant = await createTestTenant("contract-other");
     eventId = randomUUID();
     const clientId = randomUUID();
-    await admin.from("clients").insert({ id: clientId, tenant_id: BOUPROD, name: clientName, email: `contract-${run}@example.test`, phone: "+1 514 555 0142" });
+    await admin.from("clients").insert({ id: clientId, tenant_id: tenant.id, name: clientName, email: `contract-${run}@example.test`, phone: "+1 514 555 0142" });
     // No venue address yet: generation must say so instead of rendering a blank.
-    await admin.from("events").insert({ id: eventId, tenant_id: BOUPROD, title: eventTitle, event_type: "wedding", event_date: "2027-09-18", venue_name: "E2E Loft" });
-    await admin.from("event_clients").insert({ tenant_id: BOUPROD, event_id: eventId, client_id: clientId, is_primary: true, can_sign: true });
+    await admin.from("events").insert({ id: eventId, tenant_id: tenant.id, title: eventTitle, event_type: "wedding", event_date: "2027-09-18", venue_name: "E2E Loft" });
+    await admin.from("event_clients").insert({ tenant_id: tenant.id, event_id: eventId, client_id: clientId, is_primary: true, can_sign: true });
     context = await browser.newContext();
     staff = await context.newPage();
-    await signInStaff(staff, OWNER);
+    await signInStaff(staff, tenant.ownerEmail);
+  });
+
+  test.afterAll(async () => {
+    await archiveTestTenant(tenant);
+    await archiveTestTenant(otherTenant);
   });
 
   test("staff create, validate and publish a template; published versions are read-only", async () => {
-    await staff.goto("/staff/bouprod");
+    await staff.goto(`/staff/${tenant.slug}`);
     await staff.getByRole("navigation", { name: "Staff" }).getByRole("link", { name: "Contract templates" }).click();
     await expect(staff.getByRole("heading", { name: "Contract templates" })).toBeVisible();
     await staff.getByLabel("Template name").fill(templateName);
@@ -88,7 +97,7 @@ test.describe.serial("contract templates and contract drafts", () => {
   });
 
   test("staff approve a real submission; missing details block generation with clear guidance", async () => {
-    await staff.goto(`/staff/bouprod/events/${eventId}`);
+    await staff.goto(`/staff/${tenant.slug}/events/${eventId}`);
     await staff.getByLabel("Start from template").selectOption({ label: "Wedding (DEMO)" });
     await staff.getByRole("button", { name: "Start proposal draft" }).click();
     await staff.waitForURL("**/proposals/**");
@@ -101,15 +110,15 @@ test.describe.serial("contract templates and contract drafts", () => {
     // The client opens the link and submits (the client page's own server calls).
     const { data: link } = await admin.from("access_links").select("token_hash").eq("proposal_id", proposalId).single();
     const sessionHash = sha256(randomBytes(32).toString("base64url"));
-    await admin.rpc("exchange_proposal_link", { p_token_hash: link!.token_hash, p_session_hash: sessionHash, p_tenant_slug: "bouprod", p_session_seconds: 3600 });
-    const { data: view } = await admin.rpc("client_proposal_view", { p_session_hash: sessionHash, p_proposal_id: proposalId, p_tenant_slug: "bouprod" });
+    await admin.rpc("exchange_proposal_link", { p_token_hash: link!.token_hash, p_session_hash: sessionHash, p_tenant_slug: tenant.slug, p_session_seconds: 3600 });
+    const { data: view } = await admin.rpc("client_proposal_view", { p_session_hash: sessionHash, p_proposal_id: proposalId, p_tenant_slug: tenant.slug });
     const { proposal } = view as { proposal: { offer: unknown; offer_sha256: string } };
     const offer = parseOfferSnapshot(proposal.offer);
     const priced = priceSelection(offer, { package_key: "signature", answers: answersFor(offer) });
     if (!priced.ok) throw new Error(JSON.stringify(priced.errors));
     totalCents = priced.selection.total_cents;
     const { data: submitted } = await admin.rpc("client_submit_selection", {
-      p_session_hash: sessionHash, p_proposal_id: proposalId, p_tenant_slug: "bouprod", p_expected_draft_version: 0,
+      p_session_hash: sessionHash, p_proposal_id: proposalId, p_tenant_slug: tenant.slug, p_expected_draft_version: 0,
       p_idempotency_key: randomUUID().replaceAll("-", ""), p_selection: JSON.parse(JSON.stringify(toSelectionRecord(priced.selection, proposal.offer_sha256))),
     });
     expect((submitted as { status: string }).status).toBe("submitted");
@@ -134,7 +143,7 @@ test.describe.serial("contract templates and contract drafts", () => {
     await admin.from("events").update({ venue_address: "77 Rue E2E, Montréal" }).eq("id", eventId);
     await staff.getByLabel("Balance due date").fill("2027-08-18");
     await staff.getByRole("button", { name: "Generate contract draft" }).dblclick();
-    await staff.waitForURL(/\/staff\/bouprod\/contracts\/[0-9a-f-]{36}$/);
+    await staff.waitForURL(new RegExp(`/staff/${tenant.slug}/contracts/[0-9a-f-]{36}$`));
     contractUrl = staff.url();
     const { data: rows } = await admin.from("contracts").select("id, status, total_cents").eq("event_id", eventId);
     expect(rows).toEqual([{ id: contractUrl.split("/").pop(), status: "draft", total_cents: totalCents }]);
@@ -193,9 +202,9 @@ test.describe.serial("contract templates and contract drafts", () => {
     await expect(page).toHaveURL(/\/login/);
     await expect(page.locator("body")).not.toContainText("DEMO, NOT FOR CLIENT USE");
 
-    await signInStaff(page, "owner@otherdj.example");
+    await signInStaff(page, otherTenant.ownerEmail);
     const contractId = contractUrl.split("/").pop();
-    for (const url of [contractUrl, `/staff/other-dj/contracts/${contractId}`]) {
+    for (const url of [contractUrl, `/staff/${otherTenant.slug}/contracts/${contractId}`]) {
       const response = await page.goto(url);
       expect(response?.status()).toBe(404);
       await expect(page.locator("body")).not.toContainText(eventTitle);

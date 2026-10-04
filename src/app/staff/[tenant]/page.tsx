@@ -8,7 +8,10 @@ export default async function Dashboard({ params }: PageProps<"/staff/[tenant]">
   const { tenant: slug } = await params;
   const { supabase, tenant } = await requireStaff(slug);
   const count = async (table: "gear_items" | "packages" | "proposal_templates" | "clients" | "events" | "logistics_questions") => {
-    const { count } = await supabase.from(table).select("id", { count: "exact", head: true }).eq("tenant_id", tenant.id);
+    let query = supabase.from(table).select("id", { count: "exact", head: true }).eq("tenant_id", tenant.id);
+    // Archived events are not counted, matching the default events list.
+    if (table === "events") query = query.is("archived_at", null);
+    const { count } = await query;
     return count ?? 0;
   };
   const [gear, packages, templates, clients, events, questions] = await Promise.all([
@@ -21,9 +24,10 @@ export default async function Dashboard({ params }: PageProps<"/staff/[tenant]">
   ]);
   const { data: drafts } = await supabase
     .from("proposals")
-    .select("id, revision, updated_at, events!proposals_event_fk(title, event_date)")
+    .select("id, revision, updated_at, events!proposals_event_fk!inner(title, event_date, archived_at)")
     .eq("tenant_id", tenant.id)
     .eq("status", "draft")
+    .is("events.archived_at", null)
     .order("updated_at", { ascending: false })
     .limit(5);
 

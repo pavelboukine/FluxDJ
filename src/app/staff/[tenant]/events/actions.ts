@@ -89,3 +89,19 @@ export async function openProposalDraft(slug: string, eventId: string, _state: A
   if (error) return fail(describeDbError(error));
   redirect(`/staff/${slug}/proposals/${proposalId}`);
 }
+
+/**
+ * Archives or restores an event. Archiving revokes the event's client links
+ * and sessions in the same transaction and blocks sends, approvals and
+ * contract generation; nothing is deleted and the lifecycle status is kept.
+ */
+export async function setEventArchived(slug: string, eventId: string, archived: boolean): Promise<ActionState> {
+  const { supabase } = await requireStaff(slug);
+  if (!UUID_RE.test(eventId)) return fail("Event not found.");
+  const { data, error } = await supabase.rpc("set_event_archived", { p_event_id: eventId, p_archived: archived });
+  if (error) return fail(describeDbError(error));
+  revalidatePath(`/staff/${slug}`, "layout");
+  const result = data as { links_revoked?: number };
+  if (!archived) return ok("Event restored. Client links stay revoked; send a revised offer to give the client access again.");
+  return ok(`Event archived.${result.links_revoked ? ` ${result.links_revoked} client link(s) revoked.` : ""}`);
+}

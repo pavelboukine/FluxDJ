@@ -292,13 +292,13 @@ isOneToOne: false
                   ]
                 },"events": {
                   Row: {
-                    "active_proposal_id": string | null,"booking_confirmed_at": string | null,"created_at": string,"event_date": string,"event_type": string,"id": string,"internal_notes": string | null,"lifecycle_status": string,"planning_lock_at": string | null,"planning_override_until": string | null,"tenant_id": string,"timezone": string,"title": string,"updated_at": string,"venue_address": string | null,"venue_name": string | null
+                    "active_proposal_id": string | null,"archived_at": string | null,"booking_confirmed_at": string | null,"created_at": string,"event_date": string,"event_type": string,"id": string,"internal_notes": string | null,"lifecycle_status": string,"planning_lock_at": string | null,"planning_override_until": string | null,"tenant_id": string,"timezone": string,"title": string,"updated_at": string,"venue_address": string | null,"venue_name": string | null
                   }
                   Insert: {
-                    "active_proposal_id"?: string | null,"booking_confirmed_at"?: string | null,"created_at"?: string,"event_date": string,"event_type": string,"id"?: string,"internal_notes"?: string | null,"lifecycle_status"?: string,"planning_lock_at"?: string | null,"planning_override_until"?: string | null,"tenant_id": string,"timezone"?: string,"title": string,"updated_at"?: string,"venue_address"?: string | null,"venue_name"?: string | null
+                    "active_proposal_id"?: string | null,"archived_at"?: string | null,"booking_confirmed_at"?: string | null,"created_at"?: string,"event_date": string,"event_type": string,"id"?: string,"internal_notes"?: string | null,"lifecycle_status"?: string,"planning_lock_at"?: string | null,"planning_override_until"?: string | null,"tenant_id": string,"timezone"?: string,"title": string,"updated_at"?: string,"venue_address"?: string | null,"venue_name"?: string | null
                   }
                   Update: {
-                    "active_proposal_id"?: string | null,"booking_confirmed_at"?: string | null,"created_at"?: string,"event_date"?: string,"event_type"?: string,"id"?: string,"internal_notes"?: string | null,"lifecycle_status"?: string,"planning_lock_at"?: string | null,"planning_override_until"?: string | null,"tenant_id"?: string,"timezone"?: string,"title"?: string,"updated_at"?: string,"venue_address"?: string | null,"venue_name"?: string | null
+                    "active_proposal_id"?: string | null,"archived_at"?: string | null,"booking_confirmed_at"?: string | null,"created_at"?: string,"event_date"?: string,"event_type"?: string,"id"?: string,"internal_notes"?: string | null,"lifecycle_status"?: string,"planning_lock_at"?: string | null,"planning_override_until"?: string | null,"tenant_id"?: string,"timezone"?: string,"title"?: string,"updated_at"?: string,"venue_address"?: string | null,"venue_name"?: string | null
                   }
                   Relationships: [
                     {
@@ -900,6 +900,9 @@ isOneToOne: false
                            },
 "send_proposal":
 { Args: { "p_access_link_id": string,"p_expected_draft_version": number,"p_proposal_id": string,"p_token_hash": string }; Returns: Json
+                           },
+"set_event_archived":
+{ Args: { "p_archived": boolean,"p_event_id": string }; Returns: Json
                            },
 "set_package_items":
 { Args: { "p_items": Json,"p_package_id": string }; Returns: undefined

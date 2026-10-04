@@ -9,6 +9,7 @@ import { ContractCard } from "../../contracts/contract-card";
 import { UUID_RE } from "@/lib/forms";
 import { addEventContact, openProposalDraft, removeEventContact, updateEvent } from "../actions";
 import { EventFields } from "../event-fields";
+import { ArchivePanel } from "./archive-panel";
 import { RemoveContact } from "./remove-contact";
 
 export default async function EventPage({ params, searchParams }: PageProps<"/staff/[tenant]/events/[eventId]">) {
@@ -19,7 +20,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
   const { supabase, tenant } = staff;
   const { data: event } = await supabase
     .from("events")
-    .select("id, title, event_type, event_date, timezone, venue_name, venue_address, internal_notes, lifecycle_status, active_proposal_id, event_clients(id, is_primary, can_sign, clients(id, name, email)), proposals!proposals_event_fk(id, revision, status, offer_frozen_at, updated_at, expires_at)")
+    .select("id, title, event_type, event_date, timezone, venue_name, venue_address, internal_notes, lifecycle_status, active_proposal_id, archived_at, event_clients(id, is_primary, can_sign, clients(id, name, email)), proposals!proposals_event_fk(id, revision, status, offer_frozen_at, updated_at, expires_at)")
     .eq("id", eventId)
     .eq("tenant_id", tenant.id)
     .maybeSingle();
@@ -47,8 +48,19 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
       <PageHeader
         title={event.title}
         description={<><Link className="underline" href={`/staff/${slug}/events`}>Back to events</Link> · {event.event_date}</>}
-        actions={<Badge variant="outline">{event.lifecycle_status.replace("_", " ")}</Badge>}
+        actions={
+          <>
+            {event.archived_at ? <Badge variant="secondary">Archived</Badge> : null}
+            <Badge variant="outline">{event.lifecycle_status.replace("_", " ")}</Badge>
+          </>
+        }
       />
+      {event.archived_at ? (
+        <p role="status" className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
+          This event is archived. It is hidden from the events list, its client links are revoked, and proposals can&apos;t be sent or
+          approved and contracts can&apos;t be generated until you unarchive it. Its history is kept.
+        </p>
+      ) : null}
       {contact === "failed" ? <p role="alert" className="text-sm text-destructive">The event was created but its contact could not be attached. Add the contact below.</p> : null}
 
       <Card>
@@ -109,6 +121,16 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
             <SelectField label="Client" name="client_id" options={(clients ?? []).filter((c) => !onEvent.has(c.id)).map((c) => ({ value: c.id, label: `${c.name} (${c.email})` }))} placeholder="— choose —" />
             <CheckboxField label="Make primary contact and signer" name="is_primary" />
           </ActionForm>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{event.archived_at ? "Archived" : "Archive"}</CardTitle>
+          <CardDescription>Archiving is separate from cancelling or booking. Nothing is deleted.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ArchivePanel slug={slug} eventId={event.id} archived={Boolean(event.archived_at)} />
         </CardContent>
       </Card>
 

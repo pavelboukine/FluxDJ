@@ -203,9 +203,18 @@ This runs, in order:
 | Browser tests (Playwright) | `pnpm test:e2e` | Yes. It starts `pnpm dev` if it isn't running |
 
 Before the first browser test run, install the browser once with
-`pnpm exec playwright install chromium`. Browser and integration tests add
-uniquely named records to the local database, and `pnpm db:reset` clears
-them.
+`pnpm exec playwright install chromium`.
+
+Tests never write to the seeded BOUPROD or Other DJ tenants, so your manual
+work there is safe while they run.
+- Browser tests create their own tenants (`e2e-…`) with the DEMO catalog
+  copied from the seed (`tests/e2e/tenant.ts`).
+- Integration tests create their own tenants (`it-…`).
+- Each test tenant's only member is a throwaway `@example.test` owner, so it
+  never appears in your staff workspace. It is archived when the suite ends.
+- Proposals, contracts and audit rows are immutable, so test tenants are
+  archived rather than deleted. `pnpm db:reset` removes them along with
+  everything else.
 
 `pnpm build` also verifies the production build.
 
@@ -228,6 +237,7 @@ in every relevant relationship.
 | `07_catalog_isolation` | Every catalog and template table is visible and writable only by staff of the owning tenant; clients and anon get nothing |
 | `08_catalog_integrity` | Cross-tenant composite keys for package contents, rules, templates and media; the default package must belong to its template; at most three packages per template; immutable keys; rule conditions limited to equality and membership, and checked against the question's options; media type, extension and path checks |
 | `12_send_submit_approve` | Send authorization, stale versions and missing contacts; staff can't see token hashes or sessions. Link exchange across tenants, unknown, revoked and superseded links. Safe client view, draft conflicts and invalid input. Submissions with omitted required gear, out-of-range quantities, missing answers or tampered prices, stale tabs, idempotency, approval, revision, expiry while open, the outbox and rate limits |
+| `15_event_archiving` | Only staff of the event's tenant can archive or unarchive, never directly. Links and sessions are revoked and pending client emails cancelled, while history and lifecycle status stay. Viewing, saving, submitting, link exchange, sending, approval and contract generation are blocked while archived. Unarchiving is audited and doesn't resurrect links |
 | `13_contract_templates` | Templates are visible and writable only by staff of their tenant; clients and anon get nothing. Unknown, malformed or expression-like placeholders are rejected, also by a CHECK constraint. Optimistic draft versions, publishing, and published versions that no role can edit, unpublish or delete. Editing opens one new draft version |
 | `14_contract_generation` | Deposit rounding. Authorization for other tenants, clients, strangers and anon. Unpublished and other tenants' template versions. Missing values listed with what to complete, and no signer. Amounts and lines from the approved selection, the documented hash, no booking and no access. Repeat clicks, explicit replacement and conflicts. Snapshot independence after client, event, business, tax, catalog and template changes. Frozen rows, cross-tenant foreign keys with the guard trigger disabled, literal rendering of client values, and superseded approvals |
 | `09_storage_gear_media` | Storage policies on the `gear-media` bucket: private bucket, tenant-scoped reads, uploads only under the uploader's own gear items, no overwrite or delete |
@@ -514,6 +524,27 @@ capped at 1 MB and hosting platforms limit request bodies.
   HTTP API locally, and Resend behind the same server-only interface for
   hosting. `EMAIL_TRANSPORT=resend` with `RESEND_API_KEY`. Resend isn't used
   locally or in tests.
+
+### Archiving events
+
+- **Archive or unarchive.** Staff do this from the event page, through
+  `set_event_archived`, which checks membership. Staff have no direct grant
+  on `events.archived_at`.
+- **Hidden by default.** Archived events are hidden from the Events list and
+  the dashboard. **Include archived** shows them, marked as archived.
+- **One transaction.** Archiving locks the event and does the following
+  together:
+  - revokes all its proposal links and client sessions
+  - cancels pending client emails for its proposals
+  - writes an audit record
+- **Blocked while archived.**
+  - Client sessions resolve as invalid, so clients can't view, edit or submit.
+  - Proposals can't be sent or approved.
+  - Contract drafts can't be generated.
+- **Separate from status.** Archiving never changes the lifecycle status.
+  Proposals, contracts and audit history are kept.
+- **Unarchiving** clears the flag only. Revocations are one-way, so the client
+  gets access again only when staff send a revised offer.
 
 ### Contract templates and drafts
 

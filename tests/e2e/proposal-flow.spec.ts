@@ -6,14 +6,16 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { admin, signInStaff, status, waitForEmail } from "./support";
+import { archiveTestTenant, createTestTenant, type TestTenant } from "./tenant";
 
-const BOUPROD = "11111111-0000-4000-8000-000000000001";
-const OWNER = "owner@bouprod.example";
+// A dedicated test tenant and a second one for cross-tenant checks; never the seeded BOUPROD.
+let tenant: TestTenant;
+let otherTenant: TestTenant;
 const run = randomUUID().slice(0, 6);
 const clientEmail = `client-${run}@example.test`;
 const eventTitle = `E2E Flow Wedding ${run}`;
 
-const proposalLink = (text: string) => /(http:\/\/127\.0\.0\.1:3000\/bouprod\/p#[A-Za-z0-9_-]{43})/.exec(text)?.[1];
+const proposalLink = (text: string) => new RegExp(`(http://127\\.0\\.0\\.1:3000/${tenant.slug}/p#[A-Za-z0-9_-]{43})`).exec(text)?.[1];
 
 test.describe.serial("send, open, edit, submit, approve", () => {
   let browser: Browser;
@@ -29,21 +31,28 @@ test.describe.serial("send, open, edit, submit, approve", () => {
 
   test.beforeAll(async ({ browser: b }) => {
     browser = b;
+    tenant = await createTestTenant("proposal", { catalog: true });
+    otherTenant = await createTestTenant("proposal-other");
     eventId = randomUUID();
     const clientId = randomUUID();
-    await admin.from("clients").insert({ id: clientId, tenant_id: BOUPROD, name: "Robin & Kai", email: clientEmail });
+    await admin.from("clients").insert({ id: clientId, tenant_id: tenant.id, name: "Robin & Kai", email: clientEmail });
     await admin.from("events").insert({
-      id: eventId, tenant_id: BOUPROD, title: eventTitle, event_type: "wedding", event_date: "2027-10-09",
+      id: eventId, tenant_id: tenant.id, title: eventTitle, event_type: "wedding", event_date: "2027-10-09",
       venue_name: "E2E Hall", internal_notes: `E2E internal note ${run}`,
     });
-    await admin.from("event_clients").insert({ tenant_id: BOUPROD, event_id: eventId, client_id: clientId, is_primary: true, can_sign: true });
+    await admin.from("event_clients").insert({ tenant_id: tenant.id, event_id: eventId, client_id: clientId, is_primary: true, can_sign: true });
     staffContext = await browser.newContext();
     staff = await staffContext.newPage();
-    await signInStaff(staff, OWNER);
+    await signInStaff(staff, tenant.ownerEmail);
+  });
+
+  test.afterAll(async () => {
+    await archiveTestTenant(tenant);
+    await archiveTestTenant(otherTenant);
   });
 
   test("staff must save before sending, then confirm recipient, event and expiry", async () => {
-    await staff.goto(`/staff/bouprod/events/${eventId}`);
+    await staff.goto(`/staff/${tenant.slug}/events/${eventId}`);
     await staff.getByLabel("Start from template").selectOption({ label: "Wedding (DEMO)" });
     await staff.getByRole("button", { name: "Start proposal draft" }).click();
     await staff.waitForURL("**/proposals/**");
@@ -80,17 +89,17 @@ test.describe.serial("send, open, edit, submit, approve", () => {
     clientContext = await browser.newContext();
     client = await clientContext.newPage();
     await client.goto(firstLink);
-    await client.waitForURL(/\/bouprod\/proposals\/[0-9a-f-]{36}$/);
+    await client.waitForURL(new RegExp(`/${tenant.slug}/proposals/[0-9a-f-]{36}$`));
     clientProposalUrl = client.url();
     expect(clientProposalUrl).not.toContain("#");
     await expect(client.getByRole("heading", { name: eventTitle })).toBeVisible();
-    await expect(client.getByText("BOUPROD", { exact: true }).first()).toBeVisible();
+    await expect(client.getByText(tenant.displayName, { exact: true }).first()).toBeVisible();
     // The DJ's recommended selections are preselected.
     await expect(client.getByRole("button", { name: /^Signature Most popular/ })).toHaveAttribute("aria-pressed", "true");
     await expect(client.getByRole("group", { name: "Uplights (pack of 4) quantity" })).toContainText("1");
     await expect(client.locator("body")).not.toContainText(`E2E internal note ${run}`);
 
-    const notice = await waitForEmail(OWNER, { after: sentAt, subject: /Proposal link opened/ });
+    const notice = await waitForEmail(tenant.ownerEmail, { after: sentAt, subject: /Proposal link opened/ });
     expect(notice.text).toContain("does not prove the client has read the proposal");
   });
 
@@ -143,7 +152,7 @@ test.describe.serial("send, open, edit, submit, approve", () => {
   });
 
   test("catalog edits after sending do not change the client's terms", async () => {
-    const { data: gear } = await admin.from("gear_items").select("id, default_price_cents").eq("tenant_id", BOUPROD).eq("key", "uplights_4").single();
+    const { data: gear } = await admin.from("gear_items").select("id, default_price_cents").eq("tenant_id", tenant.id).eq("key", "uplights_4").single();
     await admin.from("gear_items").update({ default_price_cents: 99_900 }).eq("id", gear!.id);
     try {
       await client.reload();
@@ -165,7 +174,7 @@ test.describe.serial("send, open, edit, submit, approve", () => {
 
   test("a double-clicked submit creates exactly one submission and never says booked", async () => {
     const before = Date.now();
-    await client.getByRole("button", { name: "Submit for BOUPROD to review" }).dblclick();
+    await client.getByRole("button", { name: `Submit for ${tenant.displayName} to review` }).dblclick();
     await expect(client.getByText("Submitted for DJ review.")).toBeVisible();
     await expect(client.locator("body")).not.toContainText(/booking (is )?confirmed|you're booked|booked!/i);
     const { data: proposal } = await admin.from("proposals").select("id, status").eq("event_id", eventId).eq("status", "submitted").single();
@@ -173,7 +182,7 @@ test.describe.serial("send, open, edit, submit, approve", () => {
     expect(count).toBe(1);
     const { data: event } = await admin.from("events").select("lifecycle_status").eq("id", eventId).single();
     expect(event!.lifecycle_status).toBe("pending_approval");
-    await waitForEmail(OWNER, { after: before, subject: /Submitted for your review/ });
+    await waitForEmail(tenant.ownerEmail, { after: before, subject: /Submitted for your review/ });
   });
 
   test("staff review the exact submission and approve it; the client is told the contract follows", async () => {
@@ -192,12 +201,12 @@ test.describe.serial("send, open, edit, submit, approve", () => {
     const ack = await waitForEmail(clientEmail, { after: before, subject: /approved your selection/ });
     expect(ack.text).toContain("Your contract will follow");
     await client.reload();
-    await expect(client.getByText("Approved by BOUPROD.")).toBeVisible();
+    await expect(client.getByText(`Approved by ${tenant.displayName}.`)).toBeVisible();
     await expect(client.getByText(/Your contract will follow/)).toBeVisible();
   });
 
   test("a proposal link grants no staff, event or direct database access", async () => {
-    await client.goto("/staff/bouprod");
+    await client.goto(`/staff/${tenant.slug}`);
     await expect(client).toHaveURL(/\/login$/);
     const { count } = await admin.from("event_access").select("id", { count: "exact", head: true }).eq("event_id", eventId);
     expect(count).toBe(0);
@@ -226,7 +235,7 @@ test.describe.serial("send, open, edit, submit, approve", () => {
     const secondLink = proposalLink(email.text)!;
     expect(secondLink).not.toBe(firstLink);
     await page.goto(secondLink);
-    await page.waitForURL(/\/bouprod\/proposals\//);
+    await page.waitForURL(new RegExp(`/${tenant.slug}/proposals/`));
     clientProposalUrl = page.url();
     await client.close();
     client = page;
@@ -236,9 +245,9 @@ test.describe.serial("send, open, edit, submit, approve", () => {
   test("invalid and cross-tenant links show a generic message", async () => {
     const context = await browser.newContext();
     const page = await context.newPage();
-    await page.goto(`/bouprod/p#${"A".repeat(43)}`);
+    await page.goto(`/${tenant.slug}/p#${"A".repeat(43)}`);
     await expect(page.getByText("This proposal link is not valid or has expired.")).toBeVisible();
-    await page.goto(`/other-dj/proposals/${clientProposalUrl.split("/").pop()}`);
+    await page.goto(`/${otherTenant.slug}/proposals/${clientProposalUrl.split("/").pop()}`);
     await expect(page.getByRole("heading", { name: "This link isn't available" })).toBeVisible();
     await context.close();
   });
@@ -250,7 +259,7 @@ test.describe.serial("send, open, edit, submit, approve", () => {
     await expect(client.getByText("All changes saved")).toBeVisible();
     const proposalId = clientProposalUrl.split("/").pop()!;
     await admin.from("proposals").update({ expires_at: new Date(Date.now() - 60_000).toISOString() }).eq("id", proposalId);
-    await client.getByRole("button", { name: "Submit for BOUPROD to review" }).click();
+    await client.getByRole("button", { name: `Submit for ${tenant.displayName} to review` }).click();
     await expect(client.getByText(/This proposal has expired/)).toBeVisible();
     const { count } = await admin.from("proposal_selections").select("id", { count: "exact", head: true }).eq("proposal_id", proposalId);
     expect(count).toBe(0);

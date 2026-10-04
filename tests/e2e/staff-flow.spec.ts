@@ -8,6 +8,7 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
+import { archiveTestTenant, createTestTenant, type TestTenant } from "./tenant";
 
 const status = JSON.parse(
   execFileSync("node_modules/.bin/supabase", ["status", "-o", "json"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }),
@@ -16,7 +17,9 @@ if (!/^http:\/\/(127\.0\.0\.1|localhost)[:/]/.test(status.API_URL)) throw new Er
 const admin = createClient(status.API_URL, status.SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 
 const MAILPIT = "http://127.0.0.1:54324";
-const OWNER = "owner@bouprod.example";
+// A dedicated test tenant (and a second one for isolation checks); never the seeded BOUPROD.
+let tenant: TestTenant;
+let otherTenant: TestTenant;
 const run = randomUUID().slice(0, 6);
 
 // A valid 1x1 PNG.
@@ -45,7 +48,7 @@ async function signIn(page: Page, email: string) {
   await expect(page.getByRole("status")).toContainText("If that email belongs to a staff account");
   await page.goto(await latestMagicLink(email, started));
   await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL("**/staff/bouprod");
+  await page.waitForURL(`**/staff/${tenant.slug}`);
 }
 
 test.describe.serial("staff interface", () => {
@@ -58,14 +61,21 @@ test.describe.serial("staff interface", () => {
 
   test.beforeAll(async ({ browser: b }) => {
     browser = b;
+    tenant = await createTestTenant("staff", { catalog: true });
+    otherTenant = await createTestTenant("staff-other");
     context = await browser.newContext();
     page = await context.newPage();
+  });
+
+  test.afterAll(async () => {
+    await archiveTestTenant(tenant);
+    await archiveTestTenant(otherTenant);
   });
 
   test("signed-out visitors are sent to login; unknown emails get no link", async () => {
     const anonymousContext = await browser.newContext();
     const anonymous = await anonymousContext.newPage();
-    await anonymous.goto("/staff/bouprod/gear");
+    await anonymous.goto(`/staff/${tenant.slug}/gear`);
     await expect(anonymous).toHaveURL(/\/login$/);
     const stranger = `nobody-${run}@example.test`;
     await anonymous.getByLabel("Email").fill(stranger);
@@ -79,18 +89,18 @@ test.describe.serial("staff interface", () => {
   });
 
   test("staff sign in with a magic link", async () => {
-    await signIn(page, OWNER);
+    await signIn(page, tenant.ownerEmail);
     await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
   });
 
-  test("another DJ's workspace is not reachable", async () => {
-    const res = await page.goto("/staff/other-dj");
+  test("another tenant's workspace is not reachable", async () => {
+    const res = await page.goto(`/staff/${otherTenant.slug}`);
     expect(res?.status()).toBe(404);
   });
 
   test("gear: create, edit price, upload a real photo, reject a disguised file", async () => {
     gearName = `E2E Fog machine ${run}`;
-    await page.goto("/staff/bouprod/gear/new");
+    await page.goto(`/staff/${tenant.slug}/gear/new`);
     await page.getByLabel("Name").fill(gearName);
     await page.getByLabel("Price (CAD)").fill("90");
     await page.getByLabel("Description").fill("Low-lying fog for the first dance.");
@@ -117,13 +127,12 @@ test.describe.serial("staff interface", () => {
 
     const { data: media } = await admin.from("gear_media").select("id").eq("gear_item_id", saved!.id);
     expect(media).toHaveLength(1);
-    const { data: tenant } = await admin.from("tenants").select("id").eq("slug", "bouprod").single();
-    const { data: objects } = await admin.storage.from("gear-media").list(`${tenant!.id}/gear-items/${saved!.id}`);
+    const { data: objects } = await admin.storage.from("gear-media").list(`${tenant.id}/gear-items/${saved!.id}`);
     expect(objects).toHaveLength(1);
   });
 
   test("packages: create a package and include gear", async () => {
-    await page.goto("/staff/bouprod/packages/new");
+    await page.goto(`/staff/${tenant.slug}/packages/new`);
     await page.getByLabel("Name").fill(`E2E Package ${run}`);
     await page.getByLabel("Base price (CAD)").fill("1000");
     await page.getByRole("button", { name: "Create package" }).click();
@@ -134,7 +143,7 @@ test.describe.serial("staff interface", () => {
   });
 
   test("templates: compose three packages, a recommended one, addons and questions", async () => {
-    await page.goto("/staff/bouprod/templates");
+    await page.goto(`/staff/${tenant.slug}/templates`);
     await page.getByLabel("Name").fill(`E2E Wedding ${run}`);
     await page.getByRole("button", { name: "Create template" }).click();
     await expect(page.getByRole("heading", { name: `E2E Wedding ${run}` })).toBeVisible();
@@ -150,7 +159,7 @@ test.describe.serial("staff interface", () => {
   });
 
   test("questions: create a question and a rule that requires gear", async () => {
-    await page.goto("/staff/bouprod/questions");
+    await page.goto(`/staff/${tenant.slug}/questions`);
     await page.getByLabel("Question", { exact: true }).fill(`E2E Will there be fog effects? ${run}`);
     await page.getByLabel("Answer type").selectOption("boolean");
     await page.getByRole("button", { name: "Create question" }).click();
@@ -165,15 +174,15 @@ test.describe.serial("staff interface", () => {
   });
 
   test("every staff page renders", async () => {
-    for (const path of ["", "/events", "/clients", "/gear", "/gear?show=archived", "/packages", "/questions", "/templates"]) {
-      const res = await page.goto(`/staff/bouprod${path}`);
+    for (const path of ["", "/events", "/events?show=all", "/clients", "/gear", "/gear?show=archived", "/packages", "/questions", "/templates"]) {
+      const res = await page.goto(`/staff/${tenant.slug}${path}`);
       expect(res?.status(), path).toBe(200);
       await expect(page.locator("h1")).toBeVisible();
     }
   });
 
   test("events: create an event with a new client", async () => {
-    await page.goto("/staff/bouprod/events/new");
+    await page.goto(`/staff/${tenant.slug}/events/new`);
     await page.getByLabel("Title").fill(`E2E Wedding of Jo & Lee ${run}`);
     await page.getByLabel("Date").fill("2027-09-18");
     await page.getByLabel("Venue name").fill("Le Grand Salon");
@@ -326,6 +335,35 @@ test.describe.serial("staff interface", () => {
     const overflow = await phone.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(0);
     await phone.close();
+  });
+
+  test("events: archive hides an event from the list, keeps its history, and can be undone", async () => {
+    const eventId = eventUrl.split("/").pop()!;
+    const title = `E2E Wedding of Jo & Lee ${run}`;
+    await page.goto(eventUrl);
+    await page.getByRole("button", { name: "Archive…" }).click();
+    const dialog = page.getByRole("dialog", { name: "Confirm archiving" });
+    await expect(dialog).toContainText("the event status does not change");
+    await dialog.getByRole("button", { name: "Archive event" }).click();
+    await expect(page.getByText("This event is archived.")).toBeVisible();
+    const { data: archived } = await admin.from("events").select("archived_at, lifecycle_status").eq("id", eventId).single();
+    expect(archived!.archived_at).not.toBeNull();
+    expect(archived!.lifecycle_status).toBe("lead");
+    const { count: proposals } = await admin.from("proposals").select("id", { count: "exact", head: true }).eq("event_id", eventId);
+    expect(proposals).toBe(1);
+
+    await page.goto(`/staff/${tenant.slug}/events`);
+    await expect(page.getByRole("link", { name: title })).toHaveCount(0);
+    await page.getByRole("link", { name: "Include archived" }).click();
+    await expect(page).toHaveURL(/\?show=all$/);
+    const row = page.getByRole("row", { name: new RegExp(title) });
+    await expect(row).toContainText("Archived");
+
+    await row.getByRole("link", { name: title }).click();
+    await page.getByRole("button", { name: "Unarchive event" }).click();
+    await expect(page.getByText(/Event restored/)).toBeVisible();
+    await page.goto(`/staff/${tenant.slug}/events`);
+    await expect(page.getByRole("link", { name: title })).toBeVisible();
   });
 
   test("signed-out visitors cannot open the proposal or its preview", async () => {

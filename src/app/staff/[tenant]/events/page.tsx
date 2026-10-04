@@ -5,17 +5,31 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { PageHeader } from "@/components/app/fields";
 import { requireStaff } from "@/lib/auth/staff";
 
-export default async function Events({ params }: PageProps<"/staff/[tenant]/events">) {
+export default async function Events({ params, searchParams }: PageProps<"/staff/[tenant]/events">) {
   const { tenant: slug } = await params;
+  const { show } = await searchParams;
+  const includeArchived = show === "all";
   const { supabase, tenant } = await requireStaff(slug);
-  const { data: events } = await supabase
+  // Archived events are hidden unless staff ask for them.
+  let query = supabase
     .from("events")
-    .select("id, title, event_date, lifecycle_status, venue_name, event_clients(is_primary, clients(name))")
-    .eq("tenant_id", tenant.id)
-    .order("event_date");
+    .select("id, title, event_date, lifecycle_status, archived_at, venue_name, event_clients(is_primary, clients(name))")
+    .eq("tenant_id", tenant.id);
+  if (!includeArchived) query = query.is("archived_at", null);
+  const { data: events } = await query.order("event_date");
   return (
     <>
-      <PageHeader title="Events" actions={<Link className={buttonVariants()} href={`/staff/${slug}/events/new`}>New event</Link>} />
+      <PageHeader
+        title="Events"
+        actions={
+          <>
+            <Link className={buttonVariants({ variant: "outline" })} href={`/staff/${slug}/events${includeArchived ? "" : "?show=all"}`}>
+              {includeArchived ? "Hide archived" : "Include archived"}
+            </Link>
+            <Link className={buttonVariants()} href={`/staff/${slug}/events/new`}>New event</Link>
+          </>
+        }
+      />
       <Table>
         <TableHeader>
           <TableRow>
@@ -34,7 +48,12 @@ export default async function Events({ params }: PageProps<"/staff/[tenant]/even
                 {e.venue_name ? <div className="text-xs text-muted-foreground">{e.venue_name}</div> : null}
               </TableCell>
               <TableCell className="hidden sm:table-cell">{e.event_clients.find((c) => c.is_primary)?.clients?.name ?? "—"}</TableCell>
-              <TableCell><Badge variant="outline">{e.lifecycle_status.replace("_", " ")}</Badge></TableCell>
+              <TableCell>
+                <span className="flex flex-wrap gap-1">
+                  <Badge variant="outline">{e.lifecycle_status.replace("_", " ")}</Badge>
+                  {e.archived_at ? <Badge variant="secondary">Archived</Badge> : null}
+                </span>
+              </TableCell>
             </TableRow>
           ))}
           {events?.length === 0 ? <TableRow><TableCell colSpan={4} className="text-muted-foreground">No events yet.</TableCell></TableRow> : null}
