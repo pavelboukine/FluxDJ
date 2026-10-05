@@ -1,6 +1,9 @@
 "use server";
 
 import { headers } from "next/headers";
+import { after } from "next/server";
+import { processDocumentJobsQuietly } from "@/lib/contracts/documents.server";
+import { processOutboxQuietly } from "@/lib/email/outbox.server";
 import { revalidatePath } from "next/cache";
 import { requestEvidence, signContractAs } from "@/lib/contracts/signing.server";
 import type { SignInput, SignResult } from "@/lib/contracts/signing";
@@ -39,6 +42,16 @@ export async function signContract(slug: string, contractId: string, input: Sign
     input,
     request: requestEvidence(await headers()),
   });
-  if (result.status === "signed") revalidatePath(`/${slug}/contracts/${contractId}`);
+  if (result.status === "signed") {
+    revalidatePath(`/${slug}/contracts/${contractId}`);
+    // The signature is committed; generate the PDF and email the copies now
+    // (the scheduled worker retries anything that fails here).
+    if (!result.replayed) {
+      after(async () => {
+        await processDocumentJobsQuietly();
+        await processOutboxQuietly();
+      });
+    }
+  }
   return result;
 }

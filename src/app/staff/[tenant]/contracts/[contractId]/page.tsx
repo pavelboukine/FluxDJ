@@ -11,6 +11,7 @@ import { SIGNATURE_BUCKET } from "@/lib/contracts/signing";
 import { UUID_RE } from "@/lib/forms";
 import { formatCents } from "@/lib/money";
 import { SentControls } from "./sent-controls";
+import { SignedDocumentPanel, type Delivery, type PdfState } from "./signed-document-panel";
 
 const fmt = (iso: string) => new Intl.DateTimeFormat("en-CA", { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso));
 
@@ -22,7 +23,7 @@ export default async function ContractPreview({ params }: PageProps<"/staff/[ten
   const { data: contract } = await supabase
     .from("contracts")
     .select(
-      "id, status, created_at, sent_at, signed_at, voided_at, void_reason, event_id, proposal_id, replaces_id, signer_name, signer_email, currency, total_cents, deposit_percent, deposit_cents, balance_cents, balance_due_date, rendered_content, content_sha256, events!contracts_event_fk(title, event_date), proposals!contracts_proposal_fk(revision), proposal_approvals!contracts_approval_fk(approved_at), contract_template_versions!contracts_template_version_fk(version_number, contract_templates!contract_template_versions_template_fk(id, name))",
+      "id, status, created_at, sent_at, signed_at, voided_at, void_reason, event_id, proposal_id, replaces_id, signer_name, signer_email, currency, total_cents, deposit_percent, deposit_cents, balance_cents, balance_due_date, rendered_content, content_sha256, party_snapshot, events!contracts_event_fk(title, event_date, archived_at), proposals!contracts_proposal_fk(revision), proposal_approvals!contracts_approval_fk(approved_at), contract_template_versions!contracts_template_version_fk(version_number, contract_templates!contract_template_versions_template_fk(id, name))",
     )
     .eq("id", contractId)
     .eq("tenant_id", tenant.id)
@@ -47,6 +48,35 @@ export default async function ContractPreview({ params }: PageProps<"/staff/[ten
         .eq("contract_id", contract.id)
         .maybeSingle()
     : { data: null };
+  // Signed PDF, its job and the per-recipient signed-copy deliveries.
+  const [{ data: document }, { data: job }, { data: deliveries }] = isSigned
+    ? await Promise.all([
+        supabase.from("contract_documents").select("pdf_sha256, byte_size, generated_at").eq("tenant_id", tenant.id).eq("contract_id", contract.id).eq("kind", "signed_contract").maybeSingle(),
+        supabase.from("document_jobs").select("status, attempts, last_error").eq("tenant_id", tenant.id).eq("contract_id", contract.id).maybeSingle(),
+        supabase.from("email_outbox").select("id, recipient_email, status, last_error, sent_at, payload").eq("tenant_id", tenant.id).eq("entity_id", contract.id).eq("event_type", "contract_signed_copy").order("created_at"),
+      ])
+    : [{ data: null }, { data: null }, { data: null }];
+  const pdfState: PdfState = document
+    ? { kind: "ready", pdfSha256: document.pdf_sha256, byteSize: document.byte_size, generatedAt: document.generated_at }
+    : !job
+      ? { kind: "none" }
+      : job.status === "failed"
+        ? { kind: "failed", attempts: job.attempts, lastError: job.last_error }
+        : { kind: job.status === "running" ? "running" : "pending", attempts: job.attempts, lastError: job.last_error };
+  const businessEmail = (contract.party_snapshot as { business?: { contact_email?: string | null } })?.business?.contact_email ?? null;
+  const recipients = [
+    { role: "client" as const, email: contract.signer_email.toLowerCase() },
+    ...(businessEmail ? [{ role: "business" as const, email: businessEmail.toLowerCase() }] : []),
+  ];
+  const deliveryRows: Delivery[] = (deliveries ?? []).map((d) => ({
+    id: d.id,
+    role: (d.payload as { recipient_role?: string })?.recipient_role === "business" ? "business" : "client",
+    email: d.recipient_email,
+    status: d.status,
+    lastError: d.last_error,
+    sentAt: d.sent_at,
+  }));
+
   // Two-minute link, allowed by the Storage policy for committed signatures of this tenant.
   const signatureUrl = signature
     ? ((await supabase.storage.from(SIGNATURE_BUCKET).createSignedUrl(signature.signature_path, 120)).data?.signedUrl ?? null)
@@ -126,6 +156,21 @@ export default async function ContractPreview({ params }: PageProps<"/staff/[ten
             <Card>
               <CardHeader><CardTitle>Sent contract</CardTitle></CardHeader>
               <CardContent><SentControls slug={slug} contractId={contract.id} /></CardContent>
+            </Card>
+          ) : null}
+          {isSigned ? (
+            <Card>
+              <CardHeader><CardTitle>Signed PDF</CardTitle></CardHeader>
+              <CardContent>
+                <SignedDocumentPanel
+                  slug={slug}
+                  contractId={contract.id}
+                  pdf={pdfState}
+                  deliveries={deliveryRows}
+                  recipients={recipients}
+                  archived={Boolean(contract.events?.archived_at)}
+                />
+              </CardContent>
             </Card>
           ) : null}
           {signature ? (

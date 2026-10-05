@@ -248,6 +248,7 @@ in every relevant relationship.
 | `18_contract_void_notice` | One notice per voided sent contract, none on repeats. Frozen signer, no link, no reason. Cancelled invitation emails. Memberships, identities, access and other events untouched. Deliverable at dispatch. Archiving neither sends nor cancels it. Revised-offer voids notify. Unsent drafts never do |
 | `19_tax_settings` | Owner-only tax settings for staff, other tenants, clients and anon; no direct column writes. Malformed, fractional, negative and over-100% rates, codes, names, keys and unknown taxes. Stale versions. Multiple taxes on standard. Removal rules for used taxes and categories. Explicit no tax versus missing. New offers read the new settings; the sent snapshot and hash are unchanged. Audit |
 | `20_contract_signing` | Only the service role signs. Wrong signer, other event's client, staff, stranger, no identity, wrong tenant, unverified or changed email, revoked access, archived event. Consent, consent version, displayed hash, typed name, never-stored, wrong-size, non-PNG, oversized and out-of-folder images. The atomic signed state and evidence, one audit event, no booking. Replays return the first signature to the signer only. Immutable evidence and content; void, resend, regeneration and revisions refused. Client and staff reads, Storage visibility, orphans. Archiving keeps evidence. Void and superseded contracts can't be signed |
+| `21_signed_contract_pdfs` | Signing queues one PDF job (none on replay) and no email. Only the service role runs jobs. Leases: no double claim, expired-lease recovery, stale leases can't fail a job. Commit validation (missing, wrong size, wrong type, wrong folder, wrong signature hash). One canonical immutable document; a second upload is "exists" with no duplicate emails. One email per party with separate dedup keys, no paths or tokens in payloads. Staff, other tenants, signer, other clients and anon. Archiving blocks the signer and cancels undelivered copies but keeps the PDF. Recipient-confirmed resend that never repeats a delivered copy. Contracts signed before PDFs: explicit generation without email |
 | `16_business_settings_send_review` | Owner-only settings for staff, other tenants, clients and anon. Validation and 0% and 100% boundaries. Half-up deposit rounding, and equality with the original 50% formula. Existing contracts are byte-for-byte unchanged with valid hashes. Explicit regeneration freezes new terms and identity. New placeholders and missing values. Every review rejection reason. Sending stays impossible |
 | `13_contract_templates` | Templates are visible and writable only by staff of their tenant; clients and anon get nothing. Unknown, malformed or expression-like placeholders are rejected, also by a CHECK constraint. Optimistic draft versions, publishing, and published versions that no role can edit, unpublish or delete. Editing opens one new draft version |
 | `14_contract_generation` | Deposit rounding. Authorization for other tenants, clients, strangers and anon. Unpublished and other tenants' template versions. Missing values listed with what to complete, and no signer. Amounts and lines from the approved selection, the documented hash, no booking and no access. Repeat clicks, explicit replacement and conflicts. Snapshot independence after client, event, business, tax, catalog and template changes. Frozen rows, cross-tenant foreign keys with the guard trigger disabled, literal rendering of client values, and superseded approvals |
@@ -327,6 +328,29 @@ signed-out browser:
   shown literally, and the layout at 390px with no sideways scrolling. It
   also covers confirmed replacement, signed-out redirects and 404s for the
   other DJ.
+
+### Signed PDF tests
+
+- `tests/unit/contract-pdf.test.ts` renders a long French agreement
+  (multiline addresses, accents, 14 sections, signature) and a short one,
+  checks the extracted text page by page (page numbers, DEMO labels, parties,
+  terms, both hashes, consent, IP or "Not recorded"), checks that the PDF does
+  not contain its own hash, and writes every page as PNG to
+  `test-results/pdf-samples/` for visual review.
+- `tests/integration/contract-documents.test.ts` uses real rendering, Storage
+  and the outbox. It covers:
+  - frozen content after source records change
+  - renderer and upload failures with recovery
+  - a worker that dies after uploading (expired lease, orphan)
+  - a stale worker losing the race
+  - three parallel workers
+  - signature and final-PDF hash mismatches
+  - identical attachments to both parties with a per-recipient retry
+  - private Storage
+- `tests/e2e/contract-signing-flow.spec.ts` continues after signing: both
+  emails arrive in Mailpit with the same PDF attached (hash checked), the
+  signer and staff download identical bytes with private headers, and
+  signed-out and other-tenant requests get no PDF.
 
 ### Signing tests
 
@@ -782,6 +806,73 @@ undelivered contract emails visibly.
   not by itself establish legal compliance for electronic signatures; that
   needs review of the agreement, the consent wording and the process.
 
+### Signed PDFs and signed copies
+
+- **What the PDF shows.** It is rendered with `@react-pdf/renderer` only from
+  the frozen contract (text, parties, terms, content hash) and the signing
+  evidence. It includes:
+  - the full agreement, with numbered pages
+  - the frozen business and client identities
+  - the agreed price, taxes, deposit and balance
+  - the typed name, the signature image, and the signing time in the event's
+    time zone and in UTC
+  - the contract id and the contract content SHA-256
+  - the consent text and version
+  - the recorded IP (or "Not recorded") and the user agent
+
+  DEMO labels appear on every page. It states that it records the client's
+  signature only, with no signature from the business. Fonts are bundled in
+  `assets/fonts/dejavu` (Latin and French accents, no network fetch) and
+  traced into the deployed functions by `next.config.ts`.
+- **Two different hashes.** `contracts.content_sha256` identifies the agreed
+  text, terms and parties. `contract_documents.pdf_sha256` is the SHA-256 of
+  the exact final PDF file. The PDF never contains its own hash.
+- **Durable job.** `sign_contract` queues one `document_jobs` row in the
+  signing transaction. Rendering happens later, so a failure never touches
+  the signature. The worker (`src/lib/contracts/documents.server.ts`) runs
+  right after signing and in the scheduled `/api/internal/outbox` route:
+  1. Claim with a 2-minute lease.
+  2. Verify the signature image against its recorded hash. A mismatch fails
+     the job permanently and visibly.
+  3. Render, then hash the final bytes.
+  4. Upload to a new `{tenant}/{contract}/{uuid}.pdf` in the private
+     `contract-documents` bucket.
+  5. `commit_contract_document`: atomically records the one canonical
+     document, marks the job succeeded and queues the signed-copy emails.
+
+  Retries back off (1, 2, 4… minutes) for up to 5 attempts, after which staff
+  see the error and can retry.
+- **Concurrency and recovery.**
+  - **Second commit:** a second commit for the same contract (a stale or
+    parallel worker) returns `exists`. That worker deletes its upload, and the
+    canonical PDF is reused forever; nothing overwrites it.
+  - **Crashed worker:** its lease expires and another worker retries.
+  - **Lost commit response:** the upload is kept, because it may be canonical.
+  - **Orphans:** unreferenced uploads appear in
+    `private.contract_document_orphans` and are readable only by the service
+    role. No automatic cleanup exists yet.
+- **Downloads.** `/{tenant}/contracts/{id}/signed-pdf` (signer) and
+  `/staff/{tenant}/contracts/{id}/signed-pdf` (staff) recheck access on every
+  request. They then stream the bytes after checking them against
+  `pdf_sha256`, with `Content-Disposition: attachment` and
+  `Cache-Control: private, no-store`. A mismatch returns an error and never
+  the file. The bucket has no Storage policies and there are no signed URLs.
+  Archiving blocks the signer's download but keeps the PDF; staff can still
+  download it.
+- **Emails.** A commit queues `contract_signed_copy` for the frozen signer
+  email and the frozen business contact email. Each recipient gets its own
+  row, dedup key and status, so a retry for one never resends the other. The
+  worker attaches the committed PDF after the same hash check; a mismatch
+  fails permanently. No bytes, paths, URLs or tokens are stored in the
+  outbox. Resend receives `Idempotency-Key: flux-signed-copy-{row id}`, which
+  closes the crash-after-send window for 24 hours. After that, or with
+  Mailpit, a crash between sending and recording can resend one copy. Mailpit
+  (local) and Resend (hosted) both send real attachments.
+- **Contracts signed before PDFs.** They have no job. Staff click **Generate
+  signed PDF**, which sends no email. **Send signed copies…** is a separate
+  step whose confirmation lists both recipients; the database checks that
+  they match the frozen addresses.
+
 ### Archiving events
 
 - **Archive or unarchive.** Staff do this from the event page, through
@@ -969,7 +1060,7 @@ before real clients.
      random characters, never reused from local
    - `EMAIL_TRANSPORT=resend`, `RESEND_API_KEY` and a verified
      `EMAIL_FROM_ADDRESS`
-7. **Schedule the outbox worker.** `vercel.json` runs `/api/internal/outbox`
+7. **Schedule the outbox worker.** It also generates signed PDFs (up to 5 per run, before emails, `maxDuration` 60 s; a PDF usually renders in well under 2 s). `vercel.json` runs `/api/internal/outbox`
    every 5 minutes. Vercel cron sends `Authorization: Bearer $CRON_SECRET`, and
    only when a `CRON_SECRET` variable exists. The route accepts exactly
    `Bearer $OUTBOX_WORKER_SECRET`, so set `CRON_SECRET` (Production,

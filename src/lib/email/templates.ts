@@ -1,7 +1,7 @@
 import { formatCents } from "@/lib/money";
 
 export type OutboxEventType = "proposal_sent" | "proposal_link_opened" | "proposal_submitted" | "proposal_approved";
-export type ContractOutboxEventType = "contract_sent" | "contract_sign_in" | "contract_voided";
+export type ContractOutboxEventType = "contract_sent" | "contract_sign_in" | "contract_voided" | "contract_signed_copy";
 
 export type TemplateInput = {
   eventType: OutboxEventType;
@@ -168,4 +168,43 @@ export function renderContractVoidedEmail(input: { tenantDisplayName: string; le
     text: `${lines.join("\n\n")}\n`,
     html: layout("Contract no longer available", lines),
   };
+}
+
+/**
+ * The signed copy, attached as the committed PDF. One email per party; the
+ * business copy is addressed to the frozen business contact. It confirms the
+ * signature only: it never says the event is booked or the deposit paid,
+ * and carries no internal notes or audit metadata.
+ */
+export function renderSignedCopyEmail(input: {
+  recipientRole: "client" | "business";
+  tenantDisplayName: string;
+  legalName: string;
+  contactEmail: string | null;
+  clientName: string;
+  typedName: string;
+  eventTitle: string;
+  eventDate: string;
+  signedAtLocal: string;
+}): RenderedEmail {
+  const dj = input.tenantDisplayName;
+  const lines =
+    input.recipientRole === "client"
+      ? [
+          `Hi ${input.clientName},`,
+          `Your contract with ${input.legalName} for ${input.eventTitle} (${input.eventDate}) was signed electronically by ${input.typedName} on ${input.signedAtLocal}.`,
+          "Your signed copy is attached as a PDF. Please keep it for your records.",
+          `${dj} will follow up with the next steps. This email confirms the signature only; it is not a booking or payment confirmation.`,
+          input.contactEmail ? `Questions? Contact ${input.legalName} at ${input.contactEmail}.` : "Questions? Reply to this email.",
+        ]
+      : [
+          `The contract for ${input.eventTitle} (${input.eventDate}) was signed electronically by ${input.typedName} on ${input.signedAtLocal}.`,
+          "The signed copy is attached as a PDF. The same copy was emailed to the client.",
+          "Signing does not book the event or record a payment in Flux DJ.",
+        ];
+  const subject =
+    input.recipientRole === "client"
+      ? `Your signed contract with ${dj} for ${input.eventTitle}`
+      : `Signed contract: ${input.eventTitle} (${input.clientName})`;
+  return { subject, text: `${lines.join("\n\n")}\n`, html: layout("Contract signed", lines) };
 }

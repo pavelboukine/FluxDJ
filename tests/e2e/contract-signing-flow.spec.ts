@@ -5,9 +5,9 @@
  * without losing anything, consents, confirms and signs; then the signed
  * state for the client and staff, and the paths a signed contract blocks.
  */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { admin, signInStaff, waitForEmail } from "./support";
+import { admin, MAILPIT, signInStaff, waitForEmail } from "./support";
 import { archiveTestTenant, createTestTenant, publishContractTemplate, sendProposalFromEventPage, submitAsClient, type TestTenant } from "./tenant";
 
 let tenant: TestTenant;
@@ -15,6 +15,26 @@ const run = randomUUID().slice(0, 6);
 const clientEmail = `e2e-signing-${run}@example.test`;
 const eventTitle = `E2E Signing Wedding ${run}`;
 const BASE = "http://127.0.0.1:3000";
+
+const sha = (b: Buffer) => createHash("sha256").update(b).digest("hex");
+
+/** The newest Mailpit message to `to` whose subject matches, with its PDF attachment bytes. */
+async function mailWithAttachment(to: string, subject: RegExp): Promise<{ subject: string; text: string; filename: string; pdf: Buffer }> {
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const search = (await (await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:"${to}"`)}`)).json()) as { messages: { ID: string; Subject: string }[] };
+    const hit = search.messages.find((m) => subject.test(m.Subject));
+    if (hit) {
+      const message = (await (await fetch(`${MAILPIT}/api/v1/message/${hit.ID}`)).json()) as {
+        Subject: string; Text: string; Attachments: { PartID: string; FileName: string; ContentType: string }[];
+      };
+      const part = message.Attachments.find((a) => a.ContentType === "application/pdf")!;
+      const pdf = Buffer.from(await (await fetch(`${MAILPIT}/api/v1/message/${hit.ID}/part/${part.PartID}`)).arrayBuffer());
+      return { subject: message.Subject, text: message.Text, filename: part.FileName, pdf };
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  throw new Error(`no email to ${to} matching ${subject}`);
+}
 
 /** Ink pixels currently on the signature canvas. */
 const inkOn = (page: Page) =>
@@ -161,7 +181,8 @@ test.describe.serial("contract signing", () => {
     await dialog.getByRole("button", { name: "Sign contract" }).click();
     await expect(client.getByRole("heading", { name: "Contract signed." }).first()).toBeVisible();
     await expect(client.getByText("Your DJ will follow up with the next steps.").first()).toBeVisible();
-    await expect(client.locator("body")).not.toContainText(/booked|planning|download/i);
+    // No booking or planning promise (a signed-PDF download is expected now).
+    await expect(client.locator("body")).not.toContainText(/booked|planning/i);
 
     await client.reload();
     await expect(client.getByRole("heading", { name: "Contract signed." })).toBeVisible();
@@ -178,6 +199,66 @@ test.describe.serial("contract signing", () => {
     expect(evidence!.user_agent).toBeTruthy();
     const { data: event } = await admin.from("events").select("lifecycle_status, booking_confirmed_at").eq("id", eventId).single();
     expect(event).toEqual({ lifecycle_status: "awaiting_signature", booking_confirmed_at: null });
+  });
+
+  test("the signed PDF is generated, emailed to both parties and downloadable only by them", async () => {
+    // Generated right after signing (the scheduled worker would also pick it up).
+    await expect
+      .poll(async () => (await admin.from("contract_documents").select("id").eq("contract_id", contractId)).data?.length ?? 0, { timeout: 30_000 })
+      .toBe(1);
+    const { data: doc } = await admin.from("contract_documents").select("pdf_sha256, byte_size, content_sha256").eq("contract_id", contractId).single();
+    const { data: biz } = await admin.from("tenants").select("contact_email").eq("id", tenant.id).single();
+
+    // Both parties get the same committed PDF.
+    const toClient = await mailWithAttachment(clientEmail, /Your signed contract/);
+    const toBusiness = await mailWithAttachment(biz!.contact_email!, /Signed contract:/);
+    for (const mail of [toClient, toBusiness]) {
+      expect(sha(mail.pdf)).toBe(doc!.pdf_sha256);
+      expect(mail.filename).toMatch(/^signed-contract-e2e-signing-wedding-.*\.pdf$/);
+      expect(mail.text).not.toMatch(/booked|deposit (has been )?paid|signed-pdf|token_hash/i);
+    }
+    expect(toClient.text).toContain("it is not a booking or payment confirmation");
+
+    // The signer downloads it from the contract page.
+    await client.goto(`/${tenant.slug}/contracts/${contractId}`);
+    const [download] = await Promise.all([client.waitForEvent("download"), client.getByRole("link", { name: "Download signed PDF" }).click()]);
+    const clientBytes = Buffer.from(await (await import("node:fs/promises")).readFile((await download.path())!));
+    expect(sha(clientBytes)).toBe(doc!.pdf_sha256);
+    expect(download.suggestedFilename()).toMatch(/\.pdf$/);
+    const head = await client.request.get(`/${tenant.slug}/contracts/${contractId}/signed-pdf`);
+    expect(head.headers()["content-type"]).toBe("application/pdf");
+    expect(head.headers()["cache-control"]).toContain("no-store");
+    expect(head.headers()["content-disposition"]).toMatch(/^attachment; filename="signed-contract-/);
+
+    // Staff download the same bytes; other people get nothing.
+    const staffResponse = await staff.request.get(`/staff/${tenant.slug}/contracts/${contractId}/signed-pdf`);
+    expect(staffResponse.status()).toBe(200);
+    expect(sha(Buffer.from(await staffResponse.body()))).toBe(doc!.pdf_sha256);
+    // Signed out: never a PDF (the staff path redirects to login, the client path is a 404).
+    const anon = await browser.newContext();
+    for (const path of [`/${tenant.slug}/contracts/${contractId}/signed-pdf`, `/staff/${tenant.slug}/contracts/${contractId}/signed-pdf`]) {
+      const response = await anon.request.get(`${BASE}${path}`, { maxRedirects: 0 });
+      expect(response.headers()["content-type"] ?? "").not.toContain("application/pdf");
+      expect([404, 302, 303, 307]).toContain(response.status());
+      if (response.status() !== 404) expect(response.headers().location).toContain("/login");
+    }
+    await anon.close();
+    const other = await createTestTenant("signing-other");
+    const otherContext = await browser.newContext();
+    const otherStaff = await otherContext.newPage();
+    await signInStaff(otherStaff, other.ownerEmail);
+    expect((await otherStaff.request.get(`/staff/${tenant.slug}/contracts/${contractId}/signed-pdf`)).status()).toBe(404);
+    expect((await otherStaff.request.get(`/staff/${other.slug}/contracts/${contractId}/signed-pdf`)).status()).toBe(404);
+    await otherContext.close();
+    await archiveTestTenant(other);
+
+    // Staff see the PDF, its final-file hash and both deliveries.
+    await staff.goto(contractUrl);
+    await expect(staff.getByRole("link", { name: "Download signed PDF" })).toBeVisible();
+    await expect(staff.getByText(doc!.pdf_sha256)).toBeVisible();
+    await expect(staff.getByText(/^Client: .* · sent /)).toBeVisible();
+    await expect(staff.getByText(/^Business: .* · sent /)).toBeVisible();
+    await expect(staff.getByRole("button", { name: "Send signed copies…" })).toHaveCount(0);
   });
 
   test("staff see the signed contract and evidence; void, resend and revisions are gone", async () => {

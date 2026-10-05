@@ -23,6 +23,11 @@ const nextConfig: NextConfig = {
   // this, a dev server started as plain `next dev` (localhost) blocks its own
   // scripts and HMR for 127.0.0.1 pages. Development only.
   allowedDevOrigins: ["127.0.0.1"],
+  // Signed-contract PDFs render with bundled fonts read from disk at runtime;
+  // trace them into every server function (they are small and never fetched).
+  outputFileTracingIncludes: {
+    "/*": ["./assets/fonts/**/*"],
+  },
   async headers() {
     return [
       { source: "/:tenant/p", headers: privatePageHeaders },

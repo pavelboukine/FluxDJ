@@ -25,7 +25,7 @@ type View =
         event_title: string; event_date: string; legal_name: string;
       };
       signing:
-        | { signed: true; typed_name: string; signed_at: string }
+        | { signed: true; typed_name: string; signed_at: string; pdf_ready: boolean; pdf_pending: boolean }
         | { signed: false; enabled: boolean; consent_version: string; consent_text: string };
     };
 
@@ -95,8 +95,19 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
           <h2 className="text-lg font-semibold">Contract signed.</h2>
           <p>Your DJ will follow up with the next steps.</p>
           <p className="text-sm text-muted-foreground">
-            Signed by {signing.typed_name} on {new Intl.DateTimeFormat("en-CA", { dateStyle: "long", timeStyle: "short" }).format(new Date(signing.signed_at))}.
+            {/* en-CA times end in "p.m.", so no extra full stop is added. */}
+            Signed by {signing.typed_name} on {new Intl.DateTimeFormat("en-CA", { dateStyle: "long", timeStyle: "short" }).format(new Date(signing.signed_at)).replace(/\.?$/, ".")}
           </p>
+          {signing.pdf_ready ? (
+            <a
+              className="justify-self-start rounded-lg bg-[var(--brand)] px-3 py-2 text-sm font-medium text-white underline-offset-2 hover:underline"
+              href={`/${slug}/contracts/${contractId}/signed-pdf`}
+            >
+              Download signed PDF
+            </a>
+          ) : signing.pdf_pending ? (
+            <p className="text-sm text-muted-foreground">Your signed PDF is being prepared. Reload this page in a minute to download it.</p>
+          ) : null}
           {signatureUrl ? (
             // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL, not an optimizable asset
             <img src={signatureUrl} alt={`Signature of ${signing.typed_name}`} className="h-24 w-auto max-w-full self-start rounded border bg-white" />

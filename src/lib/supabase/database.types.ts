@@ -80,6 +80,31 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"contract_documents": {
+                  Row: {
+                    "byte_size": number,"content_sha256": string,"contract_id": string,"created_at": string,"event_id": string,"generated_at": string,"id": string,"kind": string,"pdf_sha256": string,"renderer": string,"signature_sha256": string,"storage_bucket": string,"storage_path": string,"tenant_id": string
+                  }
+                  Insert: {
+                    "byte_size": number,"content_sha256": string,"contract_id": string,"created_at"?: string,"event_id": string,"generated_at"?: string,"id"?: string,"kind"?: string,"pdf_sha256": string,"renderer": string,"signature_sha256": string,"storage_bucket"?: string,"storage_path": string,"tenant_id": string
+                  }
+                  Update: {
+                    "byte_size"?: number,"content_sha256"?: string,"contract_id"?: string,"created_at"?: string,"event_id"?: string,"generated_at"?: string,"id"?: string,"kind"?: string,"pdf_sha256"?: string,"renderer"?: string,"signature_sha256"?: string,"storage_bucket"?: string,"storage_path"?: string,"tenant_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "contract_documents_contract_fk"
+      columns: ["tenant_id","event_id","contract_id"]
+isOneToOne: false
+      referencedRelation: "contracts"
+      referencedColumns: ["tenant_id","event_id","id"]
+    },{
+      foreignKeyName: "contract_documents_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"contract_signatures": {
                   Row: {
                     "client_ip": unknown,"client_ip_source": string,"consent_text": string,"consent_version": string,"content_sha256": string,"contract_id": string,"created_at": string,"event_id": string,"id": string,"signature_bucket": string,"signature_bytes": number,"signature_height": number,"signature_path": string,"signature_sha256": string,"signature_width": number,"signed_at": string,"signer_client_id": string,"signer_email": string,"signer_user_id": string,"tenant_id": string,"typed_name": string,"user_agent": string | null
@@ -228,6 +253,37 @@ isOneToOne: false
       referencedColumns: ["tenant_id","template_id","id"]
     },{
       foreignKeyName: "contracts_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"document_jobs": {
+                  Row: {
+                    "attempts": number,"completed_at": string | null,"contract_id": string,"created_at": string,"deliver_copies": boolean,"document_id": string | null,"id": string,"kind": string,"last_error": string | null,"lease_token": string | null,"locked_until": string | null,"max_attempts": number,"next_attempt_at": string,"requested_by_user_id": string | null,"status": string,"tenant_id": string,"updated_at": string
+                  }
+                  Insert: {
+                    "attempts"?: number,"completed_at"?: string | null,"contract_id": string,"created_at"?: string,"deliver_copies": boolean,"document_id"?: string | null,"id"?: string,"kind"?: string,"last_error"?: string | null,"lease_token"?: string | null,"locked_until"?: string | null,"max_attempts"?: number,"next_attempt_at"?: string,"requested_by_user_id"?: string | null,"status"?: string,"tenant_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "attempts"?: number,"completed_at"?: string | null,"contract_id"?: string,"created_at"?: string,"deliver_copies"?: boolean,"document_id"?: string | null,"id"?: string,"kind"?: string,"last_error"?: string | null,"lease_token"?: string | null,"locked_until"?: string | null,"max_attempts"?: number,"next_attempt_at"?: string,"requested_by_user_id"?: string | null,"status"?: string,"tenant_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "document_jobs_contract_fk"
+      columns: ["tenant_id","contract_id"]
+isOneToOne: false
+      referencedRelation: "contracts"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "document_jobs_document_fk"
+      columns: ["tenant_id","document_id"]
+isOneToOne: false
+      referencedRelation: "contract_documents"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "document_jobs_tenant_id_fkey"
       columns: ["tenant_id"]
 isOneToOne: false
       referencedRelation: "tenants"
@@ -872,6 +928,11 @@ isOneToOne: false
 "cancel_email_outbox":
 { Args: { "p_id": string,"p_reason": string }; Returns: undefined
                            },
+"claim_document_jobs":
+{ Args: { "p_lease_seconds"?: number,"p_limit"?: number,"p_tenant_id"?: string }; Returns: {
+              "attempts": number,"contract_id": string,"deliver_copies": boolean,"job_id": string,"lease_token": string,"max_attempts": number,"tenant_id": string
+            }[]
+                           },
 "claim_email_outbox":
 { Args: { "p_limit"?: number,"p_lock_seconds"?: number,"p_tenant_id"?: string }; Returns: {
               "access_link_id": string,"attempts": number,"contract_deliverable": boolean,"contract_id": string,"entity_id": string,"event_type": string,"id": string,"link_token_hash": string,"link_usable": boolean,"payload": Json,"proposal_active": boolean,"recipient_email": string,"tenant_display_name": string,"tenant_id": string,"tenant_reply_to": string,"tenant_slug": string
@@ -892,8 +953,14 @@ isOneToOne: false
 "client_signature_object":
 { Args: { "p_contract_id": string,"p_tenant_slug": string }; Returns: string
                            },
+"client_signed_document":
+{ Args: { "p_contract_id": string,"p_tenant_slug": string }; Returns: Json
+                           },
 "client_submit_selection":
 { Args: { "p_expected_draft_version": number,"p_idempotency_key": string,"p_proposal_id": string,"p_selection": Json,"p_session_hash": string,"p_tenant_slug": string }; Returns: Json
+                           },
+"commit_contract_document":
+{ Args: { "p_byte_size": number,"p_job_id": string,"p_pdf_sha256": string,"p_renderer": string,"p_signature_sha256": string,"p_storage_path": string }; Returns: Json
                            },
 "complete_email_outbox":
 { Args: { "p_id": string,"p_provider_message_id": string }; Returns: undefined
@@ -911,6 +978,9 @@ isOneToOne: false
                            },
 "exchange_proposal_link":
 { Args: { "p_session_hash": string,"p_session_seconds": number,"p_tenant_slug": string,"p_token_hash": string }; Returns: Json
+                           },
+"fail_document_job":
+{ Args: { "p_error": string,"p_job_id": string,"p_lease_token": string,"p_permanent"?: boolean }; Returns: boolean
                            },
 "fail_email_outbox":
 { Args: { "p_error": string,"p_id": string,"p_permanent"?: boolean }; Returns: undefined
@@ -949,6 +1019,9 @@ isOneToOne: false
 "request_contract_sign_in":
 { Args: { "p_tenant_slug": string,"p_token_hash": string }; Returns: Json
                            },
+"request_signed_contract_pdf":
+{ Args: { "p_contract_id": string }; Returns: Json
+                           },
 "resend_contract":
 { Args: { "p_contract_id": string,"p_link_id": string,"p_token_hash": string }; Returns: Json
                            },
@@ -966,6 +1039,9 @@ isOneToOne: false
                            },
 "send_proposal":
 { Args: { "p_access_link_id": string,"p_expected_draft_version": number,"p_proposal_id": string,"p_token_hash": string }; Returns: Json
+                           },
+"send_signed_contract_copies":
+{ Args: { "p_contract_id": string,"p_recipients": (string)[] }; Returns: Json
                            },
 "set_event_archived":
 { Args: { "p_archived": boolean,"p_event_id": string }; Returns: Json

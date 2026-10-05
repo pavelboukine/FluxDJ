@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { processOutboxQuietly } from "@/lib/email/outbox.server";
+import { processDocumentJobs } from "@/lib/contracts/documents.server";
 import { contractInviteToken, sha256Hex } from "@/lib/proposals/tokens.server";
 import { requireStaff } from "@/lib/auth/staff";
 import type { MissingItem } from "@/lib/contracts/content";
@@ -111,4 +112,36 @@ export async function voidContract(slug: string, contractId: string, _state: Act
   after(() => processOutboxQuietly(tenant.id));
   revalidatePath(`/staff/${slug}`, "layout");
   return ok("Contract voided. You can now generate a replacement from the current approval.");
+}
+
+/**
+ * Generates the signed PDF if it is missing (contracts signed before PDFs
+ * existed) or retries a failed generation. Never emails anyone; the
+ * canonical PDF, once committed, is always reused.
+ */
+export async function generateSignedPdf(slug: string, contractId: string): Promise<ActionState> {
+  const { supabase, tenant } = await requireStaff(slug);
+  if (!UUID_RE.test(contractId)) return fail("Reload the page and try again.");
+  const { data, error } = await supabase.rpc("request_signed_contract_pdf", { p_contract_id: contractId });
+  if (error) return fail(describeDbError(error));
+  if ((data as { status?: string }).status === "ready") return ok("The signed PDF is already available.");
+  await processDocumentJobs({ tenantId: tenant.id, limit: 3 }).catch(() => undefined);
+  revalidatePath(`/staff/${slug}`, "layout");
+  return ok("Signed PDF requested. No email was sent.");
+}
+
+/**
+ * Emails the committed signed PDF to the frozen signer and business contact
+ * after staff confirmed exactly those recipients. Deliveries that already
+ * succeeded are never repeated; failed or cancelled ones are queued again.
+ */
+export async function sendSignedCopies(slug: string, contractId: string, recipients: string[]): Promise<ActionState> {
+  const { supabase, tenant } = await requireStaff(slug);
+  if (!UUID_RE.test(contractId) || !Array.isArray(recipients) || recipients.length > 2) return fail("Reload the page and try again.");
+  const { data, error } = await supabase.rpc("send_signed_contract_copies", { p_contract_id: contractId, p_recipients: recipients });
+  if (error) return fail(describeDbError(error));
+  after(() => processOutboxQuietly(tenant.id));
+  revalidatePath(`/staff/${slug}`, "layout");
+  const rows = data as { email: string; status: string }[];
+  return ok(rows.map((r) => `${r.email}: ${r.status === "sent" ? "already sent" : "queued"}`).join(" · "));
 }

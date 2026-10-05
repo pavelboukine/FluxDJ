@@ -3,8 +3,18 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { publicEnv } from "@/lib/env";
 import { serverEnv } from "@/lib/env.server";
 import { contractInviteToken, proposalLinkToken, sha256Hex } from "@/lib/proposals/tokens.server";
+import { IntegrityError, readVerifiedDocument } from "@/lib/contracts/documents.server";
+import { formatSignedAt, signedPdfFileName } from "@/lib/contracts/pdf/data";
 import { configuredTransport, type EmailTransport } from "./transport.server";
-import { renderContractEmail, renderContractSignInEmail, renderContractVoidedEmail, renderEmail, type OutboxEventType, type RenderedEmail } from "./templates";
+import {
+  renderContractEmail,
+  renderContractSignInEmail,
+  renderContractVoidedEmail,
+  renderEmail,
+  renderSignedCopyEmail,
+  type OutboxEventType,
+  type RenderedEmail,
+} from "./templates";
 
 export type OutboxRunResult = { claimed: number; sent: number; failed: number; cancelled: number };
 
@@ -31,6 +41,12 @@ export type OutboxRunResult = { claimed: number; sent: number; failed: number; c
  *    Supabase invalidates the previous one, so a retry after a crash can only
  *    leave the newest email usable. Access is granted only later, after the
  *    client verifies and confirms (accept_contract_invitation).
+ *
+ * Signed copies ("contract_signed_copy", one row per recipient) attach the
+ * committed canonical PDF, read from private Storage and checked against its
+ * recorded SHA-256 at send time; a mismatch fails permanently and visibly.
+ * Resend gets an idempotency key per row, which closes the crash window for
+ * 24 hours; Mailpit has none (local only).
  */
 export async function processOutbox(options: { transport?: EmailTransport; tenantId?: string; limit?: number } = {}): Promise<OutboxRunResult> {
   const admin = createAdminClient();
@@ -49,6 +65,11 @@ export async function processOutbox(options: { transport?: EmailTransport; tenan
   for (const row of rows ?? []) {
     result.claimed += 1;
     try {
+      if (row.event_type === "contract_signed_copy") {
+        const outcome = await deliverSignedCopy(admin, transport, row, fromAddress);
+        result[outcome] += 1;
+        continue;
+      }
       if (row.event_type === "contract_sent" || row.event_type === "contract_sign_in" || row.event_type === "contract_voided") {
         const outcome = await deliverContractEmail(admin, transport, row, appUrl, fromAddress);
         result[outcome] += 1;
@@ -110,6 +131,7 @@ type ClaimedRow = {
   access_link_id: string | null;
   link_token_hash: string | null;
   contract_deliverable: boolean;
+  contract_id: string | null;
   tenant_slug: string;
   tenant_display_name: string;
   tenant_reply_to: string | null;
@@ -204,6 +226,68 @@ async function deliverContractEmail(
     to: row.recipient_email,
     replyTo: row.tenant_reply_to,
     ...email,
+  });
+  await admin.rpc("complete_email_outbox", { p_id: row.id, p_provider_message_id: sent.id });
+  return "sent";
+}
+
+async function deliverSignedCopy(
+  admin: ReturnType<typeof createAdminClient>,
+  transport: EmailTransport,
+  row: ClaimedRow,
+  fromAddress: string,
+): Promise<"sent" | "cancelled" | "failed"> {
+  if (!row.contract_deliverable || !row.contract_id) {
+    await admin.rpc("cancel_email_outbox", {
+      p_id: row.id,
+      p_reason: "The contract is not signed, its signed PDF is missing, or the event was archived.",
+    });
+    return "cancelled";
+  }
+  const { data: doc } = await admin
+    .from("contract_documents")
+    .select("storage_path, pdf_sha256, byte_size")
+    .eq("contract_id", row.contract_id)
+    .eq("kind", "signed_contract")
+    .maybeSingle();
+  if (!doc) {
+    await admin.rpc("fail_email_outbox", { p_id: row.id, p_error: "The signed PDF is not available yet.", p_permanent: false });
+    return "failed";
+  }
+  let pdf: Buffer;
+  try {
+    pdf = await readVerifiedDocument(admin, doc);
+  } catch (cause) {
+    const permanent = cause instanceof IntegrityError;
+    await admin.rpc("fail_email_outbox", {
+      p_id: row.id,
+      p_error: cause instanceof Error ? cause.message.slice(0, 300) : "The signed PDF could not be read.",
+      p_permanent: permanent,
+    });
+    return "failed";
+  }
+  const payload = (row.payload ?? {}) as Record<string, unknown>;
+  const eventTitle = str(payload.event_title) || "your event";
+  const eventDate = str(payload.event_date);
+  const email = renderSignedCopyEmail({
+    recipientRole: payload.recipient_role === "business" ? "business" : "client",
+    tenantDisplayName: row.tenant_display_name,
+    legalName: str(payload.legal_name) || row.tenant_display_name,
+    contactEmail: str(payload.contact_email) || null,
+    clientName: str(payload.client_name) || "there",
+    typedName: str(payload.typed_name) || str(payload.client_name),
+    eventTitle,
+    eventDate,
+    signedAtLocal: str(payload.signed_at) ? formatSignedAt(str(payload.signed_at), str(payload.timezone) || "America/Toronto").local : "the signing date",
+  });
+  const sent = await transport.send({
+    fromName: `${row.tenant_display_name} via Flux DJ`,
+    fromAddress,
+    to: row.recipient_email,
+    replyTo: row.tenant_reply_to,
+    ...email,
+    attachments: [{ filename: signedPdfFileName(eventTitle, eventDate), contentType: "application/pdf", content: pdf }],
+    idempotencyKey: `flux-signed-copy-${row.id}`,
   });
   await admin.rpc("complete_email_outbox", { p_id: row.id, p_provider_message_id: sent.id });
   return "sent";

@@ -1,6 +1,8 @@
 import "server-only";
 import { serverEnv } from "@/lib/env.server";
 
+export type EmailAttachment = { filename: string; contentType: string; content: Buffer };
+
 export type EmailMessage = {
   fromName: string;
   fromAddress: string;
@@ -9,6 +11,14 @@ export type EmailMessage = {
   subject: string;
   text: string;
   html: string;
+  /** Sent as real attachments by every transport (never stored in the outbox). */
+  attachments?: EmailAttachment[];
+  /**
+   * Provider idempotency key (Resend keeps keys for 24 hours). Only for
+   * emails whose content is identical on every retry; it must not be used
+   * where a retry carries a fresh link.
+   */
+  idempotencyKey?: string;
 };
 
 export interface EmailTransport {
@@ -33,6 +43,7 @@ export class MailpitTransport implements EmailTransport {
         Subject: message.subject,
         Text: message.text,
         HTML: message.html,
+        Attachments: (message.attachments ?? []).map((a) => ({ Filename: a.filename, ContentType: a.contentType, Content: a.content.toString("base64") })),
       }),
       cache: "no-store",
     });
@@ -50,7 +61,11 @@ export class ResendTransport implements EmailTransport {
   async send(message: EmailMessage) {
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+        "Content-Type": "application/json",
+        ...(message.idempotencyKey ? { "Idempotency-Key": message.idempotencyKey } : {}),
+      },
       body: JSON.stringify({
         from: `${message.fromName} <${message.fromAddress}>`,
         to: [message.to],
@@ -58,10 +73,13 @@ export class ResendTransport implements EmailTransport {
         subject: message.subject,
         text: message.text,
         html: message.html,
+        attachments: message.attachments?.length
+          ? message.attachments.map((a) => ({ filename: a.filename, content: a.content.toString("base64"), content_type: a.contentType }))
+          : undefined,
       }),
       cache: "no-store",
     });
-    // Never include the request body (it contains the link) in errors.
+    // Never include the request body (links, attachments) in errors.
     if (!response.ok) throw new Error(`Resend responded ${response.status}`);
     const body = (await response.json()) as { id?: string };
     return { id: body.id ?? "resend" };
