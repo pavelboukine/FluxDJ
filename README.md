@@ -40,8 +40,16 @@ foundation is in place:
   deposit is received (the default). Each contract freezes the policy, and
   Flux DJ confirms the booking automatically, once, with a confirmation email.
 
+- Planning foundation: reusable planning templates (Wedding and Simple Party
+  starters, added on request), one plan per event created when it is booked,
+  stages and moments in event order, a small Event basics editor, frozen
+  proposal answers shown as "Already provided", and progress computed by the
+  database over the sections that exist so far.
+
 Everything has row-level security and tests. Not built yet: payment
-processing, planning, cancellations and amendments. Approval and contract
+processing, the detailed planning editors (stage questions, songs, names,
+vendors), planning cutoff and reopening, the run sheet, PWA, cancellations
+and amendments. Approval and contract
 drafts are not bookings.
 
 ## Stack
@@ -219,6 +227,44 @@ pending mail in the background, run `pnpm outbox:work` alongside
    terms. The client sees the same figures, without references, notes or
    history, on their contract page.
 
+### Planning
+
+1. Open **Planning templates** and click **Add starter templates**. You get
+   Wedding and Simple Party, once each, however often you click. Rename,
+   **Move up** / **Move down**, remove and add items from the library; keys
+   (shown in grey) never change. **Duplicate** and **Archive** are at the
+   bottom. Optionally make a template the **Default for event type**.
+2. Open an event and its **Planning** card. Before booking you can **Set up
+   planning** with a chosen template. Otherwise booking sets it up
+   automatically: from the event type's default template, or with Event
+   basics only, and the page then prompts you to choose a template.
+3. On the planning page, **Apply template** replaces the structure without
+   losing answers (confirmation required). **Hide** keeps answers and is undone
+   with **Restore**; hiding a stage hides its moments. None of this changes
+   the proposal, contract, price, gear or booking.
+4. As the client (signed in, booked event), open `/my` or the contract page
+   and follow **Plan your event**. Event basics saves automatically; other
+   sections say "Not available yet" and aren't counted in progress.
+
+How it works:
+
+- Templates and plans are rows keyed by library keys
+  (`private.planning_library()`), separate from labels and order. A plan is a
+  copy, so template edits never reach existing plans.
+- Booking runs `private.ensure_event_plan` from a trigger on
+  `booking_confirmed_at`, in the booking transaction (one plan per event,
+  under the event lock, never overwritten). The migration backfills events
+  already booked (Event basics only).
+- The plan keeps an immutable copy of the signed contract's frozen proposal
+  questions and submitted answers (`event_plan_imports`). Nothing is mapped
+  into planning fields by guessing.
+- Clients use `client_planning_view` and `client_save_plan_basics` with their
+  own session: verified event access, booked, nothing archived. Payment
+  corrections after booking keep access.
+- Event basics needs guest count, start and end time, the venue (satisfied by
+  the event's venue when staff entered one) and DJ access details (or an
+  explicit "No special instructions", recorded as not applicable).
+
 ## Running the checks
 
 ```bash
@@ -279,6 +325,7 @@ in every relevant relationship.
 | `20_contract_signing` | Only the service role signs. Wrong signer, other event's client, staff, stranger, no identity, wrong tenant, unverified or changed email, revoked access, archived event. Consent, consent version, displayed hash, typed name, never-stored, wrong-size, non-PNG, oversized and out-of-folder images. The atomic signed state and evidence, one audit event, no booking. Replays return the first signature to the signer only. Immutable evidence and content; void, resend, regeneration and revisions refused. Client and staff reads, Storage visibility, orphans. Archiving keeps evidence. Void and superseded contracts can't be signed |
 | `22_client_use_signing` | Usage is required when publishing; legacy can't be chosen. Client use is owner-only, needs the current statement, and stores the exact statement, owner and database time; staff publish DEMO only; other tenants get nothing. Published usage and confirmation are immutable; drafts carry none; a new version copies text, not usage. Contracts freeze mode and consent, immutably. Signing with `client-v1` (the DEMO consent is refused) and exact evidence; `demo-v1` unchanged. Legacy versions can't generate; `none` contracts can't be sent or signed and the review explains how to regenerate. Signed-copy senders are frozen when queued and at the first attempt, never change, keep older rows' first values, ignore sent rows and are service-role only |
 | `23_manual_payments` | Owner and staff record; other tenants, clients and anon can't, and no role writes rows directly. Amount, date, reference validation. Idempotent replays, reused keys, duplicate confirmation, exact cents. Invalidation with reasons, preserved history, immutability, audit. Drafts give no terms; sent terms; void and replacement without double counting; signed terms frozen after business, tax and catalog changes; overpayment as credit; zero-percent deposit. Client summary fields, other clients, void contracts, staff and anon. HTTPS invoice links, stale versions, unsafe URLs. Archiving blocks writes and the client view. No email, status, booking or contract change |
+| `25_planning` | Read-only tables for staff; starter templates added explicitly and once; template ownership across businesses, clients and direct writes; rename, move, remove and add with stable keys and versions; library placement enforced by trigger; duplicate and archive; one default per event type. Booking (real signing and deposit) creates one plan from the event-type default; the Basics fallback; setup before booking kept at booking; repeats and already-booked backfill. Frozen imports after catalog changes. Client access: booked, unbooked, other client, stranger, wrong slug, revoked, unverified, two DJs, anon, archived and unarchived, payment invalidation. Basics validation, conflicts, normalization, progress (imported and not applicable versus unanswered, unavailable sections excluded). Disable and restore keep answers and order and change nothing contractual. Non-destructive template replacement. Integrity |
 | `24_booking` | Owner-only, versioned policy setting; no direct writes; only two policies. Frozen policy per contract, unchanged by later setting changes. On signature: booked when signed, with payment still due. On deposit: payments before signing count, partial payments await the deposit to the cent, the completing payment books, later payments and checks don't book again (one audit event, one email). Zero deposit. Overpayment. Corrections keep the booking and `booking_confirmed_at` and warn staff; the client sees the amount outstanding. Legacy contracts: nothing automatic, staff check as `on_deposit` (not the business's on_signature), then automatic. Archived events refused. Guards against booking outside the function, changing the date or unbooking. Tenant isolation. Older workers never claim booking emails |
 | `21_signed_contract_pdfs` | Signing queues one PDF job (none on replay) and no email. Only the service role runs jobs. Leases: no double claim, expired-lease recovery, stale leases can't fail a job. Commit validation (missing, wrong size, wrong type, wrong folder, wrong signature hash). One canonical immutable document; a second upload is "exists" with no duplicate emails. One email per party with separate dedup keys, no paths or tokens in payloads. Staff, other tenants, signer, other clients and anon. Archiving blocks the signer and cancels undelivered copies but keeps the PDF. Recipient-confirmed resend that never repeats a delivered copy. Contracts signed before PDFs: explicit generation without email |
 | `16_business_settings_send_review` | Owner-only settings for staff, other tenants, clients and anon. Validation and 0% and 100% boundaries. Half-up deposit rounding, and equality with the original 50% formula. Existing contracts are byte-for-byte unchanged with valid hashes. Explicit regeneration freezes new terms and identity. New placeholders and missing values. Every review rejection reason. Sending stays impossible |
@@ -411,6 +458,22 @@ signed-out browser:
   statement is checked), generates and sends a contract, and the verified
   client signs with the `client-v1` consent. No DEMO wording appears on the
   page or in the emailed PDF.
+
+### Planning tests
+
+- `supabase/tests/database/25_planning.test.sql` covers the rules (see the
+  table above).
+- `tests/integration/planning.test.ts`: concurrent payments and checks create
+  one plan; repeated checks and setup never replace it; concurrent setup and
+  starter installs; concurrent client saves (one wins, the rest conflict);
+  frozen wording after catalog changes; REST isolation for clients and other
+  businesses; a client of two DJs.
+- `tests/e2e/planning-flow.spec.ts`: the Basics-only fallback and staff
+  prompt; starter templates, renaming, reordering, removing, a stale tab and
+  duplicating; the client on a phone (imported answers, autosave, edits during
+  a pending save, failed save and retry, stale tab); applying a template
+  without losing answers; hiding and restoring a stage; template edits not
+  reaching the plan; archiving and unarchiving.
 
 ### Booking tests
 

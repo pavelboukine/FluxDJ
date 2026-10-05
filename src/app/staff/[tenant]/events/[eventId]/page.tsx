@@ -12,6 +12,7 @@ import { EventFields } from "../event-fields";
 import { eventStatusLabel } from "@/lib/events/status";
 import { ArchivePanel } from "./archive-panel";
 import { PaymentsCard } from "./payments-card";
+import { PlanningCard } from "./planning-card";
 import { RemoveContact } from "./remove-contact";
 
 export default async function EventPage({ params, searchParams }: PageProps<"/staff/[tenant]/events/[eventId]">) {
@@ -112,6 +113,8 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
       ) : null}
 
       <PaymentsCard staff={staff} slug={slug} eventId={event.id} archived={Boolean(event.archived_at)} />
+
+      <PlanningCard staff={staff} slug={slug} eventId={event.id} />
 
       <Card>
         <CardHeader><CardTitle>Contacts</CardTitle></CardHeader>

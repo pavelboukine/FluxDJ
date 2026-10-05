@@ -79,6 +79,8 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
   // Read-only, for the same verified access as the contract itself.
   const { data: paymentData } = await supabase.rpc("client_payment_summary", { p_contract_id: contractId, p_tenant_slug: slug });
   const payments = paymentData as ClientPaymentSummary | null;
+  // Planning opens once the booking is confirmed; the database decides.
+  const plan = signing.signed ? ((await supabase.rpc("my_plans")).data ?? []).find((p) => p.contract_id === contractId) : undefined;
   let signatureUrl: string | null = null;
   if (signing.signed) {
     // Authorized in the database for this signer only; the link lasts two minutes.
@@ -108,7 +110,14 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
               {payments.deposit_outstanding_cents ? ` (${money(payments.deposit_outstanding_cents)} still to pay)` : ""}.
             </p>
           ) : null}
-          <p>Your DJ will follow up with the next steps.</p>
+          {plan ? (
+            <p>
+              <Link className="font-medium underline" href={`/${slug}/planning/${plan.event_id}`}>Plan your event</Link>: event basics now,
+              with more sections to come.
+            </p>
+          ) : (
+            <p>Your DJ will follow up with the next steps.</p>
+          )}
           <p className="text-sm text-muted-foreground">
             {/* en-CA times end in "p.m.", so no extra full stop is added. */}
             Signed by {signing.typed_name} on {new Intl.DateTimeFormat("en-CA", { dateStyle: "long", timeStyle: "short" }).format(new Date(signing.signed_at)).replace(/\.?$/, ".")}

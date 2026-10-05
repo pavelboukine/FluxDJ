@@ -11,6 +11,7 @@ const NAV = [
   ["/packages", "Packages"],
   ["/questions", "Questions"],
   ["/templates", "Templates"],
+  ["/planning-templates", "Planning templates"],
   ["/contract-templates", "Contract templates"],
   ["/emails", "Emails"],
   ["/settings", "Settings"],

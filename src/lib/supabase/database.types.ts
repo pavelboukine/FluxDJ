@@ -445,6 +445,136 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"event_plan_imports": {
+                  Row: {
+                    "answers": NonNullable<Json>,"captured_at": string,"contract_id": string,"id": string,"offer_sha256": string,"plan_id": string,"proposal_id": string,"questions": NonNullable<Json>,"selection_id": string,"source": string,"tenant_id": string
+                  }
+                  Insert: {
+                    "answers": NonNullable<Json>,"captured_at"?: string,"contract_id": string,"id"?: string,"offer_sha256": string,"plan_id": string,"proposal_id": string,"questions": NonNullable<Json>,"selection_id": string,"source"?: string,"tenant_id": string
+                  }
+                  Update: {
+                    "answers"?: NonNullable<Json>,"captured_at"?: string,"contract_id"?: string,"id"?: string,"offer_sha256"?: string,"plan_id"?: string,"proposal_id"?: string,"questions"?: NonNullable<Json>,"selection_id"?: string,"source"?: string,"tenant_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "event_plan_imports_contract_fk"
+      columns: ["tenant_id","contract_id"]
+isOneToOne: false
+      referencedRelation: "contracts"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "event_plan_imports_plan_fk"
+      columns: ["tenant_id","plan_id"]
+isOneToOne: false
+      referencedRelation: "event_plans"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "event_plan_imports_proposal_fk"
+      columns: ["tenant_id","proposal_id"]
+isOneToOne: false
+      referencedRelation: "proposals"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "event_plan_imports_selection_fk"
+      columns: ["tenant_id","selection_id"]
+isOneToOne: false
+      referencedRelation: "proposal_selections"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "event_plan_imports_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"event_plan_items": {
+                  Row: {
+                    "created_at": string,"disabled_at": string | null,"id": string,"key": string,"kind": string,"label": string,"parent_id": string | null,"plan_id": string,"position": number,"source_template_item_id": string | null,"tenant_id": string,"updated_at": string
+                  }
+                  Insert: {
+                    "created_at"?: string,"disabled_at"?: string | null,"id"?: string,"key": string,"kind": string,"label": string,"parent_id"?: string | null,"plan_id": string,"position": number,"source_template_item_id"?: string | null,"tenant_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"disabled_at"?: string | null,"id"?: string,"key"?: string,"kind"?: string,"label"?: string,"parent_id"?: string | null,"plan_id"?: string,"position"?: number,"source_template_item_id"?: string | null,"tenant_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "event_plan_items_parent_fk"
+      columns: ["tenant_id","plan_id","parent_id"]
+isOneToOne: false
+      referencedRelation: "event_plan_items"
+      referencedColumns: ["tenant_id","plan_id","id"]
+    },{
+      foreignKeyName: "event_plan_items_plan_fk"
+      columns: ["tenant_id","plan_id"]
+isOneToOne: false
+      referencedRelation: "event_plans"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "event_plan_items_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"event_plan_responses": {
+                  Row: {
+                    "answers": NonNullable<Json>,"created_at": string,"id": string,"item_id": string,"plan_id": string,"revision": number,"schema_version": number,"tenant_id": string,"updated_at": string,"updated_by_actor": string,"updated_by_user_id": string | null
+                  }
+                  Insert: {
+                    "answers"?: NonNullable<Json>,"created_at"?: string,"id"?: string,"item_id": string,"plan_id": string,"revision"?: number,"schema_version"?: number,"tenant_id": string,"updated_at"?: string,"updated_by_actor": string,"updated_by_user_id"?: string | null
+                  }
+                  Update: {
+                    "answers"?: NonNullable<Json>,"created_at"?: string,"id"?: string,"item_id"?: string,"plan_id"?: string,"revision"?: number,"schema_version"?: number,"tenant_id"?: string,"updated_at"?: string,"updated_by_actor"?: string,"updated_by_user_id"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "event_plan_responses_item_fk"
+      columns: ["tenant_id","plan_id","item_id"]
+isOneToOne: false
+      referencedRelation: "event_plan_items"
+      referencedColumns: ["tenant_id","plan_id","id"]
+    },{
+      foreignKeyName: "event_plan_responses_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"event_plans": {
+                  Row: {
+                    "created_at": string,"event_id": string,"id": string,"initialized_via": string,"origin": string,"source_template_id": string | null,"source_template_name": string | null,"source_template_version": number | null,"structure_version": number,"tenant_id": string,"updated_at": string
+                  }
+                  Insert: {
+                    "created_at"?: string,"event_id": string,"id"?: string,"initialized_via": string,"origin": string,"source_template_id"?: string | null,"source_template_name"?: string | null,"source_template_version"?: number | null,"structure_version"?: number,"tenant_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"event_id"?: string,"id"?: string,"initialized_via"?: string,"origin"?: string,"source_template_id"?: string | null,"source_template_name"?: string | null,"source_template_version"?: number | null,"structure_version"?: number,"tenant_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "event_plans_event_fk"
+      columns: ["tenant_id","event_id"]
+isOneToOne: false
+      referencedRelation: "events"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "event_plans_template_fk"
+      columns: ["tenant_id","source_template_id"]
+isOneToOne: false
+      referencedRelation: "planning_templates"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "event_plans_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"events": {
                   Row: {
                     "active_proposal_id": string | null,"archived_at": string | null,"booking_confirmed_at": string | null,"created_at": string,"event_date": string,"event_type": string,"id": string,"internal_notes": string | null,"lifecycle_status": string,"planning_lock_at": string | null,"planning_override_until": string | null,"tenant_id": string,"timezone": string,"title": string,"updated_at": string,"venue_address": string | null,"venue_name": string | null
@@ -608,6 +738,56 @@ isOneToOne: false
                   Relationships: [
                     {
       foreignKeyName: "packages_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"planning_template_items": {
+                  Row: {
+                    "created_at": string,"id": string,"key": string,"kind": string,"label": string,"parent_id": string | null,"position": number,"template_id": string,"tenant_id": string,"updated_at": string
+                  }
+                  Insert: {
+                    "created_at"?: string,"id"?: string,"key": string,"kind": string,"label": string,"parent_id"?: string | null,"position": number,"template_id": string,"tenant_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"id"?: string,"key"?: string,"kind"?: string,"label"?: string,"parent_id"?: string | null,"position"?: number,"template_id"?: string,"tenant_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "planning_template_items_parent_fk"
+      columns: ["tenant_id","template_id","parent_id"]
+isOneToOne: false
+      referencedRelation: "planning_template_items"
+      referencedColumns: ["tenant_id","template_id","id"]
+    },{
+      foreignKeyName: "planning_template_items_template_fk"
+      columns: ["tenant_id","template_id"]
+isOneToOne: false
+      referencedRelation: "planning_templates"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "planning_template_items_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"planning_templates": {
+                  Row: {
+                    "archived_at": string | null,"created_at": string,"default_event_type": string | null,"description": string | null,"id": string,"name": string,"starter_key": string | null,"tenant_id": string,"updated_at": string,"version": number
+                  }
+                  Insert: {
+                    "archived_at"?: string | null,"created_at"?: string,"default_event_type"?: string | null,"description"?: string | null,"id"?: string,"name": string,"starter_key"?: string | null,"tenant_id": string,"updated_at"?: string,"version"?: number
+                  }
+                  Update: {
+                    "archived_at"?: string | null,"created_at"?: string,"default_event_type"?: string | null,"description"?: string | null,"id"?: string,"name"?: string,"starter_key"?: string | null,"tenant_id"?: string,"updated_at"?: string,"version"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "planning_templates_tenant_id_fkey"
       columns: ["tenant_id"]
 isOneToOne: false
       referencedRelation: "tenants"
@@ -984,6 +1164,15 @@ isOneToOne: false
             "accept_contract_invitation":
 { Args: { "p_link_id": string,"p_tenant_slug": string }; Returns: Json
                            },
+"add_event_plan_item":
+{ Args: { "p_event_id": string,"p_expected_version": number,"p_key": string,"p_parent_key": string }; Returns: number
+                           },
+"add_planning_template_item":
+{ Args: { "p_expected_version": number,"p_key": string,"p_parent_key": string,"p_template_id": string }; Returns: number
+                           },
+"apply_event_plan_template":
+{ Args: { "p_confirm": boolean,"p_event_id": string,"p_expected_version": number,"p_template_id": string }; Returns: Json
+                           },
 "approve_proposal_selection":
 { Args: { "p_proposal_id": string,"p_selection_id": string }; Returns: Json
                            },
@@ -1012,8 +1201,14 @@ isOneToOne: false
 "client_payment_summary":
 { Args: { "p_contract_id": string,"p_tenant_slug": string }; Returns: Json
                            },
+"client_planning_view":
+{ Args: { "p_event_id": string,"p_tenant_slug": string }; Returns: Json
+                           },
 "client_proposal_view":
 { Args: { "p_proposal_id": string,"p_session_hash": string,"p_tenant_slug": string }; Returns: Json
+                           },
+"client_save_plan_basics":
+{ Args: { "p_answers": Json,"p_event_id": string,"p_expected_revision": number,"p_tenant_slug": string }; Returns: Json
                            },
 "client_save_selection_draft":
 { Args: { "p_addon_quantities": Json,"p_expected_version": number,"p_logistics_answers": Json,"p_package_key": string,"p_proposal_id": string,"p_session_hash": string,"p_tenant_slug": string }; Returns: Json
@@ -1047,6 +1242,12 @@ isOneToOne: false
 "create_contract_template":
 { Args: { "p_name": string,"p_sections": Json,"p_tenant_id": string,"p_title": string }; Returns: string
                            },
+"create_planning_template":
+{ Args: { "p_description": string,"p_name": string,"p_tenant_id": string }; Returns: string
+                           },
+"duplicate_planning_template":
+{ Args: { "p_name": string,"p_template_id": string }; Returns: string
+                           },
 "event_payment_summary":
 { Args: { "p_event_id": string }; Returns: Json
                            },
@@ -1065,8 +1266,17 @@ isOneToOne: false
 "generate_contract_draft":
 { Args: { "p_approval_id": string,"p_balance_due_date"?: string,"p_replace_contract_id"?: string,"p_template_version_id": string }; Returns: Json
                            },
+"install_starter_planning_templates":
+{ Args: { "p_tenant_id": string }; Returns: Json
+                           },
 "invalidate_event_payment":
 { Args: { "p_payment_id": string,"p_reason": string }; Returns: Json
+                           },
+"move_event_plan_item":
+{ Args: { "p_direction": string,"p_expected_version": number,"p_item_id": string }; Returns: number
+                           },
+"move_planning_template_item":
+{ Args: { "p_direction": string,"p_expected_version": number,"p_item_id": string }; Returns: number
                            },
 "my_contracts":
 { Args: Record<PropertyKey, never>; Returns: {
@@ -1078,11 +1288,21 @@ isOneToOne: false
               "event_date": string,"event_id": string,"event_type": string,"lifecycle_status": string,"tenant_display_name": string,"tenant_slug": string,"timezone": string,"title": string,"venue_address": string,"venue_name": string
             }[]
                            },
+"my_plans":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "contract_id": string,"event_date": string,"event_id": string,"event_title": string,"requirements_met": number,"requirements_total": number,"tenant_display_name": string,"tenant_slug": string
+            }[]
+                           },
 "open_contract_template_draft":
 { Args: { "p_template_id": string }; Returns: string
                            },
 "open_proposal_draft":
 { Args: { "p_event_id": string,"p_offer"?: Json }; Returns: string
+                           },
+"planning_library":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "default_label": string,"description": string,"editor": string,"key": string,"kind": string,"library_order": number,"parent_keys": (string)[],"removable": boolean
+            }[]
                            },
 "preview_proposal_offer":
 { Args: { "p_proposal_id": string }; Returns: Json
@@ -1100,6 +1320,15 @@ isOneToOne: false
                            },
 "record_event_payment":
 { Args: { "p_amount_cents": number,"p_confirm_duplicate"?: boolean,"p_event_id": string,"p_idempotency_key": string,"p_note": string,"p_paid_on": string,"p_reference": string }; Returns: Json
+                           },
+"remove_planning_template_item":
+{ Args: { "p_expected_version": number,"p_item_id": string }; Returns: number
+                           },
+"rename_event_plan_item":
+{ Args: { "p_expected_version": number,"p_item_id": string,"p_label": string }; Returns: number
+                           },
+"rename_planning_template_item":
+{ Args: { "p_expected_version": number,"p_item_id": string,"p_label": string }; Returns: number
                            },
 "request_contract_sign_in":
 { Args: { "p_tenant_slug": string,"p_token_hash": string }; Returns: Json
@@ -1134,20 +1363,38 @@ isOneToOne: false
 "set_event_invoice_url":
 { Args: { "p_event_id": string,"p_expected_version": number,"p_invoice_url": string }; Returns: number
                            },
+"set_event_plan_item_enabled":
+{ Args: { "p_enabled": boolean,"p_expected_version": number,"p_item_id": string }; Returns: number
+                           },
 "set_package_items":
 { Args: { "p_items": Json,"p_package_id": string }; Returns: undefined
+                           },
+"set_planning_template_archived":
+{ Args: { "p_archived": boolean,"p_template_id": string }; Returns: number
                            },
 "set_proposal_template_composition":
 { Args: { "p_addons": Json,"p_default_package_id": string,"p_package_ids": Json,"p_question_ids": Json,"p_template_id": string }; Returns: undefined
                            },
+"setup_event_plan":
+{ Args: { "p_event_id": string,"p_template_id": string }; Returns: Json
+                           },
 "sign_contract":
 { Args: { "p_client_ip": string,"p_client_ip_source": string,"p_consent_accepted": boolean,"p_consent_version": string,"p_content_sha256": string,"p_contract_id": string,"p_signature_bytes": number,"p_signature_height": number,"p_signature_path": string,"p_signature_sha256": string,"p_signature_width": number,"p_tenant_slug": string,"p_typed_name": string,"p_user_agent": string,"p_user_id": string }; Returns: Json
+                           },
+"staff_planning_view":
+{ Args: { "p_event_id": string }; Returns: Json
+                           },
+"staff_save_plan_basics":
+{ Args: { "p_answers": Json,"p_event_id": string,"p_expected_revision": number }; Returns: Json
                            },
 "update_booking_policy":
 { Args: { "p_expected_version": number,"p_policy": string,"p_tenant_id": string }; Returns: number
                            },
 "update_business_settings":
 { Args: { "p_business_address": string,"p_contact_email": string,"p_deposit_percent": number,"p_legal_name": string,"p_tenant_id": string }; Returns: undefined
+                           },
+"update_planning_template":
+{ Args: { "p_default_event_type": string,"p_description": string,"p_expected_version": number,"p_name": string,"p_template_id": string }; Returns: number
                            },
 "update_proposal_draft":
 { Args: { "p_expected_version": number,"p_offer": Json,"p_proposal_id": string }; Returns: number

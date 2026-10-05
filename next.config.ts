@@ -36,6 +36,7 @@ const nextConfig: NextConfig = {
       { source: "/:tenant/invite", headers: clientFormPageHeaders },
       { source: "/:tenant/invitations/:path*", headers: clientFormPageHeaders },
       { source: "/:tenant/contracts/:path*", headers: clientFormPageHeaders },
+      { source: "/:tenant/planning/:path*", headers: clientFormPageHeaders },
       { source: "/my", headers: clientFormPageHeaders },
       { source: "/staff/:path*", headers: [{ key: "X-Frame-Options", value: "DENY" }, { key: "Referrer-Policy", value: "same-origin" }] },
     ];
