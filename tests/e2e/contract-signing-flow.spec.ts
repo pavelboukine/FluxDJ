@@ -198,7 +198,7 @@ test.describe.serial("contract signing", () => {
     expect(evidence).toMatchObject({ typed_name: "Morgan Lee", signer_email: clientEmail, content_sha256: contract!.content_sha256, consent_version: "demo-v1", client_ip: null, client_ip_source: "unavailable" });
     expect(evidence!.user_agent).toBeTruthy();
     const { data: event } = await admin.from("events").select("lifecycle_status, booking_confirmed_at").eq("id", eventId).single();
-    expect(event).toEqual({ lifecycle_status: "awaiting_signature", booking_confirmed_at: null });
+    expect(event).toEqual({ lifecycle_status: "awaiting_deposit", booking_confirmed_at: null });
   });
 
   test("the signed PDF is generated, emailed to both parties and downloadable only by them", async () => {
@@ -271,15 +271,15 @@ test.describe.serial("contract signing", () => {
     await expect(staff.getByRole("button", { name: "Resend invitation" })).toHaveCount(0);
 
     await staff.goto(`/staff/${tenant.slug}/events/${eventId}`);
-    // The display reflects the signed contract; the stored lifecycle is unchanged and nothing is booked.
-    await expect(staff.getByText("Contract signed · booking confirmation pending", { exact: true })).toBeVisible();
+    // Signed under the default deposit policy with no payment recorded: awaiting the deposit, not booked.
+    await expect(staff.locator("[data-slot=badge]", { hasText: "Signed · awaiting deposit" })).toBeVisible();
     await expect(staff.getByText("awaiting signature", { exact: true })).toHaveCount(0);
     await expect(staff.getByText("A contract has been signed for this event, so its terms can't be revised.")).toBeVisible();
     await expect(staff.getByRole("button", { name: "Start a revised offer" })).toHaveCount(0);
     await expect(staff.getByText(/was signed .*A signed contract can't be voided, replaced or revised/)).toBeVisible();
     await staff.goto(`/staff/${tenant.slug}/events`);
-    await expect(staff.getByRole("row").filter({ hasText: eventTitle })).toContainText("Contract signed · booking confirmation pending");
+    await expect(staff.getByRole("row").filter({ hasText: eventTitle })).toContainText("Signed · awaiting deposit");
     const { data: stored } = await admin.from("events").select("lifecycle_status, booking_confirmed_at").eq("id", eventId).single();
-    expect(stored).toEqual({ lifecycle_status: "awaiting_signature", booking_confirmed_at: null });
+    expect(stored).toEqual({ lifecycle_status: "awaiting_deposit", booking_confirmed_at: null });
   });
 });

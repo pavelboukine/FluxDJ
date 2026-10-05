@@ -12,6 +12,7 @@ const LABEL: Record<string, string> = {
   contract_sign_in: "Contract sign-in link",
   contract_voided: "Contract withdrawn notice",
   contract_signed_copy: "Signed contract copy (PDF attached)",
+  booking_confirmed: "Booking confirmation",
   proposal_link_opened: "Link opened (best effort)",
   proposal_submitted: "Submitted for review",
   proposal_approved: "Approval acknowledgement",

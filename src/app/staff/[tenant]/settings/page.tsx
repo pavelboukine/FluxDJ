@@ -3,7 +3,7 @@ import { ActionForm } from "@/components/app/action-form";
 import { PageHeader, TextAreaField, TextField } from "@/components/app/fields";
 import { requireStaff } from "@/lib/auth/staff";
 import { ppmToPercent, readTaxSettings, usageText, type CategoryUsage } from "@/lib/pricing/tax-settings";
-import { saveBusinessSettings, saveTaxSettings } from "./actions";
+import { saveBookingPolicy, saveBusinessSettings, saveTaxSettings } from "./actions";
 import { TaxSettingsForm } from "./tax-settings-form";
 
 export default async function BusinessSettings({ params }: PageProps<"/staff/[tenant]/settings">) {
@@ -11,7 +11,7 @@ export default async function BusinessSettings({ params }: PageProps<"/staff/[te
   const { supabase, tenant, membership } = await requireStaff(slug);
   const { data: settings } = await supabase
     .from("tenants")
-    .select("business_name, display_name, business_address, contact_email, deposit_percent, tax_config, tax_categories, tax_settings_version")
+    .select("business_name, display_name, business_address, contact_email, deposit_percent, tax_config, tax_categories, tax_settings_version, booking_confirmation_policy, booking_policy_version")
     .eq("id", tenant.id)
     .single();
   const isOwner = membership.role === "owner";
@@ -65,6 +65,47 @@ export default async function BusinessSettings({ params }: PageProps<"/staff/[te
             </dl>
           )}
           <p className="mt-4 text-xs text-muted-foreground">Display name (branding, not changed here): {settings?.display_name}</p>
+        </CardContent>
+      </Card>
+      <Card id="booking" className="scroll-mt-4">
+        <CardHeader>
+          <CardTitle>Booking confirmation</CardTitle>
+          <CardDescription>
+            Flux DJ confirms a booking automatically when this policy is met, and emails the client a booking confirmation. Each contract
+            keeps the policy it was generated with, so a change applies only to contracts generated afterwards.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 text-sm">
+          {isOwner ? (
+            <ActionForm action={saveBookingPolicy.bind(null, slug)} version={settings?.booking_policy_version ?? 0} submitLabel="Save booking policy" trackUnsaved>
+              <fieldset className="grid gap-2">
+                <legend className="mb-1 font-medium">Confirm a booking when…</legend>
+                <label className="flex items-start gap-2">
+                  <input type="radio" name="booking_policy" value="on_deposit" defaultChecked={settings?.booking_confirmation_policy !== "on_signature"} className="mt-0.5 accent-primary" />
+                  <span>
+                    <span className="font-medium">the contract is signed and the deposit is received</span> (recommended). Checked when the
+                    client signs and whenever you record or invalidate a payment; payments recorded before signing count. A 0% deposit
+                    means signing is enough.
+                  </span>
+                </label>
+                <label className="flex items-start gap-2">
+                  <input type="radio" name="booking_policy" value="on_signature" defaultChecked={settings?.booking_confirmation_policy === "on_signature"} className="mt-0.5 accent-primary" />
+                  <span>
+                    <span className="font-medium">the contract is signed.</span> The deposit and balance may still be outstanding.
+                  </span>
+                </label>
+              </fieldset>
+            </ActionForm>
+          ) : (
+            <p>
+              <span className="text-muted-foreground">Bookings are confirmed when </span>
+              {settings?.booking_confirmation_policy === "on_signature" ? "the contract is signed." : "the contract is signed and the deposit is received."}
+              <span className="block text-muted-foreground">Only the owner can change this.</span>
+            </p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            A recorded payment correction never cancels a booking; the event page warns you if the deposit is no longer covered.
+          </p>
         </CardContent>
       </Card>
       <Card id="taxes" className="scroll-mt-4">

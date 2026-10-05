@@ -200,11 +200,51 @@ export function renderSignedCopyEmail(input: {
       : [
           `The contract for ${input.eventTitle} (${input.eventDate}) was signed electronically by ${input.typedName} on ${input.signedAtLocal}.`,
           "The signed copy is attached as a PDF. The same copy was emailed to the client.",
-          "Signing does not book the event or record a payment in Flux DJ.",
+          "Booking confirmation follows your booking policy and is shown on the event page in Flux DJ. Signing records no payment.",
         ];
   const subject =
     input.recipientRole === "client"
       ? `Your signed contract with ${dj} for ${input.eventTitle}`
       : `Signed contract: ${input.eventTitle} (${input.clientName})`;
   return { subject, text: `${lines.join("\n\n")}\n`, html: layout("Contract signed", lines) };
+}
+
+/**
+ * Booking confirmation for the client, queued with the booking. Built only
+ * from the frozen payload (figures as of the booking), so every retry is the
+ * same email. States what remains to be paid; promises no planning access.
+ */
+export function renderBookingConfirmedEmail(input: {
+  tenantDisplayName: string;
+  legalName: string;
+  contactEmail: string | null;
+  clientName: string;
+  eventTitle: string;
+  eventDate: string;
+  currency: string;
+  totalCents: number;
+  depositCents: number;
+  receivedCents: number;
+  remainingCents: number;
+  creditCents: number;
+  balanceDueDate: string | null;
+  bookedOn: string;
+}): RenderedEmail {
+  const dj = input.tenantDisplayName;
+  const money = (cents: number) => formatCents(cents, input.currency);
+  const lines = [
+    `Hi ${input.clientName},`,
+    `${dj} has confirmed your booking for ${input.eventTitle} (${input.eventDate}).`,
+    `Payments as of ${input.bookedOn}: total ${money(input.totalCents)}, received ${money(input.receivedCents)}.`,
+    input.remainingCents > 0
+      ? `Still to pay: ${money(input.remainingCents)}${input.balanceDueDate ? `, due by ${input.balanceDueDate}` : ""}.` +
+        (input.receivedCents < input.depositCents ? ` This includes the deposit of ${money(input.depositCents)}, which hasn't been received yet.` : "")
+      : input.creditCents > 0
+        ? `Nothing remains to be paid. You have paid ${money(input.creditCents)} more than the total; ${dj} will contact you about it.`
+        : "Nothing remains to be paid.",
+    `Payments are recorded by hand by ${dj}, so a very recent payment may not be included. Pay only as arranged with ${dj}.`,
+    `${dj} will be in touch about the next steps.`,
+    input.contactEmail ? `Questions? Contact ${input.legalName} at ${input.contactEmail}.` : "Questions? Reply to this email.",
+  ];
+  return { subject: `Your booking with ${dj} is confirmed: ${input.eventTitle}`, text: `${lines.join("\n\n")}\n`, html: layout("Booking confirmed", lines) };
 }

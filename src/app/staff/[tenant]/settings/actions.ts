@@ -39,6 +39,24 @@ export async function saveBusinessSettings(slug: string, _state: ActionState, fo
 }
 
 /**
+ * Chooses when bookings are confirmed. Owner only (checked again in the
+ * database), versioned against stale tabs. Each contract freezes the policy
+ * when it is generated, so only contracts generated afterwards follow it.
+ */
+export async function saveBookingPolicy(slug: string, _state: ActionState, form: FormData): Promise<ActionState> {
+  const { supabase, tenant, membership } = await requireStaff(slug);
+  if (membership.role !== "owner") return fail("Only the owner can change the booking policy.");
+  const policy = text(form, "booking_policy");
+  if (policy !== "on_deposit" && policy !== "on_signature") return fail("Choose when bookings are confirmed.");
+  const expected = Number(text(form, "draft_version"));
+  if (!Number.isInteger(expected) || expected < 0) return fail("Reload the page and try again.");
+  const { data: version, error } = await supabase.rpc("update_booking_policy", { p_tenant_id: tenant.id, p_policy: policy, p_expected_version: expected });
+  if (error) return fail(describeDbError(error));
+  revalidatePath(`/staff/${slug}`, "layout");
+  return ok("Booking policy saved. It applies to contracts generated from now on.", version);
+}
+
+/**
  * Replaces the tax list and the category mapping together. Owner only: the
  * page shows staff a read-only view, and update_tax_settings checks the owner
  * role, the settings version and every rule again in the database. Only new

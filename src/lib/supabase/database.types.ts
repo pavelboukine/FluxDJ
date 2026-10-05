@@ -200,13 +200,13 @@ isOneToOne: false
                   ]
                 },"contracts": {
                   Row: {
-                    "approval_id": string,"balance_cents": number,"balance_due_date": string | null,"commercial_snapshot": NonNullable<Json>,"consent_version": string | null,"content_sha256": string,"created_at": string,"currency": string,"deposit_cents": number,"deposit_percent": number,"event_id": string,"generated_by_membership_id": string | null,"generated_by_user_id": string,"id": string,"party_snapshot": NonNullable<Json>,"proposal_id": string,"rendered_content": NonNullable<Json>,"replaces_id": string | null,"selection_id": string,"sent_at": string | null,"signed_at": string | null,"signer_client_id": string,"signer_email": string,"signer_name": string,"signing_mode": string,"status": string,"status_changed_at": string | null,"template_content_sha256": string,"template_id": string,"template_version_id": string,"tenant_id": string,"total_cents": number,"updated_at": string,"void_reason": string | null,"voided_at": string | null
+                    "approval_id": string,"balance_cents": number,"balance_due_date": string | null,"booking_policy": string | null,"commercial_snapshot": NonNullable<Json>,"consent_version": string | null,"content_sha256": string,"created_at": string,"currency": string,"deposit_cents": number,"deposit_percent": number,"event_id": string,"generated_by_membership_id": string | null,"generated_by_user_id": string,"id": string,"party_snapshot": NonNullable<Json>,"proposal_id": string,"rendered_content": NonNullable<Json>,"replaces_id": string | null,"selection_id": string,"sent_at": string | null,"signed_at": string | null,"signer_client_id": string,"signer_email": string,"signer_name": string,"signing_mode": string,"status": string,"status_changed_at": string | null,"template_content_sha256": string,"template_id": string,"template_version_id": string,"tenant_id": string,"total_cents": number,"updated_at": string,"void_reason": string | null,"voided_at": string | null
                   }
                   Insert: {
-                    "approval_id": string,"balance_cents": number,"balance_due_date"?: string | null,"commercial_snapshot": NonNullable<Json>,"consent_version"?: string | null,"content_sha256": string,"created_at"?: string,"currency": string,"deposit_cents": number,"deposit_percent": number,"event_id": string,"generated_by_membership_id"?: string | null,"generated_by_user_id": string,"id"?: string,"party_snapshot": NonNullable<Json>,"proposal_id": string,"rendered_content": NonNullable<Json>,"replaces_id"?: string | null,"selection_id": string,"sent_at"?: string | null,"signed_at"?: string | null,"signer_client_id": string,"signer_email": string,"signer_name": string,"signing_mode": string,"status"?: string,"status_changed_at"?: string | null,"template_content_sha256": string,"template_id": string,"template_version_id": string,"tenant_id": string,"total_cents": number,"updated_at"?: string,"void_reason"?: string | null,"voided_at"?: string | null
+                    "approval_id": string,"balance_cents": number,"balance_due_date"?: string | null,"booking_policy"?: string | null,"commercial_snapshot": NonNullable<Json>,"consent_version"?: string | null,"content_sha256": string,"created_at"?: string,"currency": string,"deposit_cents": number,"deposit_percent": number,"event_id": string,"generated_by_membership_id"?: string | null,"generated_by_user_id": string,"id"?: string,"party_snapshot": NonNullable<Json>,"proposal_id": string,"rendered_content": NonNullable<Json>,"replaces_id"?: string | null,"selection_id": string,"sent_at"?: string | null,"signed_at"?: string | null,"signer_client_id": string,"signer_email": string,"signer_name": string,"signing_mode": string,"status"?: string,"status_changed_at"?: string | null,"template_content_sha256": string,"template_id": string,"template_version_id": string,"tenant_id": string,"total_cents": number,"updated_at"?: string,"void_reason"?: string | null,"voided_at"?: string | null
                   }
                   Update: {
-                    "approval_id"?: string,"balance_cents"?: number,"balance_due_date"?: string | null,"commercial_snapshot"?: NonNullable<Json>,"consent_version"?: string | null,"content_sha256"?: string,"created_at"?: string,"currency"?: string,"deposit_cents"?: number,"deposit_percent"?: number,"event_id"?: string,"generated_by_membership_id"?: string | null,"generated_by_user_id"?: string,"id"?: string,"party_snapshot"?: NonNullable<Json>,"proposal_id"?: string,"rendered_content"?: NonNullable<Json>,"replaces_id"?: string | null,"selection_id"?: string,"sent_at"?: string | null,"signed_at"?: string | null,"signer_client_id"?: string,"signer_email"?: string,"signer_name"?: string,"signing_mode"?: string,"status"?: string,"status_changed_at"?: string | null,"template_content_sha256"?: string,"template_id"?: string,"template_version_id"?: string,"tenant_id"?: string,"total_cents"?: number,"updated_at"?: string,"void_reason"?: string | null,"voided_at"?: string | null
+                    "approval_id"?: string,"balance_cents"?: number,"balance_due_date"?: string | null,"booking_policy"?: string | null,"commercial_snapshot"?: NonNullable<Json>,"consent_version"?: string | null,"content_sha256"?: string,"created_at"?: string,"currency"?: string,"deposit_cents"?: number,"deposit_percent"?: number,"event_id"?: string,"generated_by_membership_id"?: string | null,"generated_by_user_id"?: string,"id"?: string,"party_snapshot"?: NonNullable<Json>,"proposal_id"?: string,"rendered_content"?: NonNullable<Json>,"replaces_id"?: string | null,"selection_id"?: string,"sent_at"?: string | null,"signed_at"?: string | null,"signer_client_id"?: string,"signer_email"?: string,"signer_name"?: string,"signing_mode"?: string,"status"?: string,"status_changed_at"?: string | null,"template_content_sha256"?: string,"template_id"?: string,"template_version_id"?: string,"tenant_id"?: string,"total_cents"?: number,"updated_at"?: string,"void_reason"?: string | null,"voided_at"?: string | null
                   }
                   Relationships: [
                     {
@@ -352,6 +352,31 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"event_billing": {
+                  Row: {
+                    "created_at": string,"event_id": string,"invoice_url": string | null,"tenant_id": string,"updated_at": string,"updated_by_user_id": string | null,"version": number
+                  }
+                  Insert: {
+                    "created_at"?: string,"event_id": string,"invoice_url"?: string | null,"tenant_id": string,"updated_at"?: string,"updated_by_user_id"?: string | null,"version"?: number
+                  }
+                  Update: {
+                    "created_at"?: string,"event_id"?: string,"invoice_url"?: string | null,"tenant_id"?: string,"updated_at"?: string,"updated_by_user_id"?: string | null,"version"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "event_billing_event_fk"
+      columns: ["tenant_id","event_id"]
+isOneToOne: false
+      referencedRelation: "events"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "event_billing_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"event_clients": {
                   Row: {
                     "can_sign": boolean,"client_id": string,"created_at": string,"event_id": string,"id": string,"is_primary": boolean,"tenant_id": string,"updated_at": string
@@ -377,6 +402,43 @@ isOneToOne: false
       referencedColumns: ["tenant_id","id"]
     },{
       foreignKeyName: "event_clients_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"event_payments": {
+                  Row: {
+                    "amount_cents": number,"created_at": string,"currency": string,"event_id": string,"id": string,"idempotency_key": string,"invalidated_at": string | null,"invalidated_by_email": string | null,"invalidated_by_membership_id": string | null,"invalidated_by_user_id": string | null,"invalidation_reason": string | null,"note": string | null,"paid_on": string,"recorded_by_email": string | null,"recorded_by_membership_id": string | null,"recorded_by_user_id": string,"reference": string | null,"tenant_id": string
+                  }
+                  Insert: {
+                    "amount_cents": number,"created_at"?: string,"currency": string,"event_id": string,"id"?: string,"idempotency_key": string,"invalidated_at"?: string | null,"invalidated_by_email"?: string | null,"invalidated_by_membership_id"?: string | null,"invalidated_by_user_id"?: string | null,"invalidation_reason"?: string | null,"note"?: string | null,"paid_on": string,"recorded_by_email"?: string | null,"recorded_by_membership_id"?: string | null,"recorded_by_user_id": string,"reference"?: string | null,"tenant_id": string
+                  }
+                  Update: {
+                    "amount_cents"?: number,"created_at"?: string,"currency"?: string,"event_id"?: string,"id"?: string,"idempotency_key"?: string,"invalidated_at"?: string | null,"invalidated_by_email"?: string | null,"invalidated_by_membership_id"?: string | null,"invalidated_by_user_id"?: string | null,"invalidation_reason"?: string | null,"note"?: string | null,"paid_on"?: string,"recorded_by_email"?: string | null,"recorded_by_membership_id"?: string | null,"recorded_by_user_id"?: string,"reference"?: string | null,"tenant_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "event_payments_event_fk"
+      columns: ["tenant_id","event_id"]
+isOneToOne: false
+      referencedRelation: "events"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "event_payments_invalidated_by_fk"
+      columns: ["tenant_id","invalidated_by_membership_id"]
+isOneToOne: false
+      referencedRelation: "tenant_memberships"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "event_payments_recorded_by_fk"
+      columns: ["tenant_id","recorded_by_membership_id"]
+isOneToOne: false
+      referencedRelation: "tenant_memberships"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "event_payments_tenant_id_fkey"
       columns: ["tenant_id"]
 isOneToOne: false
       referencedRelation: "tenants"
@@ -902,13 +964,13 @@ isOneToOne: false
                   ]
                 },"tenants": {
                   Row: {
-                    "archived_at": string | null,"booking_confirmation_policy": string,"brand_colors": NonNullable<Json>,"business_address": string | null,"business_name": string,"contact_email": string | null,"created_at": string,"currency": string,"deposit_percent": number,"display_name": string,"id": string,"logo_storage_path": string | null,"planning_lock_days": number,"reply_to_email": string | null,"slug": string,"tax_categories": NonNullable<Json>,"tax_config": NonNullable<Json>,"tax_settings_version": number,"timezone": string,"updated_at": string
+                    "archived_at": string | null,"booking_confirmation_policy": string,"booking_policy_version": number,"brand_colors": NonNullable<Json>,"business_address": string | null,"business_name": string,"contact_email": string | null,"created_at": string,"currency": string,"deposit_percent": number,"display_name": string,"id": string,"logo_storage_path": string | null,"planning_lock_days": number,"reply_to_email": string | null,"slug": string,"tax_categories": NonNullable<Json>,"tax_config": NonNullable<Json>,"tax_settings_version": number,"timezone": string,"updated_at": string
                   }
                   Insert: {
-                    "archived_at"?: string | null,"booking_confirmation_policy"?: string,"brand_colors"?: NonNullable<Json>,"business_address"?: string | null,"business_name": string,"contact_email"?: string | null,"created_at"?: string,"currency"?: string,"deposit_percent"?: number,"display_name": string,"id"?: string,"logo_storage_path"?: string | null,"planning_lock_days"?: number,"reply_to_email"?: string | null,"slug": string,"tax_categories"?: NonNullable<Json>,"tax_config"?: NonNullable<Json>,"tax_settings_version"?: number,"timezone"?: string,"updated_at"?: string
+                    "archived_at"?: string | null,"booking_confirmation_policy"?: string,"booking_policy_version"?: number,"brand_colors"?: NonNullable<Json>,"business_address"?: string | null,"business_name": string,"contact_email"?: string | null,"created_at"?: string,"currency"?: string,"deposit_percent"?: number,"display_name": string,"id"?: string,"logo_storage_path"?: string | null,"planning_lock_days"?: number,"reply_to_email"?: string | null,"slug": string,"tax_categories"?: NonNullable<Json>,"tax_config"?: NonNullable<Json>,"tax_settings_version"?: number,"timezone"?: string,"updated_at"?: string
                   }
                   Update: {
-                    "archived_at"?: string | null,"booking_confirmation_policy"?: string,"brand_colors"?: NonNullable<Json>,"business_address"?: string | null,"business_name"?: string,"contact_email"?: string | null,"created_at"?: string,"currency"?: string,"deposit_percent"?: number,"display_name"?: string,"id"?: string,"logo_storage_path"?: string | null,"planning_lock_days"?: number,"reply_to_email"?: string | null,"slug"?: string,"tax_categories"?: NonNullable<Json>,"tax_config"?: NonNullable<Json>,"tax_settings_version"?: number,"timezone"?: string,"updated_at"?: string
+                    "archived_at"?: string | null,"booking_confirmation_policy"?: string,"booking_policy_version"?: number,"brand_colors"?: NonNullable<Json>,"business_address"?: string | null,"business_name"?: string,"contact_email"?: string | null,"created_at"?: string,"currency"?: string,"deposit_percent"?: number,"display_name"?: string,"id"?: string,"logo_storage_path"?: string | null,"planning_lock_days"?: number,"reply_to_email"?: string | null,"slug"?: string,"tax_categories"?: NonNullable<Json>,"tax_config"?: NonNullable<Json>,"tax_settings_version"?: number,"timezone"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     
@@ -928,13 +990,16 @@ isOneToOne: false
 "cancel_email_outbox":
 { Args: { "p_id": string,"p_reason": string }; Returns: undefined
                            },
+"check_event_booking":
+{ Args: { "p_event_id": string }; Returns: Json
+                           },
 "claim_document_jobs":
 { Args: { "p_contract_id"?: string,"p_lease_seconds"?: number,"p_limit"?: number,"p_tenant_id"?: string }; Returns: {
               "attempts": number,"contract_id": string,"deliver_copies": boolean,"job_id": string,"lease_token": string,"max_attempts": number,"tenant_id": string
             }[]
                            },
 "claim_email_outbox":
-{ Args: { "p_limit"?: number,"p_lock_seconds"?: number,"p_tenant_id"?: string }; Returns: {
+{ Args: { "p_include_booking"?: boolean,"p_limit"?: number,"p_lock_seconds"?: number,"p_tenant_id"?: string }; Returns: {
               "access_link_id": string,"attempts": number,"contract_deliverable": boolean,"contract_id": string,"entity_id": string,"event_type": string,"id": string,"link_token_hash": string,"link_usable": boolean,"payload": Json,"proposal_active": boolean,"recipient_email": string,"tenant_display_name": string,"tenant_id": string,"tenant_reply_to": string,"tenant_slug": string
             }[]
                            },
@@ -943,6 +1008,9 @@ isOneToOne: false
                            },
 "client_invitation_status":
 { Args: { "p_link_id": string,"p_tenant_slug": string }; Returns: Json
+                           },
+"client_payment_summary":
+{ Args: { "p_contract_id": string,"p_tenant_slug": string }; Returns: Json
                            },
 "client_proposal_view":
 { Args: { "p_proposal_id": string,"p_session_hash": string,"p_tenant_slug": string }; Returns: Json
@@ -979,6 +1047,9 @@ isOneToOne: false
 "create_contract_template":
 { Args: { "p_name": string,"p_sections": Json,"p_tenant_id": string,"p_title": string }; Returns: string
                            },
+"event_payment_summary":
+{ Args: { "p_event_id": string }; Returns: Json
+                           },
 "exchange_proposal_link":
 { Args: { "p_session_hash": string,"p_session_seconds": number,"p_tenant_slug": string,"p_token_hash": string }; Returns: Json
                            },
@@ -993,6 +1064,9 @@ isOneToOne: false
                            },
 "generate_contract_draft":
 { Args: { "p_approval_id": string,"p_balance_due_date"?: string,"p_replace_contract_id"?: string,"p_template_version_id": string }; Returns: Json
+                           },
+"invalidate_event_payment":
+{ Args: { "p_payment_id": string,"p_reason": string }; Returns: Json
                            },
 "my_contracts":
 { Args: Record<PropertyKey, never>; Returns: {
@@ -1024,6 +1098,9 @@ isOneToOne: false
                            } |
 { Args: { "p_client_use_statement_version"?: string,"p_expected_draft_version": number,"p_usage": string,"p_version_id": string }; Returns: Json
                            },
+"record_event_payment":
+{ Args: { "p_amount_cents": number,"p_confirm_duplicate"?: boolean,"p_event_id": string,"p_idempotency_key": string,"p_note": string,"p_paid_on": string,"p_reference": string }; Returns: Json
+                           },
 "request_contract_sign_in":
 { Args: { "p_tenant_slug": string,"p_token_hash": string }; Returns: Json
                            },
@@ -1054,6 +1131,9 @@ isOneToOne: false
 "set_event_archived":
 { Args: { "p_archived": boolean,"p_event_id": string }; Returns: Json
                            },
+"set_event_invoice_url":
+{ Args: { "p_event_id": string,"p_expected_version": number,"p_invoice_url": string }; Returns: number
+                           },
 "set_package_items":
 { Args: { "p_items": Json,"p_package_id": string }; Returns: undefined
                            },
@@ -1062,6 +1142,9 @@ isOneToOne: false
                            },
 "sign_contract":
 { Args: { "p_client_ip": string,"p_client_ip_source": string,"p_consent_accepted": boolean,"p_consent_version": string,"p_content_sha256": string,"p_contract_id": string,"p_signature_bytes": number,"p_signature_height": number,"p_signature_path": string,"p_signature_sha256": string,"p_signature_width": number,"p_tenant_slug": string,"p_typed_name": string,"p_user_agent": string,"p_user_id": string }; Returns: Json
+                           },
+"update_booking_policy":
+{ Args: { "p_expected_version": number,"p_policy": string,"p_tenant_id": string }; Returns: number
                            },
 "update_business_settings":
 { Args: { "p_business_address": string,"p_contact_email": string,"p_deposit_percent": number,"p_legal_name": string,"p_tenant_id": string }; Returns: undefined

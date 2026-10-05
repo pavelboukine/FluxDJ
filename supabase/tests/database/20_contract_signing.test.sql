@@ -154,7 +154,7 @@ select results_eq(
   'evidence: verified identity from Auth, trimmed typed name, frozen hash, exact consent text, stored image and request context');
 select results_eq(
   $$ select e.lifecycle_status, e.booking_confirmed_at is null from public.events e where e.id = tests.id('event_a2') $$,
-  $$ values ('awaiting_signature'::text, true) $$, 'signing does not book the event');
+  $$ values ('awaiting_deposit'::text, true) $$, 'signing alone does not book the event under the deposit policy');
 select lives_ok($$ set constraints public.contracts_signature_consistent, public.contract_signatures_consistent immediate $$,
   'the commit-time consistency checks pass for a real signature (they never run in a rolled-back test otherwise)');
 select is((select count(*)::int from public.access_links where contract_id = current_setting('tests.c')::uuid and revoked_at is null), 0,
@@ -200,13 +200,13 @@ select throws_like($$ select tests.send_c(current_setting('tests.c')::uuid) $$, 
 select throws_like($$ select public.resend_contract(current_setting('tests.c')::uuid, gen_random_uuid(), repeat('a', 64)) $$,
   '%only a sent, unsigned contract can be resent%', 'or resent');
 select throws_like($$ select public.generate_contract_draft(current_setting('tests.a2')::uuid, current_setting('tests.v')::uuid) $$,
-  '%already been sent%', 'or replaced by a regenerated draft');
+  '%contract_not_allowed:%', 'or replaced by a regenerated draft');
 select is((public.review_contract_for_send(current_setting('tests.c')::uuid)) ->> 'send_unavailable_reason',
   'This contract has been signed. It can no longer be sent, resent or voided.', 'staff review explains the signed state');
 
 -- Revisions are blocked until amendments exist.
 select throws_like($$ select tests.send(current_setting('tests.rev')::uuid) $$,
-  '%offer_invalid: a contract has been signed for this event%', 'a revision drafted before signing cannot be sent');
+  '%offer_invalid:%', 'a revision drafted before signing cannot be sent');
 reset role;
 select results_eq(
   $$ select p.status, e.active_proposal_id = p.id from public.proposals p join public.events e on e.id = p.event_id

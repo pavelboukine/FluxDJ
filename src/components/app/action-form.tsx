@@ -23,7 +23,7 @@ type Props = {
    * genuinely stale tab still gets a conflict from the server.
    */
   version?: number;
-  /** Clear the fields after a successful submit (for "add another" forms). */
+  /** Clear the fields after a successful submit (for "add another" forms), unless edits were typed meanwhile. */
   resetOnSuccess?: boolean;
   /** Show whether the form has edits that have not been saved yet. */
   trackUnsaved?: boolean;
@@ -34,6 +34,8 @@ type Props = {
   navigateOnSuccess?: string;
   /** Ask for confirmation before submitting when the page's editor has unsaved changes. */
   confirmIfUnsaved?: string;
+  /** Called after a successful submit (e.g. to start a fresh idempotency key). */
+  onSuccess?: (result: ActionState) => void;
 };
 
 /** Serializes the user-editable fields, so "unsaved changes" can be detected. */
@@ -66,6 +68,7 @@ export function ActionForm({
   trackUnsaved,
   navigateOnSuccess,
   confirmIfUnsaved,
+  onSuccess,
 }: Props) {
   const router = useRouter();
   const sharedVersion = useSharedDraftVersion();
@@ -116,8 +119,11 @@ export function ActionForm({
         savedVersion.current = result.version;
         if (sharedVersion) sharedVersion.current = Math.max(sharedVersion.current, result.version);
       }
+      onSuccess?.(result);
       if (navigateOnSuccess) router.replace(navigateOnSuccess.replace("{version}", String(result.version ?? "")));
-      if (resetOnSuccess) {
+      // "Add another" forms clear after success, unless something was typed
+      // while the save was pending: those edits are kept.
+      if (resetOnSuccess && snapshot(form) === submitted) {
         form.reset();
         baseline.current = snapshot(form);
       } else {

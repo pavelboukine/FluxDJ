@@ -31,9 +31,18 @@ foundation is in place:
   DEMO (test wording, labelled everywhere) or for client use (the business's
   own agreement, approved by the owner).
 
-Everything has row-level security and tests. Not built yet: booking
-confirmation, payments, planning and amendments. Approval, contract
-drafts and signing are not bookings.
+- Manual payment tracking: staff record payments received elsewhere, invalidate
+  wrong entries with a reason, and add an optional invoice link. Totals come
+  from the authoritative contract; the client sees a read-only summary.
+
+- Booking confirmation: each business chooses (owner only) whether a booking
+  is confirmed when the contract is signed, or when it is signed and the
+  deposit is received (the default). Each contract freezes the policy, and
+  Flux DJ confirms the booking automatically, once, with a confirmation email.
+
+Everything has row-level security and tests. Not built yet: payment
+processing, planning, cancellations and amendments. Approval and contract
+drafts are not bookings.
 
 ## Stack
 
@@ -196,6 +205,20 @@ due emails now** buttons. Emails go out right after each action. To retry
 pending mail in the background, run `pnpm outbox:work` alongside
 `pnpm dev`.
 
+### Recording payments
+
+1. Open an event. The **Payments** card shows what has been received. Before
+   a contract is sent it shows no total or deposit.
+2. Enter an amount, the date it was received and, optionally, a reference
+   and an internal note, then click **Record payment**. Recording the same
+   amount and date again asks you to confirm it is a separate payment.
+3. **Invalidate…** a wrong entry with a reason; it stays in the history,
+   struck through. Record the correct payment as a new entry.
+4. Paste an `https://` invoice link from any tool (Wave or other) and save.
+5. Once a contract is sent, the card compares payments with its frozen
+   terms. The client sees the same figures, without references, notes or
+   history, on their contract page.
+
 ## Running the checks
 
 ```bash
@@ -255,6 +278,8 @@ in every relevant relationship.
 | `19_tax_settings` | Owner-only tax settings for staff, other tenants, clients and anon; no direct column writes. Malformed, fractional, negative and over-100% rates, codes, names, keys and unknown taxes. Stale versions. Multiple taxes on standard. Removal rules for used taxes and categories. Explicit no tax versus missing. New offers read the new settings; the sent snapshot and hash are unchanged. Audit |
 | `20_contract_signing` | Only the service role signs. Wrong signer, other event's client, staff, stranger, no identity, wrong tenant, unverified or changed email, revoked access, archived event. Consent, consent version, displayed hash, typed name, never-stored, wrong-size, non-PNG, oversized and out-of-folder images. The atomic signed state and evidence, one audit event, no booking. Replays return the first signature to the signer only. Immutable evidence and content; void, resend, regeneration and revisions refused. Client and staff reads, Storage visibility, orphans. Archiving keeps evidence. Void and superseded contracts can't be signed |
 | `22_client_use_signing` | Usage is required when publishing; legacy can't be chosen. Client use is owner-only, needs the current statement, and stores the exact statement, owner and database time; staff publish DEMO only; other tenants get nothing. Published usage and confirmation are immutable; drafts carry none; a new version copies text, not usage. Contracts freeze mode and consent, immutably. Signing with `client-v1` (the DEMO consent is refused) and exact evidence; `demo-v1` unchanged. Legacy versions can't generate; `none` contracts can't be sent or signed and the review explains how to regenerate. Signed-copy senders are frozen when queued and at the first attempt, never change, keep older rows' first values, ignore sent rows and are service-role only |
+| `23_manual_payments` | Owner and staff record; other tenants, clients and anon can't, and no role writes rows directly. Amount, date, reference validation. Idempotent replays, reused keys, duplicate confirmation, exact cents. Invalidation with reasons, preserved history, immutability, audit. Drafts give no terms; sent terms; void and replacement without double counting; signed terms frozen after business, tax and catalog changes; overpayment as credit; zero-percent deposit. Client summary fields, other clients, void contracts, staff and anon. HTTPS invoice links, stale versions, unsafe URLs. Archiving blocks writes and the client view. No email, status, booking or contract change |
+| `24_booking` | Owner-only, versioned policy setting; no direct writes; only two policies. Frozen policy per contract, unchanged by later setting changes. On signature: booked when signed, with payment still due. On deposit: payments before signing count, partial payments await the deposit to the cent, the completing payment books, later payments and checks don't book again (one audit event, one email). Zero deposit. Overpayment. Corrections keep the booking and `booking_confirmed_at` and warn staff; the client sees the amount outstanding. Legacy contracts: nothing automatic, staff check as `on_deposit` (not the business's on_signature), then automatic. Archived events refused. Guards against booking outside the function, changing the date or unbooking. Tenant isolation. Older workers never claim booking emails |
 | `21_signed_contract_pdfs` | Signing queues one PDF job (none on replay) and no email. Only the service role runs jobs. Leases: no double claim, expired-lease recovery, stale leases can't fail a job. Commit validation (missing, wrong size, wrong type, wrong folder, wrong signature hash). One canonical immutable document; a second upload is "exists" with no duplicate emails. One email per party with separate dedup keys, no paths or tokens in payloads. Staff, other tenants, signer, other clients and anon. Archiving blocks the signer and cancels undelivered copies but keeps the PDF. Recipient-confirmed resend that never repeats a delivered copy. Contracts signed before PDFs: explicit generation without email |
 | `16_business_settings_send_review` | Owner-only settings for staff, other tenants, clients and anon. Validation and 0% and 100% boundaries. Half-up deposit rounding, and equality with the original 50% formula. Existing contracts are byte-for-byte unchanged with valid hashes. Explicit regeneration freezes new terms and identity. New placeholders and missing values. Every review rejection reason. Sending stays impossible |
 | `13_contract_templates` | Templates are visible and writable only by staff of their tenant; clients and anon get nothing. Unknown, malformed or expression-like placeholders are rejected, also by a CHECK constraint. Optimistic draft versions, publishing, and published versions that no role can edit, unpublish or delete. Editing opens one new draft version |
@@ -386,6 +411,35 @@ signed-out browser:
   statement is checked), generates and sends a contract, and the verified
   client signs with the `client-v1` consent. No DEMO wording appears on the
   page or in the emailed PDF.
+
+### Booking tests
+
+- `supabase/tests/database/24_booking.test.sql` covers the rules (see the
+  table above).
+- `tests/integration/booking.test.ts`: a deposit paid before signing books
+  the event when the client signs (real signing code); five concurrent
+  payments and three concurrent checks give one booking, one audit event and
+  one email; the booking email goes through the real Resend adapter (HTTP
+  answered locally) and its retry after a business rename is byte for byte
+  the same; a worker from before booking emails doesn't claim it.
+- `tests/e2e/payments-flow.spec.ts` continues: the client signs, the event
+  awaits the deposit, recording the rest books it and the confirmation email
+  arrives in Mailpit, and invalidating that payment keeps the booking with a
+  warning while the client sees what is outstanding.
+
+### Payment tests
+
+- `supabase/tests/database/23_manual_payments.test.sql` covers the rules and
+  totals (see the table above).
+- `tests/integration/payments.test.ts` sends truly concurrent requests
+  through the API: six identical submissions record one payment, and two
+  different submissions with the same amount and date record one while the
+  other asks for confirmation. Clients and other tenants can't record,
+  invalidate, write, read or set the invoice link.
+- `tests/e2e/payments-flow.spec.ts` records payments on the event page
+  (double click, duplicate confirmation, invalidation with a reason), saves an
+  invoice link (http refused), shows sent-contract terms, and checks the
+  client's phone-width summary has no references, notes or reasons.
 
 ### Integration tests
 
@@ -843,9 +897,10 @@ undelivered contract emails visibly.
   superseding the signed proposal, so `send_proposal` rolls back. Archiving
   hides the event and cuts client access but keeps the agreement and
   evidence; unarchiving restores the signer's read access.
-- **Not a booking.** The event stays `awaiting_signature`. Signing grants no
-  planning access and records no payment. The client sees "Contract signed.
-  Your DJ will follow up with the next steps."
+- **Booking.** Signing confirms the booking only as the contract's frozen
+  booking policy allows (see "Booking confirmation"). It grants no planning
+  access and records no payment. The client sees "Contract signed.", the
+  booking state, and "Your DJ will follow up with the next steps."
 - **Retention is undecided.** Nothing deletes signatures or evidence, and no
   retention period is set. Decide one (and how to handle archived tenants and
   deletion requests) before real clients sign. Collecting this evidence does
@@ -935,6 +990,105 @@ undelivered contract emails visibly.
   signed PDF**, which sends no email. **Send signed copies…** is a separate
   step whose confirmation lists both recipients; the database checks that
   they match the frozen addresses.
+
+### Manual payments
+
+- **What it is.** Staff record payments received elsewhere (Wave, e-transfer,
+  cash). Flux DJ never processes, verifies or invoices anything. Recording or
+  invalidating a payment never changes a contract or planning access. It may
+  confirm a booking under the signed contract's policy (see "Booking
+  confirmation"), which is the only email it can cause; it never undoes one.
+- **Records.** `event_payments`: amount in integer cents (positive, parsed
+  without floating point), currency, date received (not in the future, in
+  the business time zone), optional reference and internal note, and the
+  recording staff member (user id, membership, email) and database time.
+  Rows are never updated or deleted. `invalidate_event_payment` marks a wrong
+  entry once with a required reason, who and when; a correction is a new
+  entry. Only `record_event_payment` and `invalidate_event_payment` write,
+  for staff of the event's business; clients and other tenants can't read or
+  write anything. Recording and invalidating are blocked while the event is
+  archived, and are audited.
+- **No double recording.** Each form submission carries an idempotency key
+  (unique per business): a retried or double-clicked submission returns the
+  first result, and a reused key with different values is refused. Another
+  valid payment with the same amount and date on the event needs explicit
+  confirmation. Payments for one event are serialized by the event lock.
+- **Authoritative terms.** Only one contract per event can be sent or signed
+  at a time (a new draft is refused while one is). The summary uses the
+  signed contract if there is one (its frozen total, deposit, balance and
+  due date), otherwise the contract currently sent to the client, labelled
+  as not signed (voiding and replacing it changes the terms). Drafts, void,
+  replaced and superseded contracts never count, so totals are never added
+  across contract versions. Without such a contract, payments are listed but
+  no total or deposit is shown. Live catalog, tax and deposit settings are
+  never used.
+- **Totals.** `private.event_payment_summary` is the only place they are
+  computed: received (valid payments in the terms' currency), deposit still
+  outstanding and remaining balance (never below zero), and the amount
+  received above the total, shown as a credit. A zero-percent deposit shows
+  "No deposit required".
+- **Invoice link.** `event_billing.invoice_url`, optional, HTTPS with a host
+  name and no credentials (checked by the database), versioned so a stale tab
+  gets a conflict. It is rendered as a link with
+  `rel="noopener noreferrer nofollow"` and its host shown; Flux DJ never
+  fetches it.
+- **Client view.** `client_payment_summary` returns the figures and the
+  invoice link only for a contract the caller can already read (verified
+  signer, live access, nothing archived). No references, notes, staff
+  identities, invalidations or record ids.
+
+### Booking confirmation
+
+- **Policy.** `tenants.booking_confirmation_policy`: `on_deposit` (signed and
+  the required deposit received; the default) or `on_signature` (signed is
+  enough; payment may still be due). Only the owner changes it, in Settings,
+  through `update_booking_policy` (versioned; the column has no direct write
+  grant). Before this, no screen could set it, so every business still had
+  the old column default `on_signature`, which nobody chose; the migration
+  moved them to `on_deposit`.
+- **Frozen per contract.** `contracts.booking_policy` is copied from the
+  business when the contract is generated and never changes, so changing the
+  setting only affects contracts generated afterwards. It is not part of the
+  content hash, so hashes, evidence and PDFs are unchanged.
+- **Automatic, once.** `private.evaluate_booking` runs inside the
+  transactions that sign a contract and that record or invalidate a payment,
+  after locking the event (the lock order everywhere is event, proposal,
+  contract). It reads only the database: the event's signed contract and its
+  frozen deposit, valid payments in its currency (payments recorded before
+  signing count), and whether the event or business is archived. Under the
+  lock it moves the event to `awaiting_deposit` (deposit still due) or to
+  `booked`, setting `booking_confirmed_at` once, writing one audit event and
+  queuing one booking-confirmation email in the same transaction. A 0%
+  deposit is satisfied by signing. Repeated or concurrent requests can't
+  book twice. A trigger refuses any other way of booking, changing
+  `booking_confirmed_at`, or leaving `booked`. Archived events are never
+  booked. Rendering and email happen after the transaction, so they can't
+  block or undo a booking.
+- **Corrections after booking.** Invalidating a payment never cancels a
+  booking. `booking_confirmed_at` stays, and the event page warns staff when
+  valid payments no longer cover the required deposit. The client sees the
+  accurate amount outstanding. Cancellation, refunds and unbooking are not
+  built.
+- **Contracts generated before policies existed** (`booking_policy` null)
+  are never booked automatically, not by the migration and not by payments.
+  The event page shows **Check booking** (`check_event_booking`, staff
+  only), which evaluates them as `on_deposit`, whatever the business's
+  current setting. If the deposit is still due, the event moves to
+  `awaiting_deposit` and later payments are then evaluated automatically.
+- **States shown.** "awaiting signature", "Signed · awaiting deposit",
+  "Booked", and, for an older contract not yet checked, "Contract signed ·
+  booking not checked yet". A booking on signature can still have payment
+  outstanding; the event page shows what remains.
+- **The email.** `booking_confirmed`, one per event (dedup key), to the
+  frozen signer email, with the sender frozen like signed copies and a
+  Resend idempotency key. It confirms the booking and states the total, what
+  was received and what remains (and the deposit, if not yet received) as of
+  the booking, and promises no planning access. It is delivered right after
+  the transaction by the signing or payment action, or by the scheduled
+  worker, and only while the event is booked and not archived. Workers from
+  before this change never claim it (`claim_email_outbox` takes
+  `p_include_booking`, default false), so an older deployed app can't send it
+  as another kind of email.
 
 ### Archiving events
 

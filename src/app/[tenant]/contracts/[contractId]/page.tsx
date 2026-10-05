@@ -10,6 +10,8 @@ import { SLUG_PATTERN } from "@/lib/proposals/client-session.server";
 import { SIGNATURE_BUCKET } from "@/lib/contracts/signing";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { InvoiceLink, PaymentFigures } from "@/components/payments/payment-summary";
+import type { ClientPaymentSummary } from "@/lib/payments";
 import { SignPanel } from "./sign-panel";
 
 export const metadata: Metadata = { title: "Your contract", robots: { index: false, follow: false }, referrer: "strict-origin" };
@@ -74,6 +76,9 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
   // From the contract's frozen signing mode, never from its wording.
   const isDemo = c.signing_mode === "demo";
   const signing = view.signing;
+  // Read-only, for the same verified access as the contract itself.
+  const { data: paymentData } = await supabase.rpc("client_payment_summary", { p_contract_id: contractId, p_tenant_slug: slug });
+  const payments = paymentData as ClientPaymentSummary | null;
   let signatureUrl: string | null = null;
   if (signing.signed) {
     // Authorized in the database for this signer only; the link lasts two minutes.
@@ -95,6 +100,14 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
       {signing.signed ? (
         <section role="status" className="grid gap-2 rounded-lg border-2 border-emerald-600 p-4 text-base">
           <h2 className="text-lg font-semibold">Contract signed.</h2>
+          {payments?.booking_status === "booked" ? (
+            <p className="font-medium">Your booking is confirmed.</p>
+          ) : payments?.booking_status === "awaiting_deposit" ? (
+            <p>
+              Your booking will be confirmed once {view.brand.display_name} has recorded your deposit
+              {payments.deposit_outstanding_cents ? ` (${money(payments.deposit_outstanding_cents)} still to pay)` : ""}.
+            </p>
+          ) : null}
           <p>Your DJ will follow up with the next steps.</p>
           <p className="text-sm text-muted-foreground">
             {/* en-CA times end in "p.m.", so no extra full stop is added. */}
@@ -128,6 +141,31 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
         <div className="flex justify-between gap-2"><span>Balance</span><span className="tabular-nums">{money(c.balance_cents)}</span></div>
         {c.balance_due_date ? <div className="flex justify-between gap-2"><span>Balance due</span><span>{c.balance_due_date}</span></div> : null}
       </section>
+      {payments ? (
+        <section aria-labelledby="payments-heading" className="mx-auto grid w-full max-w-prose gap-2 rounded-lg border p-4 text-base">
+          <h2 id="payments-heading" className="font-semibold">Payments</h2>
+          <PaymentFigures
+            audience="client"
+            s={{
+              currency: payments.currency,
+              termsStatus: payments.terms_status,
+              totalCents: payments.total_cents,
+              depositPercent: payments.deposit_percent,
+              depositCents: payments.deposit_cents,
+              balanceDueDate: payments.balance_due_date,
+              receivedCents: payments.received_cents,
+              depositOutstandingCents: payments.deposit_outstanding_cents,
+              remainingBalanceCents: payments.remaining_balance_cents,
+              creditCents: payments.credit_cents,
+            }}
+          />
+          {payments.invoice_url ? <p className="text-sm"><InvoiceLink url={payments.invoice_url} /></p> : null}
+          <p className="text-xs text-muted-foreground">
+            Payments are recorded by hand by {view.brand.display_name} when they receive them, so a recent payment may not appear yet. Pay
+            only as arranged with {view.brand.display_name}; Flux DJ doesn&apos;t take payments.
+          </p>
+        </section>
+      ) : null}
       {!signing.signed && signing.enabled && signing.consent_version && signing.consent_text ? (
         <SignPanel
           slug={slug}

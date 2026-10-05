@@ -24,7 +24,7 @@ export default async function ContractPreview({ params }: PageProps<"/staff/[ten
   const { data: contract } = await supabase
     .from("contracts")
     .select(
-      "id, status, signing_mode, created_at, sent_at, signed_at, voided_at, void_reason, event_id, proposal_id, replaces_id, signer_name, signer_email, currency, total_cents, deposit_percent, deposit_cents, balance_cents, balance_due_date, rendered_content, content_sha256, party_snapshot, events!contracts_event_fk(title, event_date, archived_at), proposals!contracts_proposal_fk(revision), proposal_approvals!contracts_approval_fk(approved_at), contract_template_versions!contracts_template_version_fk(version_number, contract_templates!contract_template_versions_template_fk(id, name))",
+      "id, status, signing_mode, booking_policy, created_at, sent_at, signed_at, voided_at, void_reason, event_id, proposal_id, replaces_id, signer_name, signer_email, currency, total_cents, deposit_percent, deposit_cents, balance_cents, balance_due_date, rendered_content, content_sha256, party_snapshot, events!contracts_event_fk(title, event_date, archived_at), proposals!contracts_proposal_fk(revision), proposal_approvals!contracts_approval_fk(approved_at), contract_template_versions!contracts_template_version_fk(version_number, contract_templates!contract_template_versions_template_fk(id, name))",
     )
     .eq("id", contractId)
     .eq("tenant_id", tenant.id)
@@ -237,6 +237,16 @@ export default async function ContractPreview({ params }: PageProps<"/staff/[ten
                 </div>
                 <div><dt className="text-muted-foreground">Approved selection</dt><dd>Proposal revision {contract.proposals?.revision}, approved {contract.proposal_approvals ? fmt(contract.proposal_approvals.approved_at) : ""}</dd></div>
                 <div><dt className="text-muted-foreground">Generated</dt><dd>{fmt(contract.created_at)}</dd></div>
+                <div>
+                  <dt className="text-muted-foreground">Booking</dt>
+                  <dd>
+                    {contract.booking_policy === "on_signature"
+                      ? "Confirmed automatically when signed"
+                      : contract.booking_policy === "on_deposit"
+                        ? "Confirmed automatically when signed and the deposit is received"
+                        : "Generated before booking policies: checked by staff on the event page"}
+                  </dd>
+                </div>
                 {contract.replaces_id ? <div><dt className="text-muted-foreground">Replaces</dt><dd><Link className="underline" href={`/staff/${slug}/contracts/${contract.replaces_id}`}>Earlier draft</Link></dd></div> : null}
                 <div>
                   <dt className="text-muted-foreground">Content SHA-256</dt>

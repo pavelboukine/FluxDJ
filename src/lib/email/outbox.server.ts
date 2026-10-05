@@ -11,6 +11,7 @@ import {
   renderContractSignInEmail,
   renderContractVoidedEmail,
   renderEmail,
+  renderBookingConfirmedEmail,
   renderSignedCopyEmail,
   type OutboxEventType,
   type RenderedEmail,
@@ -61,12 +62,19 @@ export async function processOutbox(options: { transport?: EmailTransport; tenan
     p_limit: options.limit ?? 20,
     p_lock_seconds: 120,
     p_tenant_id: options.tenantId,
+    // This worker delivers booking confirmations (older workers never claim them).
+    p_include_booking: true,
   });
   if (error) throw new Error(`Could not claim outbox emails (${error.code ?? "error"})`);
 
   for (const row of rows ?? []) {
     result.claimed += 1;
     try {
+      if (row.event_type === "booking_confirmed") {
+        const outcome = await deliverBookingConfirmed(admin, transport, row, fromAddress);
+        result[outcome] += 1;
+        continue;
+      }
       if (row.event_type === "contract_signed_copy") {
         const outcome = await deliverSignedCopy(admin, transport, row, fromAddress);
         result[outcome] += 1;
@@ -298,6 +306,57 @@ async function deliverSignedCopy(
     ...email,
     attachments: [{ filename: signedPdfFileName(eventTitle, eventDate), contentType: "application/pdf", content: pdf }],
     idempotencyKey: `flux-signed-copy-${row.id}`,
+  });
+  await admin.rpc("complete_email_outbox", { p_id: row.id, p_provider_message_id: sent.id });
+  return "sent";
+}
+
+/**
+ * The booking confirmation: built only from its frozen payload and frozen
+ * sender, so a retry with the same idempotency key is the same request. Not
+ * delivered if the event is no longer booked or was archived.
+ */
+async function deliverBookingConfirmed(
+  admin: ReturnType<typeof createAdminClient>,
+  transport: EmailTransport,
+  row: ClaimedRow,
+  fromAddress: string,
+): Promise<"sent" | "cancelled" | "failed"> {
+  if (!row.contract_deliverable) {
+    await admin.rpc("cancel_email_outbox", { p_id: row.id, p_reason: "The event is no longer booked, or it was archived." });
+    return "cancelled";
+  }
+  const { data: frozen, error: freezeError } = await admin.rpc("freeze_email_sender", { p_id: row.id, p_from_address: fromAddress });
+  const sender = frozen as { display_name?: unknown; from_name?: unknown; reply_to?: unknown; from_address?: unknown } | null;
+  if (freezeError || !sender || typeof sender.display_name !== "string" || typeof sender.from_name !== "string" || typeof sender.from_address !== "string") {
+    await admin.rpc("fail_email_outbox", { p_id: row.id, p_error: "The sender could not be prepared. It will be retried.", p_permanent: false });
+    return "failed";
+  }
+  const payload = (row.payload ?? {}) as Record<string, unknown>;
+  const cents = (value: unknown) => (typeof value === "number" && Number.isSafeInteger(value) ? value : 0);
+  const email = renderBookingConfirmedEmail({
+    tenantDisplayName: sender.display_name,
+    legalName: str(payload.legal_name) || sender.display_name,
+    contactEmail: str(payload.contact_email) || null,
+    clientName: str(payload.client_name) || "there",
+    eventTitle: str(payload.event_title) || "your event",
+    eventDate: str(payload.event_date),
+    currency: str(payload.currency) || "CAD",
+    totalCents: cents(payload.total_cents),
+    depositCents: cents(payload.deposit_cents),
+    receivedCents: cents(payload.received_cents),
+    remainingCents: cents(payload.remaining_cents),
+    creditCents: cents(payload.credit_cents),
+    balanceDueDate: str(payload.balance_due_date) || null,
+    bookedOn: str(payload.booked_on),
+  });
+  const sent = await transport.send({
+    fromName: sender.from_name,
+    fromAddress: sender.from_address,
+    to: row.recipient_email,
+    replyTo: typeof sender.reply_to === "string" ? sender.reply_to : null,
+    ...email,
+    idempotencyKey: `flux-booking-${row.id}`,
   });
   await admin.rpc("complete_email_outbox", { p_id: row.id, p_provider_message_id: sent.id });
   return "sent";

@@ -159,7 +159,7 @@ test.describe.serial("client-use agreements", () => {
     const { data: evidence } = await admin.from("contract_signatures").select("consent_version, consent_text").eq("contract_id", contractId).single();
     expect(evidence).toEqual({ consent_version: "client-v1", consent_text: CLIENT_V1 });
     const { data: event } = await admin.from("events").select("lifecycle_status").eq("id", eventId).single();
-    expect(event!.lifecycle_status).toBe("awaiting_signature");
+    expect(event!.lifecycle_status).toBe("awaiting_deposit");
   });
 
   test("the signed PDF has no DEMO labels and records only the client's signature", async () => {

@@ -11,6 +11,7 @@ import { addEventContact, openProposalDraft, removeEventContact, updateEvent } f
 import { EventFields } from "../event-fields";
 import { eventStatusLabel } from "@/lib/events/status";
 import { ArchivePanel } from "./archive-panel";
+import { PaymentsCard } from "./payments-card";
 import { RemoveContact } from "./remove-contact";
 
 export default async function EventPage({ params, searchParams }: PageProps<"/staff/[tenant]/events/[eventId]">) {
@@ -109,6 +110,8 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
       {approvalId || hasContracts ? (
         <ContractCard staff={staff} slug={slug} eventId={event.id} approvalId={approvalId} />
       ) : null}
+
+      <PaymentsCard staff={staff} slug={slug} eventId={event.id} archived={Boolean(event.archived_at)} />
 
       <Card>
         <CardHeader><CardTitle>Contacts</CardTitle></CardHeader>
