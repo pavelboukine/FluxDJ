@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireStaff } from "@/lib/auth/staff";
 import { describeDbError } from "@/lib/db-errors";
 import { checkbox, fail, int, ok, text, UUID_RE, type ActionState } from "@/lib/forms";
-import { saveResultSchema, type SaveBasicsResult } from "@/lib/planning/view";
+import { saveResultSchema, type SaveItemResult } from "@/lib/planning/view";
 
 /*
  * Staff planning for one event. The database checks membership of the
@@ -87,19 +87,19 @@ export async function addPlanItem(slug: string, eventId: string, _state: ActionS
   return ok("Added.", data as number);
 }
 
-export async function saveStaffBasicsAction(slug: string, eventId: string, expectedRevision: number, answers: unknown): Promise<SaveBasicsResult> {
-  if (typeof slug !== "string" || typeof eventId !== "string" || !UUID_RE.test(eventId) || !Number.isInteger(expectedRevision) ||
-      typeof answers !== "object" || answers === null || Array.isArray(answers)) {
+export async function saveStaffItemAction(slug: string, eventId: string, itemId: string, expectedRevision: number, answers: unknown): Promise<SaveItemResult> {
+  if (typeof slug !== "string" || typeof eventId !== "string" || !UUID_RE.test(eventId) || typeof itemId !== "string" || !UUID_RE.test(itemId) ||
+      !Number.isInteger(expectedRevision) || typeof answers !== "object" || answers === null || Array.isArray(answers)) {
     return { status: "invalid", field: null, message: "Reload the page and try again." };
   }
   const { supabase } = await requireStaff(slug);
-  const { data, error } = await supabase.rpc("staff_save_plan_basics", {
+  const { data, error } = await supabase.rpc("staff_save_plan_item", {
     p_event_id: eventId,
+    p_item_id: itemId,
     p_expected_revision: expectedRevision,
     p_answers: JSON.parse(JSON.stringify(answers)),
   });
   if (error) return { status: "error", message: describeDbError(error) };
   const parsed = saveResultSchema.safeParse(data);
-  if (!parsed.success) return { status: "error", message: "Couldn't save. Reload the page and try again." };
-  return parsed.data;
+  return parsed.success ? parsed.data : { status: "error", message: "Couldn't save. Reload the page and try again." };
 }

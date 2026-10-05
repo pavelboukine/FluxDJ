@@ -6,14 +6,16 @@ import { ActionForm } from "@/components/app/action-form";
 import { DraftVersionProvider } from "@/components/app/draft-version";
 import { CheckboxField, PageHeader, SelectField } from "@/components/app/fields";
 import { BasicsEditor } from "@/components/planning/basics-editor";
-import { AlreadyProvided } from "@/components/planning/plan-overview";
-import { PlanProgressProvider, ProgressSummary } from "@/components/planning/progress";
+import { AlreadyProvided, PlanCard } from "@/components/planning/plan-overview";
+import { ItemStatus, PlanProgressProvider, ProgressSummary } from "@/components/planning/progress";
+import { StageDetailsEditor } from "@/components/planning/stage-details-editor";
+import { isStageEditor } from "@/lib/planning/stages";
 import { StructureEditor } from "@/components/planning/structure-editor";
 import { requireStaff } from "@/lib/auth/staff";
 import { UUID_RE } from "@/lib/forms";
 import { formatEventDate, staffPlanningViewSchema } from "@/lib/planning/view";
 import { EVENT_TYPES } from "../../event-form";
-import { addPlanItem, applyPlanningTemplate, planItemAction, saveStaffBasicsAction, setUpPlanning } from "./actions";
+import { addPlanItem, applyPlanningTemplate, planItemAction, saveStaffItemAction, setUpPlanning } from "./actions";
 
 export default async function StaffPlanningPage({ params }: PageProps<"/staff/[tenant]/events/[eventId]/planning">) {
   const { tenant: slug, eventId } = await params;
@@ -21,7 +23,7 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
   const { supabase, tenant } = await requireStaff(slug);
   const { data: event } = await supabase
     .from("events")
-    .select("id, title, event_type, event_date, venue_name, venue_address, lifecycle_status, booking_confirmed_at, archived_at")
+    .select("id, title, event_type, event_date, timezone, venue_name, venue_address, lifecycle_status, booking_confirmed_at, archived_at")
     .eq("id", eventId)
     .eq("tenant_id", tenant.id)
     .maybeSingle();
@@ -105,7 +107,7 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
             </CardContent>
           </Card>
 
-          <PlanProgressProvider initial={view.progress}>
+          <PlanProgressProvider initial={view.progress} warnings={view.timeline_warnings} basics={view.basics.answers}>
             <Card>
               <CardHeader>
                 <CardTitle>Event basics</CardTitle>
@@ -118,14 +120,50 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
               <CardContent className="grid gap-4">
                 <ProgressSummary />
                 <BasicsEditor
+                  itemId={view.basics.item_id}
                   initialAnswers={view.basics.answers}
                   initialRevision={view.basics.revision}
                   eventVenue={{ name: event.venue_name, address: event.venue_address }}
                   djName={tenant.display_name}
                   audience="staff"
-                  save={saveStaffBasicsAction.bind(null, slug, event.id)}
+                  save={saveStaffItemAction.bind(null, slug, event.id, view.basics.item_id)}
                   disabledReason={archived ? "Unarchive the event to edit planning." : undefined}
                 />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Stage details</CardTitle>
+                <CardDescription>
+                  Timing, location and preparation details for each stage, in your stage order (entering times never reorders it).
+                  Shared with the client, who can edit them too. Hidden stages keep their answers. Equipment answers are for your review
+                  and never change the contracted package, gear or price.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-2">
+                {view.structure.stages.filter((s) => !s.disabled && isStageEditor(s.editor)).length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No visible stage has details yet.</p>
+                ) : null}
+                {view.structure.stages.filter((s) => !s.disabled).map((s) =>
+                  isStageEditor(s.editor) ? (
+                    <PlanCard key={s.id} title={s.label} badge={<ItemStatus itemId={s.id} />} testId={`staff-stage-${s.key}`}>
+                      <StageDetailsEditor
+                        itemId={s.id}
+                        stageKey={s.key}
+                        stageLabel={s.label}
+                        editor={s.editor}
+                        initialAnswers={view.stage_details[s.id]?.answers ?? {}}
+                        initialRevision={view.stage_details[s.id]?.revision ?? 0}
+                        event={{ date: event.event_date, timezone: event.timezone, venueName: event.venue_name, venueAddress: event.venue_address }}
+                        djName={tenant.display_name}
+                        audience="staff"
+                        save={saveStaffItemAction.bind(null, slug, event.id, s.id)}
+                        disabledReason={archived ? "Unarchive the event to edit planning." : undefined}
+                      />
+                    </PlanCard>
+                  ) : null,
+                )}
               </CardContent>
             </Card>
           </PlanProgressProvider>

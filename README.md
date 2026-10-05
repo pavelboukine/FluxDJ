@@ -45,10 +45,13 @@ foundation is in place:
   stages and moments in event order, a small Event basics editor, frozen
   proposal answers shown as "Already provided", and progress computed by the
   database over the sections that exist so far.
+- Stage details: timing, location and a few preparation details inside the
+  ceremony, cocktail, reception entrance, dinner, party and closing stages,
+  with explicit next-day times and timing warnings.
 
 Everything has row-level security and tests. Not built yet: payment
-processing, the detailed planning editors (stage questions, songs, names,
-vendors), planning cutoff and reopening, the run sheet, PWA, cancellations
+processing, songs, entrance participants, speeches, pronunciations, vendors,
+DJ preferences, planning cutoff and reopening, the run sheet, PWA, cancellations
 and amendments. Approval and contract
 drafts are not bookings.
 
@@ -245,6 +248,11 @@ pending mail in the background, run `pnpm outbox:work` alongside
 4. As the client (signed in, booked event), open `/my` or the contract page
    and follow **Plan your event**. Event basics saves automatically; other
    sections say "Not available yet" and aren't counted in progress.
+5. Open a stage card (Ceremony, Cocktail, Reception entrance, Dinner, Party,
+   Closing) and fill its details: "Same as the event venue", times with
+   **Next day** for after midnight, "Not sure, discuss with DJ". Overlapping
+   stages show a timing note; staff see and edit the same details under
+   **Stage details** on the event's planning page.
 
 How it works:
 
@@ -264,6 +272,39 @@ How it works:
 - Event basics needs guest count, start and end time, the venue (satisfied by
   the event's venue when staff entered one) and DJ access details (or an
   explicit "No special instructions", recorded as not applicable).
+
+#### Stage details
+
+Editors are chosen by stage key (`ceremony`, `cocktail`, `reception_entrance`,
+`dinner`, `party`, `closing`), never by label, and save on the stage item, so
+hiding a stage keeps its answers. The moments they cover (`ceremony_details`,
+`cocktail_details`, `dinner_details`, `closing_instructions`) show "Included
+in the details above". Fields are a fixed typed list
+(`private.planning_editor_fields`), mirrored in `src/lib/planning/stages.ts`.
+
+| Stage | Fields | Needed to complete |
+|---|---|---|
+| Ceremony | location (same as the event venue, or another place) and room/outdoor area; guest arrival, start, end; officiant name and contact; microphones (not needed / needed / not sure, discuss with DJ) and who speaks; instructions | location, start time, microphone needs ("discuss" stays open) |
+| Cocktail | location and area; start, end; atmosphere or music style; instructions | location, start time |
+| Reception entrance | guests enter; planned entrance time; "No formal entrance" | entrance time, or no formal entrance (not applicable) |
+| Dinner | location and area; start, end; meal style; guest count (Event basics' count, or another number) | location, start time, guest count |
+| Party | location and area; start, end; additional evening guests | location, start time |
+| Closing | finish (a time, Event basics' end time, or discuss with DJ); closing instructions | finish time ("discuss" stays open) |
+
+- Optional fields never block completion. "Same as the event venue" is the
+  staff-entered venue, else Event basics' venue; until one exists it stays
+  open. Reuse stores the choice, never a copy.
+- Times are local to the event's time zone with an explicit "Next day" mark.
+  Within a stage the end must come after the start; an earlier end without
+  "Next day" is refused, never assumed. Unknown times are fine.
+- `private.plan_timeline_warnings` compares visible stages in the staff's
+  order and flags a stage that starts before the previous one starts or ends
+  (and guest arrival or entrance order inside a stage). Times never reorder
+  stages.
+- No imported proposal answer is mapped into stage details: no question key
+  has a documented meaning. They stay visible under "Already provided".
+- Equipment answers (microphones) are planning information for the DJ to
+  review; they never change the contracted package, gear or price.
 
 ## Running the checks
 
@@ -325,6 +366,7 @@ in every relevant relationship.
 | `20_contract_signing` | Only the service role signs. Wrong signer, other event's client, staff, stranger, no identity, wrong tenant, unverified or changed email, revoked access, archived event. Consent, consent version, displayed hash, typed name, never-stored, wrong-size, non-PNG, oversized and out-of-folder images. The atomic signed state and evidence, one audit event, no booking. Replays return the first signature to the signer only. Immutable evidence and content; void, resend, regeneration and revisions refused. Client and staff reads, Storage visibility, orphans. Archiving keeps evidence. Void and superseded contracts can't be signed |
 | `22_client_use_signing` | Usage is required when publishing; legacy can't be chosen. Client use is owner-only, needs the current statement, and stores the exact statement, owner and database time; staff publish DEMO only; other tenants get nothing. Published usage and confirmation are immutable; drafts carry none; a new version copies text, not usage. Contracts freeze mode and consent, immutably. Signing with `client-v1` (the DEMO consent is refused) and exact evidence; `demo-v1` unchanged. Legacy versions can't generate; `none` contracts can't be sent or signed and the review explains how to regenerate. Signed-copy senders are frozen when queued and at the first attempt, never change, keep older rows' first values, ignore sent rows and are service-role only |
 | `23_manual_payments` | Owner and staff record; other tenants, clients and anon can't, and no role writes rows directly. Amount, date, reference validation. Idempotent replays, reused keys, duplicate confirmation, exact cents. Invalidation with reasons, preserved history, immutability, audit. Drafts give no terms; sent terms; void and replacement without double counting; signed terms frozen after business, tax and catalog changes; overpayment as credit; zero-percent deposit. Client summary fields, other clients, void contracts, staff and anon. HTTPS invoice links, stale versions, unsafe URLs. Archiving blocks writes and the client view. No email, status, booking or contract change |
+| `26_stage_details` | Library editors and covered moments; validation (times, explicit next day, impossible and equal intervals, choices, limits, unknown fields, conflicting entrance answers); partial answers and normalization; completion with venue and Event basics reuse, not applicable and "discuss with DJ"; overnight party and closing; chronology warnings in staff order without reordering; hidden stages keep answers; covered moments; Simple Party; other clients, other events' items, other businesses, anon and archived events; staff saves; no staff identity, payment references or notes for clients; contract, booking, payments, proposal and imports untouched; the Event basics entry point kept |
 | `25_planning` | Read-only tables for staff; starter templates added explicitly and once; template ownership across businesses, clients and direct writes; rename, move, remove and add with stable keys and versions; library placement enforced by trigger; duplicate and archive; one default per event type. Booking (real signing and deposit) creates one plan from the event-type default; the Basics fallback; setup before booking kept at booking; repeats and already-booked backfill. Frozen imports after catalog changes. Client access: booked, unbooked, other client, stranger, wrong slug, revoked, unverified, two DJs, anon, archived and unarchived, payment invalidation. Basics validation, conflicts, normalization, progress (imported and not applicable versus unanswered, unavailable sections excluded). Disable and restore keep answers and order and change nothing contractual. Non-destructive template replacement. Integrity |
 | `24_booking` | Owner-only, versioned policy setting; no direct writes; only two policies. Frozen policy per contract, unchanged by later setting changes. On signature: booked when signed, with payment still due. On deposit: payments before signing count, partial payments await the deposit to the cent, the completing payment books, later payments and checks don't book again (one audit event, one email). Zero deposit. Overpayment. Corrections keep the booking and `booking_confirmed_at` and warn staff; the client sees the amount outstanding. Legacy contracts: nothing automatic, staff check as `on_deposit` (not the business's on_signature), then automatic. Archived events refused. Guards against booking outside the function, changing the date or unbooking. Tenant isolation. Older workers never claim booking emails |
 | `21_signed_contract_pdfs` | Signing queues one PDF job (none on replay) and no email. Only the service role runs jobs. Leases: no double claim, expired-lease recovery, stale leases can't fail a job. Commit validation (missing, wrong size, wrong type, wrong folder, wrong signature hash). One canonical immutable document; a second upload is "exists" with no duplicate emails. One email per party with separate dedup keys, no paths or tokens in payloads. Staff, other tenants, signer, other clients and anon. Archiving blocks the signer and cancels undelivered copies but keeps the PDF. Recipient-confirmed resend that never repeats a delivered copy. Contracts signed before PDFs: explicit generation without email |
@@ -461,8 +503,10 @@ signed-out browser:
 
 ### Planning tests
 
-- `supabase/tests/database/25_planning.test.sql` covers the rules (see the
-  table above).
+- `supabase/tests/database/25_planning.test.sql` and
+  `26_stage_details.test.sql` cover the rules (see the table above).
+- `tests/unit/planning-stages.test.ts`: the browser-side stage validation
+  (next day, impossible intervals, bounds, normalization).
 - `tests/integration/planning.test.ts`: concurrent payments and checks create
   one plan; repeated checks and setup never replace it; concurrent setup and
   starter installs; concurrent client saves (one wins, the rest conflict);
@@ -472,8 +516,12 @@ signed-out browser:
   prompt; starter templates, renaming, reordering, removing, a stale tab and
   duplicating; the client on a phone (imported answers, autosave, edits during
   a pending save, failed save and retry, stale tab); applying a template
-  without losing answers; hiding and restoring a stage; template edits not
-  reaching the plan; archiving and unarchiving.
+  without losing answers; stage details on a phone (venue reuse, discuss with
+  DJ, completion, reload, overnight times, timing warnings, edits during a
+  pending save, failed save, stale tab); staff edits reusing Event basics;
+  hiding and restoring stages with their answers; contract, payments and
+  booking unchanged; template edits not reaching the plan; archiving and
+  unarchiving.
 
 ### Booking tests
 

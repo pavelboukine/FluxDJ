@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
-import { formatImportedAnswer, type Imported, type PlanStructure } from "@/lib/planning/view";
+import { formatImportedAnswer, type Imported, type PlanStage, type PlanStructure } from "@/lib/planning/view";
+import { isStageEditor } from "@/lib/planning/stages";
+import { ItemStatus } from "./progress";
 
 /**
  * Read-only pieces of a plan shared by the client and staff pages. Sections
@@ -27,8 +29,8 @@ export function PlanCard({ title, badge, open, children, testId }: { title: stri
   );
 }
 
-/** The event's stages in order, each with its moments. */
-export function StageCards({ stages }: { stages: PlanStructure["stages"] }) {
+/** The event's stages in order, each with its details (when built) and moments. */
+export function StageCards({ stages, renderDetails }: { stages: PlanStructure["stages"]; renderDetails?: (stage: PlanStage) => ReactNode }) {
   if (stages.length === 0) {
     return <p className="text-sm text-muted-foreground">No stages yet.</p>;
   }
@@ -39,20 +41,23 @@ export function StageCards({ stages }: { stages: PlanStructure["stages"] }) {
           <PlanCard
             title={`${index + 1}. ${s.label}`}
             testId={`stage-${s.key}`}
-            badge={<NotAvailableBadge />}
+            badge={isStageEditor(s.editor) ? <ItemStatus itemId={s.id} /> : <NotAvailableBadge />}
           >
+            {isStageEditor(s.editor) && renderDetails ? renderDetails(s) : null}
             {s.moments.length > 0 ? (
-              <ul className="grid gap-1.5">
+              <ul className="grid gap-1.5" aria-label={`Moments in ${s.label}`}>
                 {s.moments.map((m) => (
                   <li key={m.id} className="flex flex-wrap items-center justify-between gap-2">
                     <span>{m.label}</span>
-                    <span className="text-xs text-muted-foreground">Not available yet</span>
+                    <span className="text-xs text-muted-foreground">{m.editor === "stage_details" ? "Included in the details above" : "Not available yet"}</span>
                   </li>
                 ))}
               </ul>
             ) : null}
             <p className="text-xs text-muted-foreground">
-              Timing, songs, names and pronunciation for this part of the event can&apos;t be entered yet. They aren&apos;t counted in progress.
+              {isStageEditor(s.editor)
+                ? "Songs, names and pronunciation for this part of the event can't be entered yet and aren't counted in progress."
+                : "Details, songs, names and pronunciation for this part of the event can't be entered yet. They aren't counted in progress."}
             </p>
           </PlanCard>
         </li>

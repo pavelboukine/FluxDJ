@@ -1210,6 +1210,9 @@ isOneToOne: false
 "client_save_plan_basics":
 { Args: { "p_answers": Json,"p_event_id": string,"p_expected_revision": number,"p_tenant_slug": string }; Returns: Json
                            },
+"client_save_plan_item":
+{ Args: { "p_answers": Json,"p_event_id": string,"p_expected_revision": number,"p_item_id": string,"p_tenant_slug": string }; Returns: Json
+                           },
 "client_save_selection_draft":
 { Args: { "p_addon_quantities": Json,"p_expected_version": number,"p_logistics_answers": Json,"p_package_key": string,"p_proposal_id": string,"p_session_hash": string,"p_tenant_slug": string }; Returns: Json
                            },
@@ -1386,6 +1389,9 @@ isOneToOne: false
                            },
 "staff_save_plan_basics":
 { Args: { "p_answers": Json,"p_event_id": string,"p_expected_revision": number }; Returns: Json
+                           },
+"staff_save_plan_item":
+{ Args: { "p_answers": Json,"p_event_id": string,"p_expected_revision": number,"p_item_id": string }; Returns: Json
                            },
 "update_booking_policy":
 { Args: { "p_expected_version": number,"p_policy": string,"p_tenant_id": string }; Returns: number

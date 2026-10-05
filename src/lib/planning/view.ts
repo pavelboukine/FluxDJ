@@ -10,6 +10,10 @@ import type { BasicsAnswers } from "./basics";
 const requirementSchema = z.object({
   key: z.string(),
   state: z.enum(["answered", "imported", "not_applicable", "unanswered"]),
+  /** An open "discuss with DJ" (state stays unanswered). */
+  discuss: z.boolean().optional(),
+  /** Why a reuse choice can't be resolved yet (venue_unknown, basics_missing). */
+  note: z.string().optional(),
 });
 export type Requirement = z.infer<typeof requirementSchema>;
 
@@ -35,7 +39,14 @@ export const progressSchema = z.object({
 export type PlanProgress = z.infer<typeof progressSchema>;
 
 const momentSchema = z.object({ id: z.string(), key: z.string(), label: z.string(), editor: z.string().nullable(), disabled: z.boolean() });
-const stageSchema = z.object({ id: z.string(), key: z.string(), label: z.string(), disabled: z.boolean(), moments: z.array(momentSchema) });
+const stageSchema = z.object({
+  id: z.string(),
+  key: z.string(),
+  label: z.string(),
+  editor: z.string().nullable().optional(),
+  disabled: z.boolean(),
+  moments: z.array(momentSchema),
+});
 const generalSchema = z.object({
   id: z.string(),
   key: z.string(),
@@ -75,6 +86,11 @@ const importedSchema = z
   .nullable();
 export type Imported = z.infer<typeof importedSchema>;
 
+const stageDetailsSchema = z.record(z.string(), z.object({ answers: z.record(z.string(), z.union([z.string(), z.number(), z.literal(true)])), revision: z.number().int() }));
+export type StageDetails = z.infer<typeof stageDetailsSchema>;
+const warningsSchema = z.array(z.object({ item_id: z.string(), key: z.string(), message: z.string() }));
+export type TimelineWarning = z.infer<typeof warningsSchema>[number];
+
 const eventSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -93,6 +109,8 @@ export const clientPlanningViewSchema = z.discriminatedUnion("state", [
     event: eventSchema,
     structure: structureSchema,
     basics: z.object({ item_id: z.string(), answers: basicsAnswersSchema, revision: z.number().int() }),
+    stage_details: stageDetailsSchema,
+    timeline_warnings: warningsSchema,
     imported: importedSchema,
     progress: progressSchema,
   }),
@@ -119,15 +137,17 @@ export const staffPlanningViewSchema = z.union([
       updated_by: z.enum(["client", "staff"]).nullable(),
       updated_at: z.string().nullable(),
     }),
+    stage_details: stageDetailsSchema,
+    timeline_warnings: warningsSchema,
     imported: importedSchema,
     progress: progressSchema,
   }),
 ]);
 export type StaffPlanningView = z.infer<typeof staffPlanningViewSchema>;
 
-/** Result of saving Event basics, from either the client or staff action. */
-export type SaveBasicsResult =
-  | { status: "saved"; revision: number; answers: BasicsAnswers; progress: PlanProgress }
+/** Result of saving a plan item (Event basics or stage details), from the client or staff action. */
+export type SaveItemResult =
+  | { status: "saved"; revision: number; answers: Record<string, unknown>; progress: PlanProgress; timeline_warnings: TimelineWarning[] }
   | { status: "conflict" }
   | { status: "invalid"; field: string | null; message: string }
   | { status: "unavailable" }
@@ -135,7 +155,13 @@ export type SaveBasicsResult =
   | { status: "error"; message: string };
 
 export const saveResultSchema = z.discriminatedUnion("status", [
-  z.object({ status: z.literal("saved"), revision: z.number().int(), answers: basicsAnswersSchema, progress: progressSchema }),
+  z.object({
+    status: z.literal("saved"),
+    revision: z.number().int(),
+    answers: z.record(z.string(), z.unknown()),
+    progress: progressSchema,
+    timeline_warnings: warningsSchema,
+  }),
   z.object({ status: z.literal("conflict") }),
   z.object({ status: z.literal("invalid"), field: z.string().nullable(), message: z.string() }),
   z.object({ status: z.literal("unavailable") }),
@@ -176,6 +202,10 @@ export function progressScopeNote(p: PlanProgress): string {
 
 export function basicsProgress(p: PlanProgress) {
   return p.items.find((i) => i.key === "basics") ?? null;
+}
+
+export function itemProgress(p: PlanProgress, itemId: string) {
+  return p.items.find((i) => i.item_id === itemId) ?? null;
 }
 
 export function formatEventDate(isoDate: string): string {

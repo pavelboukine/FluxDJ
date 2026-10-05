@@ -5,11 +5,13 @@ import { notFound } from "next/navigation";
 import { BasicsEditor } from "@/components/planning/basics-editor";
 import { AlreadyProvided, NotAvailableBadge, PlanCard, StageCards } from "@/components/planning/plan-overview";
 import { PlanProgressProvider, ProgressSummary } from "@/components/planning/progress";
+import { StageDetailsEditor } from "@/components/planning/stage-details-editor";
+import { isStageEditor } from "@/lib/planning/stages";
 import { UUID_RE } from "@/lib/forms";
 import { SLUG_PATTERN } from "@/lib/proposals/client-session.server";
 import { clientPlanningViewSchema, formatEventDate } from "@/lib/planning/view";
 import { createClient } from "@/lib/supabase/server";
-import { saveClientBasicsAction } from "./actions";
+import { saveClientItemAction } from "./actions";
 
 export const metadata: Metadata = { title: "Event planning", robots: { index: false, follow: false }, referrer: "strict-origin" };
 
@@ -70,19 +72,20 @@ export default async function ClientPlanningPage({ params }: PageProps<"/[tenant
         <p className="text-xs text-muted-foreground">Event details provided by {dj}. Contact them to change the date or venue.</p>
       </header>
 
-      <PlanProgressProvider initial={view.progress}>
+      <PlanProgressProvider initial={view.progress} warnings={view.timeline_warnings} basics={view.basics.answers}>
         <ProgressSummary />
 
         <section aria-labelledby="general-heading" className="grid gap-2">
           <h2 id="general-heading" className="text-lg font-semibold">Event details</h2>
           <PlanCard title={basicsLabel} open testId="section-basics">
             <BasicsEditor
+              itemId={view.basics.item_id}
               initialAnswers={view.basics.answers}
               initialRevision={view.basics.revision}
               eventVenue={{ name: view.event.venue_name, address: view.event.venue_address }}
               djName={dj}
               audience="client"
-              save={saveClientBasicsAction.bind(null, slug, eventId)}
+              save={saveClientItemAction.bind(null, slug, eventId, view.basics.item_id)}
             />
           </PlanCard>
           {general.map((g) => (
@@ -91,12 +94,30 @@ export default async function ClientPlanningPage({ params }: PageProps<"/[tenant
             </PlanCard>
           ))}
         </section>
-      </PlanProgressProvider>
 
-      <section aria-labelledby="stages-heading" className="grid gap-2">
-        <h2 id="stages-heading" className="text-lg font-semibold">Your event, in order</h2>
-        <StageCards stages={view.structure.stages} />
-      </section>
+        <section aria-labelledby="stages-heading" className="grid gap-2">
+          <h2 id="stages-heading" className="text-lg font-semibold">Your event, in order</h2>
+          <StageCards
+            stages={view.structure.stages}
+            renderDetails={(s) =>
+              isStageEditor(s.editor) ? (
+                <StageDetailsEditor
+                  itemId={s.id}
+                  stageKey={s.key}
+                  stageLabel={s.label}
+                  editor={s.editor}
+                  initialAnswers={view.stage_details[s.id]?.answers ?? {}}
+                  initialRevision={view.stage_details[s.id]?.revision ?? 0}
+                  event={{ date: view.event.event_date, timezone: view.event.timezone, venueName: view.event.venue_name, venueAddress: view.event.venue_address }}
+                  djName={dj}
+                  audience="client"
+                  save={saveClientItemAction.bind(null, slug, eventId, s.id)}
+                />
+              ) : null
+            }
+          />
+        </section>
+      </PlanProgressProvider>
 
       {view.imported && view.imported.questions.length > 0 ? (
         <section aria-labelledby="provided-heading" className="grid gap-2">

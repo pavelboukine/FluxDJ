@@ -100,6 +100,25 @@ async function signInClient(page: Page, email: string) {
   await page.waitForURL("**/my");
 }
 
+let contractual = "";
+/** Everything planning must never change: the contract, its proposal, payments and the booking. */
+async function contractualState(eventId: string): Promise<string> {
+  const { data: event } = await admin.from("events").select("booking_confirmed_at, lifecycle_status, contracts(id, status, content_sha256, signed_at, total_cents, proposal_id)").eq("id", eventId).single();
+  const { data: payments } = await admin.from("event_payments").select("id, amount_cents, invalidated_at").eq("event_id", eventId).order("id");
+  const contracts = (event as unknown as { contracts: { proposal_id: string }[] }).contracts;
+  const { data: proposals } = await admin.from("proposals").select("id, status, offer_sha256").in("id", contracts.map((c) => c.proposal_id));
+  return JSON.stringify({ event, payments, proposals });
+}
+const stageRow = async (eventId: string, key: string) => {
+  const { data } = await admin.from("event_plans").select("event_plan_items(id, key)").eq("event_id", eventId).single();
+  const item = data!.event_plan_items.find((i) => i.key === key)!;
+  return (await admin.from("event_plan_responses").select("answers, revision, updated_by_actor").eq("item_id", item.id).maybeSingle()).data;
+};
+/** Opens a stage card unless it is already open (cards stay open within a page). */
+async function openStage(page: Page, key: string) {
+  const card = page.getByTestId(`stage-${key}`);
+  if (!(await card.evaluate((el) => (el as HTMLDetailsElement).open))) await card.locator("summary").click();
+}
 const noSideways = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 const basicsRow = async (eventId: string) => {
   const { data } = await admin.from("event_plans").select("id, event_plan_items(id, key)").eq("event_id", eventId).single();
@@ -134,6 +153,7 @@ test.describe.serial("planning", () => {
     staff = await staffContext.newPage();
     await signInStaff(staff, tenant.ownerEmail);
     contractId = await bookEvent(eventId);
+    contractual = await contractualState(eventId);
     planningUrl = `/${tenant.slug}/planning/${eventId}`;
     staffPlanningUrl = `/staff/${tenant.slug}/events/${eventId}/planning`;
   });
@@ -313,9 +333,147 @@ test.describe.serial("planning", () => {
     await ceremony.locator("summary").click();
     await expect(ceremony).toContainText("Processional participants");
     await expect(client.getByTestId("section-contacts_vendors")).toContainText("Not available yet");
-    await expect(client.getByTestId("progress-headline")).toHaveText("Available sections done");
+    // Event basics (5 of 5) plus the six stage editors' 12 requirements, none answered yet.
+    await expect(client.getByTestId("progress-headline")).toHaveText("5 of 17 required answers");
     await expect(client.getByText(/The other sections open later and aren't counted yet/)).toBeVisible();
     expect(await noSideways(client)).toBeLessThanOrEqual(0);
+  });
+
+  test("the client fills ceremony details on a phone: venue reuse, discuss with DJ, completion and a persisted reload", async () => {
+    await client.reload();
+    const card = client.getByTestId("stage-ceremony");
+    await card.locator("summary").click();
+    const details = card.getByTestId("details-ceremony");
+    await expect(card.locator("summary")).toContainText("Not started");
+    await details.getByLabel("Same as the event venue (Château E2E, 1 Rue du Lac, Gatineau)").check();
+    await details.getByLabel("Ceremony start (needed)").fill("16:00");
+    await details.getByLabel("Not sure, discuss with DJ").check();
+    await expect(details.getByText("All changes saved")).toBeVisible();
+    await expect(details.getByRole("list", { name: "What Ceremony details needs" })).toContainText(`Discuss with ${tenant.displayName} (still open)`);
+    await expect(card.locator("summary")).toContainText("In progress");
+    await expect(client.getByText('1 detail is marked "discuss with DJ" and still open.')).toBeVisible();
+    await expect(details.getByText("Equipment answers are planning information for your DJ to review.", { exact: false })).toBeVisible();
+    // Optional fields don't block completion.
+    await details.getByLabel("Needed", { exact: true }).check();
+    await expect(details.getByText("Ceremony details is complete.")).toBeVisible();
+    await expect(card.locator("summary")).toContainText("Complete");
+    expect((await stageRow(eventId, "ceremony"))!.answers).toEqual({ location_source: "event_venue", start_time: "16:00", microphones: "needed" });
+
+    await client.reload();
+    await client.getByTestId("stage-ceremony").locator("summary").click();
+    const again = client.getByTestId("details-ceremony");
+    await expect(again.getByLabel("Ceremony start (needed)")).toHaveValue("16:00");
+    await expect(again.getByLabel("Needed", { exact: true })).toBeChecked();
+    await expect(again.getByLabel(/Same as the event venue/)).toBeChecked();
+    expect(await noSideways(client)).toBeLessThanOrEqual(0);
+  });
+
+  test("overnight times need an explicit next day; timing conflicts are flagged without reordering the stages", async () => {
+    const party = client.getByTestId("stage-party");
+    await party.locator("summary").click();
+    const details = party.getByTestId("details-party");
+    await details.getByLabel(/Same as the event venue/).check();
+    await details.getByLabel("Party start (needed)").fill("22:00");
+    await details.getByLabel("Party end (optional)").fill("01:00");
+    await expect(details.getByText('The end must be after the start. If it ends after midnight, check "Next day".')).toBeVisible();
+    await expect(details.getByRole("alert")).toContainText("Fix the highlighted answer to save.");
+    expect(await stageRow(eventId, "party")).toBeNull();
+    await details.getByLabel("Party end: next day (Sun, Aug 15)").check();
+    await expect(details.getByText("All changes saved")).toBeVisible();
+    expect((await stageRow(eventId, "party"))!.answers).toMatchObject({ start_time: "22:00", end_time: "01:00", end_next_day: true });
+
+    const ceremony = client.getByTestId("details-ceremony");
+    await openStage(client, "ceremony");
+    await ceremony.getByLabel("Ceremony end (optional)").fill("17:00");
+    await expect(ceremony.getByText("All changes saved")).toBeVisible();
+    const cocktailCard = client.getByTestId("stage-cocktail");
+    await cocktailCard.locator("summary").click();
+    const cocktail = cocktailCard.getByTestId("details-cocktail");
+    await cocktail.getByLabel(/Same as the event venue/).check();
+    await cocktail.getByLabel("Cocktail start (needed)").fill("16:30");
+    await expect(cocktail.getByRole("status", { name: "Timing notes" })).toHaveText("Cocktail starts before Ceremony ends.");
+    await expect(client.getByTestId("timing-summary")).toHaveText("1 timing note to check (see the stages below).");
+    await expect(cocktailCard.locator("summary")).toContainText("Check timing");
+    await expect(client.getByRole("list", { name: "Stages of the event, in order" }).locator(":scope > li summary")).toHaveText([
+      /1\. Ceremony/, /2\. Cocktail/, /3\. Reception entrance/, /4\. Dinner/, /5\. Special dances/, /6\. Dance party/, /7\. Last dance/,
+    ]);
+    await cocktail.getByLabel("Cocktail start (needed)").fill("17:00");
+    await expect(cocktail.getByText("All changes saved")).toBeVisible();
+    await expect(client.getByTestId("timing-summary")).toHaveCount(0);
+  });
+
+  test("stage edits typed during a pending save survive; a failed save retries; a stale tab gets a conflict", async () => {
+    const cocktail = client.getByTestId("details-cocktail");
+    let release: () => void = () => {};
+    let held = false;
+    await client.route(`**${planningUrl}`, async (route) => {
+      if (!held && route.request().method() === "POST" && route.request().headers()["next-action"]) {
+        held = true;
+        await new Promise<void>((resolve) => (release = resolve));
+      }
+      await route.continue();
+    });
+    await cocktail.getByLabel("Cocktail end (optional)").fill("18:30");
+    await expect(cocktail.getByText("Saving…")).toBeVisible();
+    await cocktail.getByLabel("Atmosphere or music style (optional)").fill("Light jazz");
+    release();
+    await expect(cocktail.getByText("All changes saved")).toBeVisible();
+    await expect.poll(async () => (await stageRow(eventId, "cocktail"))!.answers).toMatchObject({ end_time: "18:30", atmosphere: "Light jazz" });
+    await client.unroute(`**${planningUrl}`);
+
+    await client.route(`**${planningUrl}`, (route) =>
+      route.request().method() === "POST" && route.request().headers()["next-action"] ? route.abort() : route.continue(),
+    );
+    await cocktail.getByLabel("Instructions for the DJ (optional)").fill("Keep it low during photos");
+    await expect(cocktail.getByRole("alert")).toContainText("Couldn't save. Check your connection and retry.");
+    await expect(cocktail.getByLabel("Instructions for the DJ (optional)")).toHaveValue("Keep it low during photos");
+    await client.unroute(`**${planningUrl}`);
+    await cocktail.getByRole("button", { name: "Retry saving" }).click();
+    await expect(cocktail.getByText("All changes saved")).toBeVisible();
+
+    const other = await clientContext.newPage();
+    await other.goto(planningUrl);
+    await other.getByTestId("stage-cocktail").locator("summary").click();
+    await cocktail.getByLabel("Cocktail end (optional)").fill("18:45");
+    await expect(cocktail.getByText("All changes saved")).toBeVisible();
+    const stale = other.getByTestId("details-cocktail");
+    await stale.getByLabel("Atmosphere or music style (optional)").fill("Acoustic covers");
+    await expect(stale.getByRole("alert")).toContainText("changed in another tab or window");
+    await expect(stale.getByLabel("Atmosphere or music style (optional)")).toHaveValue("Acoustic covers");
+    expect((await stageRow(eventId, "cocktail"))!.answers).toMatchObject({ end_time: "18:45", atmosphere: "Light jazz" });
+    await other.close();
+  });
+
+  test("staff edit stage details reusing Event basics; hidden stages keep their answers; nothing contractual changes", async () => {
+    await staff.goto(staffPlanningUrl);
+    const card = staff.getByTestId("staff-stage-dinner");
+    await card.locator("summary").click();
+    const dinner = card.getByTestId("details-dinner");
+    await dinner.getByLabel(/Same as the event venue/).check();
+    await dinner.getByLabel("Dinner start (needed)").fill("19:30");
+    await dinner.getByLabel("Same as the guest count in Event basics (175)").check();
+    await expect(dinner.getByText("All changes saved")).toBeVisible();
+    await expect(card.locator("summary")).toContainText("Complete");
+    expect((await stageRow(eventId, "dinner"))).toMatchObject({ answers: { location_source: "event_venue", start_time: "19:30", guest_count_source: "basics" }, updated_by_actor: "staff" });
+    // The reuse is stored as a choice, not a copied number.
+    expect((await stageRow(eventId, "dinner"))!.answers).not.toHaveProperty("guest_count");
+    await expect(staff.getByTestId("staff-stage-ceremony").locator("summary")).toContainText("Complete");
+
+    await staff.getByRole("button", { name: "Hide Cocktail from the client", exact: true }).click();
+    await expect(staff.getByTestId("staff-stage-cocktail")).toHaveCount(0);
+    await client.reload();
+    await expect(client.getByTestId("stage-cocktail")).toHaveCount(0);
+    expect((await stageRow(eventId, "cocktail"))!.answers).toMatchObject({ atmosphere: "Light jazz" });
+    await staff.getByRole("button", { name: "Restore Cocktail", exact: true }).click();
+    await expect(staff.getByTestId("staff-stage-cocktail")).toBeVisible();
+    await client.reload();
+    await client.getByTestId("stage-cocktail").locator("summary").click();
+    await expect(client.getByTestId("details-cocktail").getByLabel("Atmosphere or music style (optional)")).toHaveValue("Light jazz");
+    await client.getByTestId("stage-dinner").locator("summary").click();
+    await expect(client.getByTestId("details-dinner").getByLabel("Same as the guest count in Event basics (175)")).toBeChecked();
+    await expect(client.locator("body")).not.toContainText(/E2E INTERNAL NOTE|E2E-PAYMENT-REF-SECRET|updated_by/);
+    expect(await noSideways(client)).toBeLessThanOrEqual(0);
+    expect(await contractualState(eventId)).toBe(contractual);
   });
 
   test("hiding a stage hides it from the client and keeps its moments; restoring brings them back in order", async () => {
@@ -331,7 +489,8 @@ test.describe.serial("planning", () => {
     await client.reload();
     const dinner = client.getByTestId("stage-dinner");
     await dinner.locator("summary").click();
-    await expect(dinner.locator("li")).toHaveText([/Timing/, /Background music/, /Speeches and toasts/, /Activities/, /Cake cutting/]);
+    await expect(dinner.getByRole("list", { name: "Moments in Dinner" }).locator("li")).toHaveText([/Timing/, /Background music/, /Speeches and toasts/, /Activities/, /Cake cutting/]);
+    await expect(dinner.getByTestId("details-dinner").getByLabel("Dinner start (needed)")).toHaveValue("19:30");
 
     // Template edits don't reach this event's plan.
     const { data: template } = await admin.from("planning_templates").select("id").eq("tenant_id", tenant.id).eq("name", "Wedding").single();
@@ -361,11 +520,13 @@ test.describe.serial("planning", () => {
     await staff.getByRole("dialog", { name: "Confirm archiving" }).getByRole("button", { name: "Archive event" }).click();
     await expect(staff.getByRole("button", { name: "Unarchive event" })).toBeVisible();
     await client.getByLabel("Guest count (needed)").fill("180");
-    await expect(client.locator("main").getByRole("alert")).toContainText("Planning isn't available for this event any more.");
+    await expect(client.locator("main").getByRole("alert")).toContainText("This section isn't available for editing any more");
     await client.reload();
     await expect(client.getByRole("heading", { name: "Planning isn't available" })).toBeVisible();
     await staff.goto(staffPlanningUrl);
-    await expect(staff.getByText("Unarchive the event to edit planning.")).toBeVisible();
+    // Event basics and every stage editor are read-only while archived.
+    await expect(staff.getByText("Unarchive the event to edit planning.")).toHaveCount(7);
+    await expect(staff.locator("#ceremony-start_time")).toBeDisabled();
     expect((await basicsRow(eventId))!.answers).toMatchObject({ guest_count: 175 });
 
     await staff.goto(`/staff/${tenant.slug}/events/${eventId}`);
