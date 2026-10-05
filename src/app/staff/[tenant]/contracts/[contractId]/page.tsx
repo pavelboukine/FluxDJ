@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/app/fields";
 import { ContractDocument } from "@/components/contract/contract-document";
 import { requireStaff } from "@/lib/auth/staff";
 import { CONTRACT_STATUS_LABEL, renderedContentSchema } from "@/lib/contracts/content";
+import { SIGNING_MODE_LABELS, type SigningMode } from "@/lib/contracts/usage";
 import { SIGNATURE_BUCKET } from "@/lib/contracts/signing";
 import { UUID_RE } from "@/lib/forms";
 import { formatCents } from "@/lib/money";
@@ -23,7 +24,7 @@ export default async function ContractPreview({ params }: PageProps<"/staff/[ten
   const { data: contract } = await supabase
     .from("contracts")
     .select(
-      "id, status, created_at, sent_at, signed_at, voided_at, void_reason, event_id, proposal_id, replaces_id, signer_name, signer_email, currency, total_cents, deposit_percent, deposit_cents, balance_cents, balance_due_date, rendered_content, content_sha256, party_snapshot, events!contracts_event_fk(title, event_date, archived_at), proposals!contracts_proposal_fk(revision), proposal_approvals!contracts_approval_fk(approved_at), contract_template_versions!contracts_template_version_fk(version_number, contract_templates!contract_template_versions_template_fk(id, name))",
+      "id, status, signing_mode, created_at, sent_at, signed_at, voided_at, void_reason, event_id, proposal_id, replaces_id, signer_name, signer_email, currency, total_cents, deposit_percent, deposit_cents, balance_cents, balance_due_date, rendered_content, content_sha256, party_snapshot, events!contracts_event_fk(title, event_date, archived_at), proposals!contracts_proposal_fk(revision), proposal_approvals!contracts_approval_fk(approved_at), contract_template_versions!contracts_template_version_fk(version_number, contract_templates!contract_template_versions_template_fk(id, name))",
     )
     .eq("id", contractId)
     .eq("tenant_id", tenant.id)
@@ -99,12 +100,23 @@ export default async function ContractPreview({ params }: PageProps<"/staff/[ten
         actions={
           <>
             <Badge variant={isDraft ? "secondary" : "outline"}>{CONTRACT_STATUS_LABEL[contract.status] ?? contract.status}</Badge>
+            <Badge variant={contract.signing_mode === "client_use" ? "default" : "outline"}>{SIGNING_MODE_LABELS[contract.signing_mode as SigningMode]}</Badge>
             {isDraft ? (
               <Link className={buttonVariants()} href={`/staff/${slug}/contracts/${contract.id}/review`}>Review and send…</Link>
             ) : null}
           </>
         }
       />
+
+      {contract.signing_mode === "none" && (isDraft || isSent) ? (
+        <p role="alert" className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
+          This contract was generated from a template version published before agreements could be approved for client use, so it
+          can&apos;t be signed online{isDraft ? " or sent" : ""}. Publish a version for client use in{" "}
+          <Link className="underline" href={`/staff/${slug}/contract-templates`}>Contract templates</Link>, then{" "}
+          {isSent ? "void this contract and generate a replacement" : "regenerate the contract"} from the{" "}
+          <Link className="underline" href={`/staff/${slug}/events/${contract.event_id}`}>event</Link>.
+        </p>
+      ) : null}
 
       {isSigned ? (
         <div role="status" className="grid gap-1 rounded-lg border border-emerald-600/40 bg-emerald-600/5 p-3 text-sm">

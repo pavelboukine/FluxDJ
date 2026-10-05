@@ -26,11 +26,13 @@ foundation is in place:
   previewed by staff. Drafts are frozen when generated. They are never sent.
 
 - Contracts, later steps: sending with verified client access, resend and
-  void, and signing by the frozen signer with immutable evidence (DEMO
-  agreements only for now).
+  void, signing by the frozen signer with immutable evidence, and signed
+  PDFs emailed to both parties. Each template version is published either as
+  DEMO (test wording, labelled everywhere) or for client use (the business's
+  own agreement, approved by the owner).
 
-Everything has row-level security and tests. Not built yet: signed PDFs,
-booking confirmation, payments, planning and amendments. Approval, contract
+Everything has row-level security and tests. Not built yet: booking
+confirmation, payments, planning and amendments. Approval, contract
 drafts and signing are not bookings.
 
 ## Stack
@@ -167,8 +169,12 @@ preview at `/staff/bouprod/proposals/{id}/preview`.
 2. On the template page, the right-hand column lists every allowed
    placeholder. Type `{{client.nickname}}` into a section and click **Save
    draft** to see it rejected. Remove it and save.
-3. Click **Publish…**, then **Publish version 1**. The version is now
+3. Click **Publish…**, choose **DEMO, for testing** (the starter text is
+   DEMO wording), then **Publish version 1 as DEMO**. The version is now
    read-only. **Start draft version 2** copies it into a new editable draft.
+   To use your own agreement, replace the text with your wording, save,
+   click **Publish…**, keep **For client use**, check the responsibility
+   statement and click **Publish version N for client use** (owner only).
 4. Approve a proposal as described in the previous section. The approved
    proposal page, and the event page, now show a **Contract** card.
 5. Choose the template version and click **Generate contract draft**. With
@@ -248,6 +254,7 @@ in every relevant relationship.
 | `18_contract_void_notice` | One notice per voided sent contract, none on repeats. Frozen signer, no link, no reason. Cancelled invitation emails. Memberships, identities, access and other events untouched. Deliverable at dispatch. Archiving neither sends nor cancels it. Revised-offer voids notify. Unsent drafts never do |
 | `19_tax_settings` | Owner-only tax settings for staff, other tenants, clients and anon; no direct column writes. Malformed, fractional, negative and over-100% rates, codes, names, keys and unknown taxes. Stale versions. Multiple taxes on standard. Removal rules for used taxes and categories. Explicit no tax versus missing. New offers read the new settings; the sent snapshot and hash are unchanged. Audit |
 | `20_contract_signing` | Only the service role signs. Wrong signer, other event's client, staff, stranger, no identity, wrong tenant, unverified or changed email, revoked access, archived event. Consent, consent version, displayed hash, typed name, never-stored, wrong-size, non-PNG, oversized and out-of-folder images. The atomic signed state and evidence, one audit event, no booking. Replays return the first signature to the signer only. Immutable evidence and content; void, resend, regeneration and revisions refused. Client and staff reads, Storage visibility, orphans. Archiving keeps evidence. Void and superseded contracts can't be signed |
+| `22_client_use_signing` | Usage is required when publishing; legacy can't be chosen. Client use is owner-only, needs the current statement, and stores the exact statement, owner and database time; staff publish DEMO only; other tenants get nothing. Published usage and confirmation are immutable; drafts carry none; a new version copies text, not usage. Contracts freeze mode and consent, immutably. Signing with `client-v1` (the DEMO consent is refused) and exact evidence; `demo-v1` unchanged. Legacy versions can't generate; `none` contracts can't be sent or signed and the review explains how to regenerate. Signed-copy senders are frozen when queued and at the first attempt, never change, keep older rows' first values, ignore sent rows and are service-role only |
 | `21_signed_contract_pdfs` | Signing queues one PDF job (none on replay) and no email. Only the service role runs jobs. Leases: no double claim, expired-lease recovery, stale leases can't fail a job. Commit validation (missing, wrong size, wrong type, wrong folder, wrong signature hash). One canonical immutable document; a second upload is "exists" with no duplicate emails. One email per party with separate dedup keys, no paths or tokens in payloads. Staff, other tenants, signer, other clients and anon. Archiving blocks the signer and cancels undelivered copies but keeps the PDF. Recipient-confirmed resend that never repeats a delivered copy. Contracts signed before PDFs: explicit generation without email |
 | `16_business_settings_send_review` | Owner-only settings for staff, other tenants, clients and anon. Validation and 0% and 100% boundaries. Half-up deposit rounding, and equality with the original 50% formula. Existing contracts are byte-for-byte unchanged with valid hashes. Explicit regeneration freezes new terms and identity. New placeholders and missing values. Every review rejection reason. Sending stays impossible |
 | `13_contract_templates` | Templates are visible and writable only by staff of their tenant; clients and anon get nothing. Unknown, malformed or expression-like placeholders are rejected, also by a CHECK constraint. Optimistic draft versions, publishing, and published versions that no role can edit, unpublish or delete. Editing opens one new draft version |
@@ -336,7 +343,9 @@ signed-out browser:
   checks the extracted text page by page (page numbers, DEMO labels, parties,
   terms, both hashes, consent, IP or "Not recorded"), checks that the PDF does
   not contain its own hash, and writes every page as PNG to
-  `test-results/pdf-samples/` for visual review.
+  `test-results/pdf-samples/` for visual review. A client-use agreement has no
+  DEMO wording and still says only the client signed; DEMO labels follow the
+  frozen signing mode, not the title.
 - `tests/integration/contract-documents.test.ts` uses real rendering, Storage
   and the outbox. It covers:
   - frozen content after source records change
@@ -346,6 +355,10 @@ signed-out browser:
   - three parallel workers
   - signature and final-PDF hash mismatches
   - identical attachments to both parties with a per-recipient retry
+  - a client-use contract signed with `client-v1`, rendered without DEMO
+  - a signed-copy retry through the real Resend adapter (HTTP answered
+    locally) after Business settings change: same idempotency key, headers
+    and body byte for byte, with the original sender
   - private Storage
 - `tests/e2e/contract-signing-flow.spec.ts` continues after signing: both
   emails arrive in Mailpit with the same PDF attached (hash checked), the
@@ -368,6 +381,11 @@ signed-out browser:
   with touch input: validation, clear, scroll and rotation without losing the
   drawing, a failed request that keeps every input, consent and confirmation,
   then the signed views for the client and staff.
+- `tests/e2e/client-use-signing.spec.ts`: the owner publishes their own
+  agreement for client use (publish stays disabled until the responsibility
+  statement is checked), generates and sends a contract, and the verified
+  client signs with the `client-v1` consent. No DEMO wording appears on the
+  page or in the emailed PDF.
 
 ### Integration tests
 
@@ -747,10 +765,38 @@ undelivered contract emails visibly.
   (`signature_pad`, exported as a 900 × 300 PNG), the consent checkbox and the
   content hash of the contract they were shown. The server and database derive
   the signer email, user id, time, consent text and request context.
-- **Stage limit.** Signing is enabled only for agreements whose title starts
-  with "DEMO, NOT FOR CLIENT USE" (`private.contract_signing_enabled`). The
-  consent wording (`demo-v1`) is test wording and is labelled as not reviewed
-  by a lawyer. Lifting either is a deliberate migration after review.
+- **Signing modes.** Every published template version has an explicit
+  `usage`, chosen when publishing and immutable like the text:
+  - `demo`: test wording. Contracts, the signing page and signed PDFs are
+    labelled "DEMO, NOT FOR CLIENT USE", and the client accepts the `demo-v1`
+    consent. Any staff member may publish DEMO versions.
+  - `client_use`: the business's own agreement. Only the owner can publish
+    it, after checking the responsibility statement (`client-use-v1`: the
+    owner is responsible for the agreement and approves it for clients;
+    Flux DJ has not reviewed or approved it and gives no legal advice). The
+    exact statement, the owner's user id and the database time are stored on
+    the version. The client accepts the `client-v1` consent. No DEMO labels.
+  - The previous two-argument `publish_contract_template_version(id, draft
+    version)` remains for older callers: it publishes DEMO-titled versions as
+    DEMO, replays versions already published, and refuses everything else, so
+    nothing is ever approved for client use without the owner's confirmation.
+  - `legacy`: versions published before modes existed that were not DEMO.
+    Contracts can't be generated from them; open a new draft version (the
+    text is copied) and publish it for client use.
+
+  A contract freezes `signing_mode` and `consent_version` from its template
+  version when it is generated (`contracts_signing_terms`); nobody can choose
+  or change them. The client view shows that exact consent, unchecked, and
+  `sign_contract` accepts only that version and stores its text in the
+  evidence. Changing wording or usage always needs a new version, and
+  publishing sends or signs nothing.
+- **Existing contracts.** The migration classified existing data with the old
+  title rule ("DEMO, NOT FOR CLIENT USE"): DEMO versions and contracts stay
+  DEMO with `demo-v1`, and signatures, evidence, hashes and PDFs are
+  unchanged. Other contracts get `signing_mode = none`: they can't be signed
+  or sent (review lists the problem), and the contract page explains how to
+  publish a client-use version and regenerate (or void and replace a sent
+  one). Nothing old becomes signable automatically.
 - **Image checks (server).** Only a base64 PNG data URL of at most 256 KiB.
   The server accepts plain 8-bit, non-interlaced PNG only, with CRCs checked,
   no unknown critical chunks or trailing bytes, an exact inflate cap,
@@ -820,8 +866,10 @@ undelivered contract emails visibly.
   - the consent text and version
   - the recorded IP (or "Not recorded") and the user agent
 
-  DEMO labels appear on every page. It states that it records the client's
-  signature only, with no signature from the business. Fonts are bundled in
+  DEMO contracts carry DEMO labels on every page; client-use contracts have
+  none (decided by the frozen `signing_mode`, never the wording). Both state
+  that the PDF records the client's signature only, with no signature from
+  the business. Fonts are bundled in
   `assets/fonts/dejavu` (Latin and French accents, no network fetch) and
   traced into the deployed functions by `next.config.ts`.
 - **Two different hashes.** `contracts.content_sha256` identifies the agreed
@@ -830,7 +878,11 @@ undelivered contract emails visibly.
 - **Durable job.** `sign_contract` queues one `document_jobs` row in the
   signing transaction. Rendering happens later, so a failure never touches
   the signature. The worker (`src/lib/contracts/documents.server.ts`) runs
-  right after signing and in the scheduled `/api/internal/outbox` route:
+  right after signing and after **Generate signed PDF**, for that contract's
+  job only (the contract id comes from the database's answer, never the
+  browser), so other tenants' backlog never delays it. The scheduled
+  `/api/internal/outbox` route drains everything else, including anything
+  the immediate run failed or never finished:
   1. Claim with a 2-minute lease.
   2. Verify the signature image against its recorded hash. A mismatch fails
      the job permanently and visibly.
@@ -868,6 +920,17 @@ undelivered contract emails visibly.
   closes the crash-after-send window for 24 hours. After that, or with
   Mailpit, a crash between sending and recording can resend one copy. Mailpit
   (local) and Resend (hosted) both send real attachments.
+- **Frozen sender.** Resend refuses a reused key with a different request, so
+  every attempt must be identical. Each row's `sender` freezes the business
+  display name (also used in the text), the from name and the reply-to when
+  queued, and the from address (`EMAIL_FROM_ADDRESS`) at the first attempt
+  (`freeze_email_sender`). Keys are set once and never change. Retries are
+  built only from the payload, the frozen sender and the canonical PDF, so
+  changing Business settings between attempts changes nothing. Rows queued
+  before this existed freeze the then-current settings at their next attempt;
+  if such a row had already reached Resend and the settings changed since,
+  that one retry can still get a 409 within the 24 hours. Sent rows are never
+  changed.
 - **Contracts signed before PDFs.** They have no job. Staff click **Generate
   signed PDF**, which sends no email. **Send signed copies…** is a separate
   step whose confirmation lists both recipients; the database checks that

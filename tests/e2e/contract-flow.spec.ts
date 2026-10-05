@@ -75,8 +75,12 @@ test.describe.serial("contract templates and contract drafts", () => {
     await staff.getByRole("button", { name: "Save draft" }).click();
     await expect(staff.getByText("Draft saved. It is not published yet.")).toBeVisible();
 
+    // The starter text is DEMO wording, so it is published as DEMO.
     await staff.getByRole("button", { name: "Publish…" }).click();
-    await staff.getByRole("dialog", { name: "Confirm publishing" }).getByRole("button", { name: "Publish version 1" }).click();
+    const dialog = staff.getByRole("dialog", { name: "Confirm publishing" });
+    await dialog.getByRole("radio", { name: /DEMO, for testing/ }).check();
+    await expect(dialog.getByRole("checkbox")).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Publish version 1 as DEMO" }).click();
     await expect(staff.getByRole("button", { name: "Start draft version 2" })).toBeVisible();
     await expect(staff.getByText(/Version 1 · published/)).toBeVisible();
     await expect(staff.getByLabel("Sections")).toHaveCount(0);
@@ -92,7 +96,7 @@ test.describe.serial("contract templates and contract drafts", () => {
     await staff.getByRole("dialog", { name: "Confirm approval" }).getByRole("button", { name: "Approve selection" }).click();
     await expect(staff.getByText(/Next: generate the contract draft\. The event is not booked\./)).toBeVisible();
 
-    await staff.getByLabel("Template version").selectOption({ label: `${templateName} · version 1 (latest published)` });
+    await staff.getByLabel("Template version").selectOption({ label: `${templateName} · version 1 · DEMO (latest published)` });
     await staff.getByRole("button", { name: "Generate contract draft" }).click();
     const missing = staff.getByRole("alert").filter({ hasText: "Nothing was generated" });
     await expect(missing).toContainText("Venue address: add it to the event.");
@@ -140,7 +144,7 @@ test.describe.serial("contract templates and contract drafts", () => {
 
   test("regenerating needs confirmation and keeps the replaced draft as history", async () => {
     await staff.goto(proposalUrl);
-    await staff.getByLabel("Template version").selectOption({ label: `${templateName} · version 1 (latest published)` });
+    await staff.getByLabel("Template version").selectOption({ label: `${templateName} · version 1 · DEMO (latest published)` });
     await staff.getByLabel("Balance due date").fill("2027-08-25");
     await staff.getByRole("button", { name: "Regenerate draft…" }).click();
     const dialog = staff.getByRole("dialog", { name: "Confirm replacing the draft" });

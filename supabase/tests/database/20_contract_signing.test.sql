@@ -125,7 +125,8 @@ select is((select count(*)::int from public.contract_signatures where contract_i
 select is((select status from public.contracts where id = current_setting('tests.c')::uuid), 'sent', 'and the contract is still sent');
 select throws_like($$ update public.contracts set status = 'signed' where id = current_setting('tests.c')::uuid $$,
   '%signed only through sign_contract%', 'privileged code cannot mark a contract signed directly');
-select is(private.contract_signing_enabled('{"title":"Services agreement"}'), false, 'signing is limited to DEMO agreements in this stage');
+select is((select (signing_mode, consent_version)::text from public.contracts where id = current_setting('tests.c')::uuid), '(demo,demo-v1)',
+  'a contract from a DEMO version is frozen as DEMO with the demo-v1 consent');
 
 -- ===========================================================================
 -- Signing

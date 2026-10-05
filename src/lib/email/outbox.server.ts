@@ -46,7 +46,9 @@ export type OutboxRunResult = { claimed: number; sent: number; failed: number; c
  * committed canonical PDF, read from private Storage and checked against its
  * recorded SHA-256 at send time; a mismatch fails permanently and visibly.
  * Resend gets an idempotency key per row, which closes the crash window for
- * 24 hours; Mailpit has none (local only).
+ * 24 hours; Mailpit has none (local only). Every attempt is built only from
+ * the row's frozen values (payload, frozen sender) and the canonical PDF, so
+ * a retry is the same request even if Business settings changed meanwhile.
  */
 export async function processOutbox(options: { transport?: EmailTransport; tenantId?: string; limit?: number } = {}): Promise<OutboxRunResult> {
   const admin = createAdminClient();
@@ -266,13 +268,21 @@ async function deliverSignedCopy(
     });
     return "failed";
   }
+  // The sender frozen on the row: from name and reply-to when queued, from
+  // address at the first attempt (rows queued earlier freeze everything now).
+  const { data: frozen, error: freezeError } = await admin.rpc("freeze_email_sender", { p_id: row.id, p_from_address: fromAddress });
+  const sender = frozen as { display_name?: unknown; from_name?: unknown; reply_to?: unknown; from_address?: unknown } | null;
+  if (freezeError || !sender || typeof sender.display_name !== "string" || typeof sender.from_name !== "string" || typeof sender.from_address !== "string") {
+    await admin.rpc("fail_email_outbox", { p_id: row.id, p_error: "The sender could not be prepared. It will be retried.", p_permanent: false });
+    return "failed";
+  }
   const payload = (row.payload ?? {}) as Record<string, unknown>;
   const eventTitle = str(payload.event_title) || "your event";
   const eventDate = str(payload.event_date);
   const email = renderSignedCopyEmail({
     recipientRole: payload.recipient_role === "business" ? "business" : "client",
-    tenantDisplayName: row.tenant_display_name,
-    legalName: str(payload.legal_name) || row.tenant_display_name,
+    tenantDisplayName: sender.display_name,
+    legalName: str(payload.legal_name) || sender.display_name,
     contactEmail: str(payload.contact_email) || null,
     clientName: str(payload.client_name) || "there",
     typedName: str(payload.typed_name) || str(payload.client_name),
@@ -281,10 +291,10 @@ async function deliverSignedCopy(
     signedAtLocal: str(payload.signed_at) ? formatSignedAt(str(payload.signed_at), str(payload.timezone) || "America/Toronto").local : "the signing date",
   });
   const sent = await transport.send({
-    fromName: `${row.tenant_display_name} via Flux DJ`,
-    fromAddress,
+    fromName: sender.from_name,
+    fromAddress: sender.from_address,
     to: row.recipient_email,
-    replyTo: row.tenant_reply_to,
+    replyTo: typeof sender.reply_to === "string" ? sender.reply_to : null,
     ...email,
     attachments: [{ filename: signedPdfFileName(eventTitle, eventDate), contentType: "application/pdf", content: pdf }],
     idempotencyKey: `flux-signed-copy-${row.id}`,

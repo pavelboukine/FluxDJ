@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { StaffContext } from "@/lib/auth/staff";
 import { CONTRACT_STATUS_LABEL } from "@/lib/contracts/content";
+import { SIGNING_MODE_LABELS, USAGE_LABELS, type SigningMode, type TemplateUsage } from "@/lib/contracts/usage";
 import { GenerateContractPanel } from "./generate-panel";
 
 const fmt = (iso: string) => new Intl.DateTimeFormat("en-CA", { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso));
@@ -12,25 +13,28 @@ export async function ContractCard({ staff, slug, eventId, approvalId }: { staff
   const [{ data: versions }, { data: contracts }] = await Promise.all([
     supabase
       .from("contract_template_versions")
-      .select("id, version_number, placeholders, published_at, contract_templates!contract_template_versions_template_fk(name, active)")
+      .select("id, version_number, placeholders, published_at, usage, contract_templates!contract_template_versions_template_fk(name, active)")
       .eq("tenant_id", tenant.id)
       .not("published_at", "is", null)
       .order("version_number", { ascending: false }),
     supabase
       .from("contracts")
-      .select("id, status, created_at, signed_at, template_version_id, contract_template_versions!contracts_template_version_fk(version_number, contract_templates!contract_template_versions_template_fk(name))")
+      .select("id, status, created_at, signed_at, signing_mode, template_version_id, contract_template_versions!contracts_template_version_fk(version_number, contract_templates!contract_template_versions_template_fk(name))")
       .eq("tenant_id", tenant.id)
       .eq("event_id", eventId)
       .order("created_at", { ascending: false }),
   ]);
-  const active = (versions ?? []).filter((v) => v.contract_templates?.active);
+  const activeAll = (versions ?? []).filter((v) => v.contract_templates?.active);
+  // Versions published before usage modes can't be used (the database refuses them too).
+  const active = activeAll.filter((v) => v.usage !== "legacy");
+  const legacyHidden = activeAll.length - active.length;
   // Default to the most recently published version; staff may choose another.
   const latest = active.reduce<(typeof active)[number] | null>((a, v) => (!a || (v.published_at ?? "") > (a.published_at ?? "") ? v : a), null);
   const options = active
     .sort((a, b) => (a.contract_templates!.name.localeCompare(b.contract_templates!.name) || b.version_number - a.version_number))
     .map((v) => ({
       id: v.id,
-      label: `${v.contract_templates!.name} · version ${v.version_number}${v.id === latest?.id ? " (latest published)" : ""}`,
+      label: `${v.contract_templates!.name} · version ${v.version_number} · ${USAGE_LABELS[v.usage as TemplateUsage]}${v.id === latest?.id ? " (latest published)" : ""}`,
       needsBalanceDueDate: v.placeholders.includes("payment.balance_due_date"),
     }));
   const label = (c: NonNullable<typeof contracts>[number]) =>
@@ -60,7 +64,14 @@ export async function ContractCard({ staff, slug, eventId, approvalId }: { staff
             then generate a replacement here.
           </p>
         ) : approvalId ? (
-          <GenerateContractPanel slug={slug} approvalId={approvalId} versions={options} defaultVersionId={latest?.id ?? null} currentDraft={draft ? { id: draft.id, label: label(draft) } : null} />
+          <GenerateContractPanel
+            slug={slug}
+            approvalId={approvalId}
+            versions={options}
+            defaultVersionId={latest?.id ?? null}
+            currentDraft={draft ? { id: draft.id, label: label(draft), signable: draft.signing_mode !== "none" } : null}
+            legacyHidden={legacyHidden}
+          />
         ) : (
           <p className="text-sm text-muted-foreground">A contract can be generated once the current proposal is approved.</p>
         )}
@@ -69,7 +80,7 @@ export async function ContractCard({ staff, slug, eventId, approvalId }: { staff
             {contracts!.map((c) => (
               <li key={c.id}>
                 <Link className="underline" href={`/staff/${slug}/contracts/${c.id}`}>{label(c)}</Link>
-                <span className="text-muted-foreground"> · {CONTRACT_STATUS_LABEL[c.status] ?? c.status}</span>
+                <span className="text-muted-foreground"> · {CONTRACT_STATUS_LABEL[c.status] ?? c.status} · {SIGNING_MODE_LABELS[c.signing_mode as SigningMode]}</span>
               </li>
             ))}
           </ul>

@@ -64,7 +64,7 @@ type Hooks = {
  * retry. The signature itself is never touched by any of this.
  */
 export async function processDocumentJobs(
-  options: { admin?: Db; tenantId?: string; limit?: number; leaseSeconds?: number; hooks?: Hooks } = {},
+  options: { admin?: Db; tenantId?: string; contractId?: string; limit?: number; leaseSeconds?: number; hooks?: Hooks } = {},
 ): Promise<DocumentRunResult> {
   const admin = options.admin ?? createAdminClient();
   const result: DocumentRunResult = { claimed: 0, committed: 0, reused: 0, failed: 0 };
@@ -72,6 +72,8 @@ export async function processDocumentJobs(
     p_limit: options.limit ?? 3,
     p_lease_seconds: options.leaseSeconds ?? 120,
     p_tenant_id: options.tenantId,
+    // Only this contract's job (just signed or requested); other jobs wait for the scheduled worker.
+    p_contract_id: options.contractId,
   });
   if (error) throw new Error(`Could not claim document jobs (${error.code ?? "error"})`);
 
@@ -110,7 +112,7 @@ async function generate(
   const [{ data: contract, error: cErr }, { data: signature, error: sErr }] = await Promise.all([
     admin
       .from("contracts")
-      .select("id, tenant_id, status, content_sha256, currency, total_cents, deposit_percent, deposit_cents, balance_cents, balance_due_date, rendered_content, commercial_snapshot, party_snapshot")
+      .select("id, tenant_id, status, signing_mode, consent_version, content_sha256, currency, total_cents, deposit_percent, deposit_cents, balance_cents, balance_due_date, rendered_content, commercial_snapshot, party_snapshot")
       .eq("id", job.contract_id)
       .single(),
     admin
@@ -164,10 +166,15 @@ async function commit(admin: Db, jobId: string, path: string, pdfSha: string, si
   return data as { status: "committed" | "exists"; document_id: string; storage_path?: string };
 }
 
-/** Runs due PDF jobs after a response, swallowing errors (they are recorded per job). */
-export async function processDocumentJobsQuietly(tenantId?: string): Promise<void> {
+/**
+ * Processes one contract's PDF job right away (after signing or a staff
+ * request), swallowing errors (they are recorded on the job). Other tenants'
+ * backlog never delays it; if another worker holds the job, nothing is done
+ * here and that worker (or the scheduled one) finishes it.
+ */
+export async function processContractPdfQuietly(contractId: string): Promise<void> {
   try {
-    await processDocumentJobs({ tenantId, limit: 3 });
+    await processDocumentJobs({ contractId, limit: 1 });
   } catch {
     // The scheduled worker or the staff retry control will pick the job up.
   }

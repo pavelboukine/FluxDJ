@@ -30,7 +30,7 @@ async function publishTemplate(name: string, withDeadline: boolean): Promise<str
   await admin.from("contract_template_versions").insert({
     id: versionId, tenant_id: tenant.id, template_id: templateId, version_number: 1, title: `${name} for {{event.title}}`, sections: sections(withDeadline),
   });
-  const { error } = await admin.from("contract_template_versions").update({ published_at: new Date().toISOString() }).eq("id", versionId);
+  const { error } = await admin.from("contract_template_versions").update({ published_at: new Date().toISOString(), usage: "demo" }).eq("id", versionId);
   if (error) throw error;
   return versionId;
 }
@@ -112,8 +112,8 @@ test.describe.serial("business settings, contract generation and review", () => 
     await owner.getByRole("dialog", { name: "Confirm approval" }).getByRole("button", { name: "Approve selection" }).click();
 
     const select = owner.getByLabel("Template version");
-    await expect(select.locator("option:checked")).toHaveText("Agreement B (newer) · version 1 (latest published)");
-    await select.selectOption({ label: "Agreement A (older) · version 1" });
+    await expect(select.locator("option:checked")).toHaveText("Agreement B (newer) · version 1 · DEMO (latest published)");
+    await select.selectOption({ label: "Agreement A (older) · version 1 · DEMO" });
     await expect(owner.getByLabel("Balance due date")).toBeDisabled();
     await owner.getByRole("button", { name: "Generate contract draft" }).click();
     await owner.waitForURL(/\/contracts\/[0-9a-f-]{36}$/);

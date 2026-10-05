@@ -162,7 +162,7 @@ select ok(current_setting('tests.view') !~ 'secret staff note|tenant_id|internal
   'the view leaks no internal notes, ids of other records, other contacts or tokens');
 select is((select array_agg(k order by k) from jsonb_object_keys(current_setting('tests.view')::jsonb -> 'contract') k),
   array['balance_cents', 'balance_due_date', 'content_sha256', 'currency', 'deposit_cents', 'deposit_percent', 'event_date', 'event_title',
-        'id', 'legal_name', 'rendered_content', 'sent_at', 'signer_name', 'status', 'total_cents'],
+        'id', 'legal_name', 'rendered_content', 'sent_at', 'signer_name', 'signing_mode', 'status', 'total_cents'],
   'the contract DTO has exactly the intended fields');
 select is(public.client_contract_view(current_setting('tests.c')::uuid, 'test-other-dj') ->> 'state', 'unavailable', 'not under another tenant slug');
 select is((select count(*)::int from public.my_contracts()), 1, 'the client home lists it');

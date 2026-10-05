@@ -11,6 +11,7 @@ import { templateSectionsSchema } from "@/lib/contracts/content";
 import { sectionsToText } from "@/lib/contracts/template-text";
 import { UUID_RE } from "@/lib/forms";
 import { openContractTemplateDraft, saveContractTemplateDraft, updateContractTemplateDetails } from "../actions";
+import { USAGE_LABELS, type TemplateUsage } from "@/lib/contracts/usage";
 import { PublishPanel } from "./publish-panel";
 
 const fmt = (iso: string) => new Intl.DateTimeFormat("en-CA", { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso));
@@ -18,7 +19,7 @@ const fmt = (iso: string) => new Intl.DateTimeFormat("en-CA", { dateStyle: "medi
 export default async function ContractTemplatePage({ params }: PageProps<"/staff/[tenant]/contract-templates/[templateId]">) {
   const { tenant: slug, templateId } = await params;
   if (!UUID_RE.test(templateId)) notFound();
-  const { supabase, tenant } = await requireStaff(slug);
+  const { supabase, tenant, membership } = await requireStaff(slug);
   const { data: template } = await supabase
     .from("contract_templates")
     .select("id, name, active")
@@ -26,19 +27,21 @@ export default async function ContractTemplatePage({ params }: PageProps<"/staff
     .eq("tenant_id", tenant.id)
     .maybeSingle();
   if (!template) notFound();
-  const [{ data: versions }, { data: placeholders }, { count: contractCount }] = await Promise.all([
+  const [{ data: versions }, { data: placeholders }, { count: contractCount }, { data: statement }] = await Promise.all([
     supabase
       .from("contract_template_versions")
-      .select("id, version_number, title, sections, placeholders, draft_version, published_at, content_sha256")
+      .select("id, version_number, title, sections, placeholders, draft_version, published_at, content_sha256, usage, client_use_statement, client_use_confirmed_at")
       .eq("template_id", template.id)
       .eq("tenant_id", tenant.id)
       .order("version_number", { ascending: false }),
     supabase.rpc("contract_placeholder_catalog"),
     supabase.from("contracts").select("id", { count: "exact", head: true }).eq("tenant_id", tenant.id).eq("template_id", template.id),
+    supabase.rpc("client_use_statement_current"),
   ]);
   const draft = (versions ?? []).find((v) => !v.published_at);
   const published = (versions ?? []).filter((v) => v.published_at);
   const latestNumber = versions?.[0]?.version_number ?? 0;
+  const latestPublished = published[0];
 
   return (
     <>
@@ -76,7 +79,15 @@ export default async function ContractTemplatePage({ params }: PageProps<"/staff
                       hint='Start each section with a line like "## Payment". Text is shown exactly as typed; no formatting is applied.'
                     />
                   </ActionForm>
-                  <PublishPanel slug={slug} templateId={template.id} versionId={draft.id} versionNumber={draft.version_number} version={draft.draft_version} />
+                  <PublishPanel
+                    slug={slug}
+                    templateId={template.id}
+                    versionId={draft.id}
+                    versionNumber={draft.version_number}
+                    version={draft.draft_version}
+                    isOwner={membership.role === "owner"}
+                    statement={statement as { version: string; text: string }}
+                  />
                 </CardContent>
               </Card>
             </DraftVersionProvider>
@@ -86,7 +97,15 @@ export default async function ContractTemplatePage({ params }: PageProps<"/staff
                 <CardTitle>Edit this template</CardTitle>
                 <CardDescription>
                   Published versions never change. Editing starts draft version {latestNumber + 1}, copied from version {latestNumber}.
+                  Publish it as DEMO or for client use.
                 </CardDescription>
+                {latestPublished?.usage === "legacy" ? (
+                  <p role="status" className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
+                    Version {latestPublished.version_number} was published before agreements could be approved for client use, so contracts
+                    can&apos;t be generated from it. Start a new draft version (the text is copied as is), review it and publish it for client
+                    use. Then regenerate any contract drafts made from the old version.
+                  </p>
+                ) : null}
               </CardHeader>
               <CardContent>
                 <ActionForm action={openContractTemplateDraft.bind(null, slug, template.id)} submitLabel={`Start draft version ${latestNumber + 1}`} pendingLabel="Opening…" variant="outline" inline>
@@ -105,8 +124,14 @@ export default async function ContractTemplatePage({ params }: PageProps<"/staff
               {published.map((v) => (
                 <details key={v.id} className="rounded-xl border p-3" open={v === published[0]}>
                   <summary className="cursor-pointer text-sm font-medium">
-                    Version {v.version_number} · published {fmt(v.published_at!)}
+                    Version {v.version_number} · published {fmt(v.published_at!)} ·{" "}
+                    <Badge variant={v.usage === "client_use" ? "default" : "outline"}>{USAGE_LABELS[v.usage as TemplateUsage]}</Badge>
                   </summary>
+                  {v.usage === "client_use" && v.client_use_confirmed_at ? (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Approved for client use by the owner on {fmt(v.client_use_confirmed_at)}, confirming: &ldquo;{v.client_use_statement}&rdquo;
+                    </p>
+                  ) : null}
                   <p className="mt-2 text-xs break-all text-muted-foreground">Content SHA-256: {v.content_sha256}</p>
                   <div className="mt-4">
                     <ContractDocument title={v.title} sections={templateSectionsSchema.parse(v.sections)} headingLevel={2} />

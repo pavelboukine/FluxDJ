@@ -2,7 +2,7 @@
 
 import { headers } from "next/headers";
 import { after } from "next/server";
-import { processDocumentJobsQuietly } from "@/lib/contracts/documents.server";
+import { processContractPdfQuietly } from "@/lib/contracts/documents.server";
 import { processOutboxQuietly } from "@/lib/email/outbox.server";
 import { revalidatePath } from "next/cache";
 import { requestEvidence, signContractAs } from "@/lib/contracts/signing.server";
@@ -47,8 +47,10 @@ export async function signContract(slug: string, contractId: string, input: Sign
     // The signature is committed; generate the PDF and email the copies now
     // (the scheduled worker retries anything that fails here).
     if (!result.replayed) {
+      // The contract the database just signed, from its answer.
+      const signedContractId = result.contractId;
       after(async () => {
-        await processDocumentJobsQuietly();
+        await processContractPdfQuietly(signedContractId);
         await processOutboxQuietly();
       });
     }

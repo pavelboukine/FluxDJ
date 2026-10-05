@@ -25,7 +25,13 @@ const LONG_FR =
   "Les modifications demandées par le client après la signature doivent être confirmées par écrit. Ça inclut les changements d’horaire, " +
   "de lieu ou de matériel. Événement, réception, cérémonie : chaque élément est décrit avec soin pour éviter toute ambiguïté. ";
 
-function rows(opts: { long: boolean }) {
+const CLIENT_V1 =
+  "I have read the entire agreement shown above, including its payment terms. I agree to sign it electronically. I agree that my typed name " +
+  "and drawn signature are my signature on this agreement and that they bind me to it as a handwritten signature would. I can download a " +
+  "copy of the signed agreement here, and a copy will be emailed to me.";
+
+function rows(opts: { long: boolean; mode?: "demo" | "client_use"; title?: string }) {
+  const mode = opts.mode ?? "demo";
   const contentSha = "a".repeat(64);
   const sections = opts.long
     ? Array.from({ length: 14 }, (_, i) => ({
@@ -36,6 +42,8 @@ function rows(opts: { long: boolean }) {
   const contract = {
     id: randomUUID(),
     status: "signed",
+    signing_mode: mode,
+    consent_version: mode === "demo" ? "demo-v1" : "client-v1",
     content_sha256: contentSha,
     currency: "CAD",
     total_cents: 252945,
@@ -43,7 +51,7 @@ function rows(opts: { long: boolean }) {
     deposit_cents: 126473,
     balance_cents: 126472,
     balance_due_date: opts.long ? "2027-09-01" : null,
-    rendered_content: { schema_version: 1, title: "DEMO, NOT FOR CLIENT USE: Contrat de services DJ pour Mariage Gagnon–Lévesque", sections },
+    rendered_content: { schema_version: 1, title: opts.title ?? "DEMO, NOT FOR CLIENT USE: Contrat de services DJ pour Mariage Gagnon–Lévesque", sections },
     commercial_snapshot: {
       lines: [
         { name: "Forfait Signature", description: null, source: "package", quantity: 1, unit_price_cents: 220000, line_total_cents: 220000 },
@@ -83,9 +91,11 @@ function rows(opts: { long: boolean }) {
     signed_at: "2026-10-04T23:30:12.345Z",
     signature_sha256: "b".repeat(64),
     content_sha256: contentSha,
-    consent_version: "demo-v1",
+    consent_version: mode === "demo" ? "demo-v1" : "client-v1",
     consent_text:
-      "I have read the agreement shown above. I intend to sign it electronically, and I agree that my typed name and drawn signature are my signature on this agreement.",
+      mode === "demo"
+        ? "I have read the agreement shown above. I intend to sign it electronically, and I agree that my typed name and drawn signature are my signature on this agreement."
+        : CLIENT_V1,
     user_agent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
     client_ip: opts.long ? "203.0.113.9" : null,
     client_ip_source: opts.long ? "vercel" : "unavailable",
@@ -149,8 +159,33 @@ describe("signed contract PDF", () => {
     await rasterizePdf(bytes, "test-results/pdf-samples/short");
   }, 60_000);
 
+  it("renders a client-use agreement with no DEMO labels, still stating that only the client signed", async () => {
+    const { contract, signature } = rows({ long: false, mode: "client_use", title: "Contrat de services DJ pour Mariage Gagnon–Lévesque" });
+    const bytes = await renderSignedContractPdf(buildSignedContractPdfData(contract, signature), signaturePng());
+    const pages = await pdfPageTexts(bytes);
+    const all = pages.join(" ");
+    expect(all).not.toMatch(/DEMO|NOT FOR CLIENT USE|not reviewed by a lawyer|test wording/i);
+    expect(all).toContain("Contrat de services DJ pour Mariage Gagnon–Lévesque");
+    expect(all).toContain("This document records the client's electronic signature only. It does not contain a signature by Productions Éclair Inc.");
+    expect(all).toContain("Consent (client-v1)");
+    expect(all).toContain("bind me to it as a handwritten signature would");
+    expect(all).not.toMatch(/countersign/i);
+    await rasterizePdf(bytes, "test-results/pdf-samples/client-use");
+  }, 60_000);
+
+  it("labels DEMO from the frozen signing mode, not from the wording", async () => {
+    const plainDemo = rows({ long: false, mode: "demo", title: "Services agreement" });
+    const demoPages = await pdfPageTexts(await renderSignedContractPdf(buildSignedContractPdfData(plainDemo.contract, plainDemo.signature), signaturePng()));
+    demoPages.forEach((page) => expect(page).toContain("DEMO, NOT FOR CLIENT USE · Test agreement and consent wording"));
+    const markedClientUse = rows({ long: false, mode: "client_use", title: "DEMO, NOT FOR CLIENT USE in the title" });
+    const data = buildSignedContractPdfData(markedClientUse.contract, markedClientUse.signature);
+    expect(data.contract.isDemo).toBe(false);
+  }, 60_000);
+
   it("refuses evidence for different content and unexpected rows", () => {
     const { contract, signature } = rows({ long: false });
+    expect(() => buildSignedContractPdfData(contract, { ...signature, consent_version: "client-v1" })).toThrow(/different consent version/);
+    expect(() => buildSignedContractPdfData({ ...contract, signing_mode: "none", consent_version: null }, signature)).toThrow();
     expect(() => buildSignedContractPdfData(contract, { ...signature, content_sha256: "c".repeat(64) })).toThrow(/different contract content/);
     expect(() => buildSignedContractPdfData({ ...contract, status: "sent" }, signature)).toThrow();
   });

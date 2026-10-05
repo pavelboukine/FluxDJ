@@ -125,7 +125,8 @@ export async function generateSignedPdf(slug: string, contractId: string): Promi
   const { data, error } = await supabase.rpc("request_signed_contract_pdf", { p_contract_id: contractId });
   if (error) return fail(describeDbError(error));
   if ((data as { status?: string }).status === "ready") return ok("The signed PDF is already available.");
-  await processDocumentJobs({ tenantId: tenant.id, limit: 3 }).catch(() => undefined);
+  // Only this contract's job, after the database authorized the request for this tenant.
+  await processDocumentJobs({ tenantId: tenant.id, contractId, limit: 1 }).catch(() => undefined);
   revalidatePath(`/staff/${slug}`, "layout");
   return ok("Signed PDF requested. No email was sent.");
 }

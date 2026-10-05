@@ -84,7 +84,9 @@ end;
 $$;
 
 -- Creates and publishes a template as the given staff user; returns the version id.
-create function tests.published_version(owner text, tenant text, sections jsonb, title text default 'DEMO agreement for {{event.title}}')
+-- usage: 'demo' (default) or 'client_use' (owner must be the tenant owner).
+create function tests.published_version(owner text, tenant text, sections jsonb, title text default 'DEMO agreement for {{event.title}}',
+                                        usage text default 'demo')
 returns uuid language plpgsql as $$
 declare
   tid uuid;
@@ -93,7 +95,8 @@ begin
   perform tests.login_as(tests.id(owner));
   tid := public.create_contract_template(tests.id(tenant), 'Template ' || left(md5(random()::text), 6), title, sections);
   select id into vid from public.contract_template_versions where template_id = tid;
-  perform public.publish_contract_template_version(vid, 0);
+  perform public.publish_contract_template_version(vid, 0, usage,
+    case when usage = 'client_use' then public.client_use_statement_current() ->> 'version' end);
   reset role;
   perform set_config('request.jwt.claims', '', true);
   return vid;

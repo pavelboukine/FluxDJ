@@ -30,7 +30,7 @@ select is((select count(*)::int from public.contract_templates where tenant_id =
 select is((select count(*)::int from public.contract_template_versions where tenant_id = tests.id('tenant_a')), 0, 'tenant B staff see no tenant A versions');
 select throws_ok($$ select public.save_contract_template_draft(current_setting('tests.v1')::uuid, 0, 'x', tests.simple_sections()) $$,
   'P0002', 'not found', 'tenant B staff cannot edit a tenant A draft');
-select throws_ok($$ select public.publish_contract_template_version(current_setting('tests.v1')::uuid, 0) $$,
+select throws_ok($$ select public.publish_contract_template_version(current_setting('tests.v1')::uuid, 0, 'demo') $$,
   'P0002', 'not found', 'tenant B staff cannot publish a tenant A draft');
 select throws_ok($$ select public.open_contract_template_draft(current_setting('tests.t1')::uuid) $$,
   'P0002', 'not found', 'tenant B staff cannot open tenant A drafts');
@@ -95,10 +95,10 @@ select throws_ok($$ select public.save_contract_template_draft(current_setting('
   '40001', null, 'a stale draft version is a conflict');
 select is(public.save_contract_template_draft(current_setting('tests.v1')::uuid, 0, 'Agreement for {{ event.title }}', tests.demo_sections()), 1,
   'saving the draft advances its version');
-select throws_ok($$ select public.publish_contract_template_version(current_setting('tests.v1')::uuid, 0) $$,
+select throws_ok($$ select public.publish_contract_template_version(current_setting('tests.v1')::uuid, 0, 'demo') $$,
   '40001', null, 'publishing requires the latest saved version (no surprise edits from another tab)');
-select is(public.publish_contract_template_version(current_setting('tests.v1')::uuid, 1) ->> 'replayed', 'false', 'staff publish the draft');
-select is(public.publish_contract_template_version(current_setting('tests.v1')::uuid, 1) ->> 'replayed', 'true', 'publishing again is a no-op');
+select is(public.publish_contract_template_version(current_setting('tests.v1')::uuid, 1, 'demo') ->> 'replayed', 'false', 'staff publish the draft');
+select is(public.publish_contract_template_version(current_setting('tests.v1')::uuid, 1, 'demo') ->> 'replayed', 'true', 'publishing again is a no-op');
 reset role;
 select results_eq(
   $$ select published_at is not null,

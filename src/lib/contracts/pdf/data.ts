@@ -42,6 +42,9 @@ const cents = z.number().int().nonnegative();
 const contractRow = z.object({
   id: z.uuid(),
   status: z.literal("signed"),
+  // Frozen at generation. Only DEMO and client-use contracts can be signed.
+  signing_mode: z.enum(["demo", "client_use"]),
+  consent_version: text,
   content_sha256: z.string().regex(/^[0-9a-f]{64}$/),
   currency: z.string().regex(/^[A-Z]{3}$/),
   total_cents: cents,
@@ -100,13 +103,12 @@ const signatureRow = z.object({
   client_ip_source: text,
 });
 
-export const DEMO_MARKER = "DEMO, NOT FOR CLIENT USE";
-
 /** Validates the frozen rows and maps them to what the PDF shows. Throws on anything unexpected. */
 export function buildSignedContractPdfData(contract: unknown, signature: unknown): SignedContractPdfData {
   const c = contractRow.parse(contract);
   const s = signatureRow.parse(signature);
   if (s.content_sha256 !== c.content_sha256) throw new Error("The signature evidence is for different contract content.");
+  if (s.consent_version !== c.consent_version) throw new Error("The signature evidence has a different consent version than the contract.");
   const business = c.party_snapshot.business;
   const legalName = business.legal_name?.trim() || business.name;
   const displayName = business.display_name?.trim() || null;
@@ -117,7 +119,8 @@ export function buildSignedContractPdfData(contract: unknown, signature: unknown
       title: c.rendered_content.title,
       sections: c.rendered_content.sections,
       currency: c.currency,
-      isDemo: c.rendered_content.title.includes(DEMO_MARKER),
+      // The contract's frozen signing mode, never its wording.
+      isDemo: c.signing_mode === "demo",
     },
     business: {
       legalName,

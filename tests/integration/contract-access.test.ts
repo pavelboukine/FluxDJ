@@ -83,7 +83,7 @@ describe("contract sending and verified client access (local Supabase)", () => {
     const { data: templateId } = await must(staff.rpc("create_contract_template", { p_tenant_id: catalog.tenantId, p_name: "IT agreement", p_title: "DEMO, NOT FOR CLIENT USE: IT", p_sections: SECTIONS }));
     const { data: version } = await must(staff.from("contract_template_versions").select("id").eq("template_id", templateId!).single());
     versionId = version!.id;
-    await must(staff.rpc("publish_contract_template_version", { p_version_id: versionId, p_expected_draft_version: 0 }));
+    await must(staff.rpc("publish_contract_template_version", { p_version_id: versionId, p_expected_draft_version: 0, p_usage: "demo" }));
     const email = `it-send-other-${randomUUID().slice(0, 8)}@example.test`;
     const other = await signedInUser(admin, email);
     await createTenantWithCatalog(admin, other.id, "it-send-b");

@@ -51,7 +51,7 @@ async function approvedEvent(clientEmail: string) {
 async function publishDemo(db: Db, tenantId: string) {
   const { data: templateId } = await must(db.rpc("create_contract_template", { p_tenant_id: tenantId, p_name: `IT DEMO ${randomUUID().slice(0, 6)}`, p_title: DEMO_TEMPLATE_TITLE, p_sections: DEMO_TEMPLATE_SECTIONS }));
   const { data: version } = await must(db.from("contract_template_versions").select("id").eq("template_id", templateId!).single());
-  await must(db.rpc("publish_contract_template_version", { p_version_id: version!.id, p_expected_draft_version: 0 }));
+  await must(db.rpc("publish_contract_template_version", { p_version_id: version!.id, p_expected_draft_version: 0, p_usage: "demo" }));
   return { templateId: templateId!, versionId: version!.id };
 }
 

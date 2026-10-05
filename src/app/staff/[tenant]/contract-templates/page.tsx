@@ -6,13 +6,14 @@ import { PageHeader, TextAreaField, TextField } from "@/components/app/fields";
 import { requireStaff } from "@/lib/auth/staff";
 import { DEMO_TEMPLATE_NAME, DEMO_TEMPLATE_TEXT, DEMO_TEMPLATE_TITLE } from "@/lib/contracts/demo-template";
 import { createContractTemplate } from "./actions";
+import { USAGE_LABELS, type TemplateUsage } from "@/lib/contracts/usage";
 
 export default async function ContractTemplates({ params }: PageProps<"/staff/[tenant]/contract-templates">) {
   const { tenant: slug } = await params;
   const { supabase, tenant } = await requireStaff(slug);
   const { data: templates } = await supabase
     .from("contract_templates")
-    .select("id, name, active, contract_template_versions!contract_template_versions_template_fk(version_number, published_at)")
+    .select("id, name, active, contract_template_versions!contract_template_versions_template_fk(version_number, published_at, usage)")
     .eq("tenant_id", tenant.id)
     .order("active", { ascending: false })
     .order("name");
@@ -27,13 +28,14 @@ export default async function ContractTemplates({ params }: PageProps<"/staff/[t
         {(templates ?? []).map((t) => {
           const versions = t.contract_template_versions;
           const published = versions.filter((v) => v.published_at).map((v) => v.version_number);
+          const latest = versions.filter((v) => v.published_at).sort((a, b) => b.version_number - a.version_number)[0];
           const draft = versions.find((v) => !v.published_at);
           return (
             <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border p-3">
               <div>
                 <Link className="font-medium hover:underline" href={`/staff/${slug}/contract-templates/${t.id}`}>{t.name}</Link>
                 <div className="text-xs text-muted-foreground">
-                  {published.length ? `Published: version ${Math.max(...published)}` : "Not published yet"}
+                  {published.length ? `Published: version ${Math.max(...published)} (${USAGE_LABELS[latest.usage as TemplateUsage]})` : "Not published yet"}
                   {draft ? ` · draft version ${draft.version_number}` : ""}
                 </div>
               </div>
@@ -47,8 +49,8 @@ export default async function ContractTemplates({ params }: PageProps<"/staff/[t
         <CardHeader>
           <CardTitle>New contract template</CardTitle>
           <CardDescription>
-            The text below is DEMO wording for testing placeholders and pricing only. It is not a reviewed agreement. Replace it with
-            wording your lawyer has reviewed before using it with clients.
+            The text below is DEMO wording for testing placeholders and pricing only; it is not an agreement. To use your own agreement,
+            replace it with your wording, then publish it for client use. You are responsible for your agreement; Flux DJ does not review it.
           </CardDescription>
         </CardHeader>
         <CardContent>

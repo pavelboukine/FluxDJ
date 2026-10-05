@@ -138,13 +138,13 @@ isOneToOne: false
                   ]
                 },"contract_template_versions": {
                   Row: {
-                    "content_sha256": string | null,"created_at": string,"created_by_membership_id": string | null,"draft_version": number,"id": string,"placeholders": (string)[],"published_at": string | null,"published_by_membership_id": string | null,"sections": NonNullable<Json>,"template_id": string,"tenant_id": string,"title": string,"updated_at": string,"version_number": number
+                    "client_use_confirmed_at": string | null,"client_use_confirmed_by_user_id": string | null,"client_use_statement": string | null,"client_use_statement_version": string | null,"content_sha256": string | null,"created_at": string,"created_by_membership_id": string | null,"draft_version": number,"id": string,"placeholders": (string)[],"published_at": string | null,"published_by_membership_id": string | null,"sections": NonNullable<Json>,"template_id": string,"tenant_id": string,"title": string,"updated_at": string,"usage": string | null,"version_number": number
                   }
                   Insert: {
-                    "content_sha256"?: string | null,"created_at"?: string,"created_by_membership_id"?: string | null,"draft_version"?: number,"id"?: string,"placeholders"?: (string)[],"published_at"?: string | null,"published_by_membership_id"?: string | null,"sections": NonNullable<Json>,"template_id": string,"tenant_id": string,"title": string,"updated_at"?: string,"version_number": number
+                    "client_use_confirmed_at"?: string | null,"client_use_confirmed_by_user_id"?: string | null,"client_use_statement"?: string | null,"client_use_statement_version"?: string | null,"content_sha256"?: string | null,"created_at"?: string,"created_by_membership_id"?: string | null,"draft_version"?: number,"id"?: string,"placeholders"?: (string)[],"published_at"?: string | null,"published_by_membership_id"?: string | null,"sections": NonNullable<Json>,"template_id": string,"tenant_id": string,"title": string,"updated_at"?: string,"usage"?: string | null,"version_number": number
                   }
                   Update: {
-                    "content_sha256"?: string | null,"created_at"?: string,"created_by_membership_id"?: string | null,"draft_version"?: number,"id"?: string,"placeholders"?: (string)[],"published_at"?: string | null,"published_by_membership_id"?: string | null,"sections"?: NonNullable<Json>,"template_id"?: string,"tenant_id"?: string,"title"?: string,"updated_at"?: string,"version_number"?: number
+                    "client_use_confirmed_at"?: string | null,"client_use_confirmed_by_user_id"?: string | null,"client_use_statement"?: string | null,"client_use_statement_version"?: string | null,"content_sha256"?: string | null,"created_at"?: string,"created_by_membership_id"?: string | null,"draft_version"?: number,"id"?: string,"placeholders"?: (string)[],"published_at"?: string | null,"published_by_membership_id"?: string | null,"sections"?: NonNullable<Json>,"template_id"?: string,"tenant_id"?: string,"title"?: string,"updated_at"?: string,"usage"?: string | null,"version_number"?: number
                   }
                   Relationships: [
                     {
@@ -200,13 +200,13 @@ isOneToOne: false
                   ]
                 },"contracts": {
                   Row: {
-                    "approval_id": string,"balance_cents": number,"balance_due_date": string | null,"commercial_snapshot": NonNullable<Json>,"content_sha256": string,"created_at": string,"currency": string,"deposit_cents": number,"deposit_percent": number,"event_id": string,"generated_by_membership_id": string | null,"generated_by_user_id": string,"id": string,"party_snapshot": NonNullable<Json>,"proposal_id": string,"rendered_content": NonNullable<Json>,"replaces_id": string | null,"selection_id": string,"sent_at": string | null,"signed_at": string | null,"signer_client_id": string,"signer_email": string,"signer_name": string,"status": string,"status_changed_at": string | null,"template_content_sha256": string,"template_id": string,"template_version_id": string,"tenant_id": string,"total_cents": number,"updated_at": string,"void_reason": string | null,"voided_at": string | null
+                    "approval_id": string,"balance_cents": number,"balance_due_date": string | null,"commercial_snapshot": NonNullable<Json>,"consent_version": string | null,"content_sha256": string,"created_at": string,"currency": string,"deposit_cents": number,"deposit_percent": number,"event_id": string,"generated_by_membership_id": string | null,"generated_by_user_id": string,"id": string,"party_snapshot": NonNullable<Json>,"proposal_id": string,"rendered_content": NonNullable<Json>,"replaces_id": string | null,"selection_id": string,"sent_at": string | null,"signed_at": string | null,"signer_client_id": string,"signer_email": string,"signer_name": string,"signing_mode": string,"status": string,"status_changed_at": string | null,"template_content_sha256": string,"template_id": string,"template_version_id": string,"tenant_id": string,"total_cents": number,"updated_at": string,"void_reason": string | null,"voided_at": string | null
                   }
                   Insert: {
-                    "approval_id": string,"balance_cents": number,"balance_due_date"?: string | null,"commercial_snapshot": NonNullable<Json>,"content_sha256": string,"created_at"?: string,"currency": string,"deposit_cents": number,"deposit_percent": number,"event_id": string,"generated_by_membership_id"?: string | null,"generated_by_user_id": string,"id"?: string,"party_snapshot": NonNullable<Json>,"proposal_id": string,"rendered_content": NonNullable<Json>,"replaces_id"?: string | null,"selection_id": string,"sent_at"?: string | null,"signed_at"?: string | null,"signer_client_id": string,"signer_email": string,"signer_name": string,"status"?: string,"status_changed_at"?: string | null,"template_content_sha256": string,"template_id": string,"template_version_id": string,"tenant_id": string,"total_cents": number,"updated_at"?: string,"void_reason"?: string | null,"voided_at"?: string | null
+                    "approval_id": string,"balance_cents": number,"balance_due_date"?: string | null,"commercial_snapshot": NonNullable<Json>,"consent_version"?: string | null,"content_sha256": string,"created_at"?: string,"currency": string,"deposit_cents": number,"deposit_percent": number,"event_id": string,"generated_by_membership_id"?: string | null,"generated_by_user_id": string,"id"?: string,"party_snapshot": NonNullable<Json>,"proposal_id": string,"rendered_content": NonNullable<Json>,"replaces_id"?: string | null,"selection_id": string,"sent_at"?: string | null,"signed_at"?: string | null,"signer_client_id": string,"signer_email": string,"signer_name": string,"signing_mode": string,"status"?: string,"status_changed_at"?: string | null,"template_content_sha256": string,"template_id": string,"template_version_id": string,"tenant_id": string,"total_cents": number,"updated_at"?: string,"void_reason"?: string | null,"voided_at"?: string | null
                   }
                   Update: {
-                    "approval_id"?: string,"balance_cents"?: number,"balance_due_date"?: string | null,"commercial_snapshot"?: NonNullable<Json>,"content_sha256"?: string,"created_at"?: string,"currency"?: string,"deposit_cents"?: number,"deposit_percent"?: number,"event_id"?: string,"generated_by_membership_id"?: string | null,"generated_by_user_id"?: string,"id"?: string,"party_snapshot"?: NonNullable<Json>,"proposal_id"?: string,"rendered_content"?: NonNullable<Json>,"replaces_id"?: string | null,"selection_id"?: string,"sent_at"?: string | null,"signed_at"?: string | null,"signer_client_id"?: string,"signer_email"?: string,"signer_name"?: string,"status"?: string,"status_changed_at"?: string | null,"template_content_sha256"?: string,"template_id"?: string,"template_version_id"?: string,"tenant_id"?: string,"total_cents"?: number,"updated_at"?: string,"void_reason"?: string | null,"voided_at"?: string | null
+                    "approval_id"?: string,"balance_cents"?: number,"balance_due_date"?: string | null,"commercial_snapshot"?: NonNullable<Json>,"consent_version"?: string | null,"content_sha256"?: string,"created_at"?: string,"currency"?: string,"deposit_cents"?: number,"deposit_percent"?: number,"event_id"?: string,"generated_by_membership_id"?: string | null,"generated_by_user_id"?: string,"id"?: string,"party_snapshot"?: NonNullable<Json>,"proposal_id"?: string,"rendered_content"?: NonNullable<Json>,"replaces_id"?: string | null,"selection_id"?: string,"sent_at"?: string | null,"signed_at"?: string | null,"signer_client_id"?: string,"signer_email"?: string,"signer_name"?: string,"signing_mode"?: string,"status"?: string,"status_changed_at"?: string | null,"template_content_sha256"?: string,"template_id"?: string,"template_version_id"?: string,"tenant_id"?: string,"total_cents"?: number,"updated_at"?: string,"void_reason"?: string | null,"voided_at"?: string | null
                   }
                   Relationships: [
                     {
@@ -292,13 +292,13 @@ isOneToOne: false
                   ]
                 },"email_outbox": {
                   Row: {
-                    "access_link_id": string | null,"attempts": number,"created_at": string,"dedup_key": string,"entity_id": string,"entity_type": string,"event_type": string,"id": string,"last_error": string | null,"locked_until": string | null,"max_attempts": number,"next_attempt_at": string,"payload": NonNullable<Json>,"provider_message_id": string | null,"recipient_email": string,"sent_at": string | null,"status": string,"tenant_id": string,"updated_at": string
+                    "access_link_id": string | null,"attempts": number,"created_at": string,"dedup_key": string,"entity_id": string,"entity_type": string,"event_type": string,"id": string,"last_error": string | null,"locked_until": string | null,"max_attempts": number,"next_attempt_at": string,"payload": NonNullable<Json>,"provider_message_id": string | null,"recipient_email": string,"sender": Json | null,"sent_at": string | null,"status": string,"tenant_id": string,"updated_at": string
                   }
                   Insert: {
-                    "access_link_id"?: string | null,"attempts"?: number,"created_at"?: string,"dedup_key": string,"entity_id": string,"entity_type"?: string,"event_type": string,"id"?: string,"last_error"?: string | null,"locked_until"?: string | null,"max_attempts"?: number,"next_attempt_at"?: string,"payload"?: NonNullable<Json>,"provider_message_id"?: string | null,"recipient_email": string,"sent_at"?: string | null,"status"?: string,"tenant_id": string,"updated_at"?: string
+                    "access_link_id"?: string | null,"attempts"?: number,"created_at"?: string,"dedup_key": string,"entity_id": string,"entity_type"?: string,"event_type": string,"id"?: string,"last_error"?: string | null,"locked_until"?: string | null,"max_attempts"?: number,"next_attempt_at"?: string,"payload"?: NonNullable<Json>,"provider_message_id"?: string | null,"recipient_email": string,"sender"?: Json | null,"sent_at"?: string | null,"status"?: string,"tenant_id": string,"updated_at"?: string
                   }
                   Update: {
-                    "access_link_id"?: string | null,"attempts"?: number,"created_at"?: string,"dedup_key"?: string,"entity_id"?: string,"entity_type"?: string,"event_type"?: string,"id"?: string,"last_error"?: string | null,"locked_until"?: string | null,"max_attempts"?: number,"next_attempt_at"?: string,"payload"?: NonNullable<Json>,"provider_message_id"?: string | null,"recipient_email"?: string,"sent_at"?: string | null,"status"?: string,"tenant_id"?: string,"updated_at"?: string
+                    "access_link_id"?: string | null,"attempts"?: number,"created_at"?: string,"dedup_key"?: string,"entity_id"?: string,"entity_type"?: string,"event_type"?: string,"id"?: string,"last_error"?: string | null,"locked_until"?: string | null,"max_attempts"?: number,"next_attempt_at"?: string,"payload"?: NonNullable<Json>,"provider_message_id"?: string | null,"recipient_email"?: string,"sender"?: Json | null,"sent_at"?: string | null,"status"?: string,"tenant_id"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -929,7 +929,7 @@ isOneToOne: false
 { Args: { "p_id": string,"p_reason": string }; Returns: undefined
                            },
 "claim_document_jobs":
-{ Args: { "p_lease_seconds"?: number,"p_limit"?: number,"p_tenant_id"?: string }; Returns: {
+{ Args: { "p_contract_id"?: string,"p_lease_seconds"?: number,"p_limit"?: number,"p_tenant_id"?: string }; Returns: {
               "attempts": number,"contract_id": string,"deliver_copies": boolean,"job_id": string,"lease_token": string,"max_attempts": number,"tenant_id": string
             }[]
                            },
@@ -959,6 +959,9 @@ isOneToOne: false
 "client_submit_selection":
 { Args: { "p_expected_draft_version": number,"p_idempotency_key": string,"p_proposal_id": string,"p_selection": Json,"p_session_hash": string,"p_tenant_slug": string }; Returns: Json
                            },
+"client_use_statement_current":
+{ Args: Record<PropertyKey, never>; Returns: Json
+                           },
 "commit_contract_document":
 { Args: { "p_byte_size": number,"p_job_id": string,"p_pdf_sha256": string,"p_renderer": string,"p_signature_sha256": string,"p_storage_path": string }; Returns: Json
                            },
@@ -984,6 +987,9 @@ isOneToOne: false
                            },
 "fail_email_outbox":
 { Args: { "p_error": string,"p_id": string,"p_permanent"?: boolean }; Returns: undefined
+                           },
+"freeze_email_sender":
+{ Args: { "p_from_address": string,"p_id": string }; Returns: Json
                            },
 "generate_contract_draft":
 { Args: { "p_approval_id": string,"p_balance_due_date"?: string,"p_replace_contract_id"?: string,"p_template_version_id": string }; Returns: Json
@@ -1015,6 +1021,8 @@ isOneToOne: false
                            },
 "publish_contract_template_version":
 { Args: { "p_expected_draft_version": number,"p_version_id": string }; Returns: Json
+                           } |
+{ Args: { "p_client_use_statement_version"?: string,"p_expected_draft_version": number,"p_usage": string,"p_version_id": string }; Returns: Json
                            },
 "request_contract_sign_in":
 { Args: { "p_tenant_slug": string,"p_token_hash": string }; Returns: Json

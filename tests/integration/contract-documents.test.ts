@@ -9,9 +9,9 @@ import type { Database } from "@/lib/supabase/database.types";
 import { encodeRgbaPng } from "@/lib/contracts/signature-image.server";
 import { signContractAs } from "@/lib/contracts/signing.server";
 import { SIGNATURE_BUCKET } from "@/lib/contracts/signing";
-import { DOCUMENT_BUCKET, IntegrityError, processDocumentJobs, readVerifiedDocument } from "@/lib/contracts/documents.server";
+import { DOCUMENT_BUCKET, IntegrityError, processContractPdfQuietly, processDocumentJobs, readVerifiedDocument } from "@/lib/contracts/documents.server";
 import { processOutbox } from "@/lib/email/outbox.server";
-import type { EmailMessage, EmailTransport } from "@/lib/email/transport.server";
+import { ResendTransport, type EmailMessage, type EmailTransport } from "@/lib/email/transport.server";
 import { contractInviteToken, sha256Hex } from "@/lib/proposals/tokens.server";
 import { pdfPageTexts } from "../support/pdf";
 import {
@@ -39,7 +39,10 @@ let admin: Db;
 let staff: Db;
 let catalog: Catalog;
 let versionId: string;
+let clientUseVersionId: string;
 let otherStaff: Db;
+let otherCatalog: Catalog;
+let otherVersionId: string;
 
 class RecordingTransport implements EmailTransport {
   readonly name = "recording";
@@ -69,28 +72,33 @@ function signaturePng(): string {
   return `data:image/png;base64,${encodeRgbaPng(rgba, w, h).toString("base64")}`;
 }
 
-/** A signed DEMO contract (real signing path) and its parties. */
-async function signedContract(clientName = "Chloé Gagnon") {
+/** A signed contract (real signing path, DEMO unless a client-use version is given) and its parties. */
+async function signedContract(
+  clientName = "Chloé Gagnon",
+  use: { version: string; consent: string } = { version: versionId, consent: "demo-v1" },
+  ctx: { catalog: Catalog; staff: Db } = { catalog, staff },
+) {
+  const { catalog: cat, staff: owner } = ctx;
   const clientEmail = `it-pdf-${randomUUID().slice(0, 8)}@example.test`;
-  const { eventId, clientId } = await createEvent(admin, catalog, clientEmail);
+  const { eventId, clientId } = await createEvent(admin, cat, clientEmail);
   await must(admin.from("clients").update({ name: clientName }).eq("id", clientId));
-  const { proposalId, token } = await draftAndSend(staff, catalog, eventId);
-  const { sessionHash } = await openLink(admin, catalog.slug, token);
-  const submitted = await submit(admin, { slug: catalog.slug, proposalId, sessionHash, draftVersion: 0, input: { package_key: "signature", answers: bothSeparate } });
-  const { data: approval } = await must(staff.rpc("approve_proposal_selection", { p_proposal_id: proposalId, p_selection_id: submitted.selection_id as string }));
-  const { data: generated } = await must(staff.rpc("generate_contract_draft", { p_approval_id: (approval as { approval_id: string }).approval_id, p_template_version_id: versionId }));
+  const { proposalId, token } = await draftAndSend(owner, cat, eventId);
+  const { sessionHash } = await openLink(admin, cat.slug, token);
+  const submitted = await submit(admin, { slug: cat.slug, proposalId, sessionHash, draftVersion: 0, input: { package_key: "signature", answers: bothSeparate } });
+  const { data: approval } = await must(owner.rpc("approve_proposal_selection", { p_proposal_id: proposalId, p_selection_id: submitted.selection_id as string }));
+  const { data: generated } = await must(owner.rpc("generate_contract_draft", { p_approval_id: (approval as { approval_id: string }).approval_id, p_template_version_id: use.version }));
   const contractId = (generated as { contract_id: string }).contract_id;
   const linkId = randomUUID();
-  await must(staff.rpc("send_contract", { p_contract_id: contractId, p_link_id: linkId, p_token_hash: sha256Hex(contractInviteToken(linkId)) }));
+  await must(owner.rpc("send_contract", { p_contract_id: contractId, p_link_id: linkId, p_token_hash: sha256Hex(contractInviteToken(linkId)) }));
   const client = await signedInUser(admin, clientEmail);
-  await must(client.db.rpc("accept_contract_invitation", { p_link_id: linkId, p_tenant_slug: catalog.slug }));
+  await must(client.db.rpc("accept_contract_invitation", { p_link_id: linkId, p_tenant_slug: cat.slug }));
   const { data: row } = await must(admin.from("contracts").select("content_sha256").eq("id", contractId).single());
   const signed = await signContractAs({
-    userDb: client.db, userId: client.id, admin, slug: catalog.slug, contractId,
-    input: { typedName: clientName, consentAccepted: true, consentVersion: "demo-v1", contentSha256: row!.content_sha256, signature: signaturePng() },
+    userDb: client.db, userId: client.id, admin, slug: cat.slug, contractId,
+    input: { typedName: clientName, consentAccepted: true, consentVersion: use.consent, contentSha256: row!.content_sha256, signature: signaturePng() },
     request: { userAgent: "IT Browser/1.0", ip: null, ipSource: "unavailable" },
   });
-  expect(signed.status).toBe("signed");
+  expect(signed).toMatchObject({ status: "signed", contractId });
   return { eventId, clientId, contractId, client, clientEmail };
 }
 
@@ -120,13 +128,33 @@ describe("signed-contract PDFs (local Supabase)", () => {
     const { data: templateId } = await must(staff.rpc("create_contract_template", { p_tenant_id: catalog.tenantId, p_name: "IT agreement", p_title: "DEMO, NOT FOR CLIENT USE: Contrat", p_sections: SECTIONS }));
     const { data: version } = await must(staff.from("contract_template_versions").select("id").eq("template_id", templateId!).single());
     versionId = version!.id;
-    await must(staff.rpc("publish_contract_template_version", { p_version_id: versionId, p_expected_draft_version: 0 }));
+    await must(staff.rpc("publish_contract_template_version", { p_version_id: versionId, p_expected_draft_version: 0, p_usage: "demo" }));
+    // The owner's own agreement, published for client use.
+    const { data: realId } = await must(staff.rpc("create_contract_template", { p_tenant_id: catalog.tenantId, p_name: "IT real agreement", p_title: "Contrat de services", p_sections: SECTIONS }));
+    const { data: real } = await must(staff.from("contract_template_versions").select("id").eq("template_id", realId!).single());
+    clientUseVersionId = real!.id;
+    const { data: statement } = await must(staff.rpc("client_use_statement_current"));
+    await must(staff.rpc("publish_contract_template_version", {
+      p_version_id: clientUseVersionId, p_expected_draft_version: 0, p_usage: "client_use", p_client_use_statement_version: (statement as { version: string }).version,
+    }));
     const other = await signedInUser(admin, `it-pdf-other-${randomUUID().slice(0, 8)}@example.test`);
-    await createTenantWithCatalog(admin, other.id, "it-pdf-b");
+    otherCatalog = await createTenantWithCatalog(admin, other.id, "it-pdf-b");
     otherStaff = other.db;
+    await must(admin.from("tenants").update({ business_address: "2 Other St" }).eq("id", otherCatalog.tenantId));
+    const { data: otherTemplate } = await must(otherStaff.rpc("create_contract_template", { p_tenant_id: otherCatalog.tenantId, p_name: "IT other", p_title: "DEMO, NOT FOR CLIENT USE: Other", p_sections: SECTIONS }));
+    const { data: otherVersion } = await must(otherStaff.from("contract_template_versions").select("id").eq("template_id", otherTemplate!).single());
+    otherVersionId = otherVersion!.id;
+    // The previously deployed app's two-argument call (PostgREST named arguments).
+    await must(otherStaff.rpc("publish_contract_template_version", { p_version_id: otherVersionId, p_expected_draft_version: 0 }));
   });
 
   afterAll(async () => {
+    // Leave no backlog behind for other suites, then archive both tenants.
+    if (admin && otherCatalog) {
+      await admin.from("document_jobs").update({ next_attempt_at: past() }).eq("tenant_id", otherCatalog.tenantId).eq("status", "pending");
+      await processDocumentJobs({ admin, tenantId: otherCatalog.tenantId, limit: 20 });
+      await admin.from("tenants").update({ archived_at: new Date().toISOString() }).eq("id", otherCatalog.tenantId);
+    }
     if (admin && catalog) await admin.from("tenants").update({ archived_at: new Date().toISOString() }).eq("id", catalog.tenantId);
   });
 
@@ -288,6 +316,154 @@ describe("signed-contract PDFs (local Supabase)", () => {
     expect(stored).not.toContain(doc.storage_path);
     expect(stored).not.toContain("base64");
   }, 120_000);
+
+  it("signs a client-use contract with the client-v1 consent and renders it without DEMO labels", async () => {
+    const c = await signedContract("Chloé Gagnon", { version: clientUseVersionId, consent: "client-v1" });
+    const { data: evidence } = await must(admin.from("contract_signatures").select("consent_version, consent_text").eq("contract_id", c.contractId).single());
+    expect(evidence!.consent_version).toBe("client-v1");
+    expect(evidence!.consent_text).toContain("bind me to it as a handwritten signature would");
+    expect(await run()).toMatchObject({ committed: 1 });
+    const text = (await pdfPageTexts(await readVerifiedDocument(admin, (await docFor(c.contractId))!))).join(" ");
+    expect(text).not.toMatch(/DEMO|NOT FOR CLIENT USE/);
+    expect(text).toContain("Consent (client-v1)");
+    expect(text).toContain("This document records the client's electronic signature only.");
+  }, 120_000);
+
+  it("retries a signed copy with the identical Resend request after Business settings change", async () => {
+    const c = await signedContract();
+    await run();
+    const copies = await copiesFor(c.contractId);
+    const keys = new Set(copies.map((r) => `flux-signed-copy-${r.id}`));
+    const { data: before } = await must(admin.from("tenants").select("display_name, reply_to_email").eq("id", catalog.tenantId).single());
+
+    // The real Resend adapter; only its HTTP call is answered here (nothing
+    // leaves the machine). Every other request (Supabase) goes through.
+    const requests: { key: string; headers: Record<string, string>; body: string }[] = [];
+    let providerUp = false;
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url !== "https://api.resend.com/emails") return realFetch(input, init);
+      const headers = init!.headers as Record<string, string>;
+      requests.push({ key: headers["Idempotency-Key"], headers, body: init!.body as string });
+      return providerUp ? new Response(JSON.stringify({ id: `resend-${requests.length}` }), { status: 200 }) : new Response("{}", { status: 503 });
+    }) as typeof fetch;
+    try {
+      const transport = new ResendTransport("re_test_not_a_real_key");
+      await processOutbox({ transport, tenantId: catalog.tenantId, limit: 50 });
+      const first = requests.filter((r) => keys.has(r.key));
+      expect(first).toHaveLength(2);
+      expect((await copiesFor(c.contractId)).every((r) => r.status === "pending")).toBe(true);
+
+      // The business changes its sender details before the retry.
+      await must(admin.from("tenants").update({ display_name: "Renamed Business", reply_to_email: "renamed@example.test" }).eq("id", catalog.tenantId));
+      providerUp = true;
+      await must(admin.from("email_outbox").update({ next_attempt_at: past() }).in("id", copies.map((r) => r.id)));
+      await processOutbox({ transport, tenantId: catalog.tenantId, limit: 50 });
+
+      const all = requests.filter((r) => keys.has(r.key));
+      expect(all).toHaveLength(4);
+      for (const key of keys) {
+        const [attempt1, attempt2] = all.filter((r) => r.key === key);
+        // Same key, same headers, byte-for-byte the same body (sender, text and attachment).
+        expect(attempt2.headers).toEqual(attempt1.headers);
+        expect(attempt2.body).toBe(attempt1.body);
+        const body = JSON.parse(attempt2.body) as { from: string; reply_to?: string; subject: string; text: string; attachments: { content: string }[] };
+        expect(body.from).toMatch(new RegExp(`^${before!.display_name} via Flux DJ <`));
+        expect(body.reply_to).toBe(before!.reply_to_email ?? undefined);
+        expect(`${body.subject} ${body.text}`).not.toContain("Renamed Business");
+        expect(body.attachments).toHaveLength(1);
+      }
+      const sent = await copiesFor(c.contractId);
+      expect(sent.every((r) => r.status === "sent")).toBe(true);
+      // The outbox holds the frozen sender, never attachment bytes, tokens or download URLs.
+      const { data: stored } = await must(admin.from("email_outbox").select("payload, sender").in("id", copies.map((r) => r.id)));
+      for (const row of stored!) expect(Object.keys(row.sender as object).sort()).toEqual(["display_name", "from_address", "from_name", "reply_to"]);
+      expect(JSON.stringify(stored)).not.toMatch(/base64|JVBER|signed-pdf|token/i);
+    } finally {
+      globalThis.fetch = realFetch;
+      await must(admin.from("tenants").update({ display_name: before!.display_name, reply_to_email: before!.reply_to_email }).eq("id", catalog.tenantId));
+    }
+  }, 120_000);
+
+  it("the previously deployed app's two-argument publish keeps DEMO behaviour and never approves client use", async () => {
+    const { data: v } = await must(admin.from("contract_template_versions").select("usage, client_use_confirmed_at").eq("id", otherVersionId).single());
+    expect(v).toEqual({ usage: "demo", client_use_confirmed_at: null });
+    const { data: realId } = await must(staff.rpc("create_contract_template", { p_tenant_id: catalog.tenantId, p_name: "IT old-app real", p_title: "Contrat réel", p_sections: SECTIONS }));
+    const { data: real } = await must(staff.from("contract_template_versions").select("id").eq("template_id", realId!).single());
+    const { error } = await staff.rpc("publish_contract_template_version", { p_version_id: real!.id, p_expected_draft_version: 0 });
+    expect(error?.message).toMatch(/only DEMO agreements can be published this way/);
+    expect((await must(admin.from("contract_template_versions").select("published_at, usage").eq("id", real!.id).single())).data).toEqual({ published_at: null, usage: null });
+  });
+
+  it("processes the just-signed contract's PDF right away, without draining another tenant's backlog", async () => {
+    // Backlog: two signed contracts in another tenant, queued earlier and due.
+    const backlog = [
+      await signedContract("Backlog One", { version: otherVersionId, consent: "demo-v1" }, { catalog: otherCatalog, staff: otherStaff }),
+      await signedContract("Backlog Two", { version: otherVersionId, consent: "demo-v1" }, { catalog: otherCatalog, staff: otherStaff }),
+    ];
+    await must(admin.from("document_jobs").update({ next_attempt_at: new Date(Date.now() - 3_600_000).toISOString() }).in("contract_id", backlog.map((b) => b.contractId)));
+
+    const c = await signedContract();
+    // What the signing action runs after the response, with the contract id from the database's answer.
+    await processContractPdfQuietly(c.contractId);
+
+    expect(await jobFor(c.contractId)).toMatchObject({ status: "succeeded", attempts: 1 });
+    expect(await docFor(c.contractId)).not.toBeNull();
+    expect(await copiesFor(c.contractId)).toHaveLength(2);
+    for (const b of backlog) {
+      expect(await jobFor(b.contractId)).toMatchObject({ status: "pending", attempts: 0 });
+      expect(await docFor(b.contractId)).toBeNull();
+    }
+    // The scheduled worker still drains the backlog.
+    expect(await processDocumentJobs({ admin, tenantId: otherCatalog.tenantId, limit: 10 })).toMatchObject({ committed: 2, failed: 0 });
+  }, 180_000);
+
+  it("an immediate worker racing the scheduled worker yields one canonical PDF and one email per recipient", async () => {
+    const c = await signedContract();
+    let cronResult: Awaited<ReturnType<typeof processDocumentJobs>> | null = null;
+    // The immediate worker has rendered and uploaded; before it commits, its
+    // lease runs out and the scheduled worker claims and commits the job.
+    const immediate = await processDocumentJobs({
+      admin,
+      contractId: c.contractId,
+      limit: 1,
+      hooks: {
+        beforeCommit: async () => {
+          await must(admin.from("document_jobs").update({ locked_until: past() }).eq("contract_id", c.contractId));
+          cronResult = await run();
+        },
+      },
+    });
+    expect(cronResult).toMatchObject({ committed: 1 });
+    expect(immediate).toMatchObject({ claimed: 1, reused: 1, failed: 0 });
+    expect((await must(admin.from("contract_documents").select("id").eq("contract_id", c.contractId))).data).toHaveLength(1);
+    const doc = (await docFor(c.contractId))!;
+    expect(await objectsFor(c.contractId)).toEqual([doc.storage_path.split("/").pop()]);
+    const copies = await copiesFor(c.contractId);
+    expect(copies.map((r) => r.recipient_email).sort()).toEqual([c.clientEmail, (await must(admin.from("tenants").select("contact_email").eq("id", catalog.tenantId).single())).data!.contact_email].sort());
+
+    // Both at once, on a fresh contract: still one PDF and two email rows.
+    const d = await signedContract();
+    await Promise.all([processContractPdfQuietly(d.contractId), run()]);
+    await processContractPdfQuietly(d.contractId);
+    expect((await must(admin.from("contract_documents").select("id").eq("contract_id", d.contractId))).data).toHaveLength(1);
+    expect(await copiesFor(d.contractId)).toHaveLength(2);
+    expect(await jobFor(d.contractId)).toMatchObject({ status: "succeeded" });
+  }, 180_000);
+
+  it("a failed immediate attempt keeps the signature and is recovered by the scheduled worker", async () => {
+    const c = await signedContract();
+    expect(await processDocumentJobs({ admin, contractId: c.contractId, hooks: { render: async () => { throw new Error("Simulated crash right after signing"); } } }))
+      .toMatchObject({ claimed: 1, failed: 1 });
+    expect(await jobFor(c.contractId)).toMatchObject({ status: "pending", attempts: 1, last_error: "Simulated crash right after signing" });
+    expect((await must(admin.from("contracts").select("status").eq("id", c.contractId).single())).data!.status).toBe("signed");
+    expect(await copiesFor(c.contractId)).toHaveLength(0);
+    await makeDue(c.contractId);
+    expect(await run()).toMatchObject({ committed: 1 });
+    expect(await jobFor(c.contractId)).toMatchObject({ status: "succeeded", attempts: 2 });
+    expect(await copiesFor(c.contractId)).toHaveLength(2);
+  }, 180_000);
 
   it("never delivers or downloads a PDF whose stored bytes no longer match", async () => {
     const c = await signedContract();

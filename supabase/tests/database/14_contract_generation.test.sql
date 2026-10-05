@@ -192,7 +192,7 @@ update public.contract_templates set name = 'Renamed template', active = false
   where id = (select template_id from public.contract_template_versions where id = current_setting('tests.v_simple')::uuid);
 select tests.login_as(tests.id('owner_a'));
 select public.save_contract_template_draft(current_setting('tests.v_draft')::uuid, 0, 'Brand new text', tests.demo_sections());
-select public.publish_contract_template_version(current_setting('tests.v_draft')::uuid, 1);
+select public.publish_contract_template_version(current_setting('tests.v_draft')::uuid, 1, 'demo');
 reset role;
 select results_eq(
   $$ select rendered_content, commercial_snapshot, party_snapshot, content_sha256, total_cents, deposit_cents, signer_name

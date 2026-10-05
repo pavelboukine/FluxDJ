@@ -16,7 +16,9 @@ type Props = {
   approvalId: string;
   versions: VersionOption[];
   defaultVersionId: string | null;
-  currentDraft: { id: string; label: string } | null;
+  currentDraft: { id: string; label: string; signable: boolean } | null;
+  /** Active versions published before usage modes, left out of the list. */
+  legacyHidden: number;
 };
 
 /**
@@ -24,7 +26,7 @@ type Props = {
  * existing draft always needs an explicit confirmation. The server makes
  * repeated clicks safe: an identical request returns the existing draft.
  */
-export function GenerateContractPanel({ slug, approvalId, versions, defaultVersionId, currentDraft }: Props) {
+export function GenerateContractPanel({ slug, approvalId, versions, defaultVersionId, currentDraft, legacyHidden }: Props) {
   const router = useRouter();
   const [versionId, setVersionId] = useState(defaultVersionId ?? versions[0]?.id ?? "");
   const [balanceDueDate, setBalanceDueDate] = useState("");
@@ -65,12 +67,30 @@ export function GenerateContractPanel({ slug, approvalId, versions, defaultVersi
     });
   }
 
-  if (versions.length === 0) {
-    return (
-      <p className="text-sm">
-        Publish a contract template first.{" "}
+  const legacyNote =
+    legacyHidden > 0 ? (
+      <p className="text-sm text-muted-foreground">
+        {legacyHidden} version(s) published before agreements could be approved for client use aren&apos;t listed. To use one, open its
+        template, start a new draft version and publish it for client use.{" "}
         <Link className="underline" href={`/staff/${slug}/contract-templates`}>Contract templates</Link>
       </p>
+    ) : null;
+
+  if (versions.length === 0) {
+    return (
+      <div className="grid gap-2 text-sm">
+        <p>
+          Publish a contract template version for client use (or as DEMO for testing) first.{" "}
+          <Link className="underline" href={`/staff/${slug}/contract-templates`}>Contract templates</Link>
+        </p>
+        {legacyNote}
+        {currentDraft && !currentDraft.signable ? (
+          <p>
+            The current draft, <Link className="underline" href={`/staff/${slug}/contracts/${currentDraft.id}`}>{currentDraft.label}</Link>, can&apos;t be
+            signed online. Regenerate it once a version is published.
+          </p>
+        ) : null}
+      </div>
     );
   }
 
@@ -79,8 +99,15 @@ export function GenerateContractPanel({ slug, approvalId, versions, defaultVersi
       {currentDraft ? (
         <p>
           Current draft: <Link className="underline" href={`/staff/${slug}/contracts/${currentDraft.id}`}>{currentDraft.label}</Link>
+          {!currentDraft.signable ? (
+            <span className="block text-amber-700 dark:text-amber-400">
+              It was generated from a version published before agreements could be approved for client use, so it can&apos;t be sent or
+              signed. Regenerate it from a version published for client use.
+            </span>
+          ) : null}
         </p>
       ) : null}
+      {legacyNote}
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Template version" htmlFor="template_version_id">
           <select id="template_version_id" className={selectClass} value={versionId} onChange={(e) => setVersionId(e.target.value)} disabled={pending}>

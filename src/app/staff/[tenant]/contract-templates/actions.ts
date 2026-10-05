@@ -59,19 +59,39 @@ export async function saveContractTemplateDraft(slug: string, templateId: string
   return ok("Draft saved. It is not published yet.", version);
 }
 
-/** Publishes the draft exactly as last saved. Published versions can never change. */
-export async function publishContractTemplateVersion(slug: string, templateId: string, versionId: string, expectedVersion: number): Promise<ActionState> {
+/**
+ * Publishes the draft exactly as last saved, as DEMO or for client use.
+ * Client use is owner-only (checked again in the database) and records the
+ * confirmation statement version the owner accepted. Published versions can
+ * never change. Publishing sends and signs nothing.
+ */
+export async function publishContractTemplateVersion(
+  slug: string,
+  templateId: string,
+  versionId: string,
+  expectedVersion: number,
+  usage: "demo" | "client_use",
+  clientUseStatementVersion: string | null,
+): Promise<ActionState> {
   const { supabase } = await requireStaff(slug);
   if (!UUID_RE.test(versionId) || !Number.isInteger(expectedVersion)) return fail("Reload the page and try again.");
+  if (usage !== "demo" && usage !== "client_use") return fail("Choose DEMO or client use.");
+  if (usage === "client_use" && !clientUseStatementVersion) return fail("Confirm the statement to publish for client use.");
   const { data, error } = await supabase.rpc("publish_contract_template_version", {
     p_version_id: versionId,
     p_expected_draft_version: expectedVersion,
+    p_usage: usage,
+    p_client_use_statement_version: usage === "client_use" ? clientUseStatementVersion! : undefined,
   });
   if (error) return fail(describeDbError(error));
   revalidatePath(`/staff/${slug}/contract-templates/${templateId}`);
   revalidatePath(`/staff/${slug}/contract-templates`);
-  const result = data as { version_number?: number };
-  return ok(`Version ${result.version_number ?? ""} published. It can no longer be edited.`);
+  const result = data as { version_number?: number; usage?: string };
+  return ok(
+    result.usage === "client_use"
+      ? `Version ${result.version_number ?? ""} published for client use. It can no longer be edited. Generate contracts from it to send them.`
+      : `Version ${result.version_number ?? ""} published as DEMO. It can no longer be edited.`,
+  );
 }
 
 /** Opens a new draft version copied from the latest version. The published version stays unchanged. */

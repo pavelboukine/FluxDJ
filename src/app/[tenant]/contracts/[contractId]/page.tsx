@@ -22,11 +22,12 @@ type View =
       contract: {
         id: string; status: "sent" | "signed"; sent_at: string; content_sha256: string; rendered_content: unknown; signer_name: string; currency: string;
         total_cents: number; deposit_percent: number; deposit_cents: number; balance_cents: number; balance_due_date: string | null;
+        signing_mode: "demo" | "client_use" | "none";
         event_title: string; event_date: string; legal_name: string;
       };
       signing:
         | { signed: true; typed_name: string; signed_at: string; pdf_ready: boolean; pdf_pending: boolean }
-        | { signed: false; enabled: boolean; consent_version: string; consent_text: string };
+        | { signed: false; enabled: boolean; consent_version: string | null; consent_text: string | null };
     };
 
 function Notice({ title, children }: { title: string; children: React.ReactNode }) {
@@ -70,7 +71,8 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
   const content = renderedContentSchema.parse(c.rendered_content);
   const money = (cents: number) => formatCents(cents, c.currency);
   const brandStyle = { "--brand": view.brand.brand_colors.primary ?? "#111827" } as CSSProperties;
-  const isDemo = /DEMO, NOT FOR CLIENT USE/.test(content.title);
+  // From the contract's frozen signing mode, never from its wording.
+  const isDemo = c.signing_mode === "demo";
   const signing = view.signing;
   let signatureUrl: string | null = null;
   if (signing.signed) {
@@ -115,7 +117,7 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
         </section>
       ) : !signing.enabled ? (
         <p role="status" className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
-          Please read your contract. Online signing isn&apos;t available for it yet; {view.brand.display_name} will let you know how to sign.
+          Please read your contract. It can&apos;t be signed online; {view.brand.display_name} will send you an updated contract to sign.
         </p>
       ) : null}
       <ContractDocument title={content.title} sections={content.sections} />
@@ -126,7 +128,7 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
         <div className="flex justify-between gap-2"><span>Balance</span><span className="tabular-nums">{money(c.balance_cents)}</span></div>
         {c.balance_due_date ? <div className="flex justify-between gap-2"><span>Balance due</span><span>{c.balance_due_date}</span></div> : null}
       </section>
-      {!signing.signed && signing.enabled ? (
+      {!signing.signed && signing.enabled && signing.consent_version && signing.consent_text ? (
         <SignPanel
           slug={slug}
           contractId={c.id}

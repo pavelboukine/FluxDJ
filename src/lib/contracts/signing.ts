@@ -27,5 +27,6 @@ export type SignInput = {
 };
 
 export type SignResult =
-  | { status: "signed"; signedAt: string; typedName: string; replayed: boolean }
+  /** contractId is the contract the database signed (from its answer, not the request). */
+  | { status: "signed"; contractId: string; signedAt: string; typedName: string; replayed: boolean }
   | { status: "error"; code: string; message: string };
