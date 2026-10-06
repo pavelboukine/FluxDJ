@@ -247,8 +247,8 @@ pending mail in the background, run `pnpm outbox:work` alongside
    the proposal, contract, price, gear or booking.
 4. As the client (signed in, booked event), open `/my` or the contract page
    and follow **Plan your event**. Event basics, stage details, songs,
-   participants, the MC and speeches save automatically; sections without an editor yet say "Not available yet" and
-   aren't counted in progress.
+   participants, the MC, speeches, contacts, preferences, activities and
+   dedications save automatically.
 5. Open a stage card (Ceremony, Cocktail, Reception entrance, Dinner, Party,
    Closing) and fill its details: "Same as the event venue", times with
    **Next day** for after midnight, "Not sure, discuss with DJ". Overlapping
@@ -488,6 +488,50 @@ How it works:
   never in the client view. Preferences are for the DJ's review; nothing
   changes proposals, contracts, prices, payments or booking.
 
+#### Arrival, program, activities and dedications
+
+| Moment | Fields | Needed to complete |
+|---|---|---|
+| Arrival details (Guest arrival) | Location: same as the event venue, same as the ceremony, or another place, plus room or area; arrival time: same as the ceremony's guest arrival, or a start and end time; welcome instructions; announcement wording; or "No separate arrival arrangements" | Location and arrival time, each resolved; or "no separate arrangements" (not applicable) |
+| Program details (Speeches and program) | Optional overall start and end, host and pronunciation, instructions; ordered agenda items: title, timing, minutes, presenter, pronunciation, instructions | Every item has a time or a moment; or "No formal program" (not applicable) |
+| Activities (Dinner and Party, one shared editor) | Ordered activities: name (suggestions such as Shoe game, Bouquet toss or Centrepiece giveaway, or anything typed, such as a cultural tradition), timing, minutes, host, participants, pronunciation, instructions, optional song | Every activity has a time or a moment; or "No activities" |
+| Dedications (Party) | Ordered dedications: for whom, relationship, pronunciation, announcement message, song, timing (any time during the party, a time, a moment or undecided), instructions | Every dedication has a song and a timing; or "No dedications" |
+
+Timing everywhere is an exact time (local to the event, with an explicit
+**Next day** after midnight), a moment such as "After dessert", or "Not
+decided yet", which keeps the section open. "Discuss with DJ" also stays
+open. Speeches, cake cutting, special dances and arrival music keep their own
+cards.
+
+To try it: staff add **Guest arrival** and **Speeches and program** (with
+their detail moments) to a plan under Structure. As the client, in **Arrival
+details** choose "Same as the ceremony" for the place and time. In **Program
+details** add an agenda item with a time and one with a moment. In **Dinner →
+Activities** add the Shoe game with a song. In **Party → Dedications** add one
+without a song, and see it stay open until a song is added.
+
+How it works:
+
+- **Storage.** Each moment saves on its item, revision-checked
+  (`arrival`, `program`, `activities`, `dedications`). Entries have stable
+  ids; reordering, Undo, retries and stale tabs behave as elsewhere.
+- **Arrival reuse is explicit.** `location_source` `ceremony` or
+  `event_venue`, and `time_source` `ceremony`, store the choice, never a
+  copy. They resolve when read from the visible Ceremony's details. While
+  the Ceremony lacks them or is hidden, they stay open ("Not in the Ceremony
+  details yet"). Ceremony guest arrival stays in the Ceremony; this card is
+  for general arrival. Times are validated like stage details (the end after
+  the start, after midnight only with **Next day**).
+- **One song source per entry.** An activity's or dedication's song (title,
+  artist, version, link) belongs to that entry; nothing links into other
+  moments, so there are no cross-moment links to protect. A song needs both
+  title and artist; links must be safe `https://` and are never fetched.
+  Unfinished dedications are kept as entered: no song or time is invented.
+- **Progress.** Every library item now has an editor. The stages that only
+  hold moments (Guest arrival, Speeches and program, Special dances) aren't
+  counted themselves, so nothing reads "Not available yet". Hidden sections
+  keep their answers and leave progress. Times never reorder stages.
+
 ## Running the checks
 
 ```bash
@@ -625,6 +669,7 @@ in every relevant relationship.
 | `27_music` | Music editors by moment key and Entrance music as the single source for reception entrance songs. Song validation: title and artist needed, limits, https links without credentials, unknown fields, cues on moment songs only, repeated or malformed ids, list and moment limits. Choices per editor; alternatives refused while songs exist. Completion: songs, DJ's choice, No requests, Nothing to exclude, not applicable without changing the structure, discuss with DJ open even with songs. Order kept by id. An identical retried import is saved once; a stale different list conflicts; a concurrent identical first save is the same save; stage details keep strict revisions. Hidden lists and stages keep their songs and leave views and progress. Other clients, other events' items, other businesses, anon and archived events; staff edits. Contract, booking, payments, proposal and imports untouched |
 | `28_participants` | Editors by moment key and Participants and names covered by Introductions (not saved, not counted); speeches wherever the library allows. Processional people saved with its songs: individual, pair and group entries without fixed labels, trimmed names and pronunciation in order, links to its own or Couple entrance songs only (another stage's or another event's refused), linked songs not removable from either (also from a stale revision), Couple entrance renames and hiding keeping links, not applicable refused while people exist, renamed and reordered songs leaving people untouched, discuss open. Introductions sharing Entrance music songs; links to another moment, another event or malformed ids refused; removing a linked song refused naming the entries, also from a stale revision; renames, reorders and unlinked removals allowed; hidden Entrance music keeping valid links; No introductions and discuss. MC choices, details kept only for someone else. Speech timing (exact time, next day, cue, undecided), bounds, completion. Retried adds saved once; hidden moments; other clients, other events, other businesses, anon and archived events; staff edits; contract, booking, payments, proposal and imports untouched |
 | `29_contacts_preferences` | Editors on their sections; this event's contacts in the view with name and phone only. Day-of contact: not decided (open), someone else needing a phone, phone checks, an event contact by id only (no copy), a phone for the day without changing the client, contacts of another event or business and names refused, a contact leaving the event (kept, unavailable, not resaved). Vendors: name or business, roles, phone and email checks, order, none refused while listed, retried adds once, stale conflicts. Preferences: no language copy, language from Event basics, discuss open, unknown questions refused. Music styles: list order once, unknown styles, DJ's choice exclusive, other style, slow songs. Hidden sections, other clients, events and businesses, anon, archived events, staff edits; no staff ids, notes, payment references or signing evidence; clients, event contacts and contractual records untouched |
+| `30_remaining_editors` | Editors in their library places (Dinner and Party sharing one); only moment-holding stages without an editor; nothing "not available". Arrival: ceremony reuse storing no copy, open while the Ceremony lacks it or is hidden, other place with overnight times and next day, event venue unknown, "no separate arrangements" refused with details and alone not applicable. Program: own times, agenda with exact, overnight, cue and undecided timings, titles needed, "No formal program" refused with entries. Activities: songs need title and artist and safe links, custom names, Party counted separately, stale tabs, unknown fields. Dedications: unfinished kept without invented songs, any time, songs needed, no durations, "No dedications". Retried adds once, stale conflicts, hidden stages, other clients, events and businesses, anon, archived events, staff edits, stage order unchanged; contractual records untouched |
 | `25_planning` | Read-only tables for staff; starter templates added explicitly and once; template ownership across businesses, clients and direct writes; rename, move, remove and add with stable keys and versions; library placement enforced by trigger; duplicate and archive; one default per event type. Booking (real signing and deposit) creates one plan from the event-type default; the Basics fallback; setup before booking kept at booking; repeats and already-booked backfill. Frozen imports after catalog changes. Client access: booked, unbooked, other client, stranger, wrong slug, revoked, unverified, two DJs, anon, archived and unarchived, payment invalidation. Basics validation, conflicts, normalization, progress (imported and not applicable versus unanswered, unavailable sections excluded). Disable and restore keep answers and order and change nothing contractual. Non-destructive template replacement. Integrity |
 | `24_booking` | Owner-only, versioned policy setting; no direct writes; only two policies. Frozen policy per contract, unchanged by later setting changes. On signature: booked when signed, with payment still due. On deposit: payments before signing count, partial payments await the deposit to the cent, the completing payment books, later payments and checks don't book again (one audit event, one email). Zero deposit. Overpayment. Corrections keep the booking and `booking_confirmed_at` and warn staff; the client sees the amount outstanding. Legacy contracts: nothing automatic, staff check as `on_deposit` (not the business's on_signature), then automatic. Archived events refused. Guards against booking outside the function, changing the date or unbooking. Tenant isolation. Older workers never claim booking emails |
 | `21_signed_contract_pdfs` | Signing queues one PDF job (none on replay) and no email. Only the service role runs jobs. Leases: no double claim, expired-lease recovery, stale leases can't fail a job. Commit validation (missing, wrong size, wrong type, wrong folder, wrong signature hash). One canonical immutable document; a second upload is "exists" with no duplicate emails. One email per party with separate dedup keys, no paths or tokens in payloads. Staff, other tenants, signer, other clients and anon. Archiving blocks the signer and cancels undelivered copies but keeps the PDF. Recipient-confirmed resend that never repeats a delivered copy. Contracts signed before PDFs: explicit generation without email |
@@ -763,8 +808,8 @@ signed-out browser:
 
 - `supabase/tests/database/25_planning.test.sql`,
   `26_stage_details.test.sql`, `27_music.test.sql`,
-  `28_participants.test.sql` and `29_contacts_preferences.test.sql` cover the
-  rules (see the table above).
+  `28_participants.test.sql`, `29_contacts_preferences.test.sql` and
+  `30_remaining_editors.test.sql` cover the rules (see the table above).
 - `tests/unit/planning-stages.test.ts`: the browser-side stage validation
   (next day, impossible intervals, bounds, normalization).
 - `tests/unit/planning-music.test.ts`: the browser-side song validation,
@@ -774,6 +819,15 @@ signed-out browser:
 - `tests/unit/planning-participants.test.ts`: the browser-side validation
   of Processional people, introductions, speeches (timing fields, next day,
   durations) and the MC, round trips, and song-link lookups.
+- `tests/unit/planning-timed.test.ts`: arrival reuse and overnight times,
+  timed entries (timing fields, songs, links, durations, choices),
+  dedications' any-time timing and round trips.
+- `tests/e2e/remaining-flow.spec.ts`: on a phone, arrival reusing the
+  ceremony then its own overnight times; a program agenda with a time and a
+  moment, reorder and Undo; Dinner and Party activities with songs and "No
+  activities"; dedications open until song and timing, with pending, failed
+  and stale saves. Staff edit on a phone, hide and restore the program,
+  archived read-only; contract, payments and booking stay unchanged.
 - `tests/unit/planning-contacts.test.ts`: phone and email checks, the
   day-of source's fields, vendor checks, preferences and music styles.
 - `tests/e2e/contacts-flow.spec.ts`: on a phone, the MC and officiant shown,

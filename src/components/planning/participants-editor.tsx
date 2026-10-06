@@ -128,7 +128,7 @@ export function EntryList<E extends { id: string }>(props: {
   const [draft, setDraft] = useState<E>(() => props.newEntry(newId()));
   const [draftError, setDraftError] = useState<{ field: string; message: string } | null>(null);
   const { entries, setEntries } = props;
-  const clears = (id: string) => ["entries", ...["names", "role", "pronunciation", "wording", "notes", "song_id", "speaker", "timing", "time", "next_day", "cue", "duration", "av_notes", "name", "business", "phone", "email"].map((f) => entryField(id, f))];
+  const clears = (id: string) => ["entries", ...["names", "role", "pronunciation", "wording", "notes", "song_id", "speaker", "timing", "time", "next_day", "cue", "duration", "av_notes", "name", "business", "phone", "email", "title", "recipient", "presenter", "host", "participants", "relationship", "message", "song_title", "song_artist", "song_version", "song_link"].map((f) => entryField(id, f))];
   const errorFor = (id: string) => (field: string) => (props.fieldError?.field === entryField(id, field) ? props.fieldError.message : null);
 
   function move(index: number, by: -1 | 1) {

@@ -255,13 +255,14 @@ test.describe.serial("planning", () => {
     const ceremony = client.getByTestId("stage-ceremony");
     await ceremony.locator("summary").first().click();
     await expect(ceremony).toContainText("Processional participants");
-    // Moments without an editor yet (dinner activities) still say so.
-    await expect(client.getByTestId("stage-dinner")).toContainText("Not available yet");
+    // Every moment has an editor now: nothing says "Not available yet".
+    await expect(client.getByText("Not available yet")).toHaveCount(0);
     await expect(client.getByTestId("section-contacts_vendors").locator("summary").first()).toContainText("Not started");
     // Event basics (5 of 5), the six stage editors' 12 requirements, the 17 song moments, who walks in, MC,
-    // introductions and speeches, contacts (2), preferences (4) and music styles (2), none answered yet.
-    await expect(client.getByTestId("progress-headline")).toHaveText("5 of 46 required answers");
-    await expect(client.getByText(/The other sections open later and aren't counted yet/)).toBeVisible();
+    // introductions and speeches, contacts (2), preferences (4), music styles (2), and the activities and dedications this
+    // trimmed template kept (2), none answered yet.
+    await expect(client.getByTestId("progress-headline")).toHaveText("5 of 48 required answers");
+    await expect(client.getByText(/Progress covers the \d+ sections you can fill in now\./)).toBeVisible();
     expect(await noSideways(client)).toBeLessThanOrEqual(0);
   });
 
@@ -408,7 +409,8 @@ test.describe.serial("planning", () => {
     await expect(staff.getByRole("button", { name: "Restore Dinner", exact: true })).toBeVisible();
     await client.reload();
     await expect(client.getByTestId("stage-dinner")).toHaveCount(0);
-    await expect(client.locator("body")).not.toContainText("Cake cutting");
+    // Its moments go with it (the Party's activities hint still names cake cutting as having its own card).
+    await expect(client.getByTestId("moment-cake_cutting")).toHaveCount(0);
 
     await staff.getByRole("button", { name: "Restore Dinner", exact: true }).click();
     await expect(staff.getByRole("button", { name: "Hide Dinner from the client", exact: true })).toBeVisible();
@@ -451,8 +453,9 @@ test.describe.serial("planning", () => {
     await expect(client.getByRole("heading", { name: "Planning isn't available" })).toBeVisible();
     await staff.goto(staffPlanningUrl);
     // Event basics, contacts, preferences, the six stage editors, the 17 song moments (Processional included), MC,
-    // introductions, speeches and music styles are read-only while archived.
-    await expect(staff.getByText("Unarchive the event to edit planning.")).toHaveCount(30);
+    // introductions, speeches, music styles and both activities (this trimmed template has no Dedications) are read-only
+    // while archived.
+    await expect(staff.getByText("Unarchive the event to edit planning.")).toHaveCount(32);
     await expect(staff.locator("#ceremony-start_time")).toBeDisabled();
     expect((await basicsRow(eventId))!.answers).toMatchObject({ guest_count: 175 });
 

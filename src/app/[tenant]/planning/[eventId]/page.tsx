@@ -4,7 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BasicsEditor } from "@/components/planning/basics-editor";
 import { AlreadyProvided, NotAvailableBadge, PlanCard, StageCards } from "@/components/planning/plan-overview";
-import { generalEditor, knownPeople, momentEditor, savedIntroductions, savedProcessionalPeople } from "@/components/planning/moment-editor";
+import { ceremonyDetails, generalEditor, knownPeople, momentEditor, savedIntroductions, savedProcessionalPeople } from "@/components/planning/moment-editor";
 import { MusicListsProvider } from "@/components/planning/music-editor";
 import { ItemStatus, PlanProgressProvider, ProgressSummary } from "@/components/planning/progress";
 import { StageDetailsEditor } from "@/components/planning/stage-details-editor";
@@ -137,7 +137,8 @@ export default async function ClientPlanningPage({ params }: PageProps<"/[tenant
                 moments: view.moments,
                 djName: dj,
                 audience: "client",
-                event: { date: view.event.event_date, timezone: view.event.timezone },
+                event: { date: view.event.event_date, timezone: view.event.timezone, venueName: view.event.venue_name, venueAddress: view.event.venue_address },
+                ceremony: ceremonyDetails(view.structure.stages, view.stage_details),
                 save: (itemId) => saveClientItemAction.bind(null, slug, eventId, itemId),
               })
             }

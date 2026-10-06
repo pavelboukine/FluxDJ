@@ -6,7 +6,7 @@ import { ActionForm } from "@/components/app/action-form";
 import { DraftVersionProvider } from "@/components/app/draft-version";
 import { CheckboxField, PageHeader, SelectField } from "@/components/app/fields";
 import { BasicsEditor } from "@/components/planning/basics-editor";
-import { generalEditor, knownPeople, momentEditor, savedIntroductions, savedProcessionalPeople } from "@/components/planning/moment-editor";
+import { ceremonyDetails, generalEditor, knownPeople, momentEditor, savedIntroductions, savedProcessionalPeople } from "@/components/planning/moment-editor";
 import { MusicListsProvider } from "@/components/planning/music-editor";
 import { AlreadyProvided, hasMomentEditor, MomentCard, PlanCard } from "@/components/planning/plan-overview";
 import { ItemStatus, PlanProgressProvider, ProgressSummary } from "@/components/planning/progress";
@@ -204,7 +204,8 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
                               moments: view.moments,
                               djName: tenant.display_name,
                               audience: "staff",
-                              event: { date: event.event_date, timezone: event.timezone },
+                              event: { date: event.event_date, timezone: event.timezone, venueName: event.venue_name, venueAddress: event.venue_address },
+                              ceremony: ceremonyDetails(view.structure.stages, view.stage_details),
                               save: (itemId) => saveStaffItemAction.bind(null, slug, event.id, itemId),
                               disabledReason: lockedReason,
                             })}

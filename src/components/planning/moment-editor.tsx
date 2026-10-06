@@ -3,7 +3,9 @@ import { isMusicEditor, type MusicAnswers } from "@/lib/planning/music";
 import type { IntroductionsAnswers, McAnswers, ProcessionalAnswers, SpeechesAnswers } from "@/lib/planning/participants";
 import type { ContactsAnswers, EventContact, MusicStyleAnswers, PreferencesAnswers } from "@/lib/planning/contacts";
 import type { MomentAnswers, MusicLists, PlanStage, PlanStructure, SaveItemResult, StageDetails } from "@/lib/planning/view";
+import type { ArrivalAnswers, TimedAnswers } from "@/lib/planning/timed";
 import { ContactsEditor, MusicStyleEditor, PreferencesEditor, type KnownPeople } from "./general-editors";
+import { ArrivalEditor, ProgramEditor, TimedEditorCard } from "./timed-editors";
 import { MusicEditor } from "./music-editor";
 import { IntroductionsEditor, McEditor, ProcessionalEditor, SpeechesEditor } from "./participants-editor";
 
@@ -18,7 +20,9 @@ export function momentEditor(m: Moment, opts: {
   moments: MomentAnswers;
   djName: string;
   audience: "client" | "staff";
-  event: { date: string; timezone: string };
+  event: { date: string; timezone: string; venueName: string | null; venueAddress: string | null };
+  /** The visible Ceremony's details, for arrival answers that reuse them. */
+  ceremony: Record<string, unknown> | null;
   save: (itemId: string) => (expectedRevision: number, answers: never) => Promise<SaveItemResult>;
   disabledReason?: string;
 }): ReactNode {
@@ -41,6 +45,13 @@ export function momentEditor(m: Moment, opts: {
       return <McEditor {...common} initialAnswers={answers as McAnswers} save={save} />;
     case "music_style":
       return <MusicStyleEditor {...common} initialAnswers={answers as MusicStyleAnswers} save={save} />;
+    case "arrival":
+      return <ArrivalEditor {...common} initialAnswers={answers as ArrivalAnswers} save={save} event={opts.event} ceremony={opts.ceremony} />;
+    case "program":
+      return <ProgramEditor {...common} initialAnswers={answers as TimedAnswers} save={save} event={opts.event} />;
+    case "activities":
+    case "dedications":
+      return <TimedEditorCard {...common} editor={m.editor} initialAnswers={answers as TimedAnswers} save={save} event={opts.event} />;
     default:
       return null;
   }
@@ -96,4 +107,10 @@ export function generalEditor(g: General, opts: {
   if (g.editor === "contacts") return <ContactsEditor {...common} initialAnswers={answers as ContactsAnswers} eventContacts={opts.eventContacts} known={opts.known} />;
   if (g.editor === "preferences") return <PreferencesEditor {...common} initialAnswers={answers as PreferencesAnswers} />;
   return null;
+}
+
+/** The visible Ceremony's saved details, or null. */
+export function ceremonyDetails(stages: PlanStage[], stageDetails: StageDetails): Record<string, unknown> | null {
+  const ceremony = stages.find((s) => !s.disabled && s.editor === "stage_ceremony");
+  return ceremony ? (stageDetails[ceremony.id]?.answers ?? null) : null;
 }

@@ -137,7 +137,7 @@ select is((select array_agg(key || ':' || editor order by library_order) from pr
 select is((select array_agg(key order by library_order) from private.planning_library() where editor = 'stage_details'),
   array['ceremony_details', 'cocktail_details', 'dinner_details', 'closing_instructions'], 'the moments they cover are marked as included');
 select is(tests.state(tests.view('sd_wed'), 'ceremony_details'), null, 'covered moments are not counted on their own');
-select is(tests.state(tests.view('sd_wed'), 'special_dances'), 'not_available', 'stages without an editor stay not available');
+select is(tests.state(tests.view('sd_wed'), 'special_dances'), null, 'stages that only hold moments aren''t counted themselves');
 select is(tests.state(tests.view('sd_wed'), 'ceremony'), 'not_started', 'nothing saved: not started');
 
 -- ===========================================================================

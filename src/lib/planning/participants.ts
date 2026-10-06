@@ -10,7 +10,7 @@ import { musicAnswersFromForm, type MusicAnswers, type MusicForm } from "./music
  */
 
 /** Editors whose answers come in the views' "moments" map (general sections included). */
-export const MOMENT_EDITORS = ["processional", "mc", "introductions", "speeches", "contacts", "preferences", "music_style"] as const;
+export const MOMENT_EDITORS = ["processional", "mc", "introductions", "speeches", "contacts", "preferences", "music_style", "arrival", "program", "activities", "dedications"] as const;
 export type MomentEditor = (typeof MOMENT_EDITORS)[number];
 export function isMomentEditor(editor: string | null | undefined): editor is MomentEditor {
   return (MOMENT_EDITORS as readonly string[]).includes(editor ?? "");

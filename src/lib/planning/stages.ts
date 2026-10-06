@@ -209,6 +209,10 @@ export const STAGE_REQUIREMENT_LABELS: Record<string, string> = {
   requests: "Guest requests",
   style: "Music styles, or DJ's choice",
   slow_songs: "Slow songs",
+  arrival_time: "Arrival time",
+  program: "Agenda, or a choice",
+  activities: "Activities, or a choice",
+  dedications: "Dedications, or a choice",
 };
 
 export const REQUIREMENT_NOTES: Record<string, string> = {
@@ -218,6 +222,9 @@ export const REQUIREMENT_NOTES: Record<string, string> = {
   not_decided: "Not decided yet",
   phone_missing: "No phone number yet",
   contact_unavailable: "That contact isn't on this event any more",
+  ceremony_missing: "Not in the Ceremony details yet",
+  entry_timing_open: "An entry has no time or moment yet",
+  dedication_open: "A dedication still needs a song or timing",
 };
 
 /** "Sun, Aug 15" for the day after the event date. */
