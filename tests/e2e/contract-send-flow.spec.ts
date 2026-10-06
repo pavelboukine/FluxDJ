@@ -7,7 +7,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { admin, signInStaff, waitForEmail } from "./support";
+import { admin, expectLinkRequested, signInStaff, waitForEmail } from "./support";
 import { archiveTestTenant, createTestTenant, publishContractTemplate, sendProposalFromEventPage, submitAsClient, type TestTenant } from "./tenant";
 
 let tenant: TestTenant;
@@ -92,7 +92,7 @@ test.describe.serial("contract sending and verified client access", () => {
 
     const requested = Date.now();
     await a.getByRole("button", { name: "Email me a sign-in link" }).click();
-    await expect(a.getByText("Check your email.")).toBeVisible();
+    await expectLinkRequested(a, "Check your email.", { bucket: "contract_sign_in", windowSeconds: 900 });
     await expect(a.getByText(/to e•••@example\.test/)).toBeVisible();
     const verify = await waitForEmail(clientEmail, { after: requested, subject: /Confirm your email to read your contract/ });
     process.env.E2E_VERIFY_LINK = /(http:\/\/127\.0\.0\.1:3000\/auth\/confirm\?\S+)/.exec(verify.text)![1];
@@ -164,7 +164,7 @@ test.describe.serial("contract sending and verified client access", () => {
     await page.goto("/login");
     await page.getByLabel("Email").fill(clientEmail);
     await page.getByRole("button", { name: "Email me a sign-in link" }).click();
-    await expect(page.getByRole("status")).toContainText("If that email has a Flux DJ account");
+    await expectLinkRequested(page, /If that email has a Flux DJ account/, { bucket: "sign_in_link", windowSeconds: 600 });
     const message = await waitForEmail(clientEmail, { after: started, subject: /sign-in link/ });
     await page.goto(/href="([^"]+\/auth\/confirm[^"]+)"/.exec(message.html)![1].replaceAll("&amp;", "&"));
     await page.getByRole("button", { name: "Sign in" }).click();

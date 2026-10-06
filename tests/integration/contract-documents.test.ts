@@ -16,6 +16,7 @@ import { contractInviteToken, sha256Hex } from "@/lib/proposals/tokens.server";
 import { pdfPageTexts } from "../support/pdf";
 import {
   adminClient,
+  archiveTestTenants,
   bothSeparate,
   createEvent,
   createTenantWithCatalog,
@@ -150,12 +151,8 @@ describe("signed-contract PDFs (local Supabase)", () => {
 
   afterAll(async () => {
     // Leave no backlog behind for other suites, then archive both tenants.
-    if (admin && otherCatalog) {
-      await admin.from("document_jobs").update({ next_attempt_at: past() }).eq("tenant_id", otherCatalog.tenantId).eq("status", "pending");
-      await processDocumentJobs({ admin, tenantId: otherCatalog.tenantId, limit: 20 });
-      await admin.from("tenants").update({ archived_at: new Date().toISOString() }).eq("id", otherCatalog.tenantId);
-    }
-    if (admin && catalog) await admin.from("tenants").update({ archived_at: new Date().toISOString() }).eq("id", catalog.tenantId);
+    if (admin && otherCatalog) await admin.from("document_jobs").update({ next_attempt_at: past() }).eq("tenant_id", otherCatalog.tenantId).eq("status", "pending");
+    if (admin) await archiveTestTenants(admin, otherCatalog?.tenantId, catalog?.tenantId);
   });
 
   it("renders only the frozen contract and evidence, even after the source records change", async () => {

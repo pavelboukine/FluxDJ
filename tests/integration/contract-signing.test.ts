@@ -16,6 +16,7 @@ import { SIGNATURE_BUCKET, type SignInput } from "@/lib/contracts/signing";
 import { contractInviteToken, sha256Hex } from "@/lib/proposals/tokens.server";
 import {
   adminClient,
+  archiveTestTenants,
   bothSeparate,
   createEvent,
   createTenantWithCatalog,
@@ -89,6 +90,8 @@ async function objectsFor(contractId: string): Promise<string[]> {
 const signatureRows = async (contractId: string) => (await must(admin.from("contract_signatures").select("*").eq("contract_id", contractId))).data!;
 const statusOf = async (contractId: string) => (await must(admin.from("contracts").select("status").eq("id", contractId).single())).data!.status;
 
+let otherTenantId: string | undefined;
+
 describe("contract signing (local Supabase)", () => {
   beforeAll(async () => {
     admin = adminClient();
@@ -100,12 +103,12 @@ describe("contract signing (local Supabase)", () => {
     versionId = version!.id;
     await must(staff.rpc("publish_contract_template_version", { p_version_id: versionId, p_expected_draft_version: 0, p_usage: "demo" }));
     const other = await signedInUser(admin, `it-sign-other-${randomUUID().slice(0, 8)}@example.test`);
-    await createTenantWithCatalog(admin, other.id, "it-sign-b");
+    otherTenantId = (await createTenantWithCatalog(admin, other.id, "it-sign-b")).tenantId;
     otherStaff = other.db;
   });
 
   afterAll(async () => {
-    if (admin && catalog) await admin.from("tenants").update({ archived_at: new Date().toISOString() }).eq("id", catalog.tenantId);
+    if (admin) await archiveTestTenants(admin, catalog?.tenantId, otherTenantId);
   });
 
   it("stores a verified image first, then commits the evidence that references it", async () => {

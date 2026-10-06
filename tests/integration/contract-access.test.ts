@@ -13,6 +13,7 @@ import type { EmailMessage, EmailTransport } from "@/lib/email/transport.server"
 import { contractInviteToken, sha256Hex } from "@/lib/proposals/tokens.server";
 import {
   adminClient,
+  archiveTestTenants,
   bothSeparate,
   createEvent,
   createTenantWithCatalog,
@@ -74,6 +75,8 @@ async function sentContract(clientEmail: string) {
   return { eventId, clientId, contractId, linkId, inviteToken: contractInviteToken(linkId) };
 }
 
+let otherTenantId: string | undefined;
+
 describe("contract sending and verified client access (local Supabase)", () => {
   beforeAll(async () => {
     admin = adminClient();
@@ -86,12 +89,12 @@ describe("contract sending and verified client access (local Supabase)", () => {
     await must(staff.rpc("publish_contract_template_version", { p_version_id: versionId, p_expected_draft_version: 0, p_usage: "demo" }));
     const email = `it-send-other-${randomUUID().slice(0, 8)}@example.test`;
     const other = await signedInUser(admin, email);
-    await createTenantWithCatalog(admin, other.id, "it-send-b");
+    otherTenantId = (await createTenantWithCatalog(admin, other.id, "it-send-b")).tenantId;
     otherOwner = { ...other, email };
   });
 
   afterAll(async () => {
-    if (admin && catalog) await admin.from("tenants").update({ archived_at: new Date().toISOString() }).eq("id", catalog.tenantId);
+    if (admin) await archiveTestTenants(admin, catalog?.tenantId, otherTenantId);
   });
 
   it("onboards a new client: invite identity created at delivery, verified, then explicit acceptance", async () => {

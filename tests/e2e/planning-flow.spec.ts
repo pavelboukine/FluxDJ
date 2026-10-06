@@ -19,7 +19,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { admin, signInStaff, status, waitForEmail } from "./support";
+import { admin, signInStaff, signInWithLink, status } from "./support";
 import { archiveTestTenant, createTestTenant, publishContractTemplate, submitAsClient, type TestTenant } from "./tenant";
 
 let tenant: TestTenant;
@@ -88,15 +88,9 @@ async function bookEvent(eventId: string): Promise<string> {
   return contractId;
 }
 
+/** A returning client signs in; with no staff role, they land on /my (the login form is covered by contract-send-flow.spec.ts). */
 async function signInClient(page: Page, email: string) {
-  const started = Date.now();
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(email);
-  await page.getByRole("button", { name: "Email me a sign-in link" }).click();
-  await expect(page.getByRole("status")).toContainText("If that email has a Flux DJ account");
-  const message = await waitForEmail(email, { after: started, subject: /sign-in link/ });
-  await page.goto(/href="([^"]+\/auth\/confirm[^"]+)"/.exec(message.html)![1].replaceAll("&amp;", "&"));
-  await page.getByRole("button", { name: "Sign in" }).click();
+  await signInWithLink(page, email);
   await page.waitForURL("**/my");
 }
 

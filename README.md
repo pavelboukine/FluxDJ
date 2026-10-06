@@ -338,7 +338,80 @@ work there is safe while they run.
   archived rather than deleted. `pnpm db:reset` removes them along with
   everything else.
 
-`pnpm build` also verifies the production build.
+`pnpm build` also verifies the production build. It is safe while `pnpm dev`
+is running: Next.js 16 writes development output to `.next/dev` and builds
+to `.next`, and a build's cleanup keeps `.next/dev`. Run the build with
+`next start` stopped (`next start` serves `.next`).
+
+### Day-to-day testing
+
+Run the smallest check that covers the change, and the whole suite once.
+
+| While you… | Run |
+|---|---|
+| Work on one browser test | `pnpm test:e2e tests/e2e/planning-flow.spec.ts:342` (the test's line) |
+| Work on one browser spec | `pnpm test:e2e tests/e2e/planning-flow.spec.ts` |
+| Rerun only what just failed | `pnpm test:e2e --last-failed` |
+| Need screenshots for review | `E2E_SCREENSHOTS=1 pnpm test:e2e <spec>` (PNG files under `test-results/`) |
+| Change unit-tested code | `pnpm test:unit` (about a second), or `pnpm exec vitest related --run <changed files>` |
+| Change server code with integration tests | `pnpm test:integration tests/integration/planning.test.ts`, or `pnpm test:integration --changed` |
+| Change SQL | `pnpm db:test` (pgTAP, about 12 seconds) and `pnpm db:lint` |
+| Are about to deliver or deploy | `pnpm check` once, then `pnpm build` |
+
+1. Run targeted tests during implementation, and rerun only the failing
+   test after each fix.
+2. Run the affected suites once the feature is stable.
+3. Run `pnpm check` once before delivery or deployment. Repeat broad checks
+   only after further changes or for an unresolved failure.
+
+Most browser specs are `describe.serial`: later tests build on earlier ones.
+Selecting a single test that depends on earlier ones (by line or `-g`) skips
+those earlier tests, so it fails for the wrong reason. In that case, run the
+spec. Failures always keep a screenshot and a trace in `test-results/`
+(`pnpm exec playwright show-trace <trace.zip>`), so you never need to rerun a
+spec just to see what happened.
+
+**Sign-in and rate limits.** The app limits sign-in requests per IP
+(`sign_in_link`: 30 per 10 minutes at `/login`; `contract_sign_in`: 10 per 15
+minutes on the contract invitation page). Every local browser comes from
+127.0.0.1, so the tests share these limits with your own browser.
+
+- Feature specs sign in with `signInStaff`, `signInWithLink` or
+  `verifyContractInvitation` (`tests/e2e/support.ts`). These create a real
+  single-use Supabase link, exactly as the contract verification email does,
+  and open it through the real `/auth/confirm` page. The session, routes
+  and RLS are real. Only requesting the link through a form and reading it
+  from Mailpit are skipped, so these specs use no rate-limit budget and can
+  run repeatedly.
+- Only `staff-flow.spec.ts` (login form, unknown emails, link scanners,
+  JavaScript off) and `contract-send-flow.spec.ts` (invitation request,
+  verification, returning-client login) use the real forms. A full run uses 4
+  `sign_in_link` and 1 `contract_sign_in`.
+- If a limit is used up, the test fails at once with the limit's name and the
+  time it resets. Nothing resets the counters, and production limits are
+  unchanged. The limiter itself is proven by the pgTAP tests (`12_…`, `17_…`).
+
+**Test data.** Each spec or suite creates its own `e2e-…` or `it-…` tenants
+and archives them when it ends, even after a failure. Integration suites
+first give up their tenants' leftover signed-PDF jobs, so neither the
+scheduled worker nor `pnpm outbox:work` spends time on them before real jobs.
+Archived tenants never send email. Specs that need a PDF claim only their own
+contract's job.
+
+Keep `workers: 1`. Specs share the per-IP limits, Mailpit and the dev server,
+so parallel runs would trade a little time for flaky failures.
+
+**Long runs and logs.** A full browser run takes about 3.5 minutes. To keep a
+log, redirect to a file and read it while it runs, rather than piping through
+`tail` (which shows nothing until the end):
+
+```bash
+pnpm test:e2e > /tmp/e2e.log 2>&1; echo "exit $?"
+```
+
+A pipe reports the last command's status. If you pipe test output through
+`grep`, `tail` or `tee`, run `set -o pipefail` (zsh: `setopt pipefail`) first
+so a failure still exits non-zero.
 
 ### Database tests
 

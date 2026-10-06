@@ -10,7 +10,7 @@ import { randomUUID } from "node:crypto";
 import { encodeRgbaPng } from "@/lib/contracts/signature-image.server";
 import { signContractAs } from "@/lib/contracts/signing.server";
 import { contractInviteToken, sha256Hex } from "@/lib/proposals/tokens.server";
-import { adminClient, bothSeparate, createEvent, createTenantWithCatalog, draftAndSend, must, openLink, signedInUser, submit, type Catalog, type Db } from "./support/fixtures";
+import { adminClient, archiveTestTenants, bothSeparate, createEvent, createTenantWithCatalog, draftAndSend, must, openLink, signedInUser, submit, type Catalog, type Db } from "./support/fixtures";
 
 const SECTIONS = [{ heading: "Payment", body: "Total {{pricing.total}}. Deposit ({{payment.deposit_percent}}): {{payment.deposit}}." }];
 type Business = { catalog: Catalog; staff: Db; versionId: string };
@@ -89,7 +89,7 @@ describe("planning (local Supabase)", () => {
   }, 120_000);
 
   afterAll(async () => {
-    for (const id of tenants) await admin.from("tenants").update({ archived_at: new Date().toISOString() }).eq("id", id);
+    await archiveTestTenants(admin, ...tenants);
   });
 
   it("concurrent payments and checks book once and create exactly one plan, with the frozen answers", async () => {

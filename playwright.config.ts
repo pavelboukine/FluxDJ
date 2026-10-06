@@ -14,6 +14,9 @@ export default defineConfig({
   use: {
     baseURL: "http://127.0.0.1:3000",
     trace: "retain-on-failure",
+    // Failures always keep a screenshot. E2E_SCREENSHOTS=1 keeps one for every
+    // test in the run, so review screenshots need no extra run (test-results/).
+    screenshot: process.env.E2E_SCREENSHOTS ? "on" : "only-on-failure",
     ...devices["Desktop Chrome"],
   },
   webServer: {

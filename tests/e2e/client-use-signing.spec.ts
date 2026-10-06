@@ -8,7 +8,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { pdfPageTexts } from "../support/pdf";
-import { admin, MAILPIT, signInStaff, waitForEmail } from "./support";
+import { admin, MAILPIT, signInStaff, verifyContractInvitation, waitForEmail } from "./support";
 import { archiveTestTenant, createTestTenant, sendProposalFromEventPage, submitAsClient, type TestTenant } from "./tenant";
 
 let tenant: TestTenant;
@@ -128,12 +128,7 @@ test.describe.serial("client-use agreements", () => {
     const invite = new RegExp(`(${BASE}/${tenant.slug}/invite#[A-Za-z0-9_-]{43})`).exec(email.text)![1];
     clientContext = await browser.newContext();
     client = await clientContext.newPage();
-    await client.goto(invite);
-    const requested = Date.now();
-    await client.getByRole("button", { name: "Email me a sign-in link" }).click();
-    const verify = await waitForEmail(clientEmail, { after: requested, subject: /Confirm your email/ });
-    await client.goto(/(http:\/\/127\.0\.0\.1:3000\/auth\/confirm\?\S+)/.exec(verify.text)![1]);
-    await client.getByRole("button", { name: "Sign in" }).click();
+    await verifyContractInvitation(client, invite, clientEmail);
     await client.getByRole("button", { name: "Open my contract" }).click();
     await client.waitForURL(new RegExp(`/${tenant.slug}/contracts/${contractId}$`));
 

@@ -5,7 +5,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
-import { adminClient, createEvent, createTenantWithCatalog, must, signedInUser, type Catalog, type Db } from "./support/fixtures";
+import { adminClient, archiveTestTenants, createEvent, createTenantWithCatalog, must, signedInUser, type Catalog, type Db } from "./support/fixtures";
 
 let admin: Db;
 let staff: Db;
@@ -22,6 +22,8 @@ const record = (db: Db, amount: number, key = randomUUID(), confirm = false) =>
 const validPayments = async () =>
   (await must(admin.from("event_payments").select("id, amount_cents").eq("event_id", eventId).is("invalidated_at", null))).data!;
 
+let otherTenantId: string | undefined;
+
 describe("manual payments (local Supabase)", () => {
   beforeAll(async () => {
     admin = adminClient();
@@ -32,12 +34,12 @@ describe("manual payments (local Supabase)", () => {
     ({ eventId } = await createEvent(admin, catalog, clientEmail));
     client = (await signedInUser(admin, clientEmail)).db;
     const other = await signedInUser(admin, `it-pay-other-${randomUUID().slice(0, 8)}@example.test`);
-    await createTenantWithCatalog(admin, other.id, "it-pay-b");
+    otherTenantId = (await createTenantWithCatalog(admin, other.id, "it-pay-b")).tenantId;
     otherStaff = other.db;
   });
 
   afterAll(async () => {
-    if (admin && catalog) await admin.from("tenants").update({ archived_at: new Date().toISOString() }).eq("id", catalog.tenantId);
+    if (admin) await archiveTestTenants(admin, catalog?.tenantId, otherTenantId);
   });
 
   it("records one payment when the same submission arrives several times at once", async () => {

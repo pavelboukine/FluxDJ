@@ -147,6 +147,28 @@ export async function createTenantWithCatalog(admin: Db, ownerUserId: string, pr
   return { tenantId, slug, templateId, gear, pkg };
 }
 
+/**
+ * Ends test tenants: their due signed-PDF jobs are given up (as failed, the
+ * normal outcome, so no worker later spends time on them ahead of real
+ * jobs), then the tenants are archived. Their history stays.
+ */
+export async function archiveTestTenants(admin: Db, ...tenantIds: (string | undefined)[]) {
+  for (const tenantId of tenantIds) {
+    if (!tenantId) continue;
+    try {
+      for (let round = 0; round < 10; round++) {
+        const { data: jobs } = await must(admin.rpc("claim_document_jobs", { p_tenant_id: tenantId, p_limit: 20, p_lease_seconds: 30 }));
+        if (!jobs?.length) break;
+        for (const job of jobs) {
+          await admin.rpc("fail_document_job", { p_job_id: job.job_id, p_lease_token: job.lease_token, p_error: "Test tenant archived: PDF not needed.", p_permanent: true });
+        }
+      }
+    } finally {
+      await admin.from("tenants").update({ archived_at: new Date().toISOString() }).eq("id", tenantId);
+    }
+  }
+}
+
 /** An event with a new primary contact. */
 export async function createEvent(admin: Db, catalog: Catalog, clientEmail: string): Promise<{ eventId: string; clientId: string }> {
   const eventId = randomUUID();

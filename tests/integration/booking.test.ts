@@ -11,7 +11,7 @@ import { signContractAs } from "@/lib/contracts/signing.server";
 import { processOutbox } from "@/lib/email/outbox.server";
 import { ResendTransport } from "@/lib/email/transport.server";
 import { contractInviteToken, sha256Hex } from "@/lib/proposals/tokens.server";
-import { adminClient, bothSeparate, createEvent, createTenantWithCatalog, draftAndSend, must, openLink, signedInUser, submit, type Catalog, type Db } from "./support/fixtures";
+import { adminClient, archiveTestTenants, bothSeparate, createEvent, createTenantWithCatalog, draftAndSend, must, openLink, signedInUser, submit, type Catalog, type Db } from "./support/fixtures";
 
 const SECTIONS = [{ heading: "Payment", body: "Total {{pricing.total}}. Deposit ({{payment.deposit_percent}}): {{payment.deposit}}." }];
 let admin: Db;
@@ -82,7 +82,7 @@ describe("booking confirmation (local Supabase)", () => {
   });
 
   afterAll(async () => {
-    if (admin && catalog) await admin.from("tenants").update({ archived_at: new Date().toISOString() }).eq("id", catalog.tenantId);
+    if (admin) await archiveTestTenants(admin, catalog?.tenantId);
   });
 
   it("a deposit paid before signing books the event when the client signs", async () => {

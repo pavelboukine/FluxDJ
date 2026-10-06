@@ -7,3 +7,32 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+# Testing workflow
+
+Full commands and rationale: README, "Day-to-day testing". In short:
+
+- Run the narrowest check while implementing: one browser test
+  (`pnpm test:e2e tests/e2e/<spec>.ts:<line>`) or one spec, one integration file
+  (`pnpm test:integration tests/integration/<file>.test.ts`), `pnpm test:unit`,
+  `pnpm db:test` for SQL. After a fix, rerun only what failed (`pnpm test:e2e --last-failed`).
+- Run the affected suites once the feature is stable, and `pnpm check` once before
+  delivery or deployment. Don't repeat broad suites without new changes or an
+  unresolved failure, and never rerun a spec only for screenshots or timings:
+  failures keep screenshots and traces in `test-results/`, and `E2E_SCREENSHOTS=1`
+  keeps one for every test in a run.
+- New browser specs sign in with `signInStaff`, `signInWithLink` or
+  `verifyContractInvitation` from `tests/e2e/support.ts`, never through the `/login`
+  or invitation forms. Those forms and their per-IP limits belong to `staff-flow` and
+  `contract-send-flow` only. They share the limits with the developer's own browser,
+  so never reset rate-limit counters and never raise limits.
+- Fixtures stay in their own `e2e-…`/`it-…` tenants and are archived even on failure
+  (`archiveTestTenant`, `archiveTestTenants`). A test that needs a PDF claims its own
+  contract's job; it never drains other jobs. Never touch the BOUPROD or Other DJ tenants.
+- Keep Playwright at one worker.
+- Long runs: redirect output to a file and read that file while the run continues.
+  Don't pipe through `tail` (it shows nothing until the end) or through `grep`/`tee`
+  without `pipefail` (it hides failures). Full browser suite ≈ 3.5 min, integration
+  ≈ 1–2 min, pgTAP ≈ 12 s: check progress every 30–60 s and schedule no fallback
+  wakeup much longer than the expected run time.
+- `pnpm build` is safe while `pnpm dev` runs (separate `.next/dev` output).

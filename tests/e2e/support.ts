@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { expect, type Page } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 
@@ -30,15 +31,79 @@ export async function waitForEmail(to: string, opts: { after?: number; subject?:
   throw new Error(`no email for ${to}${opts.subject ? ` matching ${opts.subject}` : ""}`);
 }
 
-export async function signInStaff(page: Page, email: string) {
-  const started = Date.now();
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(email);
-  await page.getByRole("button", { name: "Email me a sign-in link" }).click();
-  await expect(page.getByRole("status")).toContainText("If that email has a Flux DJ account");
-  const message = await waitForEmail(email, { after: started, subject: /sign-in link/ });
-  const href = /href="([^"]+\/auth\/confirm[^"]+)"/.exec(message.html)![1].replaceAll("&amp;", "&");
-  await page.goto(href);
+/**
+ * After a "send me a link" click: the confirmation, or a clear error when the
+ * app's per-IP limiter refused (instead of a bare 15-second timeout). Those
+ * limits are fixed windows aligned to the clock, so the reset time is exact.
+ */
+export async function expectLinkRequested(page: Page, confirmation: string | RegExp, limit: { bucket: string; windowSeconds: number }) {
+  const sent = page.getByText(confirmation);
+  const refused = page.getByRole("alert").filter({ hasText: /Too many/ });
+  await expect(sent.or(refused).first()).toBeVisible();
+  if (await refused.isVisible()) {
+    const resetAt = new Date((Math.floor(Date.now() / 1000 / limit.windowSeconds) + 1) * limit.windowSeconds * 1000);
+    throw new Error(
+      `The app's "${limit.bucket}" rate limit for 127.0.0.1 is used up (shared with your own local browser). ` +
+        `It resets at ${resetAt.toLocaleTimeString()}. Feature specs do not need it; only the real login specs do.`,
+    );
+  }
+}
+
+/**
+ * Signs `page` in with a real single-use Supabase link, through the same
+ * /auth/confirm page and POST a clicked email link uses: real verification,
+ * real session cookies, and every route and RLS check as usual. It only skips
+ * requesting the link through a form and reading it from Mailpit, so feature
+ * specs do not use up the app's per-IP sign-in limits. The forms themselves
+ * are covered by staff-flow.spec.ts (staff login, unknown emails, link
+ * scanners, no-JS) and contract-send-flow.spec.ts (client invitations).
+ *
+ * The link is created exactly as the contract verification email creates it
+ * (src/lib/email/outbox.server.ts): "invite" creates or confirms a first-time
+ * identity, a magic link signs in an existing one.
+ */
+export async function signInWithLink(page: Page, email: string, next?: string) {
+  let link = await withAuthRetry(() => admin.auth.admin.generateLink({ type: "invite", email }));
+  let type = "invite";
+  if (link.error?.code === "email_exists") {
+    type = "email";
+    link = await withAuthRetry(() => admin.auth.admin.generateLink({ type: "magiclink", email }));
+  }
+  if (link.error) throw link.error;
+  const params = new URLSearchParams({ token_hash: link.data.properties.hashed_token, type, ...(next ? { next } : {}) });
+  await page.goto(`/auth/confirm?${params}`);
   await page.getByRole("button", { name: "Sign in" }).click();
+  await page.waitForURL((url) => url.pathname !== "/auth/confirm");
+  if (new URL(page.url()).pathname === "/login") throw new Error(`sign-in link for ${email} was rejected (${page.url()})`);
+}
+
+/** Supabase allows one link per address per second; retries that briefly instead of failing. */
+async function withAuthRetry<T extends { error: { status?: number } | null }>(call: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    const result = await call();
+    if (result.error?.status !== 429 || attempt === 5) return result;
+    await new Promise((r) => setTimeout(r, 400 * attempt));
+  }
+}
+
+/** A staff member signs in (see signInWithLink) and lands in their workspace. */
+export async function signInStaff(page: Page, email: string) {
+  await signInWithLink(page, email);
   await page.waitForURL("**/staff/**");
+}
+
+/**
+ * The client follows their contract email and verifies their address, as the
+ * "Confirm your email to read your contract" link does: they land on the
+ * invitation page, signed in. The invitation request form itself (and its
+ * rate limits) is covered by contract-send-flow.spec.ts.
+ */
+export async function verifyContractInvitation(page: Page, invitationUrl: string, signerEmail: string) {
+  const url = new URL(invitationUrl);
+  const slug = url.pathname.split("/")[1];
+  const tokenHash = createHash("sha256").update(url.hash.slice(1)).digest("hex");
+  const { data: link, error } = await admin.from("access_links").select("id").eq("token_hash", tokenHash).single();
+  if (error) throw error;
+  await signInWithLink(page, signerEmail, `/${slug}/invitations/${link.id}`);
+  await page.waitForURL(`**/${slug}/invitations/${link.id}`);
 }

@@ -8,7 +8,11 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
+import { expectLinkRequested } from "./support";
 import { archiveTestTenant, createTestTenant, type TestTenant } from "./tenant";
+
+// The real login form, against the app's real per-IP limit (src/app/login/actions.ts).
+const SIGN_IN_LIMIT = { bucket: "sign_in_link", windowSeconds: 600 };
 
 const status = JSON.parse(
   execFileSync("node_modules/.bin/supabase", ["status", "-o", "json"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }),
@@ -45,7 +49,7 @@ async function signIn(page: Page, email: string) {
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);
   await page.getByRole("button", { name: "Email me a sign-in link" }).click();
-  await expect(page.getByRole("status")).toContainText("If that email has a Flux DJ account");
+  await expectLinkRequested(page, /If that email has a Flux DJ account/, SIGN_IN_LIMIT);
   await page.goto(await latestMagicLink(email, started));
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL(`**/staff/${tenant.slug}`);
@@ -80,7 +84,7 @@ test.describe.serial("staff interface", () => {
     const stranger = `nobody-${run}@example.test`;
     await anonymous.getByLabel("Email").fill(stranger);
     await anonymous.getByRole("button", { name: "Email me a sign-in link" }).click();
-    await expect(anonymous.getByRole("status")).toContainText("If that email has a Flux DJ account");
+    await expectLinkRequested(anonymous, /If that email has a Flux DJ account/, SIGN_IN_LIMIT);
     const res = await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:"${stranger}"`)}`);
     expect(((await res.json()) as { messages: unknown[] }).messages).toHaveLength(0);
     const { data } = await admin.auth.admin.listUsers();

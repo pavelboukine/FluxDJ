@@ -8,7 +8,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { admin, signInStaff, waitForEmail } from "./support";
+import { admin, signInStaff, verifyContractInvitation, waitForEmail } from "./support";
 import { archiveTestTenant, createTestTenant, publishContractTemplate, sendProposalFromEventPage, submitAsClient, type TestTenant } from "./tenant";
 
 let tenant: TestTenant;
@@ -34,13 +34,7 @@ async function sendContractFromProposal(staff: Page, proposalUrl: string): Promi
 /** The client follows the contract email, verifies their address and opens the contract in `page`. */
 async function clientOpensContract(page: Page, sentAt: number): Promise<string> {
   const email = await waitForEmail(clientEmail, { after: sentAt, subject: /sent your contract/ });
-  await page.goto(new RegExp(`(${BASE}/${tenant.slug}/invite#[A-Za-z0-9_-]{43})`).exec(email.text)![1]);
-  const requested = Date.now();
-  await page.getByRole("button", { name: "Email me a sign-in link" }).click();
-  await expect(page.getByText("Check your email.")).toBeVisible();
-  const verify = await waitForEmail(clientEmail, { after: requested, subject: /Confirm your email to read your contract/ });
-  await page.goto(/(http:\/\/127\.0\.0\.1:3000\/auth\/confirm\?\S+)/.exec(verify.text)![1]);
-  await page.getByRole("button", { name: "Sign in" }).click();
+  await verifyContractInvitation(page, new RegExp(`(${BASE}/${tenant.slug}/invite#[A-Za-z0-9_-]{43})`).exec(email.text)![1], clientEmail);
   // A first visit accepts with a button; a client who already has access gets a link.
   await page.getByRole("button", { name: "Open my contract" }).or(page.getByRole("link", { name: "Open my contract" })).click();
   await page.waitForURL(new RegExp(`/${tenant.slug}/contracts/[0-9a-f-]{36}$`));
