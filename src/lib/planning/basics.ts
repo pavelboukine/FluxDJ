@@ -100,8 +100,13 @@ export function answersFromForm(f: BasicsForm): { ok: true; answers: BasicsAnswe
 }
 
 /** Stable JSON for comparing saved and current answers (key order independent). */
-export function answersKey(a: BasicsAnswers): string {
-  return JSON.stringify(Object.fromEntries(Object.entries(a).sort(([x], [y]) => x.localeCompare(y))));
+/** A canonical string for answers: object keys sorted at every level (the database returns them in its own order). */
+export function answersKey(a: BasicsAnswers | Record<string, unknown>): string {
+  const canonical = (v: unknown): unknown =>
+    Array.isArray(v) ? v.map(canonical)
+    : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).sort(([x], [y]) => x.localeCompare(y)).map(([k, x]) => [k, canonical(x)]))
+    : v;
+  return JSON.stringify(canonical(a));
 }
 
 /** An end earlier than the start is the next day (events often end after midnight). */

@@ -246,8 +246,9 @@ pending mail in the background, run `pnpm outbox:work` alongside
    with **Restore**; hiding a stage hides its moments. None of this changes
    the proposal, contract, price, gear or booking.
 4. As the client (signed in, booked event), open `/my` or the contract page
-   and follow **Plan your event**. Event basics saves automatically; other
-   sections say "Not available yet" and aren't counted in progress.
+   and follow **Plan your event**. Event basics, stage details and songs save
+   automatically; sections without an editor yet say "Not available yet" and
+   aren't counted in progress.
 5. Open a stage card (Ceremony, Cocktail, Reception entrance, Dinner, Party,
    Closing) and fill its details: "Same as the event venue", times with
    **Next day** for after midnight, "Not sure, discuss with DJ". Overlapping
@@ -305,6 +306,77 @@ in the details above". Fields are a fixed typed list
   has a documented meaning. They stay visible under "Already provided".
 - Equipment answers (microphones) are planning information for the DJ to
   review; they never change the contracted package, gear or price.
+
+#### Songs
+
+Songs are typed in by hand: title and artist, with an optional version,
+link and notes. There is no music service: nothing is searched, fetched or
+played, and an optional link never replaces title and artist. Each editor is
+chosen by moment key and opens as a card inside its stage, in the plan's
+order; staff see the same editors under **Stage details and music**.
+
+| Editor | Moments | Alternative to entering songs |
+|---|---|---|
+| Background music | `arrival_music`, `pre_ceremony_music`, `cocktail_music`, `dinner_music` | DJ's choice |
+| Requests | `must_play`, `play_if_possible` | No requests |
+| Do not play | `do_not_play` | Nothing to exclude |
+| Moment songs (with an optional cue label and instructions per song) | `processional`, `couple_entrance`, `ceremony_signing`, `recessional`, `entrance_music`, `cake_cutting`, `first_dance`, `family_dances`, `other_dances`, `last_dances`, `final_song` | DJ's choice, Not applicable, Not sure (discuss with DJ) |
+
+To try it: open **Plan your event**, open **Party**, then **Must play**. Use
+**Add a song**, **Move up** / **Move down**, **Edit**, **Remove** (with
+**Undo**) and reload. In **Play if possible**, open **Paste a list**, paste a
+few lines (one with no dash) and **Preview**. Correct the flagged line, then
+**Import**. Add a Must play song to **Do not play** to see the warning. On a
+phone-sized window nothing should scroll sideways.
+
+How it works:
+
+- **Storage.** A list is saved on its moment item
+  (`event_plan_responses.answers`, revision-checked, like stage details) as
+  `{"songs": [...], "choice": "..."}`. A song has an `id` (a UUID made in the
+  browser, unique in its list), `title`, `artist` and optional `version`,
+  `link`, `notes` and, for moment songs, `cue`. The id is the only identity,
+  never the title or position; order is the array order. No catalog table:
+  the same title can be entered in several lists.
+- **Validation** (`private.normalize_plan_music`, mirrored in
+  `src/lib/planning/music.ts`). Title and artist are needed (200 characters
+  each); version 100, cue 80, notes 500, link 1,000. Links must be
+  `https://` with a host name and no credentials (`private.is_https_url`).
+  They are shown as "Open link (host)", open in a new tab with
+  `noopener noreferrer`, and are never fetched. A list holds up to 150 songs,
+  a moment up to 12. Unknown fields, repeated or malformed ids and other
+  editors' choices are refused.
+- **Completion.** Each editor has one requirement: songs entered, or its
+  explicit alternative (DJ's choice, No requests, Nothing to exclude).
+  "Not applicable" counts as answered but keeps the moment in the plan;
+  only staff hide or remove moments. "Discuss with DJ" stays open, even with
+  songs. An alternative can't be chosen while songs are listed: remove them
+  first, so nothing is lost silently. Versions, links and notes never block.
+- **Concurrency.** The whole list saves with the item's revision, so a stale
+  tab gets a conflict and overwrites nothing. A save identical to what is
+  stored counts as saved even with an older revision, so a retried request
+  or a doubled click never duplicates songs. Songs added while a save is
+  pending are kept and saved next; a failed save keeps them and offers
+  Retry.
+- **Paste a list.** One song per line as `Artist - Title` (a hyphen, en
+  dash or em dash with spaces around it). Blank lines and leading numbers or
+  bullets are ignored. A line without a separator, or with more than one,
+  is flagged. Flagged lines can't be imported until they are corrected or
+  marked "Looks right". The preview gives every line its id up front, and
+  importing closes the preview. The songs then save like typed ones, through
+  the same validation and access checks.
+- **Warnings** (informational; nothing is moved or removed). A repeated
+  title and artist within a list, and the same song in a play list and in
+  Do not play. Matching ignores case and spacing only: without a music
+  service, recordings can't be identified.
+- **Reception entrance.** **Entrance music** is the one place for its songs,
+  with a cue per group ("Wedding party", "Couple"). **Introductions** and
+  **Participants and names** have no editor yet. Later participant editors
+  will refer to these songs by their entry id, so nothing is entered twice.
+- **Hidden moments and stages** keep their songs. They are left out of the
+  views and progress until restored. Archived events are read-only.
+  Planning writes never touch contracts, prices, payments, booking or
+  imported answers, and send no email.
 
 ## Running the checks
 
@@ -440,6 +512,7 @@ in every relevant relationship.
 | `22_client_use_signing` | Usage is required when publishing; legacy can't be chosen. Client use is owner-only, needs the current statement, and stores the exact statement, owner and database time; staff publish DEMO only; other tenants get nothing. Published usage and confirmation are immutable; drafts carry none; a new version copies text, not usage. Contracts freeze mode and consent, immutably. Signing with `client-v1` (the DEMO consent is refused) and exact evidence; `demo-v1` unchanged. Legacy versions can't generate; `none` contracts can't be sent or signed and the review explains how to regenerate. Signed-copy senders are frozen when queued and at the first attempt, never change, keep older rows' first values, ignore sent rows and are service-role only |
 | `23_manual_payments` | Owner and staff record; other tenants, clients and anon can't, and no role writes rows directly. Amount, date, reference validation. Idempotent replays, reused keys, duplicate confirmation, exact cents. Invalidation with reasons, preserved history, immutability, audit. Drafts give no terms; sent terms; void and replacement without double counting; signed terms frozen after business, tax and catalog changes; overpayment as credit; zero-percent deposit. Client summary fields, other clients, void contracts, staff and anon. HTTPS invoice links, stale versions, unsafe URLs. Archiving blocks writes and the client view. No email, status, booking or contract change |
 | `26_stage_details` | Library editors and covered moments; validation (times, explicit next day, impossible and equal intervals, choices, limits, unknown fields, conflicting entrance answers); partial answers and normalization; completion with venue and Event basics reuse, not applicable and "discuss with DJ"; overnight party and closing; chronology warnings in staff order without reordering; hidden stages keep answers; covered moments; Simple Party; other clients, other events' items, other businesses, anon and archived events; staff saves; no staff identity, payment references or notes for clients; contract, booking, payments, proposal and imports untouched; the Event basics entry point kept |
+| `27_music` | Music editors by moment key and Entrance music as the single source for reception entrance songs. Song validation: title and artist needed, limits, https links without credentials, unknown fields, cues on moment songs only, repeated or malformed ids, list and moment limits. Choices per editor; alternatives refused while songs exist. Completion: songs, DJ's choice, No requests, Nothing to exclude, not applicable without changing the structure, discuss with DJ open even with songs. Order kept by id. An identical retried import is saved once; a stale different list conflicts; a concurrent identical first save is the same save; stage details keep strict revisions. Hidden lists and stages keep their songs and leave views and progress. Other clients, other events' items, other businesses, anon and archived events; staff edits. Contract, booking, payments, proposal and imports untouched |
 | `25_planning` | Read-only tables for staff; starter templates added explicitly and once; template ownership across businesses, clients and direct writes; rename, move, remove and add with stable keys and versions; library placement enforced by trigger; duplicate and archive; one default per event type. Booking (real signing and deposit) creates one plan from the event-type default; the Basics fallback; setup before booking kept at booking; repeats and already-booked backfill. Frozen imports after catalog changes. Client access: booked, unbooked, other client, stranger, wrong slug, revoked, unverified, two DJs, anon, archived and unarchived, payment invalidation. Basics validation, conflicts, normalization, progress (imported and not applicable versus unanswered, unavailable sections excluded). Disable and restore keep answers and order and change nothing contractual. Non-destructive template replacement. Integrity |
 | `24_booking` | Owner-only, versioned policy setting; no direct writes; only two policies. Frozen policy per contract, unchanged by later setting changes. On signature: booked when signed, with payment still due. On deposit: payments before signing count, partial payments await the deposit to the cent, the completing payment books, later payments and checks don't book again (one audit event, one email). Zero deposit. Overpayment. Corrections keep the booking and `booking_confirmed_at` and warn staff; the client sees the amount outstanding. Legacy contracts: nothing automatic, staff check as `on_deposit` (not the business's on_signature), then automatic. Archived events refused. Guards against booking outside the function, changing the date or unbooking. Tenant isolation. Older workers never claim booking emails |
 | `21_signed_contract_pdfs` | Signing queues one PDF job (none on replay) and no email. Only the service role runs jobs. Leases: no double claim, expired-lease recovery, stale leases can't fail a job. Commit validation (missing, wrong size, wrong type, wrong folder, wrong signature hash). One canonical immutable document; a second upload is "exists" with no duplicate emails. One email per party with separate dedup keys, no paths or tokens in payloads. Staff, other tenants, signer, other clients and anon. Archiving blocks the signer and cancels undelivered copies but keeps the PDF. Recipient-confirmed resend that never repeats a delivered copy. Contracts signed before PDFs: explicit generation without email |
@@ -576,10 +649,24 @@ signed-out browser:
 
 ### Planning tests
 
-- `supabase/tests/database/25_planning.test.sql` and
-  `26_stage_details.test.sql` cover the rules (see the table above).
+- `supabase/tests/database/25_planning.test.sql`,
+  `26_stage_details.test.sql` and `27_music.test.sql` cover the rules (see
+  the table above).
 - `tests/unit/planning-stages.test.ts`: the browser-side stage validation
   (next day, impossible intervals, bounds, normalization).
+- `tests/unit/planning-music.test.ts`: the browser-side song validation,
+  answers compared regardless of key order, the paste parser and its flags,
+  duplicate and play / do-not-play matching, and views from a database
+  without music editors.
+- `tests/e2e/music-flow.spec.ts`: on a phone, the client adds, edits,
+  reorders and removes songs (with undo) and reloads. It pastes a list,
+  corrects flagged lines and imports once. It sees duplicate and
+  do-not-play warnings, chooses DJ's choice, not applicable and discuss with
+  truthful progress, and enters cue songs with instructions. Saves pending,
+  failing and from a stale tab are covered. Staff edit the same songs, hide
+  and restore a list with its songs, and see archived plans read-only;
+  another business gets a 404. Contract, payments and booking stay
+  unchanged.
 - `tests/integration/planning.test.ts`: concurrent payments and checks create
   one plan; repeated checks and setup never replace it; concurrent setup and
   starter installs; concurrent client saves (one wins, the rest conflict);

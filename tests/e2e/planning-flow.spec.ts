@@ -16,78 +16,16 @@
  *     and template edits don't reach the plan;
  *   - archiving closes client planning; unarchiving reopens it.
  */
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { admin, signInStaff, signInWithLink, status } from "./support";
-import { archiveTestTenant, createTestTenant, publishContractTemplate, submitAsClient, type TestTenant } from "./tenant";
+import { bookEvent, contractualState, must } from "./booking";
+import { admin, signInStaff, signInWithLink } from "./support";
+import { archiveTestTenant, createTestTenant, type TestTenant } from "./tenant";
 
 let tenant: TestTenant;
 const run = randomUUID().slice(0, 6);
 const clientEmail = `e2e-plan-${run}@example.test`;
 const title = `E2E Plan Wedding ${run}`;
-// A 1x1 PNG: the signing function checks the stored object's type and size.
-const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
-
-async function must<T extends { error: unknown }>(p: PromiseLike<T>): Promise<T> {
-  const result = await p;
-  if (result.error) throw result.error;
-  return result;
-}
-
-/** A real Auth session for an existing user, from a magic-link token (no email, no rate limit). */
-async function sessionFor(email: string): Promise<SupabaseClient> {
-  const { data } = await must(admin.auth.admin.generateLink({ type: "magiclink", email }));
-  const db = createClient(status.API_URL, status.ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
-  await must(db.auth.verifyOtp({ token_hash: data.properties!.hashed_token, type: "magiclink" }));
-  return db;
-}
-
-/** Proposal sent, submitted, approved; contract generated, sent, accepted and signed by the client; deposit recorded. */
-async function bookEvent(eventId: string): Promise<string> {
-  const staffDb = await sessionFor(tenant.ownerEmail);
-  const { data: template } = await must(admin.from("proposal_templates").select("id").eq("tenant_id", tenant.id).eq("name", "Wedding (DEMO)").single());
-  const { data: input } = await must(staffDb.rpc("proposal_offer_input_from_template", { p_template_id: template!.id }));
-  const { data: proposalId } = await must(staffDb.rpc("open_proposal_draft", { p_event_id: eventId, p_offer: input }));
-  const { data: draft } = await must(admin.from("proposals").select("draft_version").eq("id", proposalId).single());
-  await must(staffDb.rpc("send_proposal", { p_proposal_id: proposalId, p_expected_draft_version: draft!.draft_version, p_access_link_id: randomUUID(), p_token_hash: randomUUID().replaceAll("-", "").repeat(2) }));
-  await submitAsClient(tenant, proposalId as string);
-  const { data: selection } = await must(admin.from("proposal_selections").select("id").eq("proposal_id", proposalId).not("submitted_at", "is", null).single());
-  const { data: approval } = await must(staffDb.rpc("approve_proposal_selection", { p_proposal_id: proposalId, p_selection_id: selection!.id }));
-  const versionId = await publishContractTemplate(tenant, "Agreement (DEMO)", "DEMO, NOT FOR CLIENT USE: Agreement for {{event.title}}", [
-    { heading: "Payment", body: "Total {{pricing.total}}. Deposit ({{payment.deposit_percent}}): {{payment.deposit}}." },
-  ]);
-  const { data: generated } = await must(staffDb.rpc("generate_contract_draft", { p_approval_id: (approval as { approval_id: string }).approval_id, p_template_version_id: versionId }));
-  const contractId = (generated as { contract_id: string }).contract_id;
-  const linkId = randomUUID();
-  await must(staffDb.rpc("send_contract", { p_contract_id: contractId, p_link_id: linkId, p_token_hash: createHash("sha256").update(randomUUID()).digest("hex") }));
-
-  const { data: user } = await must(admin.auth.admin.createUser({ email: clientEmail, email_confirm: true }));
-  const clientDb = await sessionFor(clientEmail);
-  await must(clientDb.rpc("accept_contract_invitation", { p_link_id: linkId, p_tenant_slug: tenant.slug }));
-  const { data: c } = await must(admin.from("contracts").select("content_sha256, consent_version, deposit_cents").eq("id", contractId).single());
-  const path = `${tenant.id}/${contractId}/${randomUUID()}.png`;
-  await must(admin.storage.from("contract-signatures").upload(path, PNG, { contentType: "image/png" }));
-  const { data: signed } = await must(admin.rpc("sign_contract", {
-    p_contract_id: contractId, p_tenant_slug: tenant.slug, p_user_id: user.user!.id, p_typed_name: "Jordan Lee",
-    p_content_sha256: c!.content_sha256, p_consent_version: c!.consent_version, p_consent_accepted: true, p_signature_path: path,
-    p_signature_sha256: createHash("sha256").update(PNG).digest("hex"), p_signature_bytes: PNG.length, p_signature_width: 1, p_signature_height: 1,
-    p_user_agent: "E2E", p_client_ip: null, p_client_ip_source: "unavailable",
-  }));
-  expect((signed as { status: string }).status).toBe("signed");
-  // No PDF needed here; retire the job so later signing specs never wait behind it.
-  const { data: jobs } = await must(admin.rpc("claim_document_jobs", { p_limit: 5, p_lease_seconds: 30, p_contract_id: contractId }));
-  for (const j of (jobs ?? []) as { job_id: string; lease_token: string }[]) {
-    await admin.rpc("fail_document_job", { p_job_id: j.job_id, p_lease_token: j.lease_token, p_error: "planning e2e: PDF not needed", p_permanent: true });
-  }
-  const { data: paid } = await must(staffDb.rpc("record_event_payment", {
-    p_event_id: eventId, p_amount_cents: c!.deposit_cents, p_paid_on: new Date(Date.now() - 86_400_000).toISOString().slice(0, 10),
-    p_reference: "E2E-PAYMENT-REF-SECRET", p_note: "E2E staff payment note", p_idempotency_key: randomUUID(), p_confirm_duplicate: false,
-  }));
-  expect((paid as { booking: string }).booking).toBe("booked");
-  return contractId;
-}
-
 /** A returning client signs in; with no staff role, they land on /my (the login form is covered by contract-send-flow.spec.ts). */
 async function signInClient(page: Page, email: string) {
   await signInWithLink(page, email);
@@ -95,14 +33,6 @@ async function signInClient(page: Page, email: string) {
 }
 
 let contractual = "";
-/** Everything planning must never change: the contract, its proposal, payments and the booking. */
-async function contractualState(eventId: string): Promise<string> {
-  const { data: event } = await admin.from("events").select("booking_confirmed_at, lifecycle_status, contracts(id, status, content_sha256, signed_at, total_cents, proposal_id)").eq("id", eventId).single();
-  const { data: payments } = await admin.from("event_payments").select("id, amount_cents, invalidated_at").eq("event_id", eventId).order("id");
-  const contracts = (event as unknown as { contracts: { proposal_id: string }[] }).contracts;
-  const { data: proposals } = await admin.from("proposals").select("id, status, offer_sha256").in("id", contracts.map((c) => c.proposal_id));
-  return JSON.stringify({ event, payments, proposals });
-}
 const stageRow = async (eventId: string, key: string) => {
   const { data } = await admin.from("event_plans").select("event_plan_items(id, key)").eq("event_id", eventId).single();
   const item = data!.event_plan_items.find((i) => i.key === key)!;
@@ -111,7 +41,7 @@ const stageRow = async (eventId: string, key: string) => {
 /** Opens a stage card unless it is already open (cards stay open within a page). */
 async function openStage(page: Page, key: string) {
   const card = page.getByTestId(`stage-${key}`);
-  if (!(await card.evaluate((el) => (el as HTMLDetailsElement).open))) await card.locator("summary").click();
+  if (!(await card.evaluate((el) => (el as HTMLDetailsElement).open))) await card.locator("summary").first().click();
 }
 const noSideways = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 const basicsRow = async (eventId: string) => {
@@ -146,7 +76,7 @@ test.describe.serial("planning", () => {
     staffContext = await browser.newContext();
     staff = await staffContext.newPage();
     await signInStaff(staff, tenant.ownerEmail);
-    contractId = await bookEvent(eventId);
+    contractId = await bookEvent(tenant, eventId, clientEmail);
     contractual = await contractualState(eventId);
     planningUrl = `/${tenant.slug}/planning/${eventId}`;
     staffPlanningUrl = `/staff/${tenant.slug}/events/${eventId}/planning`;
@@ -318,17 +248,18 @@ test.describe.serial("planning", () => {
     expect((await basicsRow(eventId))!.answers).toMatchObject({ guest_count: 175, venue_room: "Grand hall" });
 
     await client.reload();
-    const stages = client.getByRole("list", { name: "Stages of the event, in order" }).locator(":scope > li summary");
+    const stages = client.getByRole("list", { name: "Stages of the event, in order" }).locator(":scope > li > details > summary");
     await expect(stages).toHaveText([
       /1\. Ceremony/, /2\. Cocktail/, /3\. Reception entrance/, /4\. Dinner/, /5\. Special dances/, /6\. Dance party/, /7\. Last dance/,
     ]);
     const ceremony = client.getByTestId("stage-ceremony");
-    await expect(ceremony).toContainText("Not available yet");
-    await ceremony.locator("summary").click();
+    await ceremony.locator("summary").first().click();
     await expect(ceremony).toContainText("Processional participants");
+    // Moments without an editor yet (MC, introductions) still say so.
+    await expect(client.getByTestId("stage-reception_entrance")).toContainText("Not available yet");
     await expect(client.getByTestId("section-contacts_vendors")).toContainText("Not available yet");
-    // Event basics (5 of 5) plus the six stage editors' 12 requirements, none answered yet.
-    await expect(client.getByTestId("progress-headline")).toHaveText("5 of 17 required answers");
+    // Event basics (5 of 5) plus the six stage editors' 12 requirements and the 17 song moments, none answered yet.
+    await expect(client.getByTestId("progress-headline")).toHaveText("5 of 34 required answers");
     await expect(client.getByText(/The other sections open later and aren't counted yet/)).toBeVisible();
     expect(await noSideways(client)).toBeLessThanOrEqual(0);
   });
@@ -336,25 +267,25 @@ test.describe.serial("planning", () => {
   test("the client fills ceremony details on a phone: venue reuse, discuss with DJ, completion and a persisted reload", async () => {
     await client.reload();
     const card = client.getByTestId("stage-ceremony");
-    await card.locator("summary").click();
+    await card.locator("summary").first().click();
     const details = card.getByTestId("details-ceremony");
-    await expect(card.locator("summary")).toContainText("Not started");
+    await expect(card.locator("summary").first()).toContainText("Not started");
     await details.getByLabel("Same as the event venue (Château E2E, 1 Rue du Lac, Gatineau)").check();
     await details.getByLabel("Ceremony start (needed)").fill("16:00");
     await details.getByLabel("Not sure, discuss with DJ").check();
     await expect(details.getByText("All changes saved")).toBeVisible();
     await expect(details.getByRole("list", { name: "What Ceremony details needs" })).toContainText(`Discuss with ${tenant.displayName} (still open)`);
-    await expect(card.locator("summary")).toContainText("In progress");
+    await expect(card.locator("summary").first()).toContainText("In progress");
     await expect(client.getByText('1 detail is marked "discuss with DJ" and still open.')).toBeVisible();
     await expect(details.getByText("Equipment answers are planning information for your DJ to review.", { exact: false })).toBeVisible();
     // Optional fields don't block completion.
     await details.getByLabel("Needed", { exact: true }).check();
     await expect(details.getByText("Ceremony details is complete.")).toBeVisible();
-    await expect(card.locator("summary")).toContainText("Complete");
+    await expect(card.locator("summary").first()).toContainText("Complete");
     expect((await stageRow(eventId, "ceremony"))!.answers).toEqual({ location_source: "event_venue", start_time: "16:00", microphones: "needed" });
 
     await client.reload();
-    await client.getByTestId("stage-ceremony").locator("summary").click();
+    await client.getByTestId("stage-ceremony").locator("summary").first().click();
     const again = client.getByTestId("details-ceremony");
     await expect(again.getByLabel("Ceremony start (needed)")).toHaveValue("16:00");
     await expect(again.getByLabel("Needed", { exact: true })).toBeChecked();
@@ -364,7 +295,7 @@ test.describe.serial("planning", () => {
 
   test("overnight times need an explicit next day; timing conflicts are flagged without reordering the stages", async () => {
     const party = client.getByTestId("stage-party");
-    await party.locator("summary").click();
+    await party.locator("summary").first().click();
     const details = party.getByTestId("details-party");
     await details.getByLabel(/Same as the event venue/).check();
     await details.getByLabel("Party start (needed)").fill("22:00");
@@ -381,14 +312,14 @@ test.describe.serial("planning", () => {
     await ceremony.getByLabel("Ceremony end (optional)").fill("17:00");
     await expect(ceremony.getByText("All changes saved")).toBeVisible();
     const cocktailCard = client.getByTestId("stage-cocktail");
-    await cocktailCard.locator("summary").click();
+    await cocktailCard.locator("summary").first().click();
     const cocktail = cocktailCard.getByTestId("details-cocktail");
     await cocktail.getByLabel(/Same as the event venue/).check();
     await cocktail.getByLabel("Cocktail start (needed)").fill("16:30");
     await expect(cocktail.getByRole("status", { name: "Timing notes" })).toHaveText("Cocktail starts before Ceremony ends.");
     await expect(client.getByTestId("timing-summary")).toHaveText("1 timing note to check (see the stages below).");
-    await expect(cocktailCard.locator("summary")).toContainText("Check timing");
-    await expect(client.getByRole("list", { name: "Stages of the event, in order" }).locator(":scope > li summary")).toHaveText([
+    await expect(cocktailCard.locator("summary").first()).toContainText("Check timing");
+    await expect(client.getByRole("list", { name: "Stages of the event, in order" }).locator(":scope > li > details > summary")).toHaveText([
       /1\. Ceremony/, /2\. Cocktail/, /3\. Reception entrance/, /4\. Dinner/, /5\. Special dances/, /6\. Dance party/, /7\. Last dance/,
     ]);
     await cocktail.getByLabel("Cocktail start (needed)").fill("17:00");
@@ -427,7 +358,7 @@ test.describe.serial("planning", () => {
 
     const other = await clientContext.newPage();
     await other.goto(planningUrl);
-    await other.getByTestId("stage-cocktail").locator("summary").click();
+    await other.getByTestId("stage-cocktail").locator("summary").first().click();
     await cocktail.getByLabel("Cocktail end (optional)").fill("18:45");
     await expect(cocktail.getByText("All changes saved")).toBeVisible();
     const stale = other.getByTestId("details-cocktail");
@@ -441,17 +372,17 @@ test.describe.serial("planning", () => {
   test("staff edit stage details reusing Event basics; hidden stages keep their answers; nothing contractual changes", async () => {
     await staff.goto(staffPlanningUrl);
     const card = staff.getByTestId("staff-stage-dinner");
-    await card.locator("summary").click();
+    await card.locator("summary").first().click();
     const dinner = card.getByTestId("details-dinner");
     await dinner.getByLabel(/Same as the event venue/).check();
     await dinner.getByLabel("Dinner start (needed)").fill("19:30");
     await dinner.getByLabel("Same as the guest count in Event basics (175)").check();
     await expect(dinner.getByText("All changes saved")).toBeVisible();
-    await expect(card.locator("summary")).toContainText("Complete");
+    await expect(card.locator("summary").first()).toContainText("Complete");
     expect((await stageRow(eventId, "dinner"))).toMatchObject({ answers: { location_source: "event_venue", start_time: "19:30", guest_count_source: "basics" }, updated_by_actor: "staff" });
     // The reuse is stored as a choice, not a copied number.
     expect((await stageRow(eventId, "dinner"))!.answers).not.toHaveProperty("guest_count");
-    await expect(staff.getByTestId("staff-stage-ceremony").locator("summary")).toContainText("Complete");
+    await expect(staff.getByTestId("staff-stage-ceremony").locator("summary").first()).toContainText("Complete");
 
     await staff.getByRole("button", { name: "Hide Cocktail from the client", exact: true }).click();
     await expect(staff.getByTestId("staff-stage-cocktail")).toHaveCount(0);
@@ -461,9 +392,9 @@ test.describe.serial("planning", () => {
     await staff.getByRole("button", { name: "Restore Cocktail", exact: true }).click();
     await expect(staff.getByTestId("staff-stage-cocktail")).toBeVisible();
     await client.reload();
-    await client.getByTestId("stage-cocktail").locator("summary").click();
+    await client.getByTestId("stage-cocktail").locator("summary").first().click();
     await expect(client.getByTestId("details-cocktail").getByLabel("Atmosphere or music style (optional)")).toHaveValue("Light jazz");
-    await client.getByTestId("stage-dinner").locator("summary").click();
+    await client.getByTestId("stage-dinner").locator("summary").first().click();
     await expect(client.getByTestId("details-dinner").getByLabel("Same as the guest count in Event basics (175)")).toBeChecked();
     await expect(client.locator("body")).not.toContainText(/E2E INTERNAL NOTE|E2E-PAYMENT-REF-SECRET|updated_by/);
     expect(await noSideways(client)).toBeLessThanOrEqual(0);
@@ -482,8 +413,8 @@ test.describe.serial("planning", () => {
     await expect(staff.getByRole("button", { name: "Hide Dinner from the client", exact: true })).toBeVisible();
     await client.reload();
     const dinner = client.getByTestId("stage-dinner");
-    await dinner.locator("summary").click();
-    await expect(dinner.getByRole("list", { name: "Moments in Dinner" }).locator("li")).toHaveText([/Timing/, /Background music/, /Speeches and toasts/, /Activities/, /Cake cutting/]);
+    await dinner.locator("summary").first().click();
+    await expect(dinner.getByRole("list", { name: "Moments in Dinner" }).locator(":scope > li")).toHaveText([/Timing/, /Background music/, /Speeches and toasts/, /Activities/, /Cake cutting/]);
     await expect(dinner.getByTestId("details-dinner").getByLabel("Dinner start (needed)")).toHaveValue("19:30");
 
     // Template edits don't reach this event's plan.
@@ -493,7 +424,7 @@ test.describe.serial("planning", () => {
     await staff.getByRole("button", { name: "Rename Ceremony", exact: true }).click();
     await expect(staff.getByRole("button", { name: "Rename Vows", exact: true })).toBeVisible();
     await client.reload();
-    await expect(client.getByTestId("stage-ceremony").locator("summary")).toContainText("Ceremony");
+    await expect(client.getByTestId("stage-ceremony").locator("summary").first()).toContainText("Ceremony");
 
     // The staff planning page fits a phone too.
     const phone = await staffContext.newPage();
@@ -518,8 +449,8 @@ test.describe.serial("planning", () => {
     await client.reload();
     await expect(client.getByRole("heading", { name: "Planning isn't available" })).toBeVisible();
     await staff.goto(staffPlanningUrl);
-    // Event basics and every stage editor are read-only while archived.
-    await expect(staff.getByText("Unarchive the event to edit planning.")).toHaveCount(7);
+    // Event basics, the six stage editors and the 17 song moments are read-only while archived.
+    await expect(staff.getByText("Unarchive the event to edit planning.")).toHaveCount(24);
     await expect(staff.locator("#ceremony-start_time")).toBeDisabled();
     expect((await basicsRow(eventId))!.answers).toMatchObject({ guest_count: 175 });
 

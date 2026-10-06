@@ -165,7 +165,7 @@ export const STAGE_LAYOUT: Record<StageEditor, Block[]> = {
     { type: "time", prefix: "guest_entry", label: "Guests enter the reception room (optional)" },
     { type: "time", prefix: "entrance", label: "Planned entrance time (needed)" },
     { type: "flag", field: "entrance_none", label: "No formal entrance" },
-    { type: "note", text: "Who enters, names and entrance music are added in a later update." },
+    { type: "note", text: "Entrance songs go under Entrance music below. Who enters and their names are added in a later update." },
   ],
   stage_dinner: [
     { type: "location", label: "Where is dinner?" },
@@ -196,6 +196,7 @@ export const STAGE_REQUIREMENT_LABELS: Record<string, string> = {
   entrance: "Entrance time",
   guest_count: "Guest count",
   finish: "Finish time",
+  songs: "Songs or a choice",
 };
 
 export const REQUIREMENT_NOTES: Record<string, string> = {

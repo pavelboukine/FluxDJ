@@ -368,10 +368,10 @@ select is((:'save1_s'::jsonb -> 'progress' -> 'items' -> 0 -> 'requirements'),
   '[{"key":"guest_count","state":"answered"},{"key":"start_time","state":"answered"},{"key":"end_time","state":"answered"},{"key":"venue","state":"unanswered"},{"key":"access","state":"not_applicable"}]'::jsonb,
   '"no special instructions" is recorded as not applicable, distinct from unanswered');
 select is(array[(:'save1_s'::jsonb -> 'progress' ->> 'requirements_met'), (:'save1_s'::jsonb -> 'progress' ->> 'requirements_total'),
-                (:'save1_s'::jsonb -> 'progress' ->> 'percent')], array['4', '17', '23'],
-  'progress counts validated saved answers (Event basics 4 of 5; the six stage editors, 12, unanswered)');
+                (:'save1_s'::jsonb -> 'progress' ->> 'percent')], array['4', '34', '11'],
+  'progress counts validated saved answers (Event basics 4 of 5; the six stage editors, 12, and the 17 song moments, unanswered)');
 select is(:'save1_s'::jsonb -> 'progress' ->> 'scope', 'available_sections_only', 'and says it covers available sections only');
-select is((:'save1_s'::jsonb -> 'progress' ->> 'unavailable_sections')::int, 28, 'sections without an editor are reported as not available');
+select is((:'save1_s'::jsonb -> 'progress' ->> 'unavailable_sections')::int, 11, 'sections without an editor are reported as not available');
 select is((select count(*)::int from jsonb_array_elements(:'save1_s'::jsonb -> 'progress' -> 'items') x
            where x ->> 'state' = 'not_available' and (x ->> 'total')::int = 0), (:'save1_s'::jsonb -> 'progress' ->> 'unavailable_sections')::int,
   'and excluded from the percentage');

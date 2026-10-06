@@ -88,6 +88,24 @@ export type Imported = z.infer<typeof importedSchema>;
 
 const stageDetailsSchema = z.record(z.string(), z.object({ answers: z.record(z.string(), z.union([z.string(), z.number(), z.literal(true)])), revision: z.number().int() }));
 export type StageDetails = z.infer<typeof stageDetailsSchema>;
+const songSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  artist: z.string(),
+  version: z.string().optional(),
+  link: z.string().optional(),
+  notes: z.string().optional(),
+  cue: z.string().optional(),
+});
+/** Songs of visible music moments, keyed by item id. Optional: a database without music editors omits it. */
+const musicSchema = z
+  .record(z.string(), z.object({
+    answers: z.object({ songs: z.array(songSchema).optional(), choice: z.enum(["dj_choice", "none", "not_applicable", "discuss"]).optional() }),
+    revision: z.number().int(),
+  }))
+  .optional()
+  .default({});
+export type MusicLists = z.infer<typeof musicSchema>;
 const warningsSchema = z.array(z.object({ item_id: z.string(), key: z.string(), message: z.string() }));
 export type TimelineWarning = z.infer<typeof warningsSchema>[number];
 
@@ -110,6 +128,7 @@ export const clientPlanningViewSchema = z.discriminatedUnion("state", [
     structure: structureSchema,
     basics: z.object({ item_id: z.string(), answers: basicsAnswersSchema, revision: z.number().int() }),
     stage_details: stageDetailsSchema,
+    music: musicSchema,
     timeline_warnings: warningsSchema,
     imported: importedSchema,
     progress: progressSchema,
@@ -138,6 +157,7 @@ export const staffPlanningViewSchema = z.union([
       updated_at: z.string().nullable(),
     }),
     stage_details: stageDetailsSchema,
+    music: musicSchema,
     timeline_warnings: warningsSchema,
     imported: importedSchema,
     progress: progressSchema,

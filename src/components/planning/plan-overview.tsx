@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { formatImportedAnswer, type Imported, type PlanStage, type PlanStructure } from "@/lib/planning/view";
+import { isMusicEditor } from "@/lib/planning/music";
 import { isStageEditor } from "@/lib/planning/stages";
 import { ItemStatus } from "./progress";
 
@@ -29,8 +30,33 @@ export function PlanCard({ title, badge, open, children, testId }: { title: stri
   );
 }
 
-/** The event's stages in order, each with its details (when built) and moments. */
-export function StageCards({ stages, renderDetails }: { stages: PlanStructure["stages"]; renderDetails?: (stage: PlanStage) => ReactNode }) {
+type PlanMoment = PlanStage["moments"][number];
+
+/** A moment with an editor (songs today), as a card inside its stage. */
+export function MomentCard({ moment, children }: { moment: PlanMoment; children: ReactNode }) {
+  return (
+    <details className="group/moment rounded-lg border" data-testid={`moment-${moment.key}`}>
+      <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 [&::-webkit-details-marker]:hidden">
+        <span>{moment.label}</span>
+        <span className="flex items-center gap-2">
+          <ItemStatus itemId={moment.id} />
+          <span aria-hidden className="text-muted-foreground transition-transform group-open/moment:rotate-90">›</span>
+        </span>
+      </summary>
+      <div className="border-t px-3 py-3">{children}</div>
+    </details>
+  );
+}
+
+/**
+ * The event's stages in order, each with its details (when built) and
+ * moments; moments with an editor open as their own card.
+ */
+export function StageCards({ stages, renderDetails, renderMoment }: {
+  stages: PlanStructure["stages"];
+  renderDetails?: (stage: PlanStage) => ReactNode;
+  renderMoment?: (moment: PlanMoment) => ReactNode;
+}) {
   if (stages.length === 0) {
     return <p className="text-sm text-muted-foreground">No stages yet.</p>;
   }
@@ -41,23 +67,29 @@ export function StageCards({ stages, renderDetails }: { stages: PlanStructure["s
           <PlanCard
             title={`${index + 1}. ${s.label}`}
             testId={`stage-${s.key}`}
-            badge={isStageEditor(s.editor) ? <ItemStatus itemId={s.id} /> : <NotAvailableBadge />}
+            badge={isStageEditor(s.editor) ? <ItemStatus itemId={s.id} /> : s.moments.some((m) => isMusicEditor(m.editor)) ? null : <NotAvailableBadge />}
           >
             {isStageEditor(s.editor) && renderDetails ? renderDetails(s) : null}
             {s.moments.length > 0 ? (
               <ul className="grid gap-1.5" aria-label={`Moments in ${s.label}`}>
-                {s.moments.map((m) => (
-                  <li key={m.id} className="flex flex-wrap items-center justify-between gap-2">
-                    <span>{m.label}</span>
-                    <span className="text-xs text-muted-foreground">{m.editor === "stage_details" ? "Included in the details above" : "Not available yet"}</span>
-                  </li>
-                ))}
+                {s.moments.map((m) =>
+                  isMusicEditor(m.editor) && renderMoment ? (
+                    <li key={m.id}><MomentCard moment={m}>{renderMoment(m)}</MomentCard></li>
+                  ) : (
+                    <li key={m.id} className="flex flex-wrap items-center justify-between gap-2">
+                      <span>{m.label}</span>
+                      <span className="text-xs text-muted-foreground">{m.editor === "stage_details" ? "Included in the details above" : "Not available yet"}</span>
+                    </li>
+                  ),
+                )}
               </ul>
             ) : null}
             <p className="text-xs text-muted-foreground">
-              {isStageEditor(s.editor)
-                ? "Songs, names and pronunciation for this part of the event can't be entered yet and aren't counted in progress."
-                : "Details, songs, names and pronunciation for this part of the event can't be entered yet. They aren't counted in progress."}
+              {s.moments.some((m) => isMusicEditor(m.editor))
+                ? "Names, pronunciation and speeches can't be entered yet and aren't counted in progress."
+                : isStageEditor(s.editor)
+                  ? "Songs, names and pronunciation for this part of the event can't be entered yet and aren't counted in progress."
+                  : "Details, songs, names and pronunciation for this part of the event can't be entered yet. They aren't counted in progress."}
             </p>
           </PlanCard>
         </li>
