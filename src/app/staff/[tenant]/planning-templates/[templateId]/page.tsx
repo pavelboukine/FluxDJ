@@ -88,7 +88,7 @@ export default async function PlanningTemplatePage({ params }: PageProps<"/staff
           <CardTitle>Structure</CardTitle>
           <CardDescription>
             Stages follow the event in order; each holds its moments. Rename labels freely (keys stay the same). Stage details, songs,
-            participants, the MC and speeches can be filled in. Sections marked &quot;Not available yet&quot; have no client inputs
+            participants, the MC, speeches, contacts and preferences can be filled in. Sections marked &quot;Not available yet&quot; have no client inputs
             today.
             Templates describe structure only, never prices or contracted services.
           </CardDescription>

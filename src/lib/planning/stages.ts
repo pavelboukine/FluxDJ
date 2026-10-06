@@ -201,12 +201,23 @@ export const STAGE_REQUIREMENT_LABELS: Record<string, string> = {
   mc: "MC",
   introductions: "Introductions or a choice",
   speeches: "Speeches or a choice",
+  day_of: "Day-of contact with a phone",
+  vendors: "Vendor contacts, or none",
+  interaction: "DJ interaction",
+  language: "Announcement language (Event basics)",
+  lyrics: "Explicit lyrics",
+  requests: "Guest requests",
+  style: "Music styles, or DJ's choice",
+  slow_songs: "Slow songs",
 };
 
 export const REQUIREMENT_NOTES: Record<string, string> = {
   venue_unknown: "No event venue yet",
   basics_missing: "Not in Event basics yet",
   timing_open: "A speech has no time or cue yet",
+  not_decided: "Not decided yet",
+  phone_missing: "No phone number yet",
+  contact_unavailable: "That contact isn't on this event any more",
 };
 
 /** "Sun, Aug 15" for the day after the event date. */

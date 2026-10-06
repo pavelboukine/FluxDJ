@@ -6,7 +6,7 @@ import { ActionForm } from "@/components/app/action-form";
 import { DraftVersionProvider } from "@/components/app/draft-version";
 import { CheckboxField, PageHeader, SelectField } from "@/components/app/fields";
 import { BasicsEditor } from "@/components/planning/basics-editor";
-import { momentEditor, savedIntroductions, savedProcessionalPeople } from "@/components/planning/moment-editor";
+import { generalEditor, knownPeople, momentEditor, savedIntroductions, savedProcessionalPeople } from "@/components/planning/moment-editor";
 import { MusicListsProvider } from "@/components/planning/music-editor";
 import { AlreadyProvided, hasMomentEditor, MomentCard, PlanCard } from "@/components/planning/plan-overview";
 import { ItemStatus, PlanProgressProvider, ProgressSummary } from "@/components/planning/progress";
@@ -138,6 +138,34 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
                 />
               </CardContent>
             </Card>
+
+            {view.structure.general.some((g) => !g.disabled && (g.editor === "contacts" || g.editor === "preferences")) ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Contacts and preferences</CardTitle>
+                  <CardDescription>
+                    Shared with the client, who can edit them too. Planning contacts are separate from the event&apos;s clients and never change
+                    them; coordination notes here are visible to the client. Preferences are for your review, not changes to services or price.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-2">
+                  {view.structure.general.filter((g) => !g.disabled).map((g) => {
+                    const editor = generalEditor(g, {
+                      moments: view.moments,
+                      eventContacts: view.event_contacts,
+                      known: knownPeople(view.structure.stages, view.moments, view.stage_details),
+                      djName: tenant.display_name,
+                      audience: "staff",
+                      save: (itemId) => saveStaffItemAction.bind(null, slug, event.id, itemId),
+                      disabledReason: lockedReason,
+                    });
+                    return editor ? (
+                      <PlanCard key={g.id} title={g.label} badge={<ItemStatus itemId={g.id} />} testId={`staff-section-${g.key}`}>{editor}</PlanCard>
+                    ) : null;
+                  })}
+                </CardContent>
+              </Card>
+            ) : null}
 
             <Card>
               <CardHeader>

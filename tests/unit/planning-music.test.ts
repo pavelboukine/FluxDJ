@@ -130,5 +130,6 @@ describe("view compatibility", () => {
     });
     expect("plan" in view && view.plan !== null && view.music).toEqual({});
     expect("plan" in view && view.plan !== null && view.moments).toEqual({});
+    expect("plan" in view && view.plan !== null && view.event_contacts).toEqual([]);
   });
 });

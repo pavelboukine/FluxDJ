@@ -1,7 +1,9 @@
 import type { ReactNode } from "react";
 import { isMusicEditor, type MusicAnswers } from "@/lib/planning/music";
 import type { IntroductionsAnswers, McAnswers, ProcessionalAnswers, SpeechesAnswers } from "@/lib/planning/participants";
-import type { MomentAnswers, MusicLists, PlanStage, SaveItemResult } from "@/lib/planning/view";
+import type { ContactsAnswers, EventContact, MusicStyleAnswers, PreferencesAnswers } from "@/lib/planning/contacts";
+import type { MomentAnswers, MusicLists, PlanStage, PlanStructure, SaveItemResult, StageDetails } from "@/lib/planning/view";
+import { ContactsEditor, MusicStyleEditor, PreferencesEditor, type KnownPeople } from "./general-editors";
 import { MusicEditor } from "./music-editor";
 import { IntroductionsEditor, McEditor, ProcessionalEditor, SpeechesEditor } from "./participants-editor";
 
@@ -37,6 +39,8 @@ export function momentEditor(m: Moment, opts: {
       return <SpeechesEditor {...common} initialAnswers={answers as SpeechesAnswers} save={save} event={opts.event} />;
     case "mc":
       return <McEditor {...common} initialAnswers={answers as McAnswers} save={save} />;
+    case "music_style":
+      return <MusicStyleEditor {...common} initialAnswers={answers as MusicStyleAnswers} save={save} />;
     default:
       return null;
   }
@@ -55,4 +59,41 @@ export function savedIntroductions(stages: PlanStage[], moments: MomentAnswers) 
 /** Saved Processional people of the visible plan, for the Couple entrance songs they link to. */
 export function savedProcessionalPeople(stages: PlanStage[], moments: MomentAnswers) {
   return savedLinks(stages, moments, "processional", "participants");
+}
+
+type General = PlanStructure["general"][number];
+
+/** The MC and officiant as their own editors hold them (never copied into contacts). */
+export function knownPeople(stages: PlanStage[], moments: MomentAnswers, stageDetails: StageDetails): KnownPeople {
+  const visible = stages.filter((s) => !s.disabled);
+  const mcItem = visible.flatMap((s) => s.moments).find((m) => !m.disabled && m.editor === "mc");
+  const mc = mcItem ? (moments[mcItem.id]?.answers as McAnswers | undefined) : undefined;
+  const ceremony = visible.find((s) => s.editor === "stage_ceremony");
+  const c = ceremony ? stageDetails[ceremony.id]?.answers : undefined;
+  return {
+    mc: mc?.mc === "dj" ? { dj: true } : mc?.mc === "other" ? { dj: false, name: mc.name, contact: mc.contact } : null,
+    officiant: c && (c.officiant_name || c.officiant_contact) ? { name: c.officiant_name as string | undefined, contact: c.officiant_contact as string | undefined } : null,
+  };
+}
+
+/** The editor for a general section (Event basics has its own), or null when it has none yet. */
+export function generalEditor(g: General, opts: {
+  moments: MomentAnswers;
+  eventContacts: EventContact[];
+  known: KnownPeople;
+  djName: string;
+  audience: "client" | "staff";
+  save: (itemId: string) => (expectedRevision: number, answers: never) => Promise<SaveItemResult>;
+  disabledReason?: string;
+}): ReactNode {
+  const saved = opts.moments[g.id];
+  const common = {
+    itemId: g.id, momentKey: g.key, label: g.label, initialRevision: saved?.revision ?? 0,
+    djName: opts.djName, audience: opts.audience, disabledReason: opts.disabledReason,
+    save: opts.save(g.id) as (expectedRevision: number, answers: unknown) => Promise<SaveItemResult>,
+  };
+  const answers = (saved?.answers ?? {}) as Record<string, unknown>;
+  if (g.editor === "contacts") return <ContactsEditor {...common} initialAnswers={answers as ContactsAnswers} eventContacts={opts.eventContacts} known={opts.known} />;
+  if (g.editor === "preferences") return <PreferencesEditor {...common} initialAnswers={answers as PreferencesAnswers} />;
+  return null;
 }

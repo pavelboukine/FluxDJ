@@ -40,7 +40,7 @@ import { SaveStatus, useAutosave } from "./use-autosave";
 
 const newId = () => crypto.randomUUID();
 
-type Common<A> = {
+export type Common<A> = {
   itemId: string;
   momentKey: string;
   label: string;
@@ -52,7 +52,7 @@ type Common<A> = {
   disabledReason?: string;
 };
 
-function Frame({ props, hint, children, status }: { props: Common<unknown>; hint?: ReactNode; children: ReactNode; status: ReactNode }) {
+export function Frame({ props, hint, children, status }: { props: Common<unknown>; hint?: ReactNode; children: ReactNode; status: ReactNode }) {
   return (
     <div className="grid gap-3" data-testid={`editor-${props.momentKey}`}>
       <ItemChecklist itemId={props.itemId} title={props.label} djName={props.djName} audience={props.audience} />
@@ -66,7 +66,7 @@ function Frame({ props, hint, children, status }: { props: Common<unknown>; hint
   );
 }
 
-function Choices<C extends string>({ name, legend, value, options, onChange, error, disabled }: {
+export function Choices<C extends string>({ name, legend, value, options, onChange, error, disabled }: {
   name: string;
   legend: string;
   value: C | "";
@@ -106,7 +106,7 @@ function NameLine({ index, name, pronunciation }: { index: number; name: string;
 // Ordered entries: add complete, edit in place, move, remove with undo
 // ---------------------------------------------------------------------------
 
-function EntryList<E extends { id: string }>(props: {
+export function EntryList<E extends { id: string }>(props: {
   base: string;
   noun: string;
   entries: E[];
@@ -128,7 +128,7 @@ function EntryList<E extends { id: string }>(props: {
   const [draft, setDraft] = useState<E>(() => props.newEntry(newId()));
   const [draftError, setDraftError] = useState<{ field: string; message: string } | null>(null);
   const { entries, setEntries } = props;
-  const clears = (id: string) => ["entries", ...["names", "role", "pronunciation", "wording", "notes", "song_id", "speaker", "timing", "time", "next_day", "cue", "duration", "av_notes"].map((f) => entryField(id, f))];
+  const clears = (id: string) => ["entries", ...["names", "role", "pronunciation", "wording", "notes", "song_id", "speaker", "timing", "time", "next_day", "cue", "duration", "av_notes", "name", "business", "phone", "email"].map((f) => entryField(id, f))];
   const errorFor = (id: string) => (field: string) => (props.fieldError?.field === entryField(id, field) ? props.fieldError.message : null);
 
   function move(index: number, by: -1 | 1) {
@@ -216,7 +216,7 @@ function EntryList<E extends { id: string }>(props: {
   );
 }
 
-const text = (id: string, label: string, value: string, onChange: (v: string) => void, error: string | null, opts: { hint?: string; rows?: number; wide?: boolean } = {}) => (
+export const text = (id: string, label: string, value: string, onChange: (v: string) => void, error: string | null, opts: { hint?: string; rows?: number; wide?: boolean } = {}) => (
   <FieldBox key={id} id={id} label={label} error={error} hint={opts.hint} className={opts.rows || opts.wide ? "sm:col-span-2" : undefined}>
     {opts.rows ? (
       <Textarea id={id} rows={opts.rows} value={value} onChange={(e) => onChange(e.target.value)} aria-invalid={Boolean(error)} />
@@ -226,7 +226,7 @@ const text = (id: string, label: string, value: string, onChange: (v: string) =>
   </FieldBox>
 );
 
-const PRONUNCIATION_HINT = 'Written as it sounds, for example "ah-LEK-sah DOO-bwah".';
+export const PRONUNCIATION_HINT = 'Written as it sounds, for example "ah-LEK-sah DOO-bwah".';
 
 /** A song picker over one source list; an id it doesn't list is shown as not in the active plan. */
 function SongSelect({ id, value, songs, onChange, error, missingText }: {

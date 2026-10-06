@@ -257,10 +257,10 @@ test.describe.serial("planning", () => {
     await expect(ceremony).toContainText("Processional participants");
     // Moments without an editor yet (dinner activities) still say so.
     await expect(client.getByTestId("stage-dinner")).toContainText("Not available yet");
-    await expect(client.getByTestId("section-contacts_vendors")).toContainText("Not available yet");
-    // Event basics (5 of 5), the six stage editors' 12 requirements, the 17 song moments, and who walks in, MC,
-    // introductions and speeches, none answered yet.
-    await expect(client.getByTestId("progress-headline")).toHaveText("5 of 38 required answers");
+    await expect(client.getByTestId("section-contacts_vendors").locator("summary").first()).toContainText("Not started");
+    // Event basics (5 of 5), the six stage editors' 12 requirements, the 17 song moments, who walks in, MC,
+    // introductions and speeches, contacts (2), preferences (4) and music styles (2), none answered yet.
+    await expect(client.getByTestId("progress-headline")).toHaveText("5 of 46 required answers");
     await expect(client.getByText(/The other sections open later and aren't counted yet/)).toBeVisible();
     expect(await noSideways(client)).toBeLessThanOrEqual(0);
   });
@@ -450,9 +450,9 @@ test.describe.serial("planning", () => {
     await client.reload();
     await expect(client.getByRole("heading", { name: "Planning isn't available" })).toBeVisible();
     await staff.goto(staffPlanningUrl);
-    // Event basics, the six stage editors, the 17 song moments (Processional included), MC, introductions and speeches
-    // are read-only while archived.
-    await expect(staff.getByText("Unarchive the event to edit planning.")).toHaveCount(27);
+    // Event basics, contacts, preferences, the six stage editors, the 17 song moments (Processional included), MC,
+    // introductions, speeches and music styles are read-only while archived.
+    await expect(staff.getByText("Unarchive the event to edit planning.")).toHaveCount(30);
     await expect(staff.locator("#ceremony-start_time")).toBeDisabled();
     expect((await basicsRow(eventId))!.answers).toMatchObject({ guest_count: 175 });
 

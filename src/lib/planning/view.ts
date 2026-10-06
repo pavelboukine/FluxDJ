@@ -115,6 +115,11 @@ const momentsSchema = z
   .optional()
   .default({});
 export type MomentAnswers = z.infer<typeof momentsSchema>;
+/** This event's contacts (client-safe: name and phone). Optional: older databases omit it. */
+const eventContactsSchema = z
+  .array(z.object({ id: z.string(), name: z.string(), phone: z.string().nullable(), primary: z.boolean() }))
+  .optional()
+  .default([]);
 const warningsSchema = z.array(z.object({ item_id: z.string(), key: z.string(), message: z.string() }));
 export type TimelineWarning = z.infer<typeof warningsSchema>[number];
 
@@ -139,6 +144,7 @@ export const clientPlanningViewSchema = z.discriminatedUnion("state", [
     stage_details: stageDetailsSchema,
     music: musicSchema,
     moments: momentsSchema,
+    event_contacts: eventContactsSchema,
     timeline_warnings: warningsSchema,
     imported: importedSchema,
     progress: progressSchema,
@@ -169,6 +175,7 @@ export const staffPlanningViewSchema = z.union([
     stage_details: stageDetailsSchema,
     music: musicSchema,
     moments: momentsSchema,
+    event_contacts: eventContactsSchema,
     timeline_warnings: warningsSchema,
     imported: importedSchema,
     progress: progressSchema,

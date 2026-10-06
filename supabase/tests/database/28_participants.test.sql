@@ -146,13 +146,14 @@ grant execute on all functions in schema tests to anon, authenticated, service_r
 -- ===========================================================================
 -- Library and views
 -- ===========================================================================
-select is((select array_agg(key || ':' || editor order by library_order) from private.planning_library() where private.is_moment_editor(editor) or editor = 'included'),
+select is((select array_agg(key || ':' || editor order by library_order) from private.planning_library() where editor in ('processional', 'mc', 'introductions', 'speeches', 'included')),
   array['processional:processional', 'mc:mc', 'introductions:introductions', 'entrance_participants:included', 'speeches:speeches'],
   'participant, MC and speech editors by moment key; Participants and names is covered by Introductions');
 select is((select parent_keys from private.planning_library() where key = 'speeches'), array['dinner', 'program', 'party'],
   'speeches stay wherever the library allows them');
 select tests.view('pe_wed') as v \gset v0_
-select is((select count(*)::int from jsonb_object_keys(:'v0_v'::jsonb -> 'moments')), 4, 'the view carries the four visible people moments of a wedding');
+select is((select count(*)::int from jsonb_object_keys(:'v0_v'::jsonb -> 'moments') k join public.event_plan_items i on i.id = k::uuid
+            where i.key in ('processional', 'mc', 'introductions', 'speeches')), 4, 'the view carries the four visible people moments of a wedding');
 select is(tests.state(:'v0_v'::jsonb, 'entrance_participants'), null, 'the covered placeholder isn''t counted');
 select is(tests.save('pe_wed', 'entrance_participants', '{}') ->> 'status', 'unavailable', 'and has nothing of its own to save');
 select is(tests.reqs(:'v0_v'::jsonb, 'processional'), array['songs:unanswered', 'participants:unanswered'], 'Processional needs songs and who walks in');

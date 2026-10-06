@@ -4,9 +4,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BasicsEditor } from "@/components/planning/basics-editor";
 import { AlreadyProvided, NotAvailableBadge, PlanCard, StageCards } from "@/components/planning/plan-overview";
-import { momentEditor, savedIntroductions, savedProcessionalPeople } from "@/components/planning/moment-editor";
+import { generalEditor, knownPeople, momentEditor, savedIntroductions, savedProcessionalPeople } from "@/components/planning/moment-editor";
 import { MusicListsProvider } from "@/components/planning/music-editor";
-import { PlanProgressProvider, ProgressSummary } from "@/components/planning/progress";
+import { ItemStatus, PlanProgressProvider, ProgressSummary } from "@/components/planning/progress";
 import { StageDetailsEditor } from "@/components/planning/stage-details-editor";
 import { savedListsFrom } from "@/lib/planning/music";
 import { isStageEditor } from "@/lib/planning/stages";
@@ -91,11 +91,23 @@ export default async function ClientPlanningPage({ params }: PageProps<"/[tenant
               save={saveClientItemAction.bind(null, slug, eventId, view.basics.item_id)}
             />
           </PlanCard>
-          {general.map((g) => (
-            <PlanCard key={g.id} title={g.label} badge={<NotAvailableBadge />} testId={`section-${g.key}`}>
-              <p className="text-muted-foreground">This section can&apos;t be filled in yet and isn&apos;t counted in progress.</p>
-            </PlanCard>
-          ))}
+          {general.map((g) => {
+            const editor = generalEditor(g, {
+              moments: view.moments,
+              eventContacts: view.event_contacts,
+              known: knownPeople(view.structure.stages, view.moments, view.stage_details),
+              djName: dj,
+              audience: "client",
+              save: (itemId) => saveClientItemAction.bind(null, slug, eventId, itemId),
+            });
+            return editor ? (
+              <PlanCard key={g.id} title={g.label} badge={<ItemStatus itemId={g.id} />} testId={`section-${g.key}`}>{editor}</PlanCard>
+            ) : (
+              <PlanCard key={g.id} title={g.label} badge={<NotAvailableBadge />} testId={`section-${g.key}`}>
+                <p className="text-muted-foreground">This section can&apos;t be filled in yet and isn&apos;t counted in progress.</p>
+              </PlanCard>
+            );
+          })}
         </section>
 
         <section aria-labelledby="stages-heading" className="grid gap-2">
