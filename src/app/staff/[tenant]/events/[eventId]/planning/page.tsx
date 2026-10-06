@@ -6,11 +6,12 @@ import { ActionForm } from "@/components/app/action-form";
 import { DraftVersionProvider } from "@/components/app/draft-version";
 import { CheckboxField, PageHeader, SelectField } from "@/components/app/fields";
 import { BasicsEditor } from "@/components/planning/basics-editor";
-import { MusicEditor, MusicListsProvider } from "@/components/planning/music-editor";
-import { AlreadyProvided, MomentCard, PlanCard } from "@/components/planning/plan-overview";
+import { momentEditor, savedIntroductions, savedProcessionalPeople } from "@/components/planning/moment-editor";
+import { MusicListsProvider } from "@/components/planning/music-editor";
+import { AlreadyProvided, hasMomentEditor, MomentCard, PlanCard } from "@/components/planning/plan-overview";
 import { ItemStatus, PlanProgressProvider, ProgressSummary } from "@/components/planning/progress";
 import { StageDetailsEditor } from "@/components/planning/stage-details-editor";
-import { isMusicEditor, savedListsFrom } from "@/lib/planning/music";
+import { savedListsFrom } from "@/lib/planning/music";
 import { isStageEditor } from "@/lib/planning/stages";
 import { StructureEditor } from "@/components/planning/structure-editor";
 import { requireStaff } from "@/lib/auth/staff";
@@ -42,7 +43,7 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
   const archived = Boolean(event.archived_at);
   const lockedReason = archived ? "Unarchive the event to edit planning." : undefined;
   const visibleStages = view.plan === null ? [] : view.structure.stages.filter(
-    (s) => !s.disabled && (isStageEditor(s.editor) || s.moments.some((m) => !m.disabled && isMusicEditor(m.editor))),
+    (s) => !s.disabled && (isStageEditor(s.editor) || s.moments.some((m) => !m.disabled && hasMomentEditor(m))),
   );
   const booked = Boolean(event.booking_confirmed_at) && (event.lifecycle_status === "booked" || event.lifecycle_status === "completed");
 
@@ -140,16 +141,16 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
 
             <Card>
               <CardHeader>
-                <CardTitle>Stage details and music</CardTitle>
+                <CardTitle>Stage details, music and people</CardTitle>
                 <CardDescription>
-                  Timing, location, preparation details and songs for each stage, in your stage order (entering times never reorders it).
+                  Timing, location, preparation details, songs, introductions, MC and speeches for each stage, in your stage order (entering times never reorders it).
                   Shared with the client, who can edit them too. Hidden stages and moments keep their answers. Equipment answers are for
                   your review and never change the contracted package, gear or price.
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-2">
                 {visibleStages.length === 0 ? <p className="text-sm text-muted-foreground">No visible stage has details or songs yet.</p> : null}
-                <MusicListsProvider initial={savedListsFrom(view.structure.stages, view.music)}>
+                <MusicListsProvider initial={savedListsFrom(view.structure.stages, view.music)} introductions={savedIntroductions(view.structure.stages, view.moments)} processionalPeople={savedProcessionalPeople(view.structure.stages, view.moments)}>
                   {visibleStages.map((s) => (
                     <PlanCard key={s.id} title={s.label} badge={isStageEditor(s.editor) ? <ItemStatus itemId={s.id} /> : undefined} testId={`staff-stage-${s.key}`}>
                       {isStageEditor(s.editor) ? (
@@ -168,20 +169,17 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
                         />
                       ) : null}
                       {s.moments.map((m) =>
-                        !m.disabled && isMusicEditor(m.editor) ? (
+                        !m.disabled && hasMomentEditor(m) ? (
                           <MomentCard key={m.id} moment={m}>
-                            <MusicEditor
-                              itemId={m.id}
-                              momentKey={m.key}
-                              label={m.label}
-                              editor={m.editor}
-                              initialAnswers={view.music[m.id]?.answers ?? {}}
-                              initialRevision={view.music[m.id]?.revision ?? 0}
-                              djName={tenant.display_name}
-                              audience="staff"
-                              save={saveStaffItemAction.bind(null, slug, event.id, m.id)}
-                              disabledReason={lockedReason}
-                            />
+                            {momentEditor(m, {
+                              music: view.music,
+                              moments: view.moments,
+                              djName: tenant.display_name,
+                              audience: "staff",
+                              event: { date: event.event_date, timezone: event.timezone },
+                              save: (itemId) => saveStaffItemAction.bind(null, slug, event.id, itemId),
+                              disabledReason: lockedReason,
+                            })}
                           </MomentCard>
                         ) : null,
                       )}

@@ -106,6 +106,15 @@ const musicSchema = z
   .optional()
   .default({});
 export type MusicLists = z.infer<typeof musicSchema>;
+/**
+ * Answers of visible participant, MC and speech moments (validated by the
+ * database), keyed by item id. Optional: older databases omit it.
+ */
+const momentsSchema = z
+  .record(z.string(), z.object({ answers: z.record(z.string(), z.unknown()), revision: z.number().int() }))
+  .optional()
+  .default({});
+export type MomentAnswers = z.infer<typeof momentsSchema>;
 const warningsSchema = z.array(z.object({ item_id: z.string(), key: z.string(), message: z.string() }));
 export type TimelineWarning = z.infer<typeof warningsSchema>[number];
 
@@ -129,6 +138,7 @@ export const clientPlanningViewSchema = z.discriminatedUnion("state", [
     basics: z.object({ item_id: z.string(), answers: basicsAnswersSchema, revision: z.number().int() }),
     stage_details: stageDetailsSchema,
     music: musicSchema,
+    moments: momentsSchema,
     timeline_warnings: warningsSchema,
     imported: importedSchema,
     progress: progressSchema,
@@ -158,6 +168,7 @@ export const staffPlanningViewSchema = z.union([
     }),
     stage_details: stageDetailsSchema,
     music: musicSchema,
+    moments: momentsSchema,
     timeline_warnings: warningsSchema,
     imported: importedSchema,
     progress: progressSchema,

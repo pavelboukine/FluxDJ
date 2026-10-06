@@ -165,7 +165,7 @@ export const STAGE_LAYOUT: Record<StageEditor, Block[]> = {
     { type: "time", prefix: "guest_entry", label: "Guests enter the reception room (optional)" },
     { type: "time", prefix: "entrance", label: "Planned entrance time (needed)" },
     { type: "flag", field: "entrance_none", label: "No formal entrance" },
-    { type: "note", text: "Entrance songs go under Entrance music below. Who enters and their names are added in a later update." },
+    { type: "note", text: "Who enters and how to announce them go under Introductions below; their songs under Entrance music." },
   ],
   stage_dinner: [
     { type: "location", label: "Where is dinner?" },
@@ -197,11 +197,16 @@ export const STAGE_REQUIREMENT_LABELS: Record<string, string> = {
   guest_count: "Guest count",
   finish: "Finish time",
   songs: "Songs or a choice",
+  participants: "Who walks in",
+  mc: "MC",
+  introductions: "Introductions or a choice",
+  speeches: "Speeches or a choice",
 };
 
 export const REQUIREMENT_NOTES: Record<string, string> = {
   venue_unknown: "No event venue yet",
   basics_missing: "Not in Event basics yet",
+  timing_open: "A speech has no time or cue yet",
 };
 
 /** "Sun, Aug 15" for the day after the event date. */

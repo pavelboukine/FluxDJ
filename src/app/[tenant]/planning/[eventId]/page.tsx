@@ -4,10 +4,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BasicsEditor } from "@/components/planning/basics-editor";
 import { AlreadyProvided, NotAvailableBadge, PlanCard, StageCards } from "@/components/planning/plan-overview";
-import { MusicEditor, MusicListsProvider } from "@/components/planning/music-editor";
+import { momentEditor, savedIntroductions, savedProcessionalPeople } from "@/components/planning/moment-editor";
+import { MusicListsProvider } from "@/components/planning/music-editor";
 import { PlanProgressProvider, ProgressSummary } from "@/components/planning/progress";
 import { StageDetailsEditor } from "@/components/planning/stage-details-editor";
-import { isMusicEditor, savedListsFrom } from "@/lib/planning/music";
+import { savedListsFrom } from "@/lib/planning/music";
 import { isStageEditor } from "@/lib/planning/stages";
 import { UUID_RE } from "@/lib/forms";
 import { SLUG_PATTERN } from "@/lib/proposals/client-session.server";
@@ -99,7 +100,7 @@ export default async function ClientPlanningPage({ params }: PageProps<"/[tenant
 
         <section aria-labelledby="stages-heading" className="grid gap-2">
           <h2 id="stages-heading" className="text-lg font-semibold">Your event, in order</h2>
-          <MusicListsProvider initial={savedListsFrom(view.structure.stages, view.music)}>
+          <MusicListsProvider initial={savedListsFrom(view.structure.stages, view.music)} introductions={savedIntroductions(view.structure.stages, view.moments)} processionalPeople={savedProcessionalPeople(view.structure.stages, view.moments)}>
             <StageCards
               stages={view.structure.stages}
               renderDetails={(s) =>
@@ -119,21 +120,16 @@ export default async function ClientPlanningPage({ params }: PageProps<"/[tenant
                 ) : null
               }
               renderMoment={(m) =>
-                isMusicEditor(m.editor) ? (
-                  <MusicEditor
-                    itemId={m.id}
-                    momentKey={m.key}
-                    label={m.label}
-                    editor={m.editor}
-                    initialAnswers={view.music[m.id]?.answers ?? {}}
-                    initialRevision={view.music[m.id]?.revision ?? 0}
-                    djName={dj}
-                    audience="client"
-                    save={saveClientItemAction.bind(null, slug, eventId, m.id)}
-                  />
-                ) : null
-              }
-            />
+              momentEditor(m, {
+                music: view.music,
+                moments: view.moments,
+                djName: dj,
+                audience: "client",
+                event: { date: view.event.event_date, timezone: view.event.timezone },
+                save: (itemId) => saveClientItemAction.bind(null, slug, eventId, itemId),
+              })
+            }
+          />
           </MusicListsProvider>
         </section>
       </PlanProgressProvider>

@@ -108,9 +108,9 @@ describe("likely duplicates and play / do-not-play conflicts", () => {
 
   it("warns across play lists and Do not play, in both directions, without changing anything", () => {
     const lists: SavedList[] = [
-      { itemId: "must", label: "Must play", editor: "music_requests", songs: [{ id: A, title: "Macarena", artist: "Los del Rio" }] },
-      { itemId: "first", label: "First dance", editor: "moment_songs", songs: [] },
-      { itemId: "dnp", label: "Do not play", editor: "music_exclusions", songs: [{ id: B, title: "MACARENA", artist: "los del rio" }] },
+      { itemId: "must", key: "must_play", label: "Must play", editor: "music_requests", songs: [{ id: A, title: "Macarena", artist: "Los del Rio" }] },
+      { itemId: "first", key: "first_dance", label: "First dance", editor: "moment_songs", songs: [] },
+      { itemId: "dnp", key: "do_not_play", label: "Do not play", editor: "music_exclusions", songs: [{ id: B, title: "MACARENA", artist: "los del rio" }] },
     ];
     expect(conflictsFor("must", "music_requests", lists[0].songs, lists).get(A)).toEqual(["Do not play"]);
     expect(conflictsFor("dnp", "music_exclusions", lists[2].songs, lists).get(B)).toEqual(["Must play"]);
@@ -129,5 +129,6 @@ describe("view compatibility", () => {
       stage_details: {}, timeline_warnings: [], imported: null, progress,
     });
     expect("plan" in view && view.plan !== null && view.music).toEqual({});
+    expect("plan" in view && view.plan !== null && view.moments).toEqual({});
   });
 });

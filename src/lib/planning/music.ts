@@ -103,7 +103,7 @@ export function duplicateIds(songs: { id: string; title: string; artist: string 
   return dupes;
 }
 
-export type SavedList = { itemId: string; label: string; editor: MusicEditor; songs: Song[] };
+export type SavedList = { itemId: string; key: string; label: string; editor: MusicEditor; songs: Song[] };
 
 /**
  * For each song of `songs`, the labels of other lists that contradict it: a
@@ -192,9 +192,8 @@ export const LIST_CHOICE_LABEL: Record<MusicEditor, string> = {
 
 /** A short explanation shown at the top of each editor, by moment key. */
 export const MUSIC_HINTS: Record<string, string> = {
-  processional: "Who walks in is added in a later update. Use a cue label per song, for example \"Wedding party\" or \"Partner entrance\".",
   couple_entrance: "The song for the couple's entrance at the ceremony.",
-  entrance_music: "The one place for reception entrance songs. Use a cue label per group, for example \"Wedding party\" or \"Couple\". Names and introductions are added in a later update.",
+  entrance_music: "The one place for reception entrance songs. Use a cue label per group, for example \"Wedding party\" or \"Couple\". Who is introduced to which song goes under Introductions.",
   first_dance: "Add a second song if it's a medley, with instructions such as \"start at 0:45\" or \"fade after the chorus\".",
   family_dances: "One song per dance, with a cue label such as \"Dance with grandmother\".",
   other_dances: "One song per dance, with a cue label.",
@@ -202,13 +201,16 @@ export const MUSIC_HINTS: Record<string, string> = {
   do_not_play: "Songs the DJ should avoid, even if guests ask.",
 };
 
-/** The page's visible music lists with their saved songs, for cross-list warnings. */
+/** The page's visible song lists (Processional's songs included) with their saved songs, for warnings and song links. */
 export function savedListsFrom(
-  stages: { disabled: boolean; moments: { id: string; label: string; editor: string | null; disabled: boolean }[] }[],
+  stages: { disabled: boolean; moments: { id: string; key: string; label: string; editor: string | null; disabled: boolean }[] }[],
   music: Record<string, { answers: MusicAnswers }>,
 ): SavedList[] {
   return stages
     .filter((s) => !s.disabled)
     .flatMap((s) => s.moments)
-    .flatMap((m) => (!m.disabled && isMusicEditor(m.editor) ? [{ itemId: m.id, label: m.label, editor: m.editor, songs: music[m.id]?.answers.songs ?? [] }] : []));
+    .flatMap((m) => {
+      const editor = m.editor === "processional" ? "moment_songs" : m.editor;
+      return !m.disabled && isMusicEditor(editor) ? [{ itemId: m.id, key: m.key, label: m.label, editor, songs: music[m.id]?.answers.songs ?? [] }] : [];
+    });
 }

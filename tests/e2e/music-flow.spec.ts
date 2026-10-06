@@ -305,7 +305,7 @@ test.describe.serial("songs in planning", () => {
 
   test("staff see and edit the same songs; hiding keeps them; archived plans are read-only; other businesses get nothing", async () => {
     await staff.goto(staffPlanningUrl);
-    await expect(staff.getByText("Stage details and music", { exact: true })).toBeVisible();
+    await expect(staff.getByText("Stage details, music and people", { exact: true })).toBeVisible();
     const dances = staff.getByTestId("staff-stage-special_dances");
     await dances.locator("summary").first().click();
     await dances.getByTestId("moment-first_dance").locator("summary").first().click();

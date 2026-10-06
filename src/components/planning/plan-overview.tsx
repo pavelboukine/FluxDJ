@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { formatImportedAnswer, type Imported, type PlanStage, type PlanStructure } from "@/lib/planning/view";
 import { isMusicEditor } from "@/lib/planning/music";
+import { INCLUDED_IN, isMomentEditor } from "@/lib/planning/participants";
 import { isStageEditor } from "@/lib/planning/stages";
 import { ItemStatus } from "./progress";
 
@@ -31,6 +32,18 @@ export function PlanCard({ title, badge, open, children, testId }: { title: stri
 }
 
 type PlanMoment = PlanStage["moments"][number];
+
+/** Moments with their own editor (songs, participants, MC, speeches). */
+export function hasMomentEditor(m: { editor: string | null }): boolean {
+  return isMusicEditor(m.editor) || isMomentEditor(m.editor);
+}
+
+/** Where a covered placeholder's information now lives. */
+function coveredText(m: PlanMoment, stage: PlanStage): string {
+  if (m.editor === "stage_details") return "Included in the details above";
+  const target = stage.moments.find((x) => x.key === INCLUDED_IN[m.key]);
+  return target ? `Included in ${target.label}` : "Included in another section";
+}
 
 /** A moment with an editor (songs today), as a card inside its stage. */
 export function MomentCard({ moment, children }: { moment: PlanMoment; children: ReactNode }) {
@@ -67,29 +80,29 @@ export function StageCards({ stages, renderDetails, renderMoment }: {
           <PlanCard
             title={`${index + 1}. ${s.label}`}
             testId={`stage-${s.key}`}
-            badge={isStageEditor(s.editor) ? <ItemStatus itemId={s.id} /> : s.moments.some((m) => isMusicEditor(m.editor)) ? null : <NotAvailableBadge />}
+            badge={isStageEditor(s.editor) ? <ItemStatus itemId={s.id} /> : s.moments.some(hasMomentEditor) ? null : <NotAvailableBadge />}
           >
             {isStageEditor(s.editor) && renderDetails ? renderDetails(s) : null}
             {s.moments.length > 0 ? (
               <ul className="grid gap-1.5" aria-label={`Moments in ${s.label}`}>
                 {s.moments.map((m) =>
-                  isMusicEditor(m.editor) && renderMoment ? (
+                  hasMomentEditor(m) && renderMoment ? (
                     <li key={m.id}><MomentCard moment={m}>{renderMoment(m)}</MomentCard></li>
                   ) : (
                     <li key={m.id} className="flex flex-wrap items-center justify-between gap-2">
                       <span>{m.label}</span>
-                      <span className="text-xs text-muted-foreground">{m.editor === "stage_details" ? "Included in the details above" : "Not available yet"}</span>
+                      <span className="text-xs text-muted-foreground">{m.editor ? coveredText(m, s) : "Not available yet"}</span>
                     </li>
                   ),
                 )}
               </ul>
             ) : null}
             <p className="text-xs text-muted-foreground">
-              {s.moments.some((m) => isMusicEditor(m.editor))
-                ? "Names, pronunciation and speeches can't be entered yet and aren't counted in progress."
-                : isStageEditor(s.editor)
-                  ? "Songs, names and pronunciation for this part of the event can't be entered yet and aren't counted in progress."
-                  : "Details, songs, names and pronunciation for this part of the event can't be entered yet. They aren't counted in progress."}
+              {s.moments.some((m) => m.editor === null)
+                ? "Moments marked \"Not available yet\" can't be filled in yet and aren't counted in progress."
+                : isStageEditor(s.editor) || s.moments.length > 0
+                  ? "Everything in this part of the event can be filled in here."
+                  : "Details for this part of the event can't be entered yet. They aren't counted in progress."}
             </p>
           </PlanCard>
         </li>

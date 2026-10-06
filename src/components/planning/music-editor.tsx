@@ -29,6 +29,7 @@ import {
   type SongForm,
 } from "@/lib/planning/music";
 import type { SaveItemResult } from "@/lib/planning/view";
+import { linksBySong } from "@/lib/planning/participants";
 import { FieldBox } from "./basics-editor";
 import { ItemChecklist } from "./progress";
 import { SaveStatus, useAutosave } from "./use-autosave";
@@ -37,16 +38,42 @@ import { SaveStatus, useAutosave } from "./use-autosave";
 // Saved lists of the page, for play / do-not-play warnings across lists
 // ---------------------------------------------------------------------------
 
-type ListsState = { lists: SavedList[]; setSongs: (itemId: string, songs: Song[]) => void };
+type ListsState = {
+  lists: SavedList[];
+  setSongs: (itemId: string, songs: Song[]) => void;
+  /** Saved introductions, for the songs they link to in Entrance music. */
+  introductions: { names: string; song_id?: string }[];
+  setIntroductions: (entries: { names: string; song_id?: string }[]) => void;
+  /** Saved Processional people, for the Couple entrance songs they link to. */
+  processionalPeople: { names: string; song_id?: string }[];
+  setProcessionalPeople: (entries: { names: string; song_id?: string }[]) => void;
+};
 const ListsContext = createContext<ListsState | null>(null);
 
-export function MusicListsProvider({ initial, children }: { initial: SavedList[]; children: ReactNode }) {
+type Linked = { names: string; song_id?: string }[];
+
+export function MusicListsProvider({ initial, introductions = [], processionalPeople = [], children }: {
+  initial: SavedList[];
+  introductions?: Linked;
+  processionalPeople?: Linked;
+  children: ReactNode;
+}) {
   const [lists, setLists] = useState(initial);
+  const [intros, setIntros] = useState(introductions);
+  const [people, setPeople] = useState(processionalPeople);
   const value: ListsState = {
     lists,
     setSongs: (itemId, songs) => setLists((all) => all.map((l) => (l.itemId === itemId ? { ...l, songs } : l))),
+    introductions: intros,
+    setIntroductions: setIntros,
+    processionalPeople: people,
+    setProcessionalPeople: setPeople,
   };
   return <ListsContext.Provider value={value}>{children}</ListsContext.Provider>;
+}
+
+export function usePlanSongs() {
+  return useContext(ListsContext);
 }
 
 // ---------------------------------------------------------------------------
@@ -74,7 +101,6 @@ const newId = () => crypto.randomUUID();
  * empty list stays unanswered until an explicit choice such as "No requests".
  */
 export function MusicEditor(props: Props) {
-  const rules = MUSIC_RULES[props.editor];
   const readOnly = Boolean(props.disabledReason);
   const lists = useContext(ListsContext);
   const { form, update, saveState, message, fieldError, retry } = useAutosave<MusicForm, MusicAnswers>({
@@ -86,6 +112,63 @@ export function MusicEditor(props: Props) {
     readOnly,
     onSaved: (answers) => lists?.setSongs(props.itemId, (answers as MusicAnswers).songs ?? []),
   });
+  // Songs linked from other moments can't be removed: Entrance music's from Introductions, Couple entrance's from Processional.
+  const linked = !lists ? new Map<string, string[]>()
+    : props.momentKey === "entrance_music" ? linksBySong(lists.introductions)
+    : props.momentKey === "couple_entrance" ? linksBySong(lists.processionalPeople)
+    : new Map<string, string[]>();
+  const hint = MUSIC_HINTS[props.momentKey];
+
+  return (
+    <div className="grid gap-3" data-testid={`music-${props.momentKey}`}>
+      <ItemChecklist itemId={props.itemId} title={props.label} djName={props.djName} audience={props.audience} />
+      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
+      {props.disabledReason ? (
+        <p role="status" className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm">{props.disabledReason}</p>
+      ) : null}
+      <MusicSection
+        itemId={props.itemId}
+        momentKey={props.momentKey}
+        label={props.label}
+        editor={props.editor}
+        form={form}
+        update={update}
+        fieldError={fieldError}
+        readOnly={readOnly}
+        djName={props.djName}
+        audience={props.audience}
+        linked={linked}
+        linkedWhere={props.momentKey === "couple_entrance" ? "Processional (who walks in)" : "Introductions"}
+      />
+      {!readOnly ? <SaveStatus saveState={saveState} message={message} retry={retry} /> : null}
+    </div>
+  );
+}
+
+/**
+ * The song list of one moment: choice, songs with move / edit / remove and
+ * undo, add and paste. The caller owns the form and its autosave (a moment
+ * may save songs together with other answers). Songs in `linked` can't be
+ * removed until the entries pointing at them change.
+ */
+export function MusicSection(props: {
+  itemId: string;
+  momentKey: string;
+  label: string;
+  editor: MusicEditorKind;
+  form: MusicForm;
+  update: (changes: Partial<MusicForm>, clears?: string[]) => void;
+  fieldError: { field: string; message: string } | null;
+  readOnly: boolean;
+  djName: string;
+  audience: "client" | "staff";
+  linked: Map<string, string[]>;
+  /** Where linked entries live, for the explanation ("introductions", "who walks in"). */
+  linkedWhere: string;
+}) {
+  const { form, update, fieldError, readOnly } = props;
+  const rules = MUSIC_RULES[props.editor];
+  const lists = useContext(ListsContext);
   const [editing, setEditing] = useState<string | null>(null);
   const [removed, setRemoved] = useState<{ song: SongForm; index: number } | null>(null);
   const exclusive = form.choice !== "" && form.choice !== "discuss";
@@ -97,7 +180,7 @@ export function MusicEditor(props: Props) {
   const dj = props.audience === "client" ? props.djName : "the DJ";
 
   const setSongs = (songs: SongForm[], clears: string[] = []) => update({ songs }, clears);
-  const songClears = (id: string) => ["songs", ...["title", "artist", "version", "link", "notes", "cue"].map((f) => songField(id, f))];
+  const songClears = (id: string) => ["songs", ...["title", "artist", "version", "link", "notes", "cue", "linked"].map((f) => songField(id, f))];
 
   function editSong(id: string, changes: Partial<SongForm>) {
     setSongs(form.songs.map((s) => (s.id === id ? { ...s, ...changes } : s)), songClears(id));
@@ -110,6 +193,7 @@ export function MusicEditor(props: Props) {
   }
   function remove(index: number) {
     const song = form.songs[index];
+    if (props.linked.has(song.id)) return;
     setSongs(form.songs.filter((_, i) => i !== index), songClears(song.id));
     setRemoved({ song, index });
     if (editing === song.id) setEditing(null);
@@ -127,18 +211,10 @@ export function MusicEditor(props: Props) {
     setSongs([...form.songs, ...songs.filter((s) => !present.has(s.id))]);
   }
 
-  const hint = MUSIC_HINTS[props.momentKey];
-
   return (
-    <div className="grid gap-3" data-testid={base}>
-      <ItemChecklist itemId={props.itemId} title={props.label} djName={props.djName} audience={props.audience} />
-      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
-      {props.disabledReason ? (
-        <p role="status" className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm">{props.disabledReason}</p>
-      ) : null}
-
+    <div className="grid gap-3">
       <fieldset disabled={readOnly} className="grid gap-1">
-        <legend className="mb-1 text-sm font-medium">Your answer (needed)</legend>
+        <legend className="mb-1 text-sm font-medium">{props.editor === "moment_songs" && props.momentKey === "processional" ? "Songs (needed)" : "Your answer (needed)"}</legend>
         {(["", ...rules.choices] as (MusicChoice | "")[]).map((choice) => {
           const blocked = choice !== "" && choice !== "discuss" && form.songs.length > 0;
           const text = choice === "" ? LIST_CHOICE_LABEL[props.editor] : CHOICE_LABELS[props.editor][choice]!.replace("the DJ", dj);
@@ -170,6 +246,7 @@ export function MusicEditor(props: Props) {
           {form.songs.map((s, index) => {
             const name = s.title.trim() || "Untitled song";
             const conflict = conflicts.get(s.id);
+            const linkedTo = props.linked.get(s.id);
             return (
               <li key={s.id} className="grid gap-2 rounded-lg border p-3" data-testid="song-row">
                 <div className="grid min-w-0 gap-0.5">
@@ -185,6 +262,7 @@ export function MusicEditor(props: Props) {
                       Open link ({linkHost(s.link.trim())})
                     </a>
                   ) : null}
+                  {linkedTo ? <p className="text-xs [overflow-wrap:anywhere]">Linked to: {linkedTo.join(", ")}</p> : null}
                   {dupes.has(s.id) ? <p className="text-xs text-amber-700 dark:text-amber-400">Possible duplicate: the same title and artist appear earlier in this list.</p> : null}
                   {conflict ? (
                     <p className="text-xs text-amber-700 dark:text-amber-400">
@@ -192,6 +270,7 @@ export function MusicEditor(props: Props) {
                       {conflict.join(", ")}. Check which one is right; nothing was changed.
                     </p>
                   ) : null}
+                  {errorFor(s.id, "linked") ? <p role="alert" className="text-xs text-destructive">{errorFor(s.id, "linked")}</p> : null}
                 </div>
                 {!readOnly ? (
                   <div className="flex flex-wrap gap-1">
@@ -200,10 +279,13 @@ export function MusicEditor(props: Props) {
                     <Button type="button" size="sm" variant="outline" onClick={() => setEditing(editing === s.id ? null : s.id)} aria-expanded={editing === s.id} aria-label={`${editing === s.id ? "Done editing" : "Edit"} "${name}"`}>
                       {editing === s.id ? "Done" : "Edit"}
                     </Button>
-                    <Button type="button" size="sm" variant="outline" onClick={() => remove(index)} aria-label={`Remove "${name}"`}>Remove</Button>
+                    <Button type="button" size="sm" variant="outline" disabled={Boolean(linkedTo)} onClick={() => remove(index)} aria-label={`Remove "${name}"`}>Remove</Button>
                   </div>
                 ) : null}
-                {editing === s.id || [...songClears(s.id)].some((f) => fieldError?.field === f) ? (
+                {linkedTo && !readOnly ? (
+                  <p className="text-xs text-muted-foreground">To remove this song, first choose another song (or none) for {linkedTo.length === 1 ? "that entry" : "those entries"} in {props.linkedWhere}.</p>
+                ) : null}
+                {editing === s.id || [...songClears(s.id)].some((f) => f !== songField(s.id, "linked") && fieldError?.field === f) ? (
                   <SongFields
                     idPrefix={`${base}-${s.id}`}
                     song={s}
@@ -236,7 +318,10 @@ export function MusicEditor(props: Props) {
         </>
       )}
       {fieldError?.field === "songs" ? <p role="alert" className="text-xs text-destructive">{fieldError.message}</p> : null}
-      {!readOnly ? <SaveStatus saveState={saveState} message={message} retry={retry} /> : null}
+      {/* A removal the server refused for a link (another tab linked it): the song is no longer listed here to show it on. */}
+      {fieldError?.field.endsWith(":linked") && !form.songs.some((s) => fieldError.field === songField(s.id, "linked")) ? (
+        <p role="alert" className="text-sm text-destructive">{fieldError.message} {removed ? "Use Undo to put the song back." : "Reload to see it again."}</p>
+      ) : null}
     </div>
   );
 }

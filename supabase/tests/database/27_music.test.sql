@@ -135,15 +135,15 @@ create temp table contractual as
 -- ===========================================================================
 -- Library and views
 -- ===========================================================================
-select is((select array_agg(key || ':' || editor order by library_order) from private.planning_library() where private.is_music_editor(editor)),
-  array['arrival_music:music_background', 'pre_ceremony_music:music_background', 'processional:moment_songs', 'couple_entrance:moment_songs',
+select is((select array_agg(key || ':' || editor order by library_order) from private.planning_library() where private.is_music_editor(editor) or editor = 'processional'),
+  array['arrival_music:music_background', 'pre_ceremony_music:music_background', 'processional:processional', 'couple_entrance:moment_songs',
         'ceremony_signing:moment_songs', 'recessional:moment_songs', 'cocktail_music:music_background', 'entrance_music:moment_songs',
         'dinner_music:music_background', 'cake_cutting:moment_songs', 'first_dance:moment_songs', 'family_dances:moment_songs',
         'other_dances:moment_songs', 'must_play:music_requests', 'play_if_possible:music_requests', 'do_not_play:music_exclusions',
         'last_dances:moment_songs', 'final_song:moment_songs'],
   'music editors are keyed by moment key');
 select is((select array_agg(coalesce(editor, 'none') order by library_order) from private.planning_library() where key in ('introductions', 'entrance_participants', 'entrance_music')),
-  array['none', 'none', 'moment_songs'], 'reception entrance songs have one source: Entrance music');
+  array['introductions', 'included', 'moment_songs'], 'reception entrance songs have one source: Entrance music');
 select tests.view('mu_wed') as v \gset v0_
 select is((select count(*)::int from jsonb_object_keys(:'v0_v'::jsonb -> 'music')), 17, 'the client view lists the 17 visible music moments of a wedding');
 select is(tests.reqs(:'v0_v'::jsonb, 'must_play'), array['songs:unanswered'], 'an empty list is unanswered');

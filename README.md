@@ -246,8 +246,8 @@ pending mail in the background, run `pnpm outbox:work` alongside
    with **Restore**; hiding a stage hides its moments. None of this changes
    the proposal, contract, price, gear or booking.
 4. As the client (signed in, booked event), open `/my` or the contract page
-   and follow **Plan your event**. Event basics, stage details and songs save
-   automatically; sections without an editor yet say "Not available yet" and
+   and follow **Plan your event**. Event basics, stage details, songs,
+   participants, the MC and speeches save automatically; sections without an editor yet say "Not available yet" and
    aren't counted in progress.
 5. Open a stage card (Ceremony, Cocktail, Reception entrance, Dinner, Party,
    Closing) and fill its details: "Same as the event venue", times with
@@ -320,7 +320,7 @@ order; staff see the same editors under **Stage details and music**.
 | Background music | `arrival_music`, `pre_ceremony_music`, `cocktail_music`, `dinner_music` | DJ's choice |
 | Requests | `must_play`, `play_if_possible` | No requests |
 | Do not play | `do_not_play` | Nothing to exclude |
-| Moment songs (with an optional cue label and instructions per song) | `processional`, `couple_entrance`, `ceremony_signing`, `recessional`, `entrance_music`, `cake_cutting`, `first_dance`, `family_dances`, `other_dances`, `last_dances`, `final_song` | DJ's choice, Not applicable, Not sure (discuss with DJ) |
+| Moment songs (with an optional cue label and instructions per song) | `processional` (with who walks in, below), `couple_entrance`, `ceremony_signing`, `recessional`, `entrance_music`, `cake_cutting`, `first_dance`, `family_dances`, `other_dances`, `last_dances`, `final_song` | DJ's choice, Not applicable, Not sure (discuss with DJ) |
 
 To try it: open **Plan your event**, open **Party**, then **Must play**. Use
 **Add a song**, **Move up** / **Move down**, **Edit**, **Remove** (with
@@ -370,13 +370,76 @@ How it works:
   Do not play. Matching ignores case and spacing only: without a music
   service, recordings can't be identified.
 - **Reception entrance.** **Entrance music** is the one place for its songs,
-  with a cue per group ("Wedding party", "Couple"). **Introductions** and
-  **Participants and names** have no editor yet. Later participant editors
-  will refer to these songs by their entry id, so nothing is entered twice.
+  with a cue per group ("Wedding party", "Couple"). **Introductions** link to
+  them by entry id (see People below), so nothing is entered twice.
 - **Hidden moments and stages** keep their songs. They are left out of the
   views and progress until restored. Archived events are read-only.
   Planning writes never touch contracts, prices, payments, booking or
   imported answers, and send no email.
+
+#### People: participants, MC and speeches
+
+Names and pronunciation guides are plain text (no recordings or speech
+synthesis). Each editor opens as a card inside its stage, like songs.
+
+| Moment | Editor | Each entry | Alternatives |
+|---|---|---|---|
+| Processional (Ceremony) | Its songs, then who walks in, in order, the couple included | Name or names (a person, a pair or a group, for example "Alex with their mother Dana"); role or relationship, pronunciation guide, instructions, a song from Processional or Couple entrance (all optional) | Discuss with DJ; the moment's "not applicable" covers both |
+| Introductions (Reception entrance) | Everyone announced, in order | Names exactly as announced; role, pronunciation, introduction wording, instructions, an Entrance music song (all optional) | No introductions; discuss with DJ |
+| MC (Reception entrance) | The DJ, someone else, no MC, discuss | Someone else: name (needed), pronunciation, phone or email, instructions | |
+| Speeches and toasts (Dinner, Program or Party) | Speakers in order | Speaker; role, pronunciation; timing: an exact time, a moment ("After the main course") or not decided; minutes, microphone/AV notes, instructions (all optional) | No speeches; discuss with DJ |
+
+To try it: in **Ceremony → Processional participants**, add two songs, then
+use **Add person or group** with a song from the list. In **Reception
+entrance**, add songs to **Entrance music**, then **Add introduction** and pick
+one of them (two introductions can share a song). Try **Remove** on a linked
+song (it's disabled, naming who uses it), rename it, and see the introduction
+follow. Set the **MC**, and in **Dinner → Speeches and toasts** add speakers
+with a time (tick **Next day** after midnight), a moment, or "Not decided yet".
+
+How it works:
+
+- **Where answers live.** One revision-checked row per moment, as for songs.
+  Processional stores `{"songs", "choice", "participants", "participants_choice"}`;
+  saving people keeps its songs and the reverse. Introductions and speeches
+  store `{"entries", "choice"}`; the MC `{"mc", "name", "pronunciation",
+  "contact", "notes"}` (someone else's details only while someone else is
+  the MC). Entries have stable ids like songs.
+- **One place each.** Whoever walks in at the ceremony, the couple
+  included, is listed under Processional. Couple entrance keeps only its
+  song, which the couple's Processional entry can link to. At the reception,
+  **Introductions** is the participant editor: **Participants and names**
+  shows "Included in Introductions", saves nothing and isn't counted. The MC's
+  contact stays with the MC; a later contacts editor can read it from there.
+- **Song links.** An entry stores only `song_id`. Processional entries can
+  point at Processional's or Couple entrance's songs (same ceremony, same
+  plan); introductions at Entrance music's.
+  Titles, cues and order are read through the link, so renaming or
+  reordering songs never rewrites names. On every save, under the plan row
+  lock all plan saves take, the database refuses a link to anything else
+  (another moment, another event, a removed song) and refuses removing a
+  linked song (from Processional, Couple entrance or Entrance music), naming
+  the entries using it. The UI disables **Remove** on a linked song and says
+  where to change the link. A stale tab that removes one gets the refusal and
+  can **Undo**. A hidden Couple entrance or Entrance music keeps its songs and
+  the links; the entries show the song as not in the active plan.
+- **Completion.** Processional needs songs (as before) and who walks in.
+  Introductions need entries, or "No introductions" (not applicable). The MC
+  needs the DJ, or someone else with a name; "No MC" is not applicable.
+  Speeches need entries that each have a speaker and a time or a moment; an
+  undecided timing keeps them open ("A speech has no time or cue yet"); "No
+  speeches" is not applicable. "Discuss with DJ" always stays open.
+  Alternatives are refused while entries exist, and never hide the moment.
+  Roles, pronunciation, wording, contacts, durations and instructions never
+  block.
+- **Times.** A speech's exact time uses the stage time model: local to the
+  event's time zone, "HH:MM" with an explicit **Next day**. A moment is just
+  text, never turned into a clock time.
+- **Saving.** Autosave as elsewhere: edits during a pending save are kept, a
+  failed save keeps everything and offers Retry, a stale tab gets a
+  conflict, and a retried identical save is never duplicated. Remove offers
+  Undo. Microphone and AV notes are for the DJ to review; nothing changes
+  contracts, gear, prices, payments, booking or imported answers.
 
 ## Running the checks
 
@@ -513,6 +576,7 @@ in every relevant relationship.
 | `23_manual_payments` | Owner and staff record; other tenants, clients and anon can't, and no role writes rows directly. Amount, date, reference validation. Idempotent replays, reused keys, duplicate confirmation, exact cents. Invalidation with reasons, preserved history, immutability, audit. Drafts give no terms; sent terms; void and replacement without double counting; signed terms frozen after business, tax and catalog changes; overpayment as credit; zero-percent deposit. Client summary fields, other clients, void contracts, staff and anon. HTTPS invoice links, stale versions, unsafe URLs. Archiving blocks writes and the client view. No email, status, booking or contract change |
 | `26_stage_details` | Library editors and covered moments; validation (times, explicit next day, impossible and equal intervals, choices, limits, unknown fields, conflicting entrance answers); partial answers and normalization; completion with venue and Event basics reuse, not applicable and "discuss with DJ"; overnight party and closing; chronology warnings in staff order without reordering; hidden stages keep answers; covered moments; Simple Party; other clients, other events' items, other businesses, anon and archived events; staff saves; no staff identity, payment references or notes for clients; contract, booking, payments, proposal and imports untouched; the Event basics entry point kept |
 | `27_music` | Music editors by moment key and Entrance music as the single source for reception entrance songs. Song validation: title and artist needed, limits, https links without credentials, unknown fields, cues on moment songs only, repeated or malformed ids, list and moment limits. Choices per editor; alternatives refused while songs exist. Completion: songs, DJ's choice, No requests, Nothing to exclude, not applicable without changing the structure, discuss with DJ open even with songs. Order kept by id. An identical retried import is saved once; a stale different list conflicts; a concurrent identical first save is the same save; stage details keep strict revisions. Hidden lists and stages keep their songs and leave views and progress. Other clients, other events' items, other businesses, anon and archived events; staff edits. Contract, booking, payments, proposal and imports untouched |
+| `28_participants` | Editors by moment key and Participants and names covered by Introductions (not saved, not counted); speeches wherever the library allows. Processional people saved with its songs: individual, pair and group entries without fixed labels, trimmed names and pronunciation in order, links to its own or Couple entrance songs only (another stage's or another event's refused), linked songs not removable from either (also from a stale revision), Couple entrance renames and hiding keeping links, not applicable refused while people exist, renamed and reordered songs leaving people untouched, discuss open. Introductions sharing Entrance music songs; links to another moment, another event or malformed ids refused; removing a linked song refused naming the entries, also from a stale revision; renames, reorders and unlinked removals allowed; hidden Entrance music keeping valid links; No introductions and discuss. MC choices, details kept only for someone else. Speech timing (exact time, next day, cue, undecided), bounds, completion. Retried adds saved once; hidden moments; other clients, other events, other businesses, anon and archived events; staff edits; contract, booking, payments, proposal and imports untouched |
 | `25_planning` | Read-only tables for staff; starter templates added explicitly and once; template ownership across businesses, clients and direct writes; rename, move, remove and add with stable keys and versions; library placement enforced by trigger; duplicate and archive; one default per event type. Booking (real signing and deposit) creates one plan from the event-type default; the Basics fallback; setup before booking kept at booking; repeats and already-booked backfill. Frozen imports after catalog changes. Client access: booked, unbooked, other client, stranger, wrong slug, revoked, unverified, two DJs, anon, archived and unarchived, payment invalidation. Basics validation, conflicts, normalization, progress (imported and not applicable versus unanswered, unavailable sections excluded). Disable and restore keep answers and order and change nothing contractual. Non-destructive template replacement. Integrity |
 | `24_booking` | Owner-only, versioned policy setting; no direct writes; only two policies. Frozen policy per contract, unchanged by later setting changes. On signature: booked when signed, with payment still due. On deposit: payments before signing count, partial payments await the deposit to the cent, the completing payment books, later payments and checks don't book again (one audit event, one email). Zero deposit. Overpayment. Corrections keep the booking and `booking_confirmed_at` and warn staff; the client sees the amount outstanding. Legacy contracts: nothing automatic, staff check as `on_deposit` (not the business's on_signature), then automatic. Archived events refused. Guards against booking outside the function, changing the date or unbooking. Tenant isolation. Older workers never claim booking emails |
 | `21_signed_contract_pdfs` | Signing queues one PDF job (none on replay) and no email. Only the service role runs jobs. Leases: no double claim, expired-lease recovery, stale leases can't fail a job. Commit validation (missing, wrong size, wrong type, wrong folder, wrong signature hash). One canonical immutable document; a second upload is "exists" with no duplicate emails. One email per party with separate dedup keys, no paths or tokens in payloads. Staff, other tenants, signer, other clients and anon. Archiving blocks the signer and cancels undelivered copies but keeps the PDF. Recipient-confirmed resend that never repeats a delivered copy. Contracts signed before PDFs: explicit generation without email |
@@ -650,14 +714,25 @@ signed-out browser:
 ### Planning tests
 
 - `supabase/tests/database/25_planning.test.sql`,
-  `26_stage_details.test.sql` and `27_music.test.sql` cover the rules (see
-  the table above).
+  `26_stage_details.test.sql`, `27_music.test.sql` and
+  `28_participants.test.sql` cover the rules (see the table above).
 - `tests/unit/planning-stages.test.ts`: the browser-side stage validation
   (next day, impossible intervals, bounds, normalization).
 - `tests/unit/planning-music.test.ts`: the browser-side song validation,
   answers compared regardless of key order, the paste parser and its flags,
   duplicate and play / do-not-play matching, and views from a database
   without music editors.
+- `tests/unit/planning-participants.test.ts`: the browser-side validation
+  of Processional people, introductions, speeches (timing fields, next day,
+  durations) and the MC, round trips, and song-link lookups.
+- `tests/e2e/people-flow.spec.ts`: on a phone, Processional people with
+  pronunciation and links to its own songs (linked songs can't be removed,
+  renames show through the link, reordering, reload); the couple's entry
+  using the Couple entrance song, which then can't be removed there. Introductions sharing
+  Entrance music songs, a stale tab's refused removal and Undo, a hidden
+  Entrance music. The MC, and speeches with an exact time, next day, a cue
+  and undecided timing, with pending, failed and stale saves and Undo. Staff
+  edit on a phone; contract, payments and booking stay unchanged.
 - `tests/e2e/music-flow.spec.ts`: on a phone, the client adds, edits,
   reorders and removes songs (with undo) and reloads. It pastes a list,
   corrects flagged lines and imports once. It sees duplicate and
