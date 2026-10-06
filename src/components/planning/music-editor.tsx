@@ -31,7 +31,7 @@ import {
 import type { SaveItemResult } from "@/lib/planning/view";
 import { linksBySong } from "@/lib/planning/participants";
 import { FieldBox } from "./basics-editor";
-import { ItemChecklist } from "./progress";
+import { ItemChecklist, useEditingClosed } from "./progress";
 import { SaveStatus, useAutosave } from "./use-autosave";
 
 // ---------------------------------------------------------------------------
@@ -101,7 +101,7 @@ const newId = () => crypto.randomUUID();
  * empty list stays unanswered until an explicit choice such as "No requests".
  */
 export function MusicEditor(props: Props) {
-  const readOnly = Boolean(props.disabledReason);
+  const readOnly = useEditingClosed(props.disabledReason);
   const lists = useContext(ListsContext);
   const { form, update, saveState, message, fieldError, retry } = useAutosave<MusicForm, MusicAnswers>({
     initialForm: musicFormFromAnswers(props.initialAnswers),
@@ -140,7 +140,7 @@ export function MusicEditor(props: Props) {
         linked={linked}
         linkedWhere={props.momentKey === "couple_entrance" ? "Processional (who walks in)" : "Introductions"}
       />
-      {!readOnly ? <SaveStatus saveState={saveState} message={message} retry={retry} /> : null}
+      {!readOnly || saveState === "locked" ? <SaveStatus saveState={saveState} message={message} retry={retry} /> : null}
     </div>
   );
 }

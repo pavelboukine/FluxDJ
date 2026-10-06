@@ -3,37 +3,83 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { BASICS_REQUIREMENT_LABELS, type BasicsAnswers } from "@/lib/planning/basics";
+import { clientEditingText, formatInstant, type ClientEditing } from "@/lib/planning/cutoff";
 import { REQUIREMENT_NOTES, STAGE_REQUIREMENT_LABELS } from "@/lib/planning/stages";
 import { itemProgress, progressHeadline, progressScopeNote, type PlanProgress, type Requirement, type TimelineWarning } from "@/lib/planning/view";
 
 /**
- * Planning state computed by the database: progress, chronology warnings and
+ * Planning state computed by the database: progress, chronology warnings,
  * the saved Event basics (stage editors reuse its venue, guest count and end
- * time). The page renders the server's values; each successful save returns
- * new ones, which replace them here. Nothing is computed from forms.
+ * time) and, on the client's page, whether the client can still edit. The
+ * page renders the server's values; each successful save returns new ones,
+ * which replace them here. Nothing is computed from forms.
+ *
+ * Editing is one shared state for every editor: when any save comes back
+ * "locked" (the deadline passed while the page was open), every editor turns
+ * read-only at once and stops sending, keeping what is on screen.
  */
 type PlanState = {
   progress: PlanProgress;
   warnings: TimelineWarning[];
   basics: BasicsAnswers;
+  /** The client's editing state; null on staff pages (staff edit after the deadline). */
+  editing: ClientEditing | null;
   applySaved: (result: { progress: PlanProgress; timeline_warnings: TimelineWarning[] }) => void;
   setBasics: (answers: BasicsAnswers) => void;
+  applyLocked: (editing: ClientEditing) => void;
 };
 
 const PlanContext = createContext<PlanState | null>(null);
 
-export function PlanProgressProvider({ initial, warnings, basics, children }: { initial: PlanProgress; warnings: TimelineWarning[]; basics: BasicsAnswers; children: ReactNode }) {
-  const [state, setState] = useState({ progress: initial, warnings, basics });
+export function PlanProgressProvider({ initial, warnings, basics, editing = null, children }: {
+  initial: PlanProgress;
+  warnings: TimelineWarning[];
+  basics: BasicsAnswers;
+  editing?: ClientEditing | null;
+  children: ReactNode;
+}) {
+  const [state, setState] = useState({ progress: initial, warnings, basics, editing });
   const value: PlanState = {
     ...state,
     applySaved: (r) => setState((s) => ({ ...s, progress: r.progress, warnings: r.timeline_warnings })),
     setBasics: (b) => setState((s) => ({ ...s, basics: b })),
+    applyLocked: (e) => setState((s) => ({ ...s, editing: e })),
   };
   return <PlanContext.Provider value={value}>{children}</PlanContext.Provider>;
 }
 
 export function usePlanProgress() {
   return useContext(PlanContext);
+}
+
+/** Whether an editor is read-only: its own reason (archived, staff), or the client's planning closed. */
+export function useEditingClosed(disabledReason?: string): boolean {
+  const ctx = useContext(PlanContext);
+  return Boolean(disabledReason) || ctx?.editing?.state === "closed";
+}
+
+/** The client's deadline or read-only notice, kept current when a save finds planning closed. */
+export function EditingNotice({ djName }: { djName: string }) {
+  const ctx = usePlanProgress();
+  const e = ctx?.editing;
+  if (!e) return null;
+  const closed = e.state === "closed";
+  return (
+    <section
+      aria-label="Editing"
+      role={closed ? "alert" : "status"}
+      data-testid="editing-notice"
+      data-state={e.state}
+      className={closed ? "grid gap-1 rounded-xl border border-amber-500/60 bg-amber-500/10 p-4 text-sm" : "grid gap-1 rounded-xl border p-4 text-sm"}
+    >
+      <p className={closed ? "font-medium" : undefined}>{clientEditingText(e, djName)}</p>
+      {closed ? (
+        <p className="text-muted-foreground">
+          The planning deadline was {formatInstant(e.deadline, e.timezone)}. Everything you saved is below.
+        </p>
+      ) : null}
+    </section>
+  );
 }
 
 export function ProgressSummary() {

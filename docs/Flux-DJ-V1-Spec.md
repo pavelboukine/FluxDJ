@@ -26,7 +26,7 @@ Do not add passwords, scheduling, invoicing, payment collection, native apps, mu
 - Signing opens planning and shows the signed confirmation screen. A tenant setting `booking_confirmation_policy` is `on_signature` or `on_deposit`; default `on_signature` follows the supplied client flow. If the DJ chooses `on_deposit`, show “Contract signed, deposit required to confirm booking” until payment is recorded. Never silently equate signing with payment.
 - A sent proposal has immutable offered terms, but the client can adjust the allowed choices until submission or expiry. Acceptance freezes a selection and sends it for DJ approval.
 - Public proposal links allow viewing and selection submission without an account. Signing additionally verifies the intended email through a magic link. A forwarded proposal link must never grant planning access or signing authority by itself.
-- Planning locks seven calendar days before the event by default. This is a proposed default, editable per tenant and event. The event timezone governs the cutoff.
+- Planning locks fourteen calendar days before the event by default (00:00 in the event's time zone on the event date minus the days), editable per tenant and event. The event timezone governs the cutoff.
 - One page is the target for the run sheet, not a reason to omit content. On phones it is one clean scrolling view; print can overflow when necessary.
 
 ## 3. Database conventions

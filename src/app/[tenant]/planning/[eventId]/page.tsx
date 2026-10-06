@@ -6,7 +6,7 @@ import { BasicsEditor } from "@/components/planning/basics-editor";
 import { AlreadyProvided, NotAvailableBadge, PlanCard, StageCards } from "@/components/planning/plan-overview";
 import { ceremonyDetails, generalEditor, knownPeople, momentEditor, savedIntroductions, savedProcessionalPeople } from "@/components/planning/moment-editor";
 import { MusicListsProvider } from "@/components/planning/music-editor";
-import { ItemStatus, PlanProgressProvider, ProgressSummary } from "@/components/planning/progress";
+import { EditingNotice, ItemStatus, PlanProgressProvider, ProgressSummary } from "@/components/planning/progress";
 import { StageDetailsEditor } from "@/components/planning/stage-details-editor";
 import { savedListsFrom } from "@/lib/planning/music";
 import { isStageEditor } from "@/lib/planning/stages";
@@ -31,6 +31,9 @@ function Notice({ title, children }: { title: string; children: React.ReactNode 
  * The client's planning, in the order of the event. Every request is
  * checked in the database: verified identity, access to this exact event, a
  * booked event, and nothing archived. Only client-safe fields are returned.
+ * After the planning deadline (unless the DJ reopened it) the page is
+ * read-only; the database refuses client saves regardless of what this page
+ * shows, so a stale or cached copy can never write.
  */
 export default async function ClientPlanningPage({ params }: PageProps<"/[tenant]/planning/[eventId]">) {
   const { tenant: slug, eventId } = await params;
@@ -75,7 +78,8 @@ export default async function ClientPlanningPage({ params }: PageProps<"/[tenant
         <p className="text-xs text-muted-foreground">Event details provided by {dj}. Contact them to change the date or venue.</p>
       </header>
 
-      <PlanProgressProvider initial={view.progress} warnings={view.timeline_warnings} basics={view.basics.answers}>
+      <PlanProgressProvider initial={view.progress} warnings={view.timeline_warnings} basics={view.basics.answers} editing={view.editing}>
+        <EditingNotice djName={dj} />
         <ProgressSummary />
 
         <section aria-labelledby="general-heading" className="grid gap-2">

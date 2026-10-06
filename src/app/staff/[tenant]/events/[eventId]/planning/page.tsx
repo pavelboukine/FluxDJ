@@ -19,6 +19,7 @@ import { UUID_RE } from "@/lib/forms";
 import { formatEventDate, staffPlanningViewSchema } from "@/lib/planning/view";
 import { EVENT_TYPES } from "../../event-form";
 import { addPlanItem, applyPlanningTemplate, planItemAction, saveStaffItemAction, setUpPlanning } from "./actions";
+import { ClientEditingCard } from "./client-editing-card";
 
 export default async function StaffPlanningPage({ params }: PageProps<"/staff/[tenant]/events/[eventId]/planning">) {
   const { tenant: slug, eventId } = await params;
@@ -93,6 +94,8 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
           </CardContent>
         </Card>
       ) : (
+        <>
+        {view.editing ? <ClientEditingCard slug={slug} eventId={event.id} editing={view.editing} archived={archived} booked={booked} /> : null}
         <DraftVersionProvider version={view.plan.structure_version}>
           <Card>
             <CardHeader>
@@ -297,6 +300,7 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
             </CardContent>
           </Card>
         </DraftVersionProvider>
+        </>
       )}
     </>
   );

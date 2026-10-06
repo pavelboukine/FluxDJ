@@ -13,7 +13,7 @@ import {
   type BasicsField,
 } from "@/lib/planning/basics";
 import type { SaveItemResult } from "@/lib/planning/view";
-import { ItemChecklist, usePlanProgress } from "./progress";
+import { ItemChecklist, useEditingClosed, usePlanProgress } from "./progress";
 import { SaveStatus, useAutosave } from "./use-autosave";
 
 type Props = {
@@ -34,7 +34,7 @@ type Props = {
  */
 export function BasicsEditor(props: Props) {
   const plan = usePlanProgress();
-  const readOnly = Boolean(props.disabledReason);
+  const readOnly = useEditingClosed(props.disabledReason);
   const { form, update, saveState, message, fieldError, retry } = useAutosave({
     initialForm: formFromAnswers(props.initialAnswers),
     initialAnswers: props.initialAnswers,
@@ -165,7 +165,7 @@ export function BasicsEditor(props: Props) {
           No special instructions
         </label>
       </fieldset>
-      {!readOnly ? <SaveStatus saveState={saveState} message={message} retry={retry} /> : null}
+      {!readOnly || saveState === "locked" ? <SaveStatus saveState={saveState} message={message} retry={retry} /> : null}
       <p className="text-xs text-muted-foreground">
         Answers save automatically. Saving these never changes the contract, its price or payments
         {props.audience === "client" ? "" : `, and ${you} sees the same answers`}.

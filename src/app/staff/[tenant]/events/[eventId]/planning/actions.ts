@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireStaff } from "@/lib/auth/staff";
 import { describeDbError } from "@/lib/db-errors";
 import { checkbox, fail, int, ok, text, UUID_RE, type ActionState } from "@/lib/forms";
+import { checkReason, CUTOFF_DAYS_MAX, CUTOFF_DAYS_MIN, formatInstant, parseLocalInput, REOPEN_MAX_DAYS, staffEditingSchema } from "@/lib/planning/cutoff";
 import { saveResultSchema, type SaveItemResult } from "@/lib/planning/view";
 
 /*
@@ -102,4 +103,96 @@ export async function saveStaffItemAction(slug: string, eventId: string, itemId:
   if (error) return { status: "error", message: describeDbError(error) };
   const parsed = saveResultSchema.safeParse(data);
   return parsed.success ? parsed.data : { status: "error", message: "Couldn't save. Reload the page and try again." };
+}
+
+/*
+ * Client editing deadline and temporary reopening. The database checks
+ * membership, archiving, the cutoff version (a stale tab gets a conflict),
+ * the reason and the limits again, using its own clock, and audits each
+ * change. Staff editing is never affected.
+ */
+
+type CutoffResult = { status: string; version: number; editing: unknown };
+
+function cutoffOutcome(slug: string, eventId: string, data: unknown) {
+  const r = data as CutoffResult;
+  const editing = staffEditingSchema.safeParse(r?.editing);
+  revalidate(slug, eventId);
+  return { status: r?.status, version: r?.version, editing: editing.success ? editing.data : null };
+}
+
+/** Sets this plan's days before the event (recomputed from the current date and time zone). */
+export async function setClientCutoffDays(slug: string, eventId: string, _state: ActionState, form: FormData): Promise<ActionState> {
+  const { supabase } = await requireStaff(slug);
+  const version = int(form, "draft_version", 1, 1_000_000);
+  const days = int(form, "days", CUTOFF_DAYS_MIN, CUTOFF_DAYS_MAX);
+  const reason = text(form, "reason");
+  if (version === null) return fail("Reload the page and try again.");
+  if (days === null) return fail(`Enter a whole number of days from ${CUTOFF_DAYS_MIN} to ${CUTOFF_DAYS_MAX}.`);
+  const reasonError = checkReason(reason);
+  if (reasonError) return fail(reasonError);
+  const { data, error } = await supabase.rpc("set_plan_client_cutoff", { p_event_id: eventId, p_expected_version: version, p_days: days, p_reason: reason });
+  if (error) return fail(describeDbError(error));
+  const r = cutoffOutcome(slug, eventId, data);
+  const when = r.editing ? formatInstant(r.editing.deadline, r.editing.timezone) : "";
+  if (r.status === "unchanged") return ok(`No change: the deadline already is ${when}.`, r.version);
+  return ok(`Deadline changed to ${when}.${r.editing?.state === "closed" ? " It has passed: the client's planning is read-only." : ""}`, r.version);
+}
+
+/** Moves the deadline to match the event's current date and time zone, with the plan's days. */
+export async function recalculateClientCutoff(slug: string, eventId: string, _state: ActionState, form: FormData): Promise<ActionState> {
+  const { supabase } = await requireStaff(slug);
+  const version = int(form, "draft_version", 1, 1_000_000);
+  const reason = text(form, "reason");
+  if (version === null) return fail("Reload the page and try again.");
+  if (!checkbox(form, "confirm")) return fail("Check the box to confirm moving the deadline.");
+  const reasonError = checkReason(reason);
+  if (reasonError) return fail(reasonError);
+  const { data, error } = await supabase.rpc("recalculate_plan_client_cutoff", { p_event_id: eventId, p_expected_version: version, p_reason: reason, p_confirm: true });
+  if (error) return fail(describeDbError(error));
+  const r = cutoffOutcome(slug, eventId, data);
+  const when = r.editing ? formatInstant(r.editing.deadline, r.editing.timezone) : "";
+  if (r.status === "unchanged") return ok(`No change: the deadline already matches the event (${when}).`, r.version);
+  return ok(`Deadline recalculated: ${when}.${r.editing?.state === "closed" ? " It has passed: the client's planning is read-only." : ""}`, r.version);
+}
+
+/** Reopens client editing until a time in the event's time zone (after the deadline only). */
+export async function reopenClientEditing(slug: string, eventId: string, _state: ActionState, form: FormData): Promise<ActionState> {
+  const { supabase } = await requireStaff(slug);
+  const version = int(form, "draft_version", 1, 1_000_000);
+  const until = parseLocalInput(text(form, "until"));
+  const reason = text(form, "reason");
+  if (version === null) return fail("Reload the page and try again.");
+  if (!until) return fail("Choose the date and time the reopening ends.");
+  const reasonError = checkReason(reason);
+  if (reasonError) return fail(reasonError);
+  const { data, error } = await supabase.rpc("reopen_plan_client_editing", { p_event_id: eventId, p_expected_version: version, p_until_local: until, p_reason: reason });
+  if (error) return fail(describeDbError(error));
+  const r = cutoffOutcome(slug, eventId, data);
+  const e = r.editing;
+  if (r.status === "already_open") {
+    return fail(`Client editing is already open until ${e ? formatInstant(e.deadline, e.timezone) : "the deadline"}. Nothing was changed; reopening is for after the deadline.`);
+  }
+  const until_ = e?.reopened_until ? formatInstant(e.reopened_until, e.timezone) : "";
+  if (r.status === "unchanged") return ok(`Client editing is already reopened until ${until_}.`, r.version);
+  return ok(`Client editing reopened until ${until_} (at most ${REOPEN_MAX_DAYS} days). The normal deadline is unchanged.`, r.version);
+}
+
+/** Ends an active reopening now. */
+export async function closeClientEditing(slug: string, eventId: string, _state: ActionState, form: FormData): Promise<ActionState> {
+  const { supabase } = await requireStaff(slug);
+  const version = int(form, "draft_version", 1, 1_000_000);
+  const reason = text(form, "reason");
+  if (version === null) return fail("Reload the page and try again.");
+  const reasonError = checkReason(reason);
+  if (reasonError) return fail(reasonError);
+  const { data, error } = await supabase.rpc("close_plan_client_editing", { p_event_id: eventId, p_expected_version: version, p_reason: reason });
+  if (error) return fail(describeDbError(error));
+  const r = cutoffOutcome(slug, eventId, data);
+  const e = r.editing;
+  if (r.status === "already_open") {
+    return fail(`Client editing is open until the normal deadline (${e ? formatInstant(e.deadline, e.timezone) : ""}). Ending a reopening doesn't close it; change the deadline instead.`);
+  }
+  if (r.status === "not_reopened") return ok("There is no active reopening: the client's planning is already read-only.", r.version);
+  return ok("Client editing closed. The client can still read the plan, and you can still edit it.", r.version);
 }

@@ -29,7 +29,7 @@ import {
 } from "@/lib/planning/contacts";
 import { FieldBox } from "./basics-editor";
 import { Choices, EntryList, Frame, text, type Common } from "./participants-editor";
-import { usePlanProgress } from "./progress";
+import { useEditingClosed, usePlanProgress } from "./progress";
 import { SaveStatus, useAutosave } from "./use-autosave";
 
 const djText = (props: { audience: "client" | "staff"; djName: string }) => (props.audience === "client" ? props.djName : "the DJ");
@@ -47,7 +47,7 @@ export type KnownPeople = {
 // ---------------------------------------------------------------------------
 
 export function ContactsEditor(props: Common<ContactsAnswers> & { eventContacts: EventContact[]; known: KnownPeople }) {
-  const readOnly = Boolean(props.disabledReason);
+  const readOnly = useEditingClosed(props.disabledReason);
   const { form, update, saveState, message, fieldError, retry } = useAutosave<ContactsForm, ContactsAnswers>({
     initialForm: contactsForm(props.initialAnswers),
     initialAnswers: props.initialAnswers,
@@ -188,7 +188,7 @@ export function ContactsEditor(props: Common<ContactsAnswers> & { eventContacts:
 // ---------------------------------------------------------------------------
 
 export function PreferencesEditor(props: Common<PreferencesAnswers>) {
-  const readOnly = Boolean(props.disabledReason);
+  const readOnly = useEditingClosed(props.disabledReason);
   const plan = usePlanProgress();
   const { form, update, saveState, message, fieldError, retry } = useAutosave<PreferencesForm, PreferencesAnswers>({
     initialForm: preferencesForm(props.initialAnswers),
@@ -232,7 +232,7 @@ export function PreferencesEditor(props: Common<PreferencesAnswers>) {
 // ---------------------------------------------------------------------------
 
 export function MusicStyleEditor(props: Common<MusicStyleAnswers>) {
-  const readOnly = Boolean(props.disabledReason);
+  const readOnly = useEditingClosed(props.disabledReason);
   const { form, update, saveState, message, fieldError, retry } = useAutosave<MusicStyleForm, MusicStyleAnswers>({
     initialForm: musicStyleForm(props.initialAnswers),
     initialAnswers: props.initialAnswers,

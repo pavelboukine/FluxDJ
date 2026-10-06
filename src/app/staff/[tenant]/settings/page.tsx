@@ -3,7 +3,8 @@ import { ActionForm } from "@/components/app/action-form";
 import { PageHeader, TextAreaField, TextField } from "@/components/app/fields";
 import { requireStaff } from "@/lib/auth/staff";
 import { ppmToPercent, readTaxSettings, usageText, type CategoryUsage } from "@/lib/pricing/tax-settings";
-import { saveBookingPolicy, saveBusinessSettings, saveTaxSettings } from "./actions";
+import { CUTOFF_DAYS_MAX, CUTOFF_DAYS_MIN } from "@/lib/planning/cutoff";
+import { saveBookingPolicy, saveBusinessSettings, savePlanningCutoff, saveTaxSettings } from "./actions";
 import { TaxSettingsForm } from "./tax-settings-form";
 
 export default async function BusinessSettings({ params }: PageProps<"/staff/[tenant]/settings">) {
@@ -11,7 +12,7 @@ export default async function BusinessSettings({ params }: PageProps<"/staff/[te
   const { supabase, tenant, membership } = await requireStaff(slug);
   const { data: settings } = await supabase
     .from("tenants")
-    .select("business_name, display_name, business_address, contact_email, deposit_percent, tax_config, tax_categories, tax_settings_version, booking_confirmation_policy, booking_policy_version")
+    .select("business_name, display_name, business_address, contact_email, deposit_percent, tax_config, tax_categories, tax_settings_version, booking_confirmation_policy, booking_policy_version, planning_lock_days, planning_settings_version")
     .eq("id", tenant.id)
     .single();
   const isOwner = membership.role === "owner";
@@ -106,6 +107,43 @@ export default async function BusinessSettings({ params }: PageProps<"/staff/[te
           <p className="text-xs text-muted-foreground">
             A recorded payment correction never cancels a booking; the event page warns you if the deposit is no longer covered.
           </p>
+        </CardContent>
+      </Card>
+      <Card id="planning" className="scroll-mt-4">
+        <CardHeader>
+          <CardTitle>Planning deadline</CardTitle>
+          <CardDescription>
+            Clients can change their event planning until 00:00 (midnight, in the event&apos;s time zone) this many calendar days before the
+            event date; after that it is read-only for them. You and your staff can always edit, and you can reopen or move one event&apos;s
+            deadline from its planning page. Each plan keeps the days it was set up with, so a change applies only to plans set up
+            afterwards.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 text-sm">
+          {isOwner ? (
+            <ActionForm action={savePlanningCutoff.bind(null, slug)} version={settings?.planning_settings_version ?? 0} submitLabel="Save planning deadline" trackUnsaved>
+              <TextField
+                key={settings?.planning_lock_days}
+                label="Days before the event"
+                name="planning_lock_days"
+                type="number"
+                inputMode="numeric"
+                min={CUTOFF_DAYS_MIN}
+                max={CUTOFF_DAYS_MAX}
+                step={1}
+                required
+                defaultValue={settings?.planning_lock_days ?? 14}
+                className="max-w-[10rem]"
+                hint={`A whole number from ${CUTOFF_DAYS_MIN} (closes at the start of the event day) to ${CUTOFF_DAYS_MAX}. The default is 14.`}
+              />
+            </ActionForm>
+          ) : (
+            <p>
+              <span className="text-muted-foreground">Client planning closes </span>
+              {settings?.planning_lock_days ?? 14} days before the event.
+              <span className="block text-muted-foreground">Only the owner can change this.</span>
+            </p>
+          )}
         </CardContent>
       </Card>
       <Card id="taxes" className="scroll-mt-4">

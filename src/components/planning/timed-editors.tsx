@@ -28,7 +28,7 @@ import {
 import { isHttpsUrl, linkHost } from "@/lib/payments";
 import { FieldBox } from "./basics-editor";
 import { Choices, EntryList, Frame, PRONUNCIATION_HINT, text, type Common } from "./participants-editor";
-import { usePlanProgress } from "./progress";
+import { useEditingClosed, usePlanProgress } from "./progress";
 import { SaveStatus, useAutosave } from "./use-autosave";
 
 type EventInfo = { date: string; timezone: string; venueName: string | null; venueAddress: string | null };
@@ -58,7 +58,7 @@ function TimeField({ id, label, time, nextDay, onChange, error, eventDate, hint 
 // ---------------------------------------------------------------------------
 
 export function ArrivalEditor(props: Common<ArrivalAnswers> & { event: EventInfo; ceremony: Record<string, unknown> | null }) {
-  const readOnly = Boolean(props.disabledReason);
+  const readOnly = useEditingClosed(props.disabledReason);
   const plan = usePlanProgress();
   const { form, update, saveState, message, fieldError, retry } = useAutosave<ArrivalForm, ArrivalAnswers>({
     initialForm: arrivalForm(props.initialAnswers),
@@ -277,7 +277,7 @@ function TimedList(props: {
 }
 
 export function TimedEditorCard(props: Common<TimedAnswers> & { editor: "activities" | "dedications"; event: EventInfo }) {
-  const readOnly = Boolean(props.disabledReason);
+  const readOnly = useEditingClosed(props.disabledReason);
   const { form, update, saveState, message, fieldError, retry } = useAutosave<TimedForm, TimedAnswers>({
     initialForm: timedForm(props.editor, props.initialAnswers),
     initialAnswers: props.initialAnswers,
@@ -294,7 +294,7 @@ export function TimedEditorCard(props: Common<TimedAnswers> & { editor: "activit
 }
 
 export function ProgramEditor(props: Common<TimedAnswers> & { event: EventInfo }) {
-  const readOnly = Boolean(props.disabledReason);
+  const readOnly = useEditingClosed(props.disabledReason);
   const { form, update, saveState, message, fieldError, retry } = useAutosave<ProgramForm, TimedAnswers>({
     initialForm: programForm(props.initialAnswers),
     initialAnswers: props.initialAnswers,

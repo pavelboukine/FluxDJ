@@ -8,7 +8,9 @@ import { createClient } from "@/lib/supabase/server";
 /*
  * Client planning actions. Every argument is untrusted: access comes only
  * from the signed-in user's own session, rechecked in the database on every
- * call (verified event access, booked, not archived, item visible).
+ * call (verified event access, booked, not archived, item visible, and the
+ * planning deadline or a staff reopening, by database time). A refused save
+ * returns "locked" and stores nothing.
  */
 
 export async function saveClientItemAction(slug: string, eventId: string, itemId: string, expectedRevision: number, answers: unknown): Promise<SaveItemResult> {

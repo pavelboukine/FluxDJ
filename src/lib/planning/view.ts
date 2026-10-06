@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { BasicsAnswers } from "./basics";
+import { clientEditingSchema, staffEditingSchema, type ClientEditing } from "./cutoff";
 
 /**
  * Shapes of the planning views returned by the database
@@ -139,6 +140,8 @@ export const clientPlanningViewSchema = z.discriminatedUnion("state", [
     state: z.literal("available"),
     brand: z.object({ display_name: z.string(), brand_colors: z.record(z.string(), z.string()) }),
     event: eventSchema,
+    /** Whether the client can edit now. Optional: a database without the cutoff omits it. */
+    editing: clientEditingSchema.nullable().optional().default(null),
     structure: structureSchema,
     basics: z.object({ item_id: z.string(), answers: basicsAnswersSchema, revision: z.number().int() }),
     stage_details: stageDetailsSchema,
@@ -164,6 +167,7 @@ export const staffPlanningViewSchema = z.union([
       source_template_name: z.string().nullable(),
       structure_version: z.number().int(),
     }),
+    editing: staffEditingSchema.nullable().optional().default(null),
     structure: structureSchema,
     basics: z.object({
       item_id: z.string(),
@@ -190,6 +194,8 @@ export type SaveItemResult =
   | { status: "invalid"; field: string | null; message: string }
   | { status: "unavailable" }
   | { status: "signed_out" }
+  /** The client deadline has passed (or a reopening ended): nothing was saved. */
+  | { status: "locked"; editing: ClientEditing }
   | { status: "error"; message: string };
 
 export const saveResultSchema = z.discriminatedUnion("status", [
@@ -204,6 +210,7 @@ export const saveResultSchema = z.discriminatedUnion("status", [
   z.object({ status: z.literal("invalid"), field: z.string().nullable(), message: z.string() }),
   z.object({ status: z.literal("unavailable") }),
   z.object({ status: z.literal("signed_out") }),
+  z.object({ status: z.literal("locked"), editing: clientEditingSchema }),
 ]);
 
 /** How a frozen proposal answer reads. Missing answers are "Not answered", never "No". */

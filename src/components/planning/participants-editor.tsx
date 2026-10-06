@@ -35,7 +35,7 @@ import { EQUIPMENT_NOTE, nextDayLabel } from "@/lib/planning/stages";
 import type { SaveItemResult } from "@/lib/planning/view";
 import { FieldBox } from "./basics-editor";
 import { MusicSection, usePlanSongs } from "./music-editor";
-import { ItemChecklist } from "./progress";
+import { ItemChecklist, useEditingClosed } from "./progress";
 import { SaveStatus, useAutosave } from "./use-autosave";
 
 const newId = () => crypto.randomUUID();
@@ -288,7 +288,7 @@ const checkPerson = (p: PersonForm) => (p.names.trim() ? null : { field: "names"
 // ---------------------------------------------------------------------------
 
 export function ProcessionalEditor(props: Common<ProcessionalAnswers>) {
-  const readOnly = Boolean(props.disabledReason);
+  const readOnly = useEditingClosed(props.disabledReason);
   const songs = usePlanSongs();
   const { form, update, saveState, message, fieldError, retry } = useAutosave<ProcessionalForm, ProcessionalAnswers>({
     initialForm: processionalForm(props.initialAnswers),
@@ -377,7 +377,7 @@ export function ProcessionalEditor(props: Common<ProcessionalAnswers>) {
 // ---------------------------------------------------------------------------
 
 export function IntroductionsEditor(props: Common<IntroductionsAnswers>) {
-  const readOnly = Boolean(props.disabledReason);
+  const readOnly = useEditingClosed(props.disabledReason);
   const songs = usePlanSongs();
   const { form, update, saveState, message, fieldError, retry } = useAutosave<IntroductionsForm, IntroductionsAnswers>({
     initialForm: introductionsForm(props.initialAnswers),
@@ -438,7 +438,7 @@ export function IntroductionsEditor(props: Common<IntroductionsAnswers>) {
 // ---------------------------------------------------------------------------
 
 export function SpeechesEditor(props: Common<SpeechesAnswers> & { event: { date: string; timezone: string } }) {
-  const readOnly = Boolean(props.disabledReason);
+  const readOnly = useEditingClosed(props.disabledReason);
   const { form, update, saveState, message, fieldError, retry } = useAutosave<SpeechesForm, SpeechesAnswers>({
     initialForm: speechesForm(props.initialAnswers),
     initialAnswers: props.initialAnswers,
@@ -544,7 +544,7 @@ export function SpeechesEditor(props: Common<SpeechesAnswers> & { event: { date:
 // ---------------------------------------------------------------------------
 
 export function McEditor(props: Common<McAnswers>) {
-  const readOnly = Boolean(props.disabledReason);
+  const readOnly = useEditingClosed(props.disabledReason);
   const { form, update, saveState, message, fieldError, retry } = useAutosave<McForm, McAnswers>({
     initialForm: mcForm(props.initialAnswers),
     initialAnswers: props.initialAnswers,

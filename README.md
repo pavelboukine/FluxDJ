@@ -48,12 +48,14 @@ foundation is in place:
 - Stage details: timing, location and a few preparation details inside the
   ceremony, cocktail, reception entrance, dinner, party and closing stages,
   with explicit next-day times and timing warnings.
+- Planning deadline: client edits close a set number of days before the
+  event (owner setting, 14 by default), enforced by the database; staff keep
+  editing, and can move one event's deadline or reopen client editing
+  temporarily, with a reason, all audited.
 
 Everything has row-level security and tests. Not built yet: payment
-processing, songs, entrance participants, speeches, pronunciations, vendors,
-DJ preferences, planning cutoff and reopening, the run sheet, PWA, cancellations
-and amendments. Approval and contract
-drafts are not bookings.
+processing, the run sheet, PWA, reminders, cancellations and amendments.
+Approval and contract drafts are not bookings.
 
 ## Stack
 
@@ -532,6 +534,72 @@ How it works:
   counted themselves, so nothing reads "Not available yet". Hidden sections
   keep their answers and leave progress. Times never reorder stages.
 
+#### Planning deadline and reopening
+
+The client can change planning until the event's **deadline**; after it,
+planning is read-only for them ("Planning is read-only. Contact your DJ for
+changes.") and every saved answer stays readable. Staff edit as before.
+
+| Setting or action | Who | Limits |
+|---|---|---|
+| Business setting: days before the event (**Settings → Planning deadline**) | Owner | Whole days, 0 to 365 (0 closes at the start of the event day). Default 14. Versioned |
+| Change this event's deadline (days before the event) | Staff | 0 to 365 days; a reason (1 to 500 characters) |
+| Recalculate the deadline after the event's date or time zone changed | Staff | Explicit confirmation and a reason |
+| Reopen client editing until a date and time | Staff | Only after the deadline; in the future, at most 14 days from now; event's local time; a reason |
+| Close client editing now (ends a reopening early) | Staff | A reason. Never closes a plan before its deadline |
+
+To try it: as the owner, open **Settings → Planning deadline**. On an event's
+planning page, the **Client editing** card shows Open, Read-only or Reopened,
+the deadline in the event's time zone, the actions above (each in a
+confirmation explaining its effect) and the history with reasons and who.
+The event page's Planning card shows the same state in one line. As the
+client, the planning page says when editing closes, or that it is
+read-only, or until when it was reopened.
+
+How it works:
+
+- **Deadline.** 00:00 in the event's time zone on the event date minus the
+  plan's days. Where the clocks skip midnight that day (DST starting at
+  midnight in some zones) it is the first moment of the day (01:00); where
+  midnight happens twice, the first one. The event's start time plays no
+  part. Shown everywhere with its time zone.
+- **Established once.** When a plan is set up (booking, staff setup), it
+  copies the business's days (`event_plans.client_cutoff_days`) and stores
+  the deadline (`events.planning_lock_at`). Changing the setting affects plans
+  set up afterwards only. Changing the event's date or time zone never moves
+  it: staff see "no longer matches" with what the current schedule would give,
+  and recalculate explicitly.
+- **Database enforcement.** Both client write functions
+  (`client_save_plan_item`, `client_save_plan_basics`) go through one gate
+  that keeps the existing checks (verified access, booked, enabled item,
+  nothing archived) and then compares the deadline and any reopening, read
+  from the locked event and plan rows, with `clock_timestamp()` taken after
+  the locks. A request that waited on a lock across the deadline is refused.
+  A refusal returns `{"status":"locked","editing":{...}}` and changes
+  nothing; it is checked before validation, so even invalid or stale input
+  gets the lock. No scheduled job is involved. Staff saves have no deadline.
+- **Reopening** (`events.planning_override_until`) is per event, never moves
+  the deadline, ends by itself at its time (database clock), and never
+  bypasses archiving or revoked access, which are checked first. Answers are
+  never cleared.
+- **Concurrency.** Deadline actions lock the event (no key update) and then
+  the plan, the order every planning write uses, so they serialize with client
+  saves (event share), archiving (event update) and each other. They check
+  the plan's `client_cutoff_version`: a stale tab gets a conflict, while a
+  repeated identical click is reported as unchanged. Direct column writes are
+  revoked and a trigger refuses any change outside these functions.
+- **History.** Each change writes an audit event with the staff user,
+  database time, reason and before/after values. Clients never receive
+  reasons, staff identities or versions: their view has only the state, the
+  deadline, when editing closes and the time zone.
+- **In the browser.** One editing state is shared by every editor. When a
+  save comes back locked (a tab left open across the deadline), every editor
+  turns read-only at once, nothing more is sent, and the unsaved input stays
+  on screen marked "Not saved". The pages are `private, no-store` and every
+  save is decided by the database, so a cached or stale page can't write.
+- Nothing here changes progress, contracts, prices, payments, booking or
+  emails, and it is not a frozen run sheet: staff can still edit.
+
 ## Running the checks
 
 ```bash
@@ -670,6 +738,7 @@ in every relevant relationship.
 | `28_participants` | Editors by moment key and Participants and names covered by Introductions (not saved, not counted); speeches wherever the library allows. Processional people saved with its songs: individual, pair and group entries without fixed labels, trimmed names and pronunciation in order, links to its own or Couple entrance songs only (another stage's or another event's refused), linked songs not removable from either (also from a stale revision), Couple entrance renames and hiding keeping links, not applicable refused while people exist, renamed and reordered songs leaving people untouched, discuss open. Introductions sharing Entrance music songs; links to another moment, another event or malformed ids refused; removing a linked song refused naming the entries, also from a stale revision; renames, reorders and unlinked removals allowed; hidden Entrance music keeping valid links; No introductions and discuss. MC choices, details kept only for someone else. Speech timing (exact time, next day, cue, undecided), bounds, completion. Retried adds saved once; hidden moments; other clients, other events, other businesses, anon and archived events; staff edits; contract, booking, payments, proposal and imports untouched |
 | `29_contacts_preferences` | Editors on their sections; this event's contacts in the view with name and phone only. Day-of contact: not decided (open), someone else needing a phone, phone checks, an event contact by id only (no copy), a phone for the day without changing the client, contacts of another event or business and names refused, a contact leaving the event (kept, unavailable, not resaved). Vendors: name or business, roles, phone and email checks, order, none refused while listed, retried adds once, stale conflicts. Preferences: no language copy, language from Event basics, discuss open, unknown questions refused. Music styles: list order once, unknown styles, DJ's choice exclusive, other style, slow songs. Hidden sections, other clients, events and businesses, anon, archived events, staff edits; no staff ids, notes, payment references or signing evidence; clients, event contacts and contractual records untouched |
 | `30_remaining_editors` | Editors in their library places (Dinner and Party sharing one); only moment-holding stages without an editor; nothing "not available". Arrival: ceremony reuse storing no copy, open while the Ceremony lacks it or is hidden, other place with overnight times and next day, event venue unknown, "no separate arrangements" refused with details and alone not applicable. Program: own times, agenda with exact, overnight, cue and undecided timings, titles needed, "No formal program" refused with entries. Activities: songs need title and artist and safe links, custom names, Party counted separately, stale tabs, unknown fields. Dedications: unfinished kept without invented songs, any time, songs needed, no durations, "No dedications". Retried adds once, stale conflicts, hidden stages, other clients, events and businesses, anon, archived events, staff edits, stage order unchanged; contractual records untouched |
+| `31_planning_cutoff` | Owner-only, versioned setting with limits (staff, other businesses, clients, anon, direct column writes). Plans copy the days and store the deadline at setup; later setting changes leave them; a deadline already on the event is kept. Midnight in the event's zone: DST start and end days in Toronto, skipped and repeated midnight (Havana, Beirut), quarter-hour offsets, 0 days, zones east of UTC, events without a start time. States a microsecond before, exactly at and after the deadline and a reopening's end. Client view fields; saves before; after: reads continue, both save functions refused before validation and revision checks, nothing changed, progress unchanged; staff saves continue. Reopening: already open, reason, future, 14-day maximum, stale version, clients, other businesses, anon; stored expiry, deadline kept, client saves, replays, audit (staff, time, reason, before/after), nothing leaked to clients, staff history; expiry; closing early, repeats, never closing an open plan. Deadline changes and stale tabs; date and zone changes don't move it, mismatch shown, explicit recalculation. Direct writes and the trigger; archived and revoked access during a reopening; other clients and slugs; every plan has a deadline; booking and emails untouched |
 | `25_planning` | Read-only tables for staff; starter templates added explicitly and once; template ownership across businesses, clients and direct writes; rename, move, remove and add with stable keys and versions; library placement enforced by trigger; duplicate and archive; one default per event type. Booking (real signing and deposit) creates one plan from the event-type default; the Basics fallback; setup before booking kept at booking; repeats and already-booked backfill. Frozen imports after catalog changes. Client access: booked, unbooked, other client, stranger, wrong slug, revoked, unverified, two DJs, anon, archived and unarchived, payment invalidation. Basics validation, conflicts, normalization, progress (imported and not applicable versus unanswered, unavailable sections excluded). Disable and restore keep answers and order and change nothing contractual. Non-destructive template replacement. Integrity |
 | `24_booking` | Owner-only, versioned policy setting; no direct writes; only two policies. Frozen policy per contract, unchanged by later setting changes. On signature: booked when signed, with payment still due. On deposit: payments before signing count, partial payments await the deposit to the cent, the completing payment books, later payments and checks don't book again (one audit event, one email). Zero deposit. Overpayment. Corrections keep the booking and `booking_confirmed_at` and warn staff; the client sees the amount outstanding. Legacy contracts: nothing automatic, staff check as `on_deposit` (not the business's on_signature), then automatic. Archived events refused. Guards against booking outside the function, changing the date or unbooking. Tenant isolation. Older workers never claim booking emails |
 | `21_signed_contract_pdfs` | Signing queues one PDF job (none on replay) and no email. Only the service role runs jobs. Leases: no double claim, expired-lease recovery, stale leases can't fail a job. Commit validation (missing, wrong size, wrong type, wrong folder, wrong signature hash). One canonical immutable document; a second upload is "exists" with no duplicate emails. One email per party with separate dedup keys, no paths or tokens in payloads. Staff, other tenants, signer, other clients and anon. Archiving blocks the signer and cancels undelivered copies but keeps the PDF. Recipient-confirmed resend that never repeats a delivered copy. Contracts signed before PDFs: explicit generation without email |
@@ -854,6 +923,27 @@ signed-out browser:
   and restore a list with its songs, and see archived plans read-only;
   another business gets a 404. Contract, payments and booking stay
   unchanged.
+- `supabase/tests/database/31_planning_cutoff.test.sql` covers the deadline
+  and reopening rules (see the table above).
+- `tests/unit/planning-cutoff.test.ts`: deadline display in the event's zone
+  across DST, datetime-local values, reopening input, reasons, the locked save
+  result and client-safe parsing.
+- `tests/integration/planning-cutoff.test.ts`: a client save that waits on a
+  row lock (held by another session) across the deadline is refused, and one
+  whose wait ends before it saves; every write path refused after the
+  deadline with client-safe fields, staff still saving, direct REST writes
+  refused; reopening expiring by database time; saves racing "close now"
+  (all or nothing); two staff changing the deadline or reopening at once (one
+  wins, one conflict, one audit), double clicks; archiving racing reopening
+  and saving; anon. Deadlines are placed seconds away with trusted SQL
+  (`tests/integration/support/sql.ts`), never waited for.
+- `tests/e2e/cutoff-flow.spec.ts`: on phones, the owner setting (existing
+  plan unchanged), the client's deadline in the event's zone, a tab left open
+  across the deadline (locked, typed value kept, all editors read-only),
+  staff editing after it, reopening with a reason and expiry, the client
+  editing until the shown end, closing early refusing a stale tab, a moved
+  event date and explicit recalculation, no reasons or staff emails for the
+  client, contract, payments and booking unchanged.
 - `tests/integration/planning.test.ts`: concurrent payments and checks create
   one plan; repeated checks and setup never replace it; concurrent setup and
   starter installs; concurrent client saves (one wins, the rest conflict);

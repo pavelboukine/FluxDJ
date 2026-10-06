@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { StaffContext } from "@/lib/auth/staff";
+import { formatInstant } from "@/lib/planning/cutoff";
 import { progressHeadline, staffPlanningViewSchema } from "@/lib/planning/view";
 
 /** Where the event's planning stands, with a link to it. Staff only. */
@@ -25,6 +26,16 @@ export async function PlanningCard({ staff, slug, eventId }: { staff: StaffConte
         {view.plan !== null ? (
           <p>
             {progressHeadline(view.progress)} <span className="text-muted-foreground">(available sections only)</span>
+          </p>
+        ) : null}
+        {view.plan !== null && view.editing ? (
+          <p data-testid="planning-card-editing">
+            {view.editing.state === "open"
+              ? `Client editing open until ${formatInstant(view.editing.deadline, view.editing.timezone)}.`
+              : view.editing.state === "reopened"
+                ? `Client editing reopened until ${formatInstant(view.editing.closes_at ?? view.editing.deadline, view.editing.timezone)}.`
+                : "Client planning is read-only (deadline passed). Staff can still edit."}
+            {view.editing.schedule_changed ? <span className="text-amber-700 dark:text-amber-400"> The deadline no longer matches the event date.</span> : null}
           </p>
         ) : null}
         <Link className="justify-self-start underline" href={`/staff/${slug}/events/${eventId}/planning`}>

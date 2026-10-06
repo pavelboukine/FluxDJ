@@ -546,13 +546,13 @@ isOneToOne: false
                   ]
                 },"event_plans": {
                   Row: {
-                    "created_at": string,"event_id": string,"id": string,"initialized_via": string,"origin": string,"source_template_id": string | null,"source_template_name": string | null,"source_template_version": number | null,"structure_version": number,"tenant_id": string,"updated_at": string
+                    "client_cutoff_days": number,"client_cutoff_version": number,"created_at": string,"event_id": string,"id": string,"initialized_via": string,"origin": string,"source_template_id": string | null,"source_template_name": string | null,"source_template_version": number | null,"structure_version": number,"tenant_id": string,"updated_at": string
                   }
                   Insert: {
-                    "created_at"?: string,"event_id": string,"id"?: string,"initialized_via": string,"origin": string,"source_template_id"?: string | null,"source_template_name"?: string | null,"source_template_version"?: number | null,"structure_version"?: number,"tenant_id": string,"updated_at"?: string
+                    "client_cutoff_days": number,"client_cutoff_version"?: number,"created_at"?: string,"event_id": string,"id"?: string,"initialized_via": string,"origin": string,"source_template_id"?: string | null,"source_template_name"?: string | null,"source_template_version"?: number | null,"structure_version"?: number,"tenant_id": string,"updated_at"?: string
                   }
                   Update: {
-                    "created_at"?: string,"event_id"?: string,"id"?: string,"initialized_via"?: string,"origin"?: string,"source_template_id"?: string | null,"source_template_name"?: string | null,"source_template_version"?: number | null,"structure_version"?: number,"tenant_id"?: string,"updated_at"?: string
+                    "client_cutoff_days"?: number,"client_cutoff_version"?: number,"created_at"?: string,"event_id"?: string,"id"?: string,"initialized_via"?: string,"origin"?: string,"source_template_id"?: string | null,"source_template_name"?: string | null,"source_template_version"?: number | null,"structure_version"?: number,"tenant_id"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -1144,13 +1144,13 @@ isOneToOne: false
                   ]
                 },"tenants": {
                   Row: {
-                    "archived_at": string | null,"booking_confirmation_policy": string,"booking_policy_version": number,"brand_colors": NonNullable<Json>,"business_address": string | null,"business_name": string,"contact_email": string | null,"created_at": string,"currency": string,"deposit_percent": number,"display_name": string,"id": string,"logo_storage_path": string | null,"planning_lock_days": number,"reply_to_email": string | null,"slug": string,"tax_categories": NonNullable<Json>,"tax_config": NonNullable<Json>,"tax_settings_version": number,"timezone": string,"updated_at": string
+                    "archived_at": string | null,"booking_confirmation_policy": string,"booking_policy_version": number,"brand_colors": NonNullable<Json>,"business_address": string | null,"business_name": string,"contact_email": string | null,"created_at": string,"currency": string,"deposit_percent": number,"display_name": string,"id": string,"logo_storage_path": string | null,"planning_lock_days": number,"planning_settings_version": number,"reply_to_email": string | null,"slug": string,"tax_categories": NonNullable<Json>,"tax_config": NonNullable<Json>,"tax_settings_version": number,"timezone": string,"updated_at": string
                   }
                   Insert: {
-                    "archived_at"?: string | null,"booking_confirmation_policy"?: string,"booking_policy_version"?: number,"brand_colors"?: NonNullable<Json>,"business_address"?: string | null,"business_name": string,"contact_email"?: string | null,"created_at"?: string,"currency"?: string,"deposit_percent"?: number,"display_name": string,"id"?: string,"logo_storage_path"?: string | null,"planning_lock_days"?: number,"reply_to_email"?: string | null,"slug": string,"tax_categories"?: NonNullable<Json>,"tax_config"?: NonNullable<Json>,"tax_settings_version"?: number,"timezone"?: string,"updated_at"?: string
+                    "archived_at"?: string | null,"booking_confirmation_policy"?: string,"booking_policy_version"?: number,"brand_colors"?: NonNullable<Json>,"business_address"?: string | null,"business_name": string,"contact_email"?: string | null,"created_at"?: string,"currency"?: string,"deposit_percent"?: number,"display_name": string,"id"?: string,"logo_storage_path"?: string | null,"planning_lock_days"?: number,"planning_settings_version"?: number,"reply_to_email"?: string | null,"slug": string,"tax_categories"?: NonNullable<Json>,"tax_config"?: NonNullable<Json>,"tax_settings_version"?: number,"timezone"?: string,"updated_at"?: string
                   }
                   Update: {
-                    "archived_at"?: string | null,"booking_confirmation_policy"?: string,"booking_policy_version"?: number,"brand_colors"?: NonNullable<Json>,"business_address"?: string | null,"business_name"?: string,"contact_email"?: string | null,"created_at"?: string,"currency"?: string,"deposit_percent"?: number,"display_name"?: string,"id"?: string,"logo_storage_path"?: string | null,"planning_lock_days"?: number,"reply_to_email"?: string | null,"slug"?: string,"tax_categories"?: NonNullable<Json>,"tax_config"?: NonNullable<Json>,"tax_settings_version"?: number,"timezone"?: string,"updated_at"?: string
+                    "archived_at"?: string | null,"booking_confirmation_policy"?: string,"booking_policy_version"?: number,"brand_colors"?: NonNullable<Json>,"business_address"?: string | null,"business_name"?: string,"contact_email"?: string | null,"created_at"?: string,"currency"?: string,"deposit_percent"?: number,"display_name"?: string,"id"?: string,"logo_storage_path"?: string | null,"planning_lock_days"?: number,"planning_settings_version"?: number,"reply_to_email"?: string | null,"slug"?: string,"tax_categories"?: NonNullable<Json>,"tax_config"?: NonNullable<Json>,"tax_settings_version"?: number,"timezone"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     
@@ -1227,6 +1227,9 @@ isOneToOne: false
                            },
 "client_use_statement_current":
 { Args: Record<PropertyKey, never>; Returns: Json
+                           },
+"close_plan_client_editing":
+{ Args: { "p_event_id": string,"p_expected_version": number,"p_reason": string }; Returns: Json
                            },
 "commit_contract_document":
 { Args: { "p_byte_size": number,"p_job_id": string,"p_pdf_sha256": string,"p_renderer": string,"p_signature_sha256": string,"p_storage_path": string }; Returns: Json
@@ -1321,6 +1324,9 @@ isOneToOne: false
                            } |
 { Args: { "p_client_use_statement_version"?: string,"p_expected_draft_version": number,"p_usage": string,"p_version_id": string }; Returns: Json
                            },
+"recalculate_plan_client_cutoff":
+{ Args: { "p_confirm": boolean,"p_event_id": string,"p_expected_version": number,"p_reason": string }; Returns: Json
+                           },
 "record_event_payment":
 { Args: { "p_amount_cents": number,"p_confirm_duplicate"?: boolean,"p_event_id": string,"p_idempotency_key": string,"p_note": string,"p_paid_on": string,"p_reference": string }; Returns: Json
                            },
@@ -1332,6 +1338,9 @@ isOneToOne: false
                            },
 "rename_planning_template_item":
 { Args: { "p_expected_version": number,"p_item_id": string,"p_label": string }; Returns: number
+                           },
+"reopen_plan_client_editing":
+{ Args: { "p_event_id": string,"p_expected_version": number,"p_reason": string,"p_until_local": string }; Returns: Json
                            },
 "request_contract_sign_in":
 { Args: { "p_tenant_slug": string,"p_token_hash": string }; Returns: Json
@@ -1372,6 +1381,9 @@ isOneToOne: false
 "set_package_items":
 { Args: { "p_items": Json,"p_package_id": string }; Returns: undefined
                            },
+"set_plan_client_cutoff":
+{ Args: { "p_days": number,"p_event_id": string,"p_expected_version": number,"p_reason": string }; Returns: Json
+                           },
 "set_planning_template_archived":
 { Args: { "p_archived": boolean,"p_template_id": string }; Returns: number
                            },
@@ -1398,6 +1410,9 @@ isOneToOne: false
                            },
 "update_business_settings":
 { Args: { "p_business_address": string,"p_contact_email": string,"p_deposit_percent": number,"p_legal_name": string,"p_tenant_id": string }; Returns: undefined
+                           },
+"update_planning_cutoff_days":
+{ Args: { "p_days": number,"p_expected_version": number,"p_tenant_id": string }; Returns: number
                            },
 "update_planning_template":
 { Args: { "p_default_event_type": string,"p_description": string,"p_expected_version": number,"p_name": string,"p_template_id": string }; Returns: number

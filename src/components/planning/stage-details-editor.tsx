@@ -15,7 +15,7 @@ import {
 } from "@/lib/planning/stages";
 import type { SaveItemResult } from "@/lib/planning/view";
 import { FieldBox } from "./basics-editor";
-import { ItemChecklist, ItemWarnings, usePlanProgress } from "./progress";
+import { ItemChecklist, ItemWarnings, useEditingClosed, usePlanProgress } from "./progress";
 import { SaveStatus, useAutosave } from "./use-autosave";
 
 type Props = {
@@ -41,7 +41,7 @@ type Props = {
 export function StageDetailsEditor(props: Props) {
   const plan = usePlanProgress();
   const basics = plan?.basics ?? {};
-  const readOnly = Boolean(props.disabledReason);
+  const readOnly = useEditingClosed(props.disabledReason);
   const { form, update, saveState, message, fieldError, retry } = useAutosave<StageForm, StageAnswers>({
     initialForm: stageFormFromAnswers(props.editor, props.initialAnswers),
     initialAnswers: props.initialAnswers,
@@ -200,7 +200,7 @@ export function StageDetailsEditor(props: Props) {
         {STAGE_LAYOUT[props.editor].map(block)}
       </fieldset>
       <p className="text-xs text-muted-foreground">Times are local to the event ({props.event.timezone}). Entering times never reorders the stages.</p>
-      {!readOnly ? <SaveStatus saveState={saveState} message={message} retry={retry} /> : null}
+      {!readOnly || saveState === "locked" ? <SaveStatus saveState={saveState} message={message} retry={retry} /> : null}
     </div>
   );
 }

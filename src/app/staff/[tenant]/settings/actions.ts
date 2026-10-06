@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireStaff } from "@/lib/auth/staff";
 import { describeDbError } from "@/lib/db-errors";
 import { fail, ok, text, type ActionState } from "@/lib/forms";
+import { CUTOFF_DAYS_MAX, CUTOFF_DAYS_MIN } from "@/lib/planning/cutoff";
 import { parseTaxSettingsForm } from "@/lib/pricing/tax-settings";
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -79,4 +80,25 @@ export async function saveTaxSettings(slug: string, _state: ActionState, form: F
   if (error) return fail(describeDbError(error));
   revalidatePath(`/staff/${slug}`, "layout");
   return ok("Tax settings saved. They apply to offers sent from now on; sent proposals and contracts keep their taxes.", version);
+}
+
+/**
+ * How many calendar days before the event client planning closes (00:00 in
+ * the event's time zone). Owner only (checked again in the database),
+ * versioned against stale tabs. Plans keep the days they were set up with,
+ * so only plans set up afterwards follow the change.
+ */
+export async function savePlanningCutoff(slug: string, _state: ActionState, form: FormData): Promise<ActionState> {
+  const { supabase, tenant, membership } = await requireStaff(slug);
+  if (membership.role !== "owner") return fail("Only the owner can change the planning deadline.");
+  const raw = text(form, "planning_lock_days");
+  if (!/^\d{1,3}$/.test(raw) || Number(raw) < CUTOFF_DAYS_MIN || Number(raw) > CUTOFF_DAYS_MAX) {
+    return fail(`Enter a whole number of days from ${CUTOFF_DAYS_MIN} to ${CUTOFF_DAYS_MAX}.`);
+  }
+  const expected = Number(text(form, "draft_version"));
+  if (!Number.isInteger(expected) || expected < 0) return fail("Reload the page and try again.");
+  const { data: version, error } = await supabase.rpc("update_planning_cutoff_days", { p_tenant_id: tenant.id, p_days: Number(raw), p_expected_version: expected });
+  if (error) return fail(describeDbError(error));
+  revalidatePath(`/staff/${slug}`, "layout");
+  return ok("Planning deadline saved. It applies to plans set up from now on; existing plans keep their deadlines.", version);
 }

@@ -6,7 +6,7 @@ import { answersKey } from "@/lib/planning/basics";
 import type { SaveItemResult } from "@/lib/planning/view";
 import { usePlanProgress } from "./progress";
 
-export type SaveState = "saved" | "unsaved" | "saving" | "invalid" | "error" | "conflict" | "signed_out" | "unavailable";
+export type SaveState = "saved" | "unsaved" | "saving" | "invalid" | "error" | "conflict" | "signed_out" | "unavailable" | "locked";
 type Parsed<A> = { ok: true; answers: A } | { ok: false; field: string; message: string };
 
 const AUTOSAVE_DELAY_MS = 800;
@@ -18,7 +18,9 @@ const AUTOSAVE_DELAY_MS = 800;
  * window) is a conflict that never overwrites anything; failures keep every
  * input and offer Retry. Progress and timing notes come from the server's
  * answer. After a conflict or loss of access, typing stays on screen but is
- * never sent.
+ * never sent. When the client's planning closes (a save comes back "locked"),
+ * the shared plan state turns every editor read-only; unsaved input stays on
+ * screen, marked as not saved, and nothing more is sent.
  */
 export function useAutosave<F extends Record<string, unknown>, A extends Record<string, unknown>>(opts: {
   initialForm: F;
@@ -43,8 +45,10 @@ export function useAutosave<F extends Record<string, unknown>, A extends Record<
   const saveRef = useRef<() => Promise<void>>(async () => {});
   const stopped = useRef(false);
   const optsRef = useRef(opts);
+  const closedRef = useRef(plan?.editing?.state === "closed");
   useEffect(() => {
     optsRef.current = opts;
+    closedRef.current = plan?.editing?.state === "closed";
   });
 
   const save = useCallback(async (): Promise<void> => {
@@ -52,6 +56,12 @@ export function useAutosave<F extends Record<string, unknown>, A extends Record<
     if (stopped.current) return;
     const { parse, save: send, onSaved } = optsRef.current;
     const parsed = parse(formRef.current);
+    if (closedRef.current) {
+      // Another editor found planning closed: don't send; say whether anything here was left unsaved.
+      stopped.current = true;
+      setSaveState(parsed.ok && answersKey(parsed.answers) === savedKey.current ? "saved" : "locked");
+      return;
+    }
     if (!parsed.ok) {
       setFieldError({ field: parsed.field, message: parsed.message });
       setSaveState("invalid");
@@ -93,6 +103,12 @@ export function useAutosave<F extends Record<string, unknown>, A extends Record<
           case "unavailable":
             stopped.current = true;
             setSaveState("unavailable");
+            break;
+          case "locked":
+            stopped.current = true;
+            closedRef.current = true;
+            plan?.applyLocked(result.editing);
+            setSaveState("locked");
             break;
           case "error":
             setMessage(result.message);
@@ -146,6 +162,7 @@ const STATUS: Record<SaveState, string> = {
   conflict: "These answers were changed in another tab or window. Reload to see the latest before continuing. Your typing here is not saved.",
   signed_out: "Your session has ended. Sign in again in a new tab, then retry. Your answers are still here.",
   unavailable: "This section isn't available for editing any more (hidden, archived or no access). Your answers on this page were not saved.",
+  locked: "Not saved: planning is now read-only. Your last changes are still shown here; contact your DJ to make them.",
 };
 
 /** The save status line with Retry, sign-in and Reload actions. */
