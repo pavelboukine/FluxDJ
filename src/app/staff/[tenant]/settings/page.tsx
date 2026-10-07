@@ -16,6 +16,9 @@ export default async function BusinessSettings({ params }: PageProps<"/staff/[te
     .eq("id", tenant.id)
     .single();
   const isOwner = membership.role === "owner";
+  // Never saved (update_business_settings sets address and email together): the legal
+  // name is still the placeholder copied from the display name at sign-up.
+  const legalNamePending = !settings?.business_address && !settings?.contact_email;
   const tax = readTaxSettings(settings?.tax_config, settings?.tax_categories);
   const usage = await categoryUsage(supabase, tenant.id);
   const shownCategories = [...new Set(["standard", ...usage.map((u) => u.key), ...Object.keys(tax.categories)])].sort((a, b) =>
@@ -40,7 +43,14 @@ export default async function BusinessSettings({ params }: PageProps<"/staff/[te
         <CardContent>
           {isOwner ? (
             <ActionForm action={saveBusinessSettings.bind(null, slug)} submitLabel="Save settings" trackUnsaved>
-              <TextField label="Legal business name" name="legal_name" required maxLength={200} defaultValue={settings?.business_name ?? ""} />
+              <TextField
+                label="Legal business name"
+                name="legal_name"
+                required
+                maxLength={200}
+                defaultValue={legalNamePending ? "" : (settings?.business_name ?? "")}
+                hint={legalNamePending ? `Not confirmed yet. Until you save it, contracts can't be sent and drafts show “${settings?.business_name}” as a placeholder.` : undefined}
+              />
               <TextAreaField label="Business address" name="business_address" required rows={3} maxLength={500} defaultValue={settings?.business_address ?? ""} />
               <TextField label="Contact email" name="contact_email" type="email" required maxLength={320} defaultValue={settings?.contact_email ?? ""} />
               <TextField
@@ -59,7 +69,7 @@ export default async function BusinessSettings({ params }: PageProps<"/staff/[te
           ) : (
             <dl className="grid gap-2 text-sm">
               <p role="status" className="text-muted-foreground">Only the owner can change business settings.</p>
-              <div><dt className="text-muted-foreground">Legal business name</dt><dd>{settings?.business_name}</dd></div>
+              <div><dt className="text-muted-foreground">Legal business name</dt><dd>{legalNamePending ? "Not set" : settings?.business_name}</dd></div>
               <div><dt className="text-muted-foreground">Business address</dt><dd className="whitespace-pre-wrap">{settings?.business_address ?? "Not set"}</dd></div>
               <div><dt className="text-muted-foreground">Contact email</dt><dd>{settings?.contact_email ?? "Not set"}</dd></div>
               <div><dt className="text-muted-foreground">Deposit</dt><dd>{settings?.deposit_percent}%</dd></div>

@@ -35,6 +35,18 @@ export function int(form: FormData, name: string, min: number, max: number): num
 export const KEY_RE = /^[a-z][a-z0-9_]{0,63}$/;
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+/** Suggests a workspace web address from a business name: "DJ Maxwell Événements" -> "dj-maxwell-evenements". */
+export function slugFromName(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48)
+    .replace(/-+$/, "");
+}
+
 /** Suggests a stable key from a name: "Uplights (pack of 4)" -> "uplights_pack_of_4". */
 export function keyFromName(name: string): string {
   const key = name

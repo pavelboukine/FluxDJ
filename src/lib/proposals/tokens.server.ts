@@ -30,6 +30,15 @@ export function contractInviteToken(linkId: string): string {
   return createHmac("sha256", serverEnv().PROPOSAL_LINK_SECRET).update(`flux:contract-invite:v1:${linkId}`).digest("base64url");
 }
 
+/**
+ * DJ (platform) invitation tokens: same derivation, their own domain prefix.
+ * The link id rotates on every resend, so earlier links stop working. The
+ * token only lets the invited address ask for a verification email.
+ */
+export function platformInviteToken(linkId: string): string {
+  return createHmac("sha256", serverEnv().PROPOSAL_LINK_SECRET).update(`flux:platform-invite:v1:${linkId}`).digest("base64url");
+}
+
 export function sha256Hex(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }

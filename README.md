@@ -54,6 +54,10 @@ foundation is in place:
   temporarily, with a reason, all audited.
 - DJ run sheet: a staff-only live view for gig night and an on-demand PDF,
   both from one read-only projection of the latest saved plan.
+- Invite-only DJ onboarding: a platform administrator invites a DJ business
+  owner by email; the DJ verifies that address, names the business and
+  chooses its web address, and gets a new, empty workspace. See "DJ
+  invitations and new workspaces".
 
 Everything has row-level security and tests. Not built yet: payment
 processing, PWA and offline access, reminders, cancellations and amendments.
@@ -699,6 +703,32 @@ How it works:
   and never "final": staff can still change the plan after the client
   deadline.
 
+#### Inviting a DJ
+
+Platform administration is a separate grant, never part of a business role
+(see "DJ invitations and new workspaces"). To try it locally, grant one of
+your local identities once (it needs a verified email, as the seeded owners
+have):
+
+```bash
+docker exec -i supabase_db_flux-dj psql -U postgres -c \
+  "select private.grant_platform_admin('owner@bouprod.example', 'Local operator');"
+```
+
+1. Sign in as that user and open http://127.0.0.1:3000/platform/invitations
+   (also linked as **DJ invitations** in the staff header).
+2. Enter an address, click **Review invitation**, check the recipient and
+   expiry, then **Send invitation**.
+3. In Mailpit, open "You're invited to set up your DJ business on Flux DJ" in
+   a private window and click **Accept the invitation**, then **Email me a
+   sign-in link**.
+4. Open "Confirm your email to set up Flux DJ", click **Confirm and
+   continue**, then **Sign in**.
+5. Enter a business name and web address and click **Create my workspace**.
+   You land on the new, empty workspace with a welcome message.
+
+Revoke the local grant with `select private.revoke_platform_admin('…');`.
+
 #### Installing Flux DJ on a phone
 
 Flux DJ can be added to a phone's home screen and opens without browser
@@ -817,10 +847,12 @@ the contract invitation page). Every local browser comes from
   from Mailpit are skipped, so these specs use no rate-limit budget and can
   run repeatedly.
 - Only `staff-flow.spec.ts` (login form, unknown emails, link scanners,
-  JavaScript off, sign-in with the emailed code) and `contract-send-flow.spec.ts`
-  (invitation request, verification, returning-client login) use the real
-  forms. A full run uses 5 `sign_in_link`, 2 `sign_in_code` and 1
-  `contract_sign_in`.
+  JavaScript off, sign-in with the emailed code), `contract-send-flow.spec.ts`
+  (invitation request, verification, returning-client login) and
+  `platform-onboarding-flow.spec.ts` (the DJ invitation request) use the real
+  forms. A full run uses 5 `sign_in_link`, 2 `sign_in_code`, 1
+  `contract_sign_in`, 2 `platform_sign_in` (10 per 15 minutes) and 3
+  `workspace_create` (20 per 15 minutes).
 - If a limit is used up, the test fails at once with the limit's name and the
   time it resets. Nothing resets the counters, and production limits are
   unchanged. The limiter itself is proven by the pgTAP tests (`12_…`, `17_…`).
@@ -878,6 +910,7 @@ in every relevant relationship.
 | `28_participants` | Editors by moment key and Participants and names covered by Introductions (not saved, not counted); speeches wherever the library allows. Processional people saved with its songs: individual, pair and group entries without fixed labels, trimmed names and pronunciation in order, links to its own or Couple entrance songs only (another stage's or another event's refused), linked songs not removable from either (also from a stale revision), Couple entrance renames and hiding keeping links, not applicable refused while people exist, renamed and reordered songs leaving people untouched, discuss open. Introductions sharing Entrance music songs; links to another moment, another event or malformed ids refused; removing a linked song refused naming the entries, also from a stale revision; renames, reorders and unlinked removals allowed; hidden Entrance music keeping valid links; No introductions and discuss. MC choices, details kept only for someone else. Speech timing (exact time, next day, cue, undecided), bounds, completion. Retried adds saved once; hidden moments; other clients, other events, other businesses, anon and archived events; staff edits; contract, booking, payments, proposal and imports untouched |
 | `29_contacts_preferences` | Editors on their sections; this event's contacts in the view with name and phone only. Day-of contact: not decided (open), someone else needing a phone, phone checks, an event contact by id only (no copy), a phone for the day without changing the client, contacts of another event or business and names refused, a contact leaving the event (kept, unavailable, not resaved). Vendors: name or business, roles, phone and email checks, order, none refused while listed, retried adds once, stale conflicts. Preferences: no language copy, language from Event basics, discuss open, unknown questions refused. Music styles: list order once, unknown styles, DJ's choice exclusive, other style, slow songs. Hidden sections, other clients, events and businesses, anon, archived events, staff edits; no staff ids, notes, payment references or signing evidence; clients, event contacts and contractual records untouched |
 | `30_remaining_editors` | Editors in their library places (Dinner and Party sharing one); only moment-holding stages without an editor; nothing "not available". Arrival: ceremony reuse storing no copy, open while the Ceremony lacks it or is hidden, other place with overnight times and next day, event venue unknown, "no separate arrangements" refused with details and alone not applicable. Program: own times, agenda with exact, overnight, cue and undecided timings, titles needed, "No formal program" refused with entries. Activities: songs need title and artist and safe links, custom names, Party counted separately, stale tabs, unknown fields. Dedications: unfinished kept without invented songs, any time, songs needed, no durations, "No dedications". Retried adds once, stale conflicts, hidden stages, other clients, events and businesses, anon, archived events, staff edits, stage order unchanged; contractual records untouched |
+| `33_platform_invitations` | Only the database owner grants platform administration (not the app, the API or the service role), only to one verified identity, audited. Tenant owners, staff, clients, strangers, anon and unverified administrators can't invite, list, resend or revoke; administrators see no business, client, event or email. Normalized addresses, one open invitation per address (also enforced by a unique index), hashed tokens only, emails with no tenant and only the link id. The tenant worker never claims them. Resend limits, link rotation, cancelled queued emails, audit. Verification requests: service role only, old and malformed links, masked address, 3 per 15 minutes, invited address only. Wrong, unverified, revoked and expired accounts and invitations. Names, reserved and malformed addresses, existing businesses (untouched, invitation still open). One business and one owner membership for the signed-in user, defaults, an empty workspace, replays returning the same workspace, final accepted invitations, no deletes. Existing clients and staff keep their access; other owners see nothing. Archived businesses keep their address and a retry never creates another |
 | `32_version_conflicts` | No function raises `serialization_failure` (40001); every optimistic-version check raises `PT409`; the re-created functions keep their grants |
 | `31_planning_cutoff` | Owner-only, versioned setting with limits (staff, other businesses, clients, anon, direct column writes). Plans copy the days and store the deadline at setup; later setting changes leave them; a deadline already on the event is kept. Midnight in the event's zone: DST start and end days in Toronto, skipped and repeated midnight (Havana, Beirut), quarter-hour offsets, 0 days, zones east of UTC, events without a start time. States a microsecond before, exactly at and after the deadline and a reopening's end. Client view fields; saves before; after: reads continue, both save functions refused before validation and revision checks, nothing changed, progress unchanged; staff saves continue. Reopening: already open, reason, future, 14-day maximum, stale version, clients, other businesses, anon; stored expiry, deadline kept, client saves, replays, audit (staff, time, reason, before/after), nothing leaked to clients, staff history; expiry; closing early, repeats, never closing an open plan. Deadline changes and stale tabs; date and zone changes don't move it, mismatch shown, explicit recalculation. Direct writes and the trigger; archived and revoked access during a reopening; other clients and slugs; every plan has a deadline; booking and emails untouched |
 | `25_planning` | Read-only tables for staff; starter templates added explicitly and once; template ownership across businesses, clients and direct writes; rename, move, remove and add with stable keys and versions; library placement enforced by trigger; duplicate and archive; one default per event type. Booking (real signing and deposit) creates one plan from the event-type default; the Basics fallback; setup before booking kept at booking; repeats and already-booked backfill. Frozen imports after catalog changes. Client access: booked, unbooked, other client, stranger, wrong slug, revoked, unverified, two DJs, anon, archived and unarchived, payment invalidation. Basics validation, conflicts, normalization, progress (imported and not applicable versus unanswered, unavailable sections excluded). Disable and restore keep answers and order and change nothing contractual. Non-destructive template replacement. Integrity |
@@ -1923,6 +1956,114 @@ path is `{tenant_id}/gear-items/{gear_item_id}/{random uuid}.{ext}`.
 - Allowed types are JPEG, PNG, WebP, AVIF, MP4 and WebM, up to 100 MiB. The
   `gear_media` row must agree on path, kind, MIME type and extension.
 
+### DJ invitations and new workspaces
+
+Migration `20261018000100_platform_invitations.sql`. Business owners join by
+invitation only; public signup stays disabled.
+
+**Platform administrators.** `public.platform_admins` lists the users who may
+invite DJs. Nothing derives it from a tenant role, an email address or a
+slug, and it gives no access to any business's clients, events, emails or
+settings (no tenant policy refers to it; an administrator without a staff
+role who opens a workspace is treated like any other non-member). It is
+granted only by SQL run as the database owner; the app, the API and even the
+service role cannot write it. Every invitation function checks it again in
+the database, and the `/platform/invitations` page answers 404 to everyone
+else.
+
+*One-time grant on hosted (not applied yet).* After the migration is
+deployed, in the Supabase dashboard's SQL editor for the production project:
+
+```sql
+-- Exactly one verified Auth user must have this email; it is audited.
+select private.grant_platform_admin('<your sign-in email>', 'Flux DJ operator');
+-- Check:
+select a.user_id, u.email, a.granted_at from public.platform_admins a join auth.users u on u.id = a.user_id;
+```
+
+Undo with `select private.revoke_platform_admin('<email>');`. Grants and
+revocations are recorded in `public.platform_audit_events`.
+
+**Lifecycle.**
+
+1. *Invite* (`create_platform_invitation`). The administrator enters an
+   address and reviews the normalized recipient and the expiry before
+   sending. The invitation expires after 14 days. One open (unaccepted,
+   unrevoked) invitation per address: another attempt points to the existing
+   one, expired or not. At most 50 new invitations per administrator per day.
+   The token is `HMAC(PROPOSAL_LINK_SECRET, "flux:platform-invite:v1:" +
+   link id)`; only its SHA-256 is stored. The email ("platform_invitation",
+   from "Flux DJ", no reply-to) is queued in the same transaction and links to
+   `/join#token`, with the token in the fragment.
+2. *Resend* (`resend_platform_invitation`, also for an expired invitation).
+   It issues a new link id and token with a new 14-day expiry, so the
+   previous link stops working at once, and cancels queued emails for the
+   invitation. Limited to one per 2 minutes and 10 emails a day.
+3. *Revoke* (`revoke_platform_invitation`). Only before acceptance; the link
+   stops working and queued emails are cancelled. A new invitation to the
+   same address is then possible.
+4. *Verification request* (`request_platform_sign_in`, service role). `/join`
+   reads the token from the fragment, removes it from the address bar and
+   sends nothing until **Email me a sign-in link**. The token only queues a
+   verification email ("platform_sign_in") to the invited address: limited
+   to 10 per IP per 15 minutes (`platform_sign_in`) and 3 per invitation per
+   15 minutes. At delivery the worker asks Supabase Auth for a fresh link,
+   exactly as for contract verification: `invite` creates the identity when
+   none exists, `magiclink` reuses an existing client or staff identity (no
+   duplicate identities). The link opens `/auth/confirm` with
+   `next=/join/{invitation}`, so verification keeps the explicit **Sign in**
+   POST that scanners can't trigger.
+5. *Workspace creation* (`accept_platform_invitation`). `/join/{invitation}`
+   asks for the business name (2 to 100 characters) and web address. Only
+   the **Create my workspace** POST, limited to 20 per IP per 15 minutes
+   (`workspace_create`), calls the function, which locks the invitation row
+   and rechecks the signed-in user's verified email, expiry, revocation and
+   acceptance. It then creates the tenant, the owner membership for the
+   signed-in user and the accepted invitation in one transaction, and audits
+   the platform and the new business. The browser supplies only the name and
+   address, never a user or tenant id. A taken address (including archived
+   businesses) or a reserved one (`private.is_claimable_tenant_slug`: every
+   top-level route such as `staff`, `login`, `join`, `platform`, `start`)
+   changes nothing and leaves the invitation open. Repeated or concurrent
+   submissions by the same user return the same workspace; an accepted
+   invitation never creates another, and nobody else can use it.
+6. The DJ lands on `/staff/{slug}?welcome=1`: a welcome card links to
+   Settings, gear, packages and the three template screens.
+
+**Delivery.** Platform emails use `email_outbox` with `tenant_id` null (a
+check constraint allows that only for these two types; staff never see them).
+`claim_email_outbox` joins tenants, so workers deployed before this migration
+never claim them; `claim_platform_email_outbox` rechecks that the invitation
+is still open and unexpired and that the row belongs to its current link and
+address. The invitation email is rebuilt from the link id on every attempt,
+with a provider idempotency key; the verification email gets a new Supabase
+link on every attempt. No token is stored in rows, logs or errors. Platform
+emails have no staff **Retry**; resend the invitation instead.
+
+**Signed in somewhere else.** A wrong signed-in account sees only the masked
+invited address and a **Sign out** button. The verification link signs in
+whichever browser opens it, which is usually Safari on a phone: a Home Screen
+app keeps its own sign-in, so the welcome card tells the new owner to sign in
+there with the emailed code at the app's sign-in page. Nothing about the
+invitation is kept in browser storage.
+
+**New workspace defaults.** No clients, events, gear, packages, questions,
+proposal, contract or planning templates are created or copied. Values are
+the column defaults the other businesses started with: time zone
+America/Toronto, currency CAD, 50% deposit, bookings confirmed on signature
+and deposit, planning deadline 14 days, no taxes configured, no reply-to
+address (staff notifications go to the owner's sign-in email), no logo or
+colours.
+
+**Incomplete setup.** `tenants.business_name` (the legal name) is required,
+so it starts as the display name, as a placeholder. The business address and
+contact email start empty, and `update_business_settings` always saves all
+three together, so "address or contact email missing" means the legal
+identity was never confirmed. Existing checks keep contracts unsendable in
+that state (`business_settings_incomplete`, and `business_identity_missing`
+for drafts generated before). The dashboard says setup isn't finished, and
+Settings shows the legal-name field empty with a note naming the placeholder.
+
 ### Client access
 
 Clients never read `events` directly, because RLS limits rows, not columns.
@@ -2002,7 +2143,13 @@ before real clients.
      random characters, never reused from local
    - `EMAIL_TRANSPORT=resend`, `RESEND_API_KEY` and a verified
      `EMAIL_FROM_ADDRESS`
-7. **Schedule the outbox worker.** It also generates signed PDFs (up to 5 per run, before emails, `maxDuration` 60 s; a PDF usually renders in well under 2 s). `vercel.json` runs `/api/internal/outbox`
+7. **Platform administration (DJ invitations).** After migration
+   `20261018000100` is applied, grant your own identity once from the SQL
+   editor (see "DJ invitations and new workspaces"). No new environment
+   variables or Auth settings are needed: invitations reuse
+   `PROPOSAL_LINK_SECRET` with their own prefix, and verification links use
+   the existing `/auth/confirm` redirect.
+8. **Schedule the outbox worker.** It also generates signed PDFs (up to 5 per run, before emails, `maxDuration` 60 s; a PDF usually renders in well under 2 s). `vercel.json` runs `/api/internal/outbox`
    every 5 minutes. Vercel cron sends `Authorization: Bearer $CRON_SECRET`, and
    only when a `CRON_SECRET` variable exists. The route accepts exactly
    `Bearer $OUTBOX_WORKER_SECRET`, so set `CRON_SECRET` (Production,
@@ -2036,6 +2183,8 @@ src/lib/pricing/               Pure pricing module and offer snapshot schema
 src/lib/proposals/             Server-only selection pricing and recording
 src/app/staff/                 Staff screens and Server Actions
 src/app/login, src/app/auth/   Magic-link login and confirmation
+src/app/platform/              Platform administrators: DJ invitations
+src/app/join/                  Invited DJs: verification request and workspace creation
 src/components/proposal/       Responsive proposal preview (live pricing)
 src/lib/media/                 File-signature detection for uploads
 src/lib/proposals/             Link tokens and the client proposal session

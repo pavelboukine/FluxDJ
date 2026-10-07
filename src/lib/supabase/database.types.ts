@@ -292,13 +292,13 @@ isOneToOne: false
                   ]
                 },"email_outbox": {
                   Row: {
-                    "access_link_id": string | null,"attempts": number,"created_at": string,"dedup_key": string,"entity_id": string,"entity_type": string,"event_type": string,"id": string,"last_error": string | null,"locked_until": string | null,"max_attempts": number,"next_attempt_at": string,"payload": NonNullable<Json>,"provider_message_id": string | null,"recipient_email": string,"sender": Json | null,"sent_at": string | null,"status": string,"tenant_id": string,"updated_at": string
+                    "access_link_id": string | null,"attempts": number,"created_at": string,"dedup_key": string,"entity_id": string,"entity_type": string,"event_type": string,"id": string,"last_error": string | null,"locked_until": string | null,"max_attempts": number,"next_attempt_at": string,"payload": NonNullable<Json>,"provider_message_id": string | null,"recipient_email": string,"sender": Json | null,"sent_at": string | null,"status": string,"tenant_id": string | null,"updated_at": string
                   }
                   Insert: {
-                    "access_link_id"?: string | null,"attempts"?: number,"created_at"?: string,"dedup_key": string,"entity_id": string,"entity_type"?: string,"event_type": string,"id"?: string,"last_error"?: string | null,"locked_until"?: string | null,"max_attempts"?: number,"next_attempt_at"?: string,"payload"?: NonNullable<Json>,"provider_message_id"?: string | null,"recipient_email": string,"sender"?: Json | null,"sent_at"?: string | null,"status"?: string,"tenant_id": string,"updated_at"?: string
+                    "access_link_id"?: string | null,"attempts"?: number,"created_at"?: string,"dedup_key": string,"entity_id": string,"entity_type"?: string,"event_type": string,"id"?: string,"last_error"?: string | null,"locked_until"?: string | null,"max_attempts"?: number,"next_attempt_at"?: string,"payload"?: NonNullable<Json>,"provider_message_id"?: string | null,"recipient_email": string,"sender"?: Json | null,"sent_at"?: string | null,"status"?: string,"tenant_id"?: string | null,"updated_at"?: string
                   }
                   Update: {
-                    "access_link_id"?: string | null,"attempts"?: number,"created_at"?: string,"dedup_key"?: string,"entity_id"?: string,"entity_type"?: string,"event_type"?: string,"id"?: string,"last_error"?: string | null,"locked_until"?: string | null,"max_attempts"?: number,"next_attempt_at"?: string,"payload"?: NonNullable<Json>,"provider_message_id"?: string | null,"recipient_email"?: string,"sender"?: Json | null,"sent_at"?: string | null,"status"?: string,"tenant_id"?: string,"updated_at"?: string
+                    "access_link_id"?: string | null,"attempts"?: number,"created_at"?: string,"dedup_key"?: string,"entity_id"?: string,"entity_type"?: string,"event_type"?: string,"id"?: string,"last_error"?: string | null,"locked_until"?: string | null,"max_attempts"?: number,"next_attempt_at"?: string,"payload"?: NonNullable<Json>,"provider_message_id"?: string | null,"recipient_email"?: string,"sender"?: Json | null,"sent_at"?: string | null,"status"?: string,"tenant_id"?: string | null,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -794,6 +794,51 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"platform_admins": {
+                  Row: {
+                    "granted_at": string,"note": string,"user_id": string
+                  }
+                  Insert: {
+                    "granted_at"?: string,"note": string,"user_id": string
+                  }
+                  Update: {
+                    "granted_at"?: string,"note"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
+                },"platform_audit_events": {
+                  Row: {
+                    "action": string,"actor_id": string | null,"entity_id": string,"entity_type": string,"id": string,"metadata": NonNullable<Json>,"occurred_at": string
+                  }
+                  Insert: {
+                    "action": string,"actor_id"?: string | null,"entity_id": string,"entity_type": string,"id"?: string,"metadata"?: NonNullable<Json>,"occurred_at"?: string
+                  }
+                  Update: {
+                    "action"?: string,"actor_id"?: string | null,"entity_id"?: string,"entity_type"?: string,"id"?: string,"metadata"?: NonNullable<Json>,"occurred_at"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
+                },"platform_invitations": {
+                  Row: {
+                    "accepted_at": string | null,"accepted_by": string | null,"created_at": string,"email": string,"expires_at": string,"id": string,"invited_by": string | null,"last_sent_at": string,"link_id": string,"revoked_at": string | null,"revoked_by": string | null,"send_count": number,"tenant_id": string | null,"token_hash": string,"updated_at": string
+                  }
+                  Insert: {
+                    "accepted_at"?: string | null,"accepted_by"?: string | null,"created_at"?: string,"email": string,"expires_at": string,"id"?: string,"invited_by"?: string | null,"last_sent_at"?: string,"link_id": string,"revoked_at"?: string | null,"revoked_by"?: string | null,"send_count"?: number,"tenant_id"?: string | null,"token_hash": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "accepted_at"?: string | null,"accepted_by"?: string | null,"created_at"?: string,"email"?: string,"expires_at"?: string,"id"?: string,"invited_by"?: string | null,"last_sent_at"?: string,"link_id"?: string,"revoked_at"?: string | null,"revoked_by"?: string | null,"send_count"?: number,"tenant_id"?: string | null,"token_hash"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "platform_invitations_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: true
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"proposal_approvals": {
                   Row: {
                     "approved_at": string,"approved_by_membership_id": string | null,"approved_by_user_id": string,"created_at": string,"id": string,"proposal_id": string,"selection_id": string,"selection_sha256": string,"tenant_id": string
@@ -1164,6 +1209,9 @@ isOneToOne: false
             "accept_contract_invitation":
 { Args: { "p_link_id": string,"p_tenant_slug": string }; Returns: Json
                            },
+"accept_platform_invitation":
+{ Args: { "p_display_name": string,"p_invitation_id": string,"p_slug": string }; Returns: Json
+                           },
 "add_event_plan_item":
 { Args: { "p_event_id": string,"p_expected_version": number,"p_key": string,"p_parent_key": string }; Returns: number
                            },
@@ -1190,6 +1238,11 @@ isOneToOne: false
 "claim_email_outbox":
 { Args: { "p_include_booking"?: boolean,"p_limit"?: number,"p_lock_seconds"?: number,"p_tenant_id"?: string }; Returns: {
               "access_link_id": string,"attempts": number,"contract_deliverable": boolean,"contract_id": string,"entity_id": string,"event_type": string,"id": string,"link_token_hash": string,"link_usable": boolean,"payload": Json,"proposal_active": boolean,"recipient_email": string,"tenant_display_name": string,"tenant_id": string,"tenant_reply_to": string,"tenant_slug": string
+            }[]
+                           },
+"claim_platform_email_outbox":
+{ Args: { "p_invitation_id"?: string,"p_limit"?: number,"p_lock_seconds"?: number }; Returns: {
+              "attempts": number,"deliverable": boolean,"event_type": string,"id": string,"invitation_id": string,"link_id": string,"payload": Json,"recipient_email": string,"token_hash": string
             }[]
                            },
 "client_contract_view":
@@ -1251,6 +1304,12 @@ isOneToOne: false
 "create_planning_template":
 { Args: { "p_description": string,"p_name": string,"p_tenant_id": string }; Returns: string
                            },
+"create_platform_invitation":
+{ Args: { "p_email": string,"p_link_id": string,"p_token_hash": string }; Returns: Json
+                           },
+"current_user_is_platform_admin":
+{ Args: Record<PropertyKey, never>; Returns: boolean
+                           },
 "duplicate_planning_template":
 { Args: { "p_name": string,"p_template_id": string }; Returns: string
                            },
@@ -1310,6 +1369,14 @@ isOneToOne: false
               "default_label": string,"description": string,"editor": string,"key": string,"kind": string,"library_order": number,"parent_keys": (string)[],"removable": boolean
             }[]
                            },
+"platform_invitation_status":
+{ Args: { "p_invitation_id": string }; Returns: Json
+                           },
+"platform_invitations_overview":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "accepted_at": string,"created_at": string,"delivery_status": string,"email": string,"expires_at": string,"id": string,"last_sent_at": string,"revoked_at": string,"send_count": number,"state": string,"workspace_name": string,"workspace_slug": string
+            }[]
+                           },
 "preview_proposal_offer":
 { Args: { "p_proposal_id": string }; Returns: Json
                            },
@@ -1345,17 +1412,26 @@ isOneToOne: false
 "request_contract_sign_in":
 { Args: { "p_tenant_slug": string,"p_token_hash": string }; Returns: Json
                            },
+"request_platform_sign_in":
+{ Args: { "p_token_hash": string }; Returns: Json
+                           },
 "request_signed_contract_pdf":
 { Args: { "p_contract_id": string }; Returns: Json
                            },
 "resend_contract":
 { Args: { "p_contract_id": string,"p_link_id": string,"p_token_hash": string }; Returns: Json
                            },
+"resend_platform_invitation":
+{ Args: { "p_invitation_id": string,"p_link_id": string,"p_token_hash": string }; Returns: Json
+                           },
 "retry_email_outbox":
 { Args: { "p_id": string }; Returns: boolean
                            },
 "review_contract_for_send":
 { Args: { "p_contract_id": string }; Returns: Json
+                           },
+"revoke_platform_invitation":
+{ Args: { "p_invitation_id": string }; Returns: Json
                            },
 "save_contract_template_draft":
 { Args: { "p_expected_draft_version": number,"p_sections": Json,"p_title": string,"p_version_id": string }; Returns: number

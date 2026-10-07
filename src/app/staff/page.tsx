@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { isPlatformAdmin } from "@/lib/auth/platform";
 import { requireUser } from "@/lib/auth/staff";
 import { signOut } from "@/app/auth/confirm/actions";
 
@@ -13,6 +14,9 @@ export default async function StaffHome() {
   const tenants = (memberships ?? []).flatMap((m) => (m.tenants ? [{ ...m.tenants, role: m.role }] : []));
 
   if (tenants.length === 1) redirect(`/staff/${tenants[0].slug}`);
+  const platformAdmin = await isPlatformAdmin();
+  // A platform administrator without a business of their own manages invitations.
+  if (tenants.length === 0 && platformAdmin) redirect("/platform/invitations");
   // Signed in without any staff role: a client. Their home lists what they can read.
   if (tenants.length === 0) redirect("/my");
 
@@ -35,6 +39,7 @@ export default async function StaffHome() {
           ))}
         </ul>
       )}
+      {platformAdmin ? <Link className="underline text-sm" href="/platform/invitations">DJ invitations</Link> : null}
       <form action={signOut}>
         <Button variant="outline" type="submit">
           Sign out

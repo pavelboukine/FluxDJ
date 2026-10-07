@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { isPlatformAdmin } from "@/lib/auth/platform";
 import { requireStaff } from "@/lib/auth/staff";
 import { signOut } from "@/app/auth/confirm/actions";
 
@@ -20,6 +21,7 @@ const NAV = [
 export default async function StaffTenantLayout({ children, params }: LayoutProps<"/staff/[tenant]">) {
   const { tenant: slug } = await params;
   const { tenant, user, membership } = await requireStaff(slug);
+  const platformAdmin = await isPlatformAdmin();
   return (
     <div className="flex min-h-full flex-1 flex-col">
       <header className="border-b bg-background">
@@ -28,6 +30,7 @@ export default async function StaffTenantLayout({ children, params }: LayoutProp
             {tenant.display_name} <span className="font-normal text-muted-foreground">· Flux DJ staff</span>
           </Link>
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
+            {platformAdmin ? <Link className="underline" href="/platform/invitations">DJ invitations</Link> : null}
             <span className="hidden sm:inline">
               {user.email} ({membership.role})
             </span>

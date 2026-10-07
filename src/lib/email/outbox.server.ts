@@ -2,7 +2,7 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { publicEnv } from "@/lib/env";
 import { serverEnv } from "@/lib/env.server";
-import { contractInviteToken, proposalLinkToken, sha256Hex } from "@/lib/proposals/tokens.server";
+import { contractInviteToken, platformInviteToken, proposalLinkToken, sha256Hex } from "@/lib/proposals/tokens.server";
 import { IntegrityError, readVerifiedDocument } from "@/lib/contracts/documents.server";
 import { formatSignedAt, signedPdfFileName } from "@/lib/contracts/pdf/data";
 import { configuredTransport, type EmailTransport } from "./transport.server";
@@ -12,6 +12,8 @@ import {
   renderContractVoidedEmail,
   renderEmail,
   renderBookingConfirmedEmail,
+  renderPlatformInvitationEmail,
+  renderPlatformSignInEmail,
   renderSignedCopyEmail,
   type OutboxEventType,
   type RenderedEmail,
@@ -50,13 +52,22 @@ export type OutboxRunResult = { claimed: number; sent: number; failed: number; c
  * 24 hours; Mailpit has none (local only). Every attempt is built only from
  * the row's frozen values (payload, frozen sender) and the canonical PDF, so
  * a retry is the same request even if Business settings changed meanwhile.
+ *
+ * DJ invitations (platform emails, no tenant) are claimed separately; see
+ * deliverPlatformEmails. `tenantId` limits a run to one business's emails and
+ * `platformInvitationId` to one invitation's.
  */
-export async function processOutbox(options: { transport?: EmailTransport; tenantId?: string; limit?: number } = {}): Promise<OutboxRunResult> {
+export async function processOutbox(
+  options: { transport?: EmailTransport; tenantId?: string; platformInvitationId?: string; limit?: number } = {},
+): Promise<OutboxRunResult> {
   const admin = createAdminClient();
   const transport = options.transport ?? configuredTransport();
   const appUrl = publicEnv().NEXT_PUBLIC_APP_URL;
   const fromAddress = serverEnv().EMAIL_FROM_ADDRESS;
   const result: OutboxRunResult = { claimed: 0, sent: 0, failed: 0, cancelled: 0 };
+
+  if (!options.tenantId) await deliverPlatformEmails(admin, transport, appUrl, fromAddress, result, options);
+  if (options.platformInvitationId) return result;
 
   const { data: rows, error } = await admin.rpc("claim_email_outbox", {
     p_limit: options.limit ?? 20,
@@ -360,6 +371,75 @@ async function deliverBookingConfirmed(
   });
   await admin.rpc("complete_email_outbox", { p_id: row.id, p_provider_message_id: sent.id });
   return "sent";
+}
+
+/**
+ * DJ invitations, sent as "Flux DJ" with no reply-to. Rechecked at claim time:
+ * the invitation is still open and unexpired, and the row belongs to its
+ * current link (a resend rotates the link). "platform_invitation" rebuilds
+ * the link from the link id, with a provider idempotency key (same content
+ * on every retry). "platform_sign_in" asks Supabase Auth for a fresh
+ * verification link now, exactly as contract sign-in does, returning to
+ * /join/{invitation}; no Auth token is stored.
+ */
+async function deliverPlatformEmails(
+  admin: ReturnType<typeof createAdminClient>,
+  transport: EmailTransport,
+  appUrl: string,
+  fromAddress: string,
+  result: OutboxRunResult,
+  options: { platformInvitationId?: string; limit?: number },
+) {
+  const { data: rows, error } = await admin.rpc("claim_platform_email_outbox", {
+    p_limit: options.limit ?? 20,
+    p_lock_seconds: 120,
+    p_invitation_id: options.platformInvitationId,
+  });
+  // Before migration 20261018000100 there is nothing to claim; business emails still go out.
+  if (error) return;
+
+  for (const row of rows ?? []) {
+    result.claimed += 1;
+    try {
+      if (!row.deliverable || !row.invitation_id || !row.link_id) {
+        await admin.rpc("cancel_email_outbox", {
+          p_id: row.id,
+          p_reason: "The invitation was accepted, revoked, expired or resent with a new link before delivery.",
+        });
+        result.cancelled += 1;
+        continue;
+      }
+      let email: RenderedEmail;
+      let idempotencyKey: string | undefined;
+      if (row.event_type === "platform_invitation") {
+        const token = platformInviteToken(row.link_id);
+        if (sha256Hex(token) !== row.token_hash) {
+          await admin.rpc("fail_email_outbox", {
+            p_id: row.id,
+            p_error: "The link secret changed after this invitation was created. Resend the invitation to issue a new link.",
+            p_permanent: true,
+          });
+          result.failed += 1;
+          continue;
+        }
+        const payload = (row.payload ?? {}) as Record<string, unknown>;
+        email = renderPlatformInvitationEmail({ invitationLink: `${appUrl}/join#${token}`, expiresAt: str(payload.expires_at) || null });
+        idempotencyKey = `flux-platform-invite-${row.id}`;
+      } else {
+        email = renderPlatformSignInEmail({
+          verificationLink: await verificationLink(admin, row.recipient_email, appUrl, `/join/${row.invitation_id}`),
+        });
+      }
+      const sent = await transport.send({ fromName: "Flux DJ", fromAddress, to: row.recipient_email, replyTo: null, ...email, idempotencyKey });
+      await admin.rpc("complete_email_outbox", { p_id: row.id, p_provider_message_id: sent.id });
+      result.sent += 1;
+    } catch (cause) {
+      // Error text must never include the link: transports report status codes only.
+      const message = cause instanceof Error ? cause.message.slice(0, 300) : "Unknown delivery error";
+      await admin.rpc("fail_email_outbox", { p_id: row.id, p_error: message, p_permanent: false });
+      result.failed += 1;
+    }
+  }
 }
 
 /** Runs the outbox after the response, swallowing errors (they are recorded per email). */

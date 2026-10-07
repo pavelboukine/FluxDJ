@@ -83,11 +83,17 @@ select is_empty(
   $$ select c.table_name from information_schema.columns c
      join information_schema.tables t on t.table_schema = c.table_schema and t.table_name = c.table_name
      where c.table_schema = 'public' and t.table_type = 'BASE TABLE' and c.table_name <> 'tenants'
+       -- Platform tables belong to no business; authenticated users reach them
+       -- only through checked functions (33_platform_invitations).
+       and c.table_name not in ('platform_admins', 'platform_invitations', 'platform_audit_events')
+       -- The outbox has no tenant only for platform emails, by constraint.
+       and not (c.table_name = 'email_outbox' and exists (
+         select 1 from pg_constraint k where k.conrelid = 'public.email_outbox'::regclass and k.conname = 'email_outbox_platform_scope'))
        and not exists (select 1 from information_schema.columns c2
                        where c2.table_schema = 'public' and c2.table_name = c.table_name
                          and c2.column_name = 'tenant_id' and c2.is_nullable = 'NO')
      group by c.table_name $$,
-  'every public table except tenants has a non-null tenant_id'
+  'every public table except tenants and the platform tables has a non-null tenant_id'
 );
 
 -- Security definer functions are hardened with a fixed search_path.

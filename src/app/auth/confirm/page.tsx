@@ -19,9 +19,11 @@ export default async function ConfirmPage({ searchParams }: PageProps<"/auth/con
         <CardHeader>
           <CardTitle>Finish signing in</CardTitle>
           <CardDescription>
-            {continueTo.includes("/invitations/")
-              ? "Confirm to verify your email and continue to your contract on this device."
-              : "Confirm to sign in to Flux DJ on this device."}
+            {continueTo.startsWith("/join/")
+              ? "Confirm to verify your email and continue setting up your DJ business on this device."
+              : continueTo.includes("/invitations/")
+                ? "Confirm to verify your email and continue to your contract on this device."
+                : "Confirm to sign in to Flux DJ on this device."}
           </CardDescription>
         </CardHeader>
         <CardContent>

@@ -28,6 +28,8 @@ export function describeDbError(error: { code?: string; message?: string } | nul
   if (document) return `${document[1].charAt(0).toUpperCase()}${document[1].slice(1)}.`;
   const planning = /planning_invalid: (.*)$/.exec(message);
   if (planning) return `${planning[1].charAt(0).toUpperCase()}${planning[1].slice(1)}${/[.!?]$/.test(planning[1]) ? "" : "."}`;
+  const invitation = /invitation_(?:invalid|limit|not_resendable|not_revocable|resend_too_soon): (.*)$/.exec(message);
+  if (invitation) return `${invitation[1].charAt(0).toUpperCase()}${invitation[1].slice(1)}${/[.!?]$/.test(invitation[1]) ? "" : "."}`;
   const contract = /contract_(?:stale_approval|not_allowed|input_invalid): (.*)$/.exec(message);
   if (contract) return `A contract can't be generated: ${contract[1]}.`;
   switch (error.code) {
