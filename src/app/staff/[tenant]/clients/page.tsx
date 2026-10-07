@@ -20,7 +20,7 @@ export default async function Clients({ params }: PageProps<"/staff/[tenant]/cli
   return (
     <>
       <PageHeader title="Clients" description="Contacts for your events. They are private to your business." />
-      <Card>
+      <Card id="add-client" className="scroll-mt-20">
         <CardHeader><CardTitle>Add a client</CardTitle></CardHeader>
         <CardContent>
           <ActionForm action={createClientRecord.bind(null, slug)} submitLabel="Add client" resetOnSuccess>

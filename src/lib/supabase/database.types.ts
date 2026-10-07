@@ -1516,6 +1516,9 @@ isOneToOne: false
 "sign_contract":
 { Args: { "p_client_ip": string,"p_client_ip_source": string,"p_consent_accepted": boolean,"p_consent_version": string,"p_content_sha256": string,"p_contract_id": string,"p_signature_bytes": number,"p_signature_height": number,"p_signature_path": string,"p_signature_sha256": string,"p_signature_width": number,"p_tenant_slug": string,"p_typed_name": string,"p_user_agent": string,"p_user_id": string }; Returns: Json
                            },
+"staff_dashboard":
+{ Args: { "p_tenant_id": string,"p_upcoming_limit"?: number }; Returns: Json
+                           },
 "staff_planning_view":
 { Args: { "p_event_id": string }; Returns: Json
                            },

@@ -1177,6 +1177,19 @@ signed-out browser:
   within 2 seconds, write nothing and cause no retry loop. Set
   `FLUX_REST_V14_URL` to a second PostgREST on the same database to check
   another version too.
+- `supabase/tests/database/36_staff_dashboard.test.sql`: who may read the
+  dashboard (anon, other businesses, clients, suspended workspaces), each
+  event's own date (Kiritimati and Pago Pago), archived and past events,
+  ordering and the limit, submitted versus approved proposals, deposits under
+  the deposit policy (partial, received), 0% deposits and the signature
+  policy, legacy contracts before and after their check, planning closing,
+  later, closed, reopened, expired reopenings, past, archived, unbooked and
+  complete plans, email failures versus retries, other businesses and
+  platform emails, setup facts, and that reading changes nothing.
+- `tests/e2e/dashboard-flow.spec.ts`: a new workspace (checklist, owner and
+  staff wording, empty states, quick actions) and a busy business (order,
+  a real submitted proposal, planning, a deposit, an email failure, the
+  attention cap and "Show all", every link) on desktop and a phone.
 - `tests/e2e/navigation-shell-flow.spec.ts`: the staff and platform shell:
   every sidebar link and the active item on detail pages, owner, staff and
   platform-administrator menus, two businesses with wide and light logos and
@@ -2211,6 +2224,63 @@ pages don't.
 - **Look:** shared tokens in `globals.css` (`--shell` grey canvas, tinted
   `--sidebar`, white content surfaces). The staff shell looks the same for
   every business; business colours brand client pages.
+
+### Staff dashboard
+
+`/staff/[tenant]` answers "what's coming up, and what needs my attention?"
+with one read-only call, `public.staff_dashboard` (migration
+`20261021000100_staff_dashboard.sql`). The function returns facts; the
+wording, order and links are in `src/lib/dashboard.ts`. It is `STABLE`, so it
+can't change events, set up plans, confirm bookings, queue jobs or send
+email. Only staff of the business can call it (others get "not found", and a
+suspended workspace gets `workspace_suspended`). Archived events never
+appear.
+
+- **Upcoming events:** dated today or later in each event's own time zone,
+  by date then title, the next 8, with client, venue ("Venue not set" when
+  missing) and the existing status label (`eventStatusLabel`); booked events
+  are shown apart. "View all events" opens the full Events list (not a
+  filtered one).
+- **Needs attention** (one item per task; an event can have several
+  different tasks):
+  - *Proposal ready to review:* the event's current proposal, submitted by
+    the client and not approved yet. Links to the proposal.
+  - *Planning closed with answers missing:* a booked event, today or later,
+    whose client editing is closed while required answers are missing in
+    available sections (`private.plan_progress`). Shown as urgent.
+  - *Planning closes in N days:* the same, while editing is open and closes
+    within **7 days**, or is reopened (closing when the reopening ends).
+    Clients plan only after booking, so unbooked events are never listed.
+  - *Signed · waiting for the deposit:* lifecycle `awaiting_deposit`, which
+    only booking evaluation sets (deposit policy, deposit not received),
+    with the outstanding amount from `private.event_payment_summary`. Signature
+    policies, 0% deposits, booked events and unpaid balances never appear.
+  - *Contract signed · booking not checked yet:* contracts signed before
+    booking policies existed (no frozen policy) on events still awaiting
+    signature. Once checked, an event waiting for its deposit moves to the
+    deposit item instead.
+
+  The first 6 show; "Show all N" (`?attention=all`) lists the rest.
+- **Email failures:** a notice when this business's emails have status
+  `failed` (retries used up), linking to Emails. Pending and sending emails,
+  including normal retries, and platform invitation emails are not counted.
+- **Setup checklist** (shown until complete; from saved data only): the legal
+  name, address and contact email; taxes (at least one tax category, and
+  every category used by active gear or packages configured; an empty list is
+  a valid "no tax"); three active packages (every offer has three); an active
+  proposal template whose three packages are all active; an active contract
+  template with a version published for client use. Gear, a logo and
+  planning templates are optional. Staff see which items only the owner can
+  complete. The list checks what's saved, not whether terms or prices are
+  right.
+- **Quick actions:** New event and Add client open the existing screens. The
+  compact install help stays.
+
+**Deploying.** The migration only adds `public.staff_dashboard` (nothing
+existing changes), and apps before it never call it, so apply it to the
+hosted database first (`db push --linked --dry-run`, then `db push
+--linked`), then deploy the app. An app deployed before the migration can't
+load the dashboard; every other page works.
 
 ### Suspending and restoring a workspace
 

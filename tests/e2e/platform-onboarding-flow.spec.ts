@@ -128,8 +128,9 @@ test.describe.serial("invite-only DJ onboarding", () => {
     await dj.getByRole("button", { name: "Create my workspace" }).click();
     await dj.waitForURL(`**/staff/${slug}?welcome=1`);
     await expect(dj.getByText("Welcome to Flux DJ, DJ Maxwell Events", { exact: true })).toBeVisible();
-    await expect(dj.getByText("Setup isn't finished")).toBeVisible();
-    await expect(dj.getByRole("link", { name: "Complete them in Settings" })).toHaveAttribute("href", `/staff/${slug}/settings`);
+    // The setup checklist starts with the legal identity, which contracts need.
+    await expect(dj.getByTestId("setup-identity")).toHaveAttribute("data-done", "false");
+    await expect(dj.getByRole("link", { name: "Legal name, address and contact email" })).toHaveAttribute("href", `/staff/${slug}/settings`);
 
     const { data: tenant } = await admin.from("tenants").select("id, display_name, business_name, business_address, contact_email").eq("slug", slug).single();
     createdTenantId = tenant!.id;
