@@ -13,6 +13,7 @@
     "db:reset": "supabase db reset",
     "db:test": "supabase test db",
     "db:lint": "supabase db lint --level warning --fail-on warning",
+    "db:versions": "node scripts/supabase-versions.mjs",
     "db:types": "supabase gen types typescript --local --schema public > src/lib/supabase/database.types.ts",
     "check": "pnpm lint && pnpm typecheck && pnpm test:unit && pnpm db:lint && pnpm db:test && pnpm test:integration && pnpm test:e2e",
     "test:integration": "vitest run tests/integration --no-file-parallelism --reporter=verbose",

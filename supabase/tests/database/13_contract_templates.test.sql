@@ -92,11 +92,11 @@ select throws_ok($$ update public.contract_template_versions set sections = '[{"
 -- ===========================================================================
 select tests.login_as(tests.id('owner_a'));
 select throws_ok($$ select public.save_contract_template_draft(current_setting('tests.v1')::uuid, 5, 'T', tests.demo_sections()) $$,
-  '40001', null, 'a stale draft version is a conflict');
+  'PT409', null, 'a stale draft version is a conflict');
 select is(public.save_contract_template_draft(current_setting('tests.v1')::uuid, 0, 'Agreement for {{ event.title }}', tests.demo_sections()), 1,
   'saving the draft advances its version');
 select throws_ok($$ select public.publish_contract_template_version(current_setting('tests.v1')::uuid, 0, 'demo') $$,
-  '40001', null, 'publishing requires the latest saved version (no surprise edits from another tab)');
+  'PT409', null, 'publishing requires the latest saved version (no surprise edits from another tab)');
 select is(public.publish_contract_template_version(current_setting('tests.v1')::uuid, 1, 'demo') ->> 'replayed', 'false', 'staff publish the draft');
 select is(public.publish_contract_template_version(current_setting('tests.v1')::uuid, 1, 'demo') ->> 'replayed', 'true', 'publishing again is a no-op');
 reset role;

@@ -182,7 +182,7 @@ select throws_ok($$ update public.tenants set planning_lock_days = 1 where id = 
 select throws_ok($$ select public.update_planning_cutoff_days(tests.id('tenant_a'), -1, 0) $$, '22023', 'settings_invalid: enter a whole number of days from 0 to 365', 'negative days are refused');
 select throws_ok($$ select public.update_planning_cutoff_days(tests.id('tenant_a'), 366, 0) $$, '22023', null, 'more than 365 are refused');
 select throws_ok($$ select public.update_planning_cutoff_days(tests.id('tenant_a'), null, 0) $$, '22023', null, 'missing days are refused');
-select throws_ok($$ select public.update_planning_cutoff_days(tests.id('tenant_a'), 21, 5) $$, '40001', null, 'a stale version is refused');
+select throws_ok($$ select public.update_planning_cutoff_days(tests.id('tenant_a'), 21, 5) $$, 'PT409', null, 'a stale version is refused');
 select is(public.update_planning_cutoff_days(tests.id('tenant_a'), 21, 0), 1, 'the owner sets 21 days');
 select is(public.update_planning_cutoff_days(tests.id('tenant_a'), 0, 1), 2, 'and 0 (closes at the start of the event day)');
 select is(public.update_planning_cutoff_days(tests.id('tenant_a'), 21, 2), 3, 'and back to 21');
@@ -289,7 +289,7 @@ select throws_ok($$ select tests.reopen('co_closed', 1, tests.local('co_closed',
 select throws_ok($$ select tests.reopen('co_closed', 1, tests.local('co_closed', '14 days 1 minute'), 'Late change') $$,
   '22023', null, 'and at most 14 days away');
 select throws_ok($$ select tests.reopen('co_closed', 7, tests.local('co_closed', '2 days'), 'Late change') $$,
-  '40001', null, 'a stale version is refused');
+  'PT409', null, 'a stale version is refused');
 select throws_ok($$ select tests.reopen('co_closed', 1, tests.local('co_closed', '2 days'), 'x', 'client_y') $$,
   'P0002', null, 'clients can''t reopen');
 select throws_ok($$ select tests.reopen('co_closed', 1, tests.local('co_closed', '2 days'), 'x', 'owner_b') $$,
@@ -313,7 +313,7 @@ select is(tests.reopen('co_closed', 1, :'until_local', 'Guest count changed afte
   'unchanged', 'a repeated click (stale version, same expiry) is the same reopening');
 select is(tests.audits('co_closed', 'planning_client_reopened'), 1, 'audited once');
 select throws_ok($$ select tests.reopen('co_closed', 1, tests.local('co_closed', '3 days'), 'Other') $$,
-  '40001', null, 'a different expiry from a stale tab is refused');
+  'PT409', null, 'a different expiry from a stale tab is refused');
 select ok((select metadata ->> 'reason' = 'Guest count changed after the deadline' and actor_id = tests.id('staff_a') and actor_type = 'staff'
                   and metadata -> 'before' ->> 'reopened_until' is null and (metadata -> 'after' ->> 'reopened_until')::timestamptz = tests.override('co_closed')
                   and (metadata ->> 'at') is not null
@@ -343,7 +343,7 @@ select is(tests.reopen('co_closed', 2, tests.local('co_closed', '1 day'), 'One m
 select throws_ok($$ select tests.close('co_closed', 3, '') $$,
   '22023', null, 'closing needs a reason');
 select throws_ok($$ select tests.close('co_closed', 2, 'Done') $$,
-  '40001', null, 'closing from a stale tab is refused while the reopening is active');
+  'PT409', null, 'closing from a stale tab is refused while the reopening is active');
 select is(tests.close('co_closed', 3, 'Client confirmed, done') ->> 'status',
   'closed', 'staff close client editing now');
 select is(tests.override('co_closed'), null, 'the reopening ends');
@@ -362,7 +362,7 @@ select is(tests.save('co_open', '{"guest_count": 121}') ->> 'status', 'saved', '
 
 select throws_ok($$ select tests.set_days('co_open', 1, 400, 'x') $$, '22023', null, 'days above 365 are refused');
 select throws_ok($$ select tests.set_days('co_open', 1, 30, '') $$, '22023', null, 'a reason is required');
-select throws_ok($$ select tests.set_days('co_open', 9, 30, 'x') $$, '40001', null, 'a stale version is refused');
+select throws_ok($$ select tests.set_days('co_open', 9, 30, 'x') $$, 'PT409', null, 'a stale version is refused');
 select is(tests.set_days('co_open', 1, 30, 'Venue needs the plan earlier') ->> 'status',
   'changed', 'staff set other days for this plan');
 select is(tests.lock_at('co_open'), ((current_date + 30)::timestamp at time zone 'America/Toronto'), 'the deadline follows the new days');
@@ -374,7 +374,7 @@ select ok((select (metadata -> 'before' ->> 'days')::int = 14 and (metadata -> '
            from public.audit_events where entity_id = tests.id('co_open') and action = 'planning_cutoff_changed'), 'audited with before and after');
 
 -- Two staff tabs: the second (stale) gets a conflict, never a silent overwrite.
-select throws_ok($$ select tests.set_days('co_open', 1, 7, 'Other tab', 'owner_a') $$, '40001', null,
+select throws_ok($$ select tests.set_days('co_open', 1, 7, 'Other tab', 'owner_a') $$, 'PT409', null,
   'a second staff change from a stale tab conflicts');
 
 -- The event moves: the deadline stays, staff see it no longer matches.

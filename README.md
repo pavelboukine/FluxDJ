@@ -94,6 +94,43 @@ Useful commands:
 | `pnpm db:reset` | Recreate the local database from migrations, then apply `supabase/seed.sql` |
 | `pnpm db:types` | Regenerate `src/lib/supabase/database.types.ts` after a migration |
 | `pnpm db:stop` | Stop the local Supabase containers |
+| `pnpm db:versions` | Show the running service versions next to the hosted ones (read only; fails if they differ) |
+
+### Local Supabase versions
+
+Local should run the same service versions as the hosted project (this is
+how a PostgREST behaviour difference was caught; see "Version conflicts"
+below). When the repo is linked, `supabase link` records the hosted
+versions in the git-ignored `supabase/.temp/*-version` files, and
+`supabase start` uses them. So:
+
+1. After any `pnpm db:start` (or a stop/start), run `pnpm db:versions`. It
+   lists PostgREST, Auth, Storage and Postgres as running locally next to the
+   hosted versions, and exits non-zero if they differ.
+2. If they differ (for example a stack started before the repo was linked, or
+   with an older CLI), restart it: `pnpm db:stop && pnpm db:start`. Data is
+   kept in the Docker volumes; `db:reset` is never needed for this.
+3. After a hosted Supabase upgrade, refresh the recorded versions explicitly
+   with `pnpm exec supabase link --project-ref <ref>`, then restart and check
+   again. Nothing changes those files silently: the link command is the only
+   writer.
+4. To try the CLI's own default versions instead (only to compare
+   behaviour), move `rest-version` and `storage-version` out of
+   `supabase/.temp`, restart, put them back, and restart again before normal
+   work. `pnpm db:versions` shows which state you are in.
+
+### Version conflicts
+
+Saves that carry a version ("Someone else saved changes first") raise
+SQLSTATE `PT409` in the database, which PostgREST answers at once with HTTP
+409 and code `PT409`; `describeDbError` turns it into the conflict message,
+and forms keep what was typed. Never use `serialization_failure` (40001)
+for this: PostgREST v14 (the hosted version) retries 40001 as a transient
+failure, so a stale save would never answer and the database would roll
+back thousands of transactions a second. Migration
+`20261017000100_version_conflict_errors.sql` converted every such check; the
+pgTAP guard `32_version_conflicts` fails if one comes back. Genuine
+serialization failures raised by Postgres itself are not affected.
 
 Everything above touches only the local Docker database. A CLI link to the
 hosted project lives only in the git-ignored `supabase/.temp`. Commands with
@@ -712,6 +749,7 @@ Run the smallest check that covers the change, and the whole suite once.
 | Change unit-tested code | `pnpm test:unit` (about a second), or `pnpm exec vitest related --run <changed files>` |
 | Change server code with integration tests | `pnpm test:integration tests/integration/planning.test.ts`, or `pnpm test:integration --changed` |
 | Change SQL | `pnpm db:test` (pgTAP, about 12 seconds) and `pnpm db:lint` |
+| Restarted local Supabase | `pnpm db:versions` (local must match the hosted versions) |
 | Are about to deliver or deploy | `pnpm check` once, then `pnpm build` |
 
 1. Run targeted tests during implementation, and rerun only the failing
@@ -800,6 +838,7 @@ in every relevant relationship.
 | `28_participants` | Editors by moment key and Participants and names covered by Introductions (not saved, not counted); speeches wherever the library allows. Processional people saved with its songs: individual, pair and group entries without fixed labels, trimmed names and pronunciation in order, links to its own or Couple entrance songs only (another stage's or another event's refused), linked songs not removable from either (also from a stale revision), Couple entrance renames and hiding keeping links, not applicable refused while people exist, renamed and reordered songs leaving people untouched, discuss open. Introductions sharing Entrance music songs; links to another moment, another event or malformed ids refused; removing a linked song refused naming the entries, also from a stale revision; renames, reorders and unlinked removals allowed; hidden Entrance music keeping valid links; No introductions and discuss. MC choices, details kept only for someone else. Speech timing (exact time, next day, cue, undecided), bounds, completion. Retried adds saved once; hidden moments; other clients, other events, other businesses, anon and archived events; staff edits; contract, booking, payments, proposal and imports untouched |
 | `29_contacts_preferences` | Editors on their sections; this event's contacts in the view with name and phone only. Day-of contact: not decided (open), someone else needing a phone, phone checks, an event contact by id only (no copy), a phone for the day without changing the client, contacts of another event or business and names refused, a contact leaving the event (kept, unavailable, not resaved). Vendors: name or business, roles, phone and email checks, order, none refused while listed, retried adds once, stale conflicts. Preferences: no language copy, language from Event basics, discuss open, unknown questions refused. Music styles: list order once, unknown styles, DJ's choice exclusive, other style, slow songs. Hidden sections, other clients, events and businesses, anon, archived events, staff edits; no staff ids, notes, payment references or signing evidence; clients, event contacts and contractual records untouched |
 | `30_remaining_editors` | Editors in their library places (Dinner and Party sharing one); only moment-holding stages without an editor; nothing "not available". Arrival: ceremony reuse storing no copy, open while the Ceremony lacks it or is hidden, other place with overnight times and next day, event venue unknown, "no separate arrangements" refused with details and alone not applicable. Program: own times, agenda with exact, overnight, cue and undecided timings, titles needed, "No formal program" refused with entries. Activities: songs need title and artist and safe links, custom names, Party counted separately, stale tabs, unknown fields. Dedications: unfinished kept without invented songs, any time, songs needed, no durations, "No dedications". Retried adds once, stale conflicts, hidden stages, other clients, events and businesses, anon, archived events, staff edits, stage order unchanged; contractual records untouched |
+| `32_version_conflicts` | No function raises `serialization_failure` (40001); every optimistic-version check raises `PT409`; the re-created functions keep their grants |
 | `31_planning_cutoff` | Owner-only, versioned setting with limits (staff, other businesses, clients, anon, direct column writes). Plans copy the days and store the deadline at setup; later setting changes leave them; a deadline already on the event is kept. Midnight in the event's zone: DST start and end days in Toronto, skipped and repeated midnight (Havana, Beirut), quarter-hour offsets, 0 days, zones east of UTC, events without a start time. States a microsecond before, exactly at and after the deadline and a reopening's end. Client view fields; saves before; after: reads continue, both save functions refused before validation and revision checks, nothing changed, progress unchanged; staff saves continue. Reopening: already open, reason, future, 14-day maximum, stale version, clients, other businesses, anon; stored expiry, deadline kept, client saves, replays, audit (staff, time, reason, before/after), nothing leaked to clients, staff history; expiry; closing early, repeats, never closing an open plan. Deadline changes and stale tabs; date and zone changes don't move it, mismatch shown, explicit recalculation. Direct writes and the trigger; archived and revoked access during a reopening; other clients and slugs; every plan has a deadline; booking and emails untouched |
 | `25_planning` | Read-only tables for staff; starter templates added explicitly and once; template ownership across businesses, clients and direct writes; rename, move, remove and add with stable keys and versions; library placement enforced by trigger; duplicate and archive; one default per event type. Booking (real signing and deposit) creates one plan from the event-type default; the Basics fallback; setup before booking kept at booking; repeats and already-booked backfill. Frozen imports after catalog changes. Client access: booked, unbooked, other client, stranger, wrong slug, revoked, unverified, two DJs, anon, archived and unarchived, payment invalidation. Basics validation, conflicts, normalization, progress (imported and not applicable versus unanswered, unavailable sections excluded). Disable and restore keep answers and order and change nothing contractual. Non-destructive template replacement. Integrity |
 | `24_booking` | Owner-only, versioned policy setting; no direct writes; only two policies. Frozen policy per contract, unchanged by later setting changes. On signature: booked when signed, with payment still due. On deposit: payments before signing count, partial payments await the deposit to the cent, the completing payment books, later payments and checks don't book again (one audit event, one email). Zero deposit. Overpayment. Corrections keep the booking and `booking_confirmed_at` and warn staff; the client sees the amount outstanding. Legacy contracts: nothing automatic, staff check as `on_deposit` (not the business's on_signature), then automatic. Archived events refused. Guards against booking outside the function, changing the date or unbooking. Tenant isolation. Older workers never claim booking emails |
@@ -1018,6 +1057,12 @@ signed-out browser:
   never see a broken link; a staff change after the client deadline appears
   with a new revision; clients, other businesses and anon get nothing;
   archived events stay readable for staff.
+- `tests/integration/version-conflicts.test.ts`: stale versions through
+  the real PostgREST HTTP API (booking policy, taxes, planning deadline days,
+  plan and template structure, contract template draft) answer 409 `PT409`
+  within 2 seconds, write nothing and cause no retry loop. Set
+  `FLUX_REST_V14_URL` to a second PostgREST on the same database to check
+  another version too.
 - `tests/e2e/run-sheet-flow.spec.ts`: on a phone, from the event page to the
   read-only run sheet (no inputs, collapsed lists, Do not play one tap away,
   no sideways scrolling); the PDF downloaded through the app (same revision,

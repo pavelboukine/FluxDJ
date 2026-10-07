@@ -119,7 +119,7 @@ select throws_ok($$ update public.tenants set booking_confirmation_policy = 'on_
 select throws_like($$ select public.update_booking_policy(tests.id('tenant_a'), 'manual', 0) $$, '%choose when bookings are confirmed%',
   'only the two policies exist');
 select is(public.update_booking_policy(tests.id('tenant_a'), 'on_signature', 0), 1, 'the owner switches to booking on signature');
-select throws_ok($$ select public.update_booking_policy(tests.id('tenant_a'), 'on_deposit', 0) $$, '40001', null, 'a stale tab is refused');
+select throws_ok($$ select public.update_booking_policy(tests.id('tenant_a'), 'on_deposit', 0) $$, 'PT409', null, 'a stale tab is refused');
 reset role;
 
 -- ===========================================================================

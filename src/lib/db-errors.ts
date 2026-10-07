@@ -40,6 +40,9 @@ export function describeDbError(error: { code?: string; message?: string } | nul
       return "Some values aren't allowed. Check the form and try again.";
     case "22023":
       return message || "Some values aren't allowed.";
+    // A stale version ("changed elsewhere"): PT409 since 20261017000100. 40001 is kept for a
+    // database that hasn't received that migration yet, so either can deploy first.
+    case "PT409":
     case "40001":
       return "Someone else saved changes first. Reload the page to see them, then try again.";
     case "42501":

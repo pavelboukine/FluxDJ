@@ -284,7 +284,7 @@ select set_config('tests.tc', public.create_contract_template(tests.id('tenant_a
   tests.simple_sections())::text, true);
 select set_config('tests.vc', (select id::text from public.contract_template_versions where template_id = current_setting('tests.tc')::uuid), true);
 select throws_ok($$ select public.publish_contract_template_version(current_setting('tests.vc')::uuid, 5) $$,
-  '40001', null, 'the old call still requires the latest saved draft');
+  'PT409', null, 'the old call still requires the latest saved draft');
 select is(public.publish_contract_template_version(current_setting('tests.vc')::uuid, 0) ->> 'usage', 'demo',
   'the old call publishes a DEMO agreement as DEMO, as before (staff may)');
 reset role;

@@ -249,7 +249,7 @@ reset role;
 select tests.login_as(tests.id('owner_a'));
 select is(public.set_event_invoice_url(tests.id('event_a2'), 'https://invoice.example.com/i/42?x=1#p', 0), 1, 'staff save an HTTPS invoice link');
 select throws_ok($$ select public.set_event_invoice_url(tests.id('event_a2'), 'https://invoice.example.com/other', 0) $$,
-  '40001', null, 'a stale tab cannot overwrite it');
+  'PT409', null, 'a stale tab cannot overwrite it');
 select throws_like($$ select public.set_event_invoice_url(tests.id('event_a2'), 'http://invoice.example.com/x', 1) $$, '%https://%', 'http is refused');
 select throws_like($$ select public.set_event_invoice_url(tests.id('event_a2'), 'javascript:alert(1)', 1) $$, '%https://%', 'scripts are refused');
 select throws_like($$ select public.set_event_invoice_url(tests.id('event_a2'), 'https://user:pw@invoice.example.com/', 1) $$, '%https://%',

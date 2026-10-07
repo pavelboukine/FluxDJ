@@ -175,7 +175,7 @@ describe("planning cutoff (local Supabase)", () => {
       owner.rpc("set_plan_client_cutoff", { p_event_id: b.eventId, p_expected_version: v, p_days: 30, p_reason: "Owner tab" }),
     ]);
     expect(days.filter((r) => !r.error)).toHaveLength(1);
-    expect(days.filter((r) => r.error?.code === "40001")).toHaveLength(1);
+    expect(days.filter((r) => r.error?.code === "PT409")).toHaveLength(1);
     const { data: audits } = await must(admin.from("audit_events").select("id").eq("entity_id", b.eventId).eq("action", "planning_cutoff_changed"));
     expect(audits).toHaveLength(1);
 
@@ -186,7 +186,7 @@ describe("planning cutoff (local Supabase)", () => {
       owner.rpc("reopen_plan_client_editing", { p_event_id: b.eventId, p_expected_version: v2, p_until_local: localIn(2 * 86_400_000), p_reason: "B" }),
     ]);
     expect(reopen.filter((r) => !r.error)).toHaveLength(1);
-    expect(reopen.filter((r) => r.error?.code === "40001")).toHaveLength(1);
+    expect(reopen.filter((r) => r.error?.code === "PT409")).toHaveLength(1);
     // The same request repeated (a double click) is one reopening.
     const until = localIn(3 * 86_400_000);
     const v3 = await cutoffVersion(b.eventId);

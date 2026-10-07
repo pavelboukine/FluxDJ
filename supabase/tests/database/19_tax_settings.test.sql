@@ -72,7 +72,7 @@ select throws_like($$ select public.update_tax_settings(tests.id('tenant_a'), 1,
 select throws_like($$ select public.update_tax_settings(tests.id('tenant_a'), 1, tests.gst_qst(), '{"standard":["GST","PST"]}') $$,
   '%not configured: standard (PST)%', 'a mapping to an unknown tax is rejected');
 select throws_ok($$ select public.update_tax_settings(tests.id('tenant_a'), 2, tests.gst_qst(), '{"standard":["GST"]}') $$,
-  '40001', null, 'a stale or future version is a conflict');
+  'PT409', null, 'a stale or future version is a conflict');
 
 -- ===========================================================================
 -- Multiple taxes on standard; a new offer uses them
@@ -81,7 +81,7 @@ select is(public.update_tax_settings(tests.id('tenant_a'), 1,
     '[{"code":"GST","label":" GST ","rate_ppm":50000},{"code":"QST","label":"QST","rate_ppm":99750}]',
     '{"standard":["GST","QST"]}'), 2, 'the owner saves two taxes on standard; the version increases');
 select throws_ok($$ select public.update_tax_settings(tests.id('tenant_a'), 1, tests.gst_qst(), '{"standard":["GST"]}') $$,
-  '40001', null, 'the old version is now stale (a second tab cannot overwrite)');
+  'PT409', null, 'the old version is now stale (a second tab cannot overwrite)');
 reset role;
 select is((select tax_config from public.tenants where id = tests.id('tenant_a')), tests.gst_qst(), 'labels are stored trimmed, exactly in ppm');
 select tests.login_as(tests.id('owner_a'));

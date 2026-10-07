@@ -52,7 +52,7 @@ select throws_ok($$ select public.send_proposal(current_setting('tests.p1')::uui
   '42501', null, 'anon cannot send');
 select tests.login_as(tests.id('owner_a'));
 select throws_ok($$ select public.send_proposal(current_setting('tests.p1')::uuid, 99, gen_random_uuid(), repeat('a', 64)) $$,
-  '40001', null, 'sending a stale draft version (unsaved edits elsewhere) is rejected');
+  'PT409', null, 'sending a stale draft version (unsaved edits elsewhere) is rejected');
 select throws_like($$ select public.send_proposal(current_setting('tests.p1')::uuid, 0, gen_random_uuid(), 'not-a-hash') $$,
   '%invalid access link%', 'the token hash must be a SHA-256 hex digest');
 

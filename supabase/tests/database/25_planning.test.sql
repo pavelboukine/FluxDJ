@@ -177,7 +177,7 @@ select tests.titem(:'tpl_wedding', 'party') as party_item, tests.tversion(:'tpl_
 select is(public.rename_planning_template_item(:'w_party_item', :w_v0, '  Dance party '), :w_v0 + 1, 'renaming bumps the template version');
 select is((select array[key, label] from public.planning_template_items where id = :'w_party_item'), array['party', 'Dance party'],
   'the label changes (trimmed); the key and id do not');
-select throws_ok(format('select public.rename_planning_template_item(%L, %s, %L)', :'w_party_item', :w_v0, 'Stale'), '40001', null,
+select throws_ok(format('select public.rename_planning_template_item(%L, %s, %L)', :'w_party_item', :w_v0, 'Stale'), 'PT409', null,
   'a stale tab gets a conflict');
 select public.move_planning_template_item(tests.titem(:'tpl_wedding', 'cocktail'), tests.tversion(:'tpl_wedding'), 'up');
 select is((select array_agg(key order by position) from public.planning_template_items where template_id = :'tpl_wedding' and kind = 'stage'),
@@ -423,7 +423,7 @@ select is((select disabled_at from public.event_plan_items where id = tests.item
 select is((select answers from public.event_plan_responses where item_id = tests.item('pl_wed', 'speeches')), '{"note":"Two toasts"}'::jsonb,
   'saved answers are kept');
 select tests.login_as(tests.id('staff_a'));
-select throws_ok(format('select public.set_event_plan_item_enabled(%L, %s, true)', tests.item('pl_wed', 'dinner'), tests.version('pl_wed') - 1), '40001', null,
+select throws_ok(format('select public.set_event_plan_item_enabled(%L, %s, true)', tests.item('pl_wed', 'dinner'), tests.version('pl_wed') - 1), 'PT409', null,
   'structure changes check the version');
 select public.set_event_plan_item_enabled(tests.item('pl_wed', 'dinner'), tests.version('pl_wed'), true);
 select tests.su();
@@ -460,7 +460,7 @@ select is((select array[label, coalesce(disabled_at::text, 'enabled')] from publ
 select tests.item('pl_wed', 'basics') as basics, tests.item('pl_wed', 'party') as party, tests.version('pl_wed') as v \gset rep_
 select throws_like(format('select public.apply_event_plan_template(%L, %L, %s, false)', tests.id('pl_wed'), :'tpl_party', :rep_v),
   '%confirm%', 'replacing the template needs explicit confirmation');
-select throws_ok(format('select public.apply_event_plan_template(%L, %L, %s, true)', tests.id('pl_wed'), :'tpl_party', :rep_v - 1), '40001', null,
+select throws_ok(format('select public.apply_event_plan_template(%L, %L, %s, true)', tests.id('pl_wed'), :'tpl_party', :rep_v - 1), 'PT409', null,
   'and the current structure version');
 select is(public.apply_event_plan_template(tests.id('pl_wed'), :'tpl_party', :rep_v, true) - 'structure_version',
   '{"status":"applied","kept":4,"added":0,"hidden":35}'::jsonb, 'applying Simple Party keeps four items and hides the rest');

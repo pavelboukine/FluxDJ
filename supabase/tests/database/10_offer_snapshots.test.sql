@@ -42,7 +42,7 @@ select results_eq(
   $$ select draft_offer = tests.base_offer(), offer_snapshot is null from public.proposals where id = current_setting('tests.p1')::uuid $$,
   $$ values (true, true) $$, 'the draft is stored in place and nothing is frozen');
 select throws_ok($$ select public.update_proposal_draft(current_setting('tests.p1')::uuid, 0, tests.base_offer()) $$,
-  '40001', null, 'a stale draft version (another tab) is rejected');
+  'PT409', null, 'a stale draft version (another tab) is rejected');
 select throws_like($$ select public.update_proposal_draft(current_setting('tests.p1')::uuid, 1, '{"discount_cents": 1}') $$,
   '%invalid shape%', 'draft fields outside the offer input are rejected');
 select lives_ok($$ select public.update_proposal_draft(current_setting('tests.p1')::uuid, 1, '{"packages": []}') $$,
