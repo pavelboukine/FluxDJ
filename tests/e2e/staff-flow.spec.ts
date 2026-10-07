@@ -192,25 +192,27 @@ test.describe.serial("staff interface", () => {
     gearName = `E2E Fog machine ${run}`;
     await page.goto(`/staff/${tenant.slug}/gear/new`);
     await page.getByLabel("Name").fill(gearName);
-    await page.getByLabel("Price (CAD)").fill("90");
-    await page.getByLabel("Description").fill("Low-lying fog for the first dance.");
-    await page.getByRole("button", { name: "Create gear item" }).click();
+    await page.getByLabel("Unit price (CAD)").fill("90");
+    await page.getByLabel("Description (optional)").fill("Low-lying fog for the first dance.");
+    await page.getByRole("button", { name: "Save and continue" }).click();
     await expect(page.getByRole("heading", { name: gearName })).toBeVisible();
+    await expect(page.getByText("Gear item created.")).toBeVisible();
 
-    await page.getByLabel("Price (CAD)").fill("95.50");
-    await page.getByRole("button", { name: "Save gear item" }).click();
-    await expect(page.getByText("Saved.")).toBeVisible();
+    await page.getByRole("button", { name: "Edit details" }).click();
+    await page.getByLabel("Unit price (CAD)").fill("95.50");
+    await page.getByRole("button", { name: "Save details" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Gear item saved." })).toBeVisible();
     const { data: saved } = await admin.from("gear_items").select("id, default_price_cents").eq("name", gearName).single();
     expect(saved!.default_price_cents).toBe(9550);
 
-    await page.getByLabel("Photo or video").setInputFiles({ name: "fog.png", mimeType: "image/png", buffer: PNG });
+    await page.getByLabel("Photo or video", { exact: true }).setInputFiles({ name: "fog.png", mimeType: "image/png", buffer: PNG });
     await page.getByLabel("Description (alt text)").fill("Fog machine on stage");
     await page.getByRole("button", { name: "Upload" }).click();
-    await expect(page.getByRole("status").filter({ hasText: "Uploaded." })).toBeVisible();
-    await expect(page.getByRole("img", { name: "Fog machine on stage" })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "Added fog.png." })).toBeVisible();
+    await expect(page.getByRole("img", { name: "Fog machine on stage" }).first()).toBeVisible();
 
     // HTML renamed to .png with an image/png type: rejected by content and deleted.
-    await page.getByLabel("Photo or video").setInputFiles({ name: "evil.png", mimeType: "image/png", buffer: Buffer.from("<html><script>alert(1)</script></html>") });
+    await page.getByLabel("Photo or video", { exact: true }).setInputFiles({ name: "evil.png", mimeType: "image/png", buffer: Buffer.from("<html><script>alert(1)</script></html>") });
     await page.getByLabel("Description (alt text)").fill("Not really an image");
     await page.getByRole("button", { name: "Upload" }).click();
     await expect(page.getByRole("alert").filter({ hasText: "not a supported image or video" })).toBeVisible();

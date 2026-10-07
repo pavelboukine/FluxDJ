@@ -146,3 +146,52 @@ export function nextEventLabel(next: { event_date: string; today: string }): { l
   const near = nearDay(next.event_date, next.today);
   return { label: "Next event:", date: `${shortDate(next.event_date)}${near && near !== "Yesterday" ? ` (${near})` : ""}` };
 }
+
+/**
+ * A client's role on one event (roles belong to the event's contact link,
+ * not to the client): primary contact, signer, both, or another contact.
+ */
+export function contactRoleLabel(link: { is_primary: boolean; can_sign: boolean }): string {
+  if (link.is_primary && link.can_sign) return "Primary contact · Signer";
+  if (link.is_primary) return "Primary contact";
+  if (link.can_sign) return "Signer";
+  return "Other contact";
+}
+
+/**
+ * The UTC calendar date `days` from `at`. Every time zone's "today" is within
+ * a day of UTC's, so [UTC today − 1, UTC today + 1] bounds a query that the
+ * exact event-local split (isUpcomingEvent) then refines.
+ */
+export function utcDateFrom(at: Date, days: number): string {
+  return new Date(at.getTime() + days * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** Upcoming means not archived and dated today or later in the event's own time zone. */
+export function isUpcomingEvent(e: { event_date: string; archived: boolean }, eventToday: string): boolean {
+  return !e.archived && e.event_date >= eventToday;
+}
+
+export type GearListParams = { q: string; archived: boolean; page: number };
+
+/** Defaults: active gear only. `?show=archived` (the earlier "Show archived" link) includes archived items. */
+export function parseGearListParams(sp: Params): GearListParams {
+  return { q: search(sp.q), archived: one(sp.archived) === "1" || one(sp.show) === "archived", page: page(sp.page) };
+}
+
+export function gearListHref(base: string, p: Partial<GearListParams>): string {
+  return clientListHref(base, p);
+}
+
+export const isDefaultGearList = (p: GearListParams) => !p.q && !p.archived;
+
+/**
+ * A PostgREST `or` filter matching rows where any column contains `q`, case
+ * insensitive. LIKE wildcards in the search are escaped (literal % and _) and
+ * the value is quoted, so commas, dots and parentheses are plain text.
+ */
+export function containsFilter(columns: readonly string[], q: string): string {
+  const pattern = `%${q.replace(/[\\%_]/g, "\\$&")}%`;
+  const quoted = `"${pattern.replace(/["\\]/g, "\\$&")}"`;
+  return columns.map((c) => `${c}.ilike.${quoted}`).join(",");
+}

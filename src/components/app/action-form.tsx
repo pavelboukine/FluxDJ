@@ -36,6 +36,8 @@ type Props = {
   confirmIfUnsaved?: string;
   /** Called after a successful submit (e.g. to start a fresh idempotency key). */
   onSuccess?: (result: ActionState) => void;
+  /** Shown beside the submit button (e.g. a Cancel button). */
+  secondary?: ReactNode;
 };
 
 /** Serializes the user-editable fields, so "unsaved changes" can be detected. */
@@ -69,6 +71,7 @@ export function ActionForm({
   navigateOnSuccess,
   confirmIfUnsaved,
   onSuccess,
+  secondary,
 }: Props) {
   const router = useRouter();
   const sharedVersion = useSharedDraftVersion();
@@ -146,6 +149,7 @@ export function ActionForm({
         <Button type="submit" disabled={pending} variant={variant}>
           {pending ? (pendingLabel ?? "Saving…") : submitLabel}
         </Button>
+        {secondary}
         <FormMessage state={state} />
         {trackUnsaved && dirty ? (
           <p role="status" className="text-sm text-amber-700 dark:text-amber-400">

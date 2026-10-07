@@ -62,7 +62,7 @@ export function ListFilters({
         Search
         <span className="relative">
           <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-          <input type="search" name="q" defaultValue={query} maxLength={100} placeholder={placeholder} className={cn(fieldClass, "w-full pl-8 text-foreground")} />
+          <input key={query} type="search" name="q" defaultValue={query} maxLength={100} placeholder={placeholder} className={cn(fieldClass, "w-full pl-8 text-foreground")} />
         </span>
       </label>
       {children}

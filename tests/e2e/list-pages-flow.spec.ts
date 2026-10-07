@@ -107,6 +107,10 @@ test.describe.serial("events and clients lists", () => {
     await page.getByTestId("events-no-results").getByRole("link", { name: "Clear filters" }).click();
     await expect(page).toHaveURL(new RegExp(`${base}$`));
     await expect(rows).toHaveCount(3);
+    // The filter fields show the cleared state too.
+    await expect(page.getByLabel("Search")).toHaveValue("");
+    await expect(page.getByLabel("Status")).toHaveValue("");
+    await expect(page.getByLabel("Dates")).toHaveValue("upcoming");
 
     // The URL keeps the state across a visit to an event and Back.
     await page.getByLabel("Search").fill("okafor");

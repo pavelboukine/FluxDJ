@@ -1,14 +1,11 @@
 import Link from "next/link";
-import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { PageHeader } from "@/components/app/fields";
+import { EventRow } from "@/components/app/event-row";
 import { EmptyList, FilterCheckbox, FilterSelect, ListRows, Pagination, ResultLine } from "@/components/app/list";
 import { ListFilters } from "@/components/app/list-filters";
 import { requireStaff } from "@/lib/auth/staff";
-import { shortDate } from "@/lib/dates";
-import { eventStatusLabel } from "@/lib/events/status";
-import { EVENT_STATUSES, EVENT_VIEWS, PAGE_SIZE, eventListHref, eventListSchema, isDefaultEventList, nearDay, parseEventListParams, rangeText } from "@/lib/lists";
-import { cn } from "@/lib/utils";
+import { EVENT_STATUSES, EVENT_VIEWS, PAGE_SIZE, eventListHref, eventListSchema, isDefaultEventList, parseEventListParams, rangeText } from "@/lib/lists";
 
 const ORDER_NOTE = { upcoming: "nearest first", past: "most recent first", all: "latest date first" } as const;
 const VIEW_NOUN = { upcoming: "upcoming", past: "past", all: "" } as const;
@@ -55,31 +52,19 @@ export default async function Events({ params, searchParams }: PageProps<"/staff
             ) : null}
           </ResultLine>
           <ListRows label="Events" testId="event-list">
-            {list.rows.map((e) => {
-              const near = nearDay(e.event_date, e.today);
-              return (
-                <li key={e.id} data-testid="event-row">
-                  <div className="grid gap-x-4 gap-y-1 px-4 py-3 text-sm sm:grid-cols-[8.5rem_minmax(0,1fr)_auto] sm:items-center">
-                    <span className="flex items-baseline gap-2 sm:grid sm:gap-0">
-                      <span className="font-medium whitespace-nowrap">{shortDate(e.event_date)}</span>
-                      {near ? <span className="text-xs text-muted-foreground">{near}</span> : null}
-                    </span>
-                    <span className="grid min-w-0">
-                      <Link className="truncate font-medium underline-offset-4 hover:underline" href={`${base}/${e.id}`}>{e.title}</Link>
-                      <span className="truncate text-muted-foreground">
-                        {e.client_name ?? "No primary contact"} · <span className={e.venue_name ? undefined : "italic"}>{e.venue_name ?? "Venue not set"}</span>
-                      </span>
-                    </span>
-                    <span className="flex flex-wrap gap-1 sm:justify-end">
-                      {e.archived ? <Badge variant="secondary">Archived</Badge> : null}
-                      <Badge variant="outline" className={cn("h-auto whitespace-normal", e.lifecycle_status === "booked" ? "border-emerald-600/40 bg-emerald-600/10 text-emerald-800 dark:text-emerald-300" : null)}>
-                        {eventStatusLabel(e.lifecycle_status, e.contract_signed)}
-                      </Badge>
-                    </span>
-                  </div>
-                </li>
-              );
-            })}
+            {list.rows.map((e) => (
+              <EventRow
+                key={e.id}
+                href={`${base}/${e.id}`}
+                title={e.title}
+                eventDate={e.event_date}
+                today={e.today}
+                details={<>{e.client_name ?? "No primary contact"} · <span className={e.venue_name ? undefined : "italic"}>{e.venue_name ?? "Venue not set"}</span></>}
+                status={e.lifecycle_status}
+                contractSigned={e.contract_signed}
+                archived={e.archived}
+              />
+            ))}
           </ListRows>
           <Pagination page={p.page} total={list.total} pageSize={PAGE_SIZE} href={(n) => eventListHref(base, { ...p, page: n })} />
         </>

@@ -51,3 +51,9 @@ export function clearBookingPolicyLocally(contractId: string) {
   run(`set session_replication_role = replica;
        update public.contracts set booking_policy = null where id = ${uuid(contractId)} and status <> 'signed';`);
 }
+
+/** Suspends a test workspace as suspend_workspace does (without its platform-admin audit). */
+export function suspendLocally(tenantId: string) {
+  run(`select set_config('flux.workspace_suspension', ${uuid(tenantId)}::text, false);
+       update public.tenants set suspended_at = now(), suspension_version = suspension_version + 1 where id = ${uuid(tenantId)};`);
+}

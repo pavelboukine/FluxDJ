@@ -29,8 +29,8 @@ export async function updateClientRecord(slug: string, clientId: string, _state:
     .select("id");
   if (error) return fail(describeDbError(error));
   if (!data?.length) return fail("Client not found.");
-  revalidatePath(`/staff/${slug}/clients`);
-  return ok("Saved.");
+  revalidatePath(`/staff/${slug}/clients`, "layout");
+  return ok("Contact details saved.");
 }
 
 /**

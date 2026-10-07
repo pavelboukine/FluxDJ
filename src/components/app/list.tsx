@@ -16,7 +16,7 @@ export function FilterSelect({ label, name, value, options }: { label: string; n
   return (
     <label className="grid gap-1 text-xs font-medium text-muted-foreground">
       {label}
-      <select name={name} defaultValue={value} className={cn(fieldClass, "min-w-36 text-foreground")}>
+      <select key={value} name={name} defaultValue={value} className={cn(fieldClass, "min-w-36 text-foreground")}>
         {options.map(([v, l]) => (
           <option key={v} value={v}>{l}</option>
         ))}
@@ -28,7 +28,7 @@ export function FilterSelect({ label, name, value, options }: { label: string; n
 export function FilterCheckbox({ label, name, checked }: { label: string; name: string; checked: boolean }) {
   return (
     <label className="flex h-9 items-center gap-2 rounded-lg px-1 text-sm">
-      <input type="checkbox" name={name} value="1" defaultChecked={checked} className="size-4 accent-primary" />
+      <input key={String(checked)} type="checkbox" name={name} value="1" defaultChecked={checked} className="size-4 accent-primary" />
       {label}
     </label>
   );
