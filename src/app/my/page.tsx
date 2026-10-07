@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { InstallHelp } from "@/components/app/pwa";
 import { signOut } from "@/app/auth/confirm/actions";
 import { requireUser } from "@/lib/auth/staff";
 import { formatEventDate } from "@/lib/planning/view";
@@ -17,6 +18,7 @@ export default async function MyContracts() {
   ]);
   return (
     <main className="mx-auto grid w-full max-w-md gap-4 px-4 py-12">
+      <InstallHelp />
       {plans && plans.length > 0 ? (
         <section aria-labelledby="planning-heading" className="grid gap-2">
           <h1 id="planning-heading" className="text-2xl font-semibold">Your event planning</h1>

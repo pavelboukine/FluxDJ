@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
 import { PageHeader } from "@/components/app/fields";
+import { InstallHelp } from "@/components/app/pwa";
 import { requireStaff } from "@/lib/auth/staff";
 
 export default async function Dashboard({ params }: PageProps<"/staff/[tenant]">) {
@@ -42,6 +43,7 @@ export default async function Dashboard({ params }: PageProps<"/staff/[tenant]">
 
   return (
     <>
+      <InstallHelp />
       <PageHeader
         title="Dashboard"
         description="Set up your catalog once, then build proposals for each event."

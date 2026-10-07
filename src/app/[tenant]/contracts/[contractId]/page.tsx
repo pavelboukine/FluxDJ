@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { PdfDownloadLink } from "@/components/app/pwa";
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -123,12 +124,13 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
             Signed by {signing.typed_name} on {new Intl.DateTimeFormat("en-CA", { dateStyle: "long", timeStyle: "short" }).format(new Date(signing.signed_at)).replace(/\.?$/, ".")}
           </p>
           {signing.pdf_ready ? (
-            <a
-              className="justify-self-start rounded-lg bg-[var(--brand)] px-3 py-2 text-sm font-medium text-white underline-offset-2 hover:underline"
+            <PdfDownloadLink
+              className="rounded-lg bg-[var(--brand)] px-3 py-2 text-sm font-medium text-white underline-offset-2 hover:underline"
               href={`/${slug}/contracts/${contractId}/signed-pdf`}
+              fallbackName="signed-contract.pdf"
             >
               Download signed PDF
-            </a>
+            </PdfDownloadLink>
           ) : signing.pdf_pending ? (
             <p className="text-sm text-muted-foreground">Your signed PDF is being prepared. Reload this page in a minute to download it.</p>
           ) : null}
@@ -188,6 +190,9 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
       ) : null}
       <p className="mx-auto max-w-prose text-xs text-muted-foreground [overflow-wrap:anywhere]">
         {c.legal_name} · Contract fingerprint (SHA-256): {c.content_sha256}
+      </p>
+      <p className="text-xs text-muted-foreground">
+        <Link className="underline" href="/my">Your events and contracts</Link>
       </p>
     </main>
   );

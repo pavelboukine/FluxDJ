@@ -38,6 +38,9 @@ const nextConfig: NextConfig = {
       { source: "/:tenant/contracts/:path*", headers: clientFormPageHeaders },
       { source: "/:tenant/planning/:path*", headers: clientFormPageHeaders },
       { source: "/my", headers: clientFormPageHeaders },
+      // The home-screen app's start URL: a per-session redirect with no content. Next.js sends its
+      // own "no-cache, must-revalidate" on redirects (as for /my and /staff); this applies otherwise.
+      { source: "/start", headers: [{ key: "Cache-Control", value: "private, no-store" }, { key: "X-Robots-Tag", value: "noindex, nofollow" }] },
       { source: "/staff/:path*", headers: [{ key: "X-Frame-Options", value: "DENY" }, { key: "Referrer-Policy", value: "same-origin" }] },
     ];
   },

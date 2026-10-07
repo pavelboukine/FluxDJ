@@ -699,6 +699,44 @@ How it works:
   and never "final": staff can still change the plan after the client
   deadline.
 
+#### Installing Flux DJ on a phone
+
+Flux DJ can be added to a phone's home screen and opens without browser
+controls. It is the same website, always online: nothing is stored for
+offline use and there is no service worker.
+
+- **One app for everyone:** "Flux DJ" (`app/manifest.ts`), opening at the
+  neutral `/start`, scoped to the whole site. `/start` sends signed-out people
+  to sign in and everyone else to `/staff`, which already routes staff to
+  their business (or the chooser) and clients to `/my`. No business, event,
+  token or personal data is in the manifest, start URL or icons. Inside the
+  app each DJ's pages keep their own branding.
+- **Icons:** a temporary "F" with level bars on the app's near-black colour
+  (192, 512, a maskable 512 and the 180 Apple touch icon, plus the favicon),
+  generated once by `node scripts/generate-app-icons.mjs` from the bundled font
+  and committed. Replace them when there is a final logo.
+- **Install help:** a small card on the staff dashboard and on `/my`. It
+  offers the browser's own install prompt where there is one (Chrome, Edge,
+  Android), explains Safari → Share → Add to Home Screen on iPhone and iPad
+  (and to open Safari from other iPhone browsers), shows nothing elsewhere,
+  and never appears inside the installed app. "Not now" hides it for good on
+  that device (a single `localStorage` flag; no private data).
+- **Signing in from the app:** emailed links open in the phone's browser, and
+  on iPhone an app added to the Home Screen does not share Safari's sign-in.
+  So the same email also carries a 6-digit code: type it on the app's sign-in
+  page ("Sign in with code"). The link keeps its explicit "Sign in" step. No
+  password, and nothing about the sign-in is kept in browser storage. Code
+  attempts are limited per IP (`sign_in_code`), on top of Supabase's own
+  limits.
+- **Standalone use:** zoom stays available; the default viewport keeps pages
+  inside the notch and home-indicator safe areas. Every page offers a way on
+  without a Back button (staff navigation, "Your events and contracts" on
+  client pages, and a "Go to Flux DJ" link on not-found pages). PDFs (run
+  sheet, signed contracts) open the phone's share options (save to Files,
+  print) from the app instead of a viewer with no way back; in a browser they
+  download as before. When the device is offline a notice says pages may be
+  out of date and changes can't be saved.
+
 ## Running the checks
 
 ```bash
@@ -766,8 +804,9 @@ spec. Failures always keep a screenshot and a trace in `test-results/`
 spec just to see what happened.
 
 **Sign-in and rate limits.** The app limits sign-in requests per IP
-(`sign_in_link`: 30 per 10 minutes at `/login`; `contract_sign_in`: 10 per 15
-minutes on the contract invitation page). Every local browser comes from
+(`sign_in_link`: 30 per 10 minutes at `/login`; `sign_in_code`: 20 code
+attempts per 15 minutes at `/login`; `contract_sign_in`: 10 per 15 minutes on
+the contract invitation page). Every local browser comes from
 127.0.0.1, so the tests share these limits with your own browser.
 
 - Feature specs sign in with `signInStaff`, `signInWithLink` or
@@ -778,9 +817,10 @@ minutes on the contract invitation page). Every local browser comes from
   from Mailpit are skipped, so these specs use no rate-limit budget and can
   run repeatedly.
 - Only `staff-flow.spec.ts` (login form, unknown emails, link scanners,
-  JavaScript off) and `contract-send-flow.spec.ts` (invitation request,
-  verification, returning-client login) use the real forms. A full run uses 4
-  `sign_in_link` and 1 `contract_sign_in`.
+  JavaScript off, sign-in with the emailed code) and `contract-send-flow.spec.ts`
+  (invitation request, verification, returning-client login) use the real
+  forms. A full run uses 5 `sign_in_link`, 2 `sign_in_code` and 1
+  `contract_sign_in`.
 - If a limit is used up, the test fails at once with the limit's name and the
   time it resets. Nothing resets the counters, and production limits are
   unchanged. The limiter itself is proven by the pgTAP tests (`12_…`, `17_…`).
@@ -1063,6 +1103,15 @@ signed-out browser:
   within 2 seconds, write nothing and cause no retry loop. Set
   `FLUX_REST_V14_URL` to a second PostgREST on the same database to check
   another version too.
+- `tests/e2e/pwa-flow.spec.ts` (browser emulation, not a real iPhone): the
+  manifest and icons (fields, sizes, types, nothing personal) and Chromium's
+  installability check with no service worker; `/start` for signed-out,
+  staff, client, both-role and several-business users; install help with the
+  native prompt, iPhone Safari, Chrome on iPhone, Android without a prompt,
+  dismissal and standalone; in standalone, the run sheet PDF through the
+  share sheet with the app's session, an honest error and notice offline,
+  ways out of every page, and no service worker, caches or private storage;
+  the client's planning and contract pages standalone on a phone.
 - `tests/e2e/run-sheet-flow.spec.ts`: on a phone, from the event page to the
   read-only run sheet (no inputs, collapsed lists, Do not play one tap away,
   no sideways scrolling); the PDF downloaded through the app (same revision,
@@ -1939,6 +1988,8 @@ before real clients.
    - Set the Site URL to the production origin.
    - Add `https://<domain>/auth/confirm` to the redirect URLs.
    - Paste `supabase/templates/magic_link.html` into the Magic Link template.
+     It carries both the link and the 6-digit code (`{{ .Token }}`) that the
+     home-screen app signs in with; keep both when editing it.
    - Keep the email OTP expiry at 3600 seconds.
    - Configure custom SMTP (Resend). Supabase's built-in mailer is heavily
      rate-limited and meant for testing.

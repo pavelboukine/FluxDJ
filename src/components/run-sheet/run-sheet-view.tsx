@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PdfDownloadLink } from "@/components/app/pwa";
 import { Badge } from "@/components/ui/badge";
 import { formatInstant } from "@/lib/planning/cutoff";
 import { whenText, type PersonLine, type Row, type RunSheet, type SongLine, type StageSheet } from "@/lib/run-sheet/model";
@@ -121,7 +122,7 @@ export function RunSheetView({ sheet, revision, pdfHref, planningHref, refreshHr
         {sheet.editing ? <p className="text-sm text-muted-foreground">{sheet.editing}</p> : null}
         {event.archived ? <p role="status" className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm">This event is archived. The run sheet stays available to staff for reference.</p> : null}
         <div className="flex flex-wrap gap-2 pt-1">
-          <a className="inline-flex min-h-9 items-center rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground" href={pdfHref} download>Download run sheet PDF</a>
+          <PdfDownloadLink className="inline-flex min-h-9 items-center rounded-lg bg-primary px-3 text-sm font-medium text-primary-foreground" href={pdfHref} fallbackName="run-sheet.pdf">Download run sheet PDF</PdfDownloadLink>
           <Link className="inline-flex min-h-9 items-center rounded-lg border px-3 text-sm" href={refreshHref} prefetch={false}>Refresh</Link>
           <Link className="inline-flex min-h-9 items-center rounded-lg border px-3 text-sm" href={planningHref}>Edit planning</Link>
         </div>

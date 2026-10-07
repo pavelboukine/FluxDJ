@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { FormMessage } from "@/components/app/action-form";
+import { PdfDownloadLink } from "@/components/app/pwa";
 import { idleState, type ActionState } from "@/lib/forms";
 import { retryEmail } from "../../emails/actions";
 import { generateSignedPdf, sendSignedCopies } from "../actions";
@@ -51,9 +52,9 @@ export function SignedDocumentPanel(props: {
     <div className="grid gap-4 text-sm">
       {pdf.kind === "ready" ? (
         <div className="grid gap-2">
-          <a className={buttonVariants({ className: "justify-self-start" })} href={`/staff/${props.slug}/contracts/${props.contractId}/signed-pdf`}>
+          <PdfDownloadLink className={buttonVariants()} href={`/staff/${props.slug}/contracts/${props.contractId}/signed-pdf`} fallbackName="signed-contract.pdf">
             Download signed PDF
-          </a>
+          </PdfDownloadLink>
           <dl className="grid gap-1 text-xs [overflow-wrap:anywhere]">
             <div><dt className="text-muted-foreground">Generated</dt><dd>{fmt(pdf.generatedAt)} · {(pdf.byteSize / 1024).toFixed(0)} KB</dd></div>
             <div>

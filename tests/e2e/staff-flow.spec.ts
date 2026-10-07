@@ -1,6 +1,6 @@
 /**
  * End-to-end staff flow in a real browser against local Supabase:
- * magic-link login (via Mailpit), gear with real and disguised uploads,
+ * magic-link login (via Mailpit), sign-in with the emailed code, gear with real and disguised uploads,
  * packages, templates, client/event creation, proposal draft editing with
  * optimistic versions, live preview pricing, mobile layout and isolation.
  */
@@ -42,6 +42,17 @@ async function latestMagicLink(email: string, after: number): Promise<string> {
     await new Promise((r) => setTimeout(r, 500));
   }
   throw new Error(`no magic link email for ${email}`);
+}
+
+async function latestEmailHtml(email: string, after: number): Promise<string> {
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const res = await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:"${email}"`)}`);
+    const { messages } = (await res.json()) as { messages: { ID: string; Created: string }[] };
+    const fresh = messages.find((m) => Date.parse(m.Created) >= after - 1000);
+    if (fresh) return ((await (await fetch(`${MAILPIT}/api/v1/message/${fresh.ID}`)).json()) as { HTML: string }).HTML;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  throw new Error(`no sign-in email for ${email}`);
 }
 
 async function signIn(page: Page, email: string) {
@@ -132,6 +143,44 @@ test.describe.serial("staff interface", () => {
     await p.waitForURL(`**/staff/${otherTenant.slug}`);
     await expect(p.getByRole("heading", { name: "Dashboard" })).toBeVisible();
     await noJs.close();
+  });
+
+  test("the code in the same email signs in whichever app it is typed into (the home-screen app on iPhone)", async () => {
+    // A second staff member, so Supabase's per-address link frequency never meets the owner's sign-ins.
+    const email = `e2e-code-${run}@example.test`;
+    const { data: created } = await admin.auth.admin.createUser({ email, email_confirm: true });
+    await admin.from("tenant_memberships").insert({ tenant_id: tenant.id, user_id: created.user!.id, role: "staff" });
+    const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    const app = await phone.newPage();
+    const started = Date.now();
+    await app.goto("/start");
+    await expect(app).toHaveURL(/\/login$/);
+    await app.getByLabel("Email").fill(email);
+    await app.getByRole("button", { name: "Email me a sign-in link" }).click();
+    await expectLinkRequested(app, /If that email has a Flux DJ account/, SIGN_IN_LIMIT);
+    const form = app.getByTestId("code-form");
+    await expect(form).toContainText("Using Flux DJ from your home screen? Use the code");
+
+    // The emailed message carries both the link (with its explicit Sign in step) and the code.
+    const html = await latestEmailHtml(email, started);
+    expect(html).toMatch(/\/auth\/confirm\?token_hash=/);
+    const code = /<strong>(\d{6})<\/strong>/.exec(html)?.[1];
+    expect(code).toBeTruthy();
+
+    await form.getByLabel("Code from the email").fill(code === "000000" ? "111111" : "000000");
+    await form.getByRole("button", { name: "Sign in with code" }).click();
+    await expect(form.getByRole("alert")).toContainText("That code is wrong or has expired");
+    await expect(app).toHaveURL(/\/login$/);
+
+    await form.getByLabel("Code from the email").fill(code!);
+    await form.getByRole("button", { name: "Sign in with code" }).click();
+    await app.waitForURL(`**/staff/${tenant.slug}`);
+    await expect(app.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+    // Nothing about the sign-in is kept in browser storage.
+    const stored = await app.evaluate(() => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }));
+    expect(stored).not.toContain(code!);
+    expect(stored).not.toMatch(/token/i);
+    await phone.close();
   });
 
   test("another tenant's workspace is not reachable", async () => {
