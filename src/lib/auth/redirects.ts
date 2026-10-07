@@ -6,7 +6,7 @@
 const ALLOWED = [
   /^\/staff(?:\/[a-z0-9-]+(?:\/[A-Za-z0-9/_-]*)?)?$/,
   /^\/my$/,
-  /^\/platform\/invitations$/,
+  /^\/platform\/(?:invitations|workspaces)$/,
   /^\/join\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
   /^\/[a-z0-9][a-z0-9-]{1,46}[a-z0-9]\/invitations\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
   /^\/[a-z0-9][a-z0-9-]{1,46}[a-z0-9]\/contracts\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,

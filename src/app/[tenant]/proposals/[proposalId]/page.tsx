@@ -51,6 +51,13 @@ export default async function ClientProposalPage({ params }: PageProps<"/[tenant
       </Notice>
     );
   }
+  if (view.state === "unavailable") {
+    return (
+      <Notice title="This proposal is temporarily unavailable">
+        <p>It can&apos;t be opened right now. Please try again later or contact your DJ.</p>
+      </Notice>
+    );
+  }
   if (view.state === "invalid") {
     return (
       <Notice title="This link isn't available">

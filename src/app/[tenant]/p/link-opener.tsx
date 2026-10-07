@@ -2,13 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 
-type State = "opening" | "missing" | "invalid" | "superseded" | "rate_limited" | "error";
+type State = "opening" | "missing" | "invalid" | "superseded" | "unavailable" | "rate_limited" | "error";
 type ExchangeResult = { status: Exclude<State, "opening" | "missing"> | "ok"; redirect?: string };
 
 const MESSAGES: Record<Exclude<State, "opening">, string> = {
   missing: "This link is incomplete. Open the proposal from the button in your email.",
   invalid: "This proposal link is not valid or has expired. Please use the link in your most recent email, or contact your DJ.",
   superseded: "A newer version of this proposal has been sent. Please open the link in your most recent email.",
+  unavailable: "This proposal is temporarily unavailable. Please try again later or contact your DJ.",
   rate_limited: "Too many attempts. Please wait a few minutes and try again.",
   error: "Something went wrong opening your proposal. Please try again.",
 };
@@ -31,7 +32,7 @@ function exchangeOnce(slug: string, token: string): Promise<ExchangeResult> {
       });
       const body = (await response.json().catch(() => ({}))) as { status?: string; redirect?: string };
       if (body.status === "ok" && body.redirect) return { status: "ok", redirect: body.redirect };
-      if (body.status === "superseded" || body.status === "rate_limited") return { status: body.status };
+      if (body.status === "superseded" || body.status === "unavailable" || body.status === "rate_limited") return { status: body.status };
       return { status: response.status === 404 ? "invalid" : "error" };
     } catch {
       return { status: "error" };

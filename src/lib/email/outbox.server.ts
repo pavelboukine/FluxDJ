@@ -125,6 +125,10 @@ export async function processOutbox(
         appUrl,
         proposalLink,
       });
+      if (!(await dispatchAllowed(admin, row.id))) {
+        result.cancelled += 1;
+        continue;
+      }
       const sent = await transport.send({
         fromName: `${row.tenant_display_name} via Flux DJ`,
         fromAddress,
@@ -197,6 +201,7 @@ async function deliverContractEmail(
       clientName: str(payload.client_name) || "there",
       eventTitle: str(payload.event_title) || "your event",
     });
+    if (!(await dispatchAllowed(admin, row.id))) return "cancelled";
     const sent = await transport.send({ fromName: `${row.tenant_display_name} via Flux DJ`, fromAddress, to: row.recipient_email, replyTo: row.tenant_reply_to, ...email });
     await admin.rpc("complete_email_outbox", { p_id: row.id, p_provider_message_id: sent.id });
     return "sent";
@@ -241,6 +246,7 @@ async function deliverContractEmail(
       verificationLink: await verificationLink(admin, row.recipient_email, appUrl, next),
     });
   }
+  if (!(await dispatchAllowed(admin, row.id))) return "cancelled";
   const sent = await transport.send({
     fromName: `${row.tenant_display_name} via Flux DJ`,
     fromAddress,
@@ -309,6 +315,7 @@ async function deliverSignedCopy(
     eventDate,
     signedAtLocal: str(payload.signed_at) ? formatSignedAt(str(payload.signed_at), str(payload.timezone) || "America/Toronto").local : "the signing date",
   });
+  if (!(await dispatchAllowed(admin, row.id))) return "cancelled";
   const sent = await transport.send({
     fromName: sender.from_name,
     fromAddress: sender.from_address,
@@ -361,6 +368,7 @@ async function deliverBookingConfirmed(
     balanceDueDate: str(payload.balance_due_date) || null,
     bookedOn: str(payload.booked_on),
   });
+  if (!(await dispatchAllowed(admin, row.id))) return "cancelled";
   const sent = await transport.send({
     fromName: sender.from_name,
     fromAddress: sender.from_address,
@@ -440,6 +448,19 @@ async function deliverPlatformEmails(
       result.failed += 1;
     }
   }
+}
+
+/**
+ * The last check right before an email is handed to the provider: still
+ * claimed by this run (not cancelled, for example by a workspace suspension
+ * since the claim) and its workspace not suspended. It narrows the race to the
+ * provider call itself; an email already handed over can't be recalled.
+ * Before migration 20261019000100 the check doesn't exist and sending
+ * proceeds as before.
+ */
+async function dispatchAllowed(admin: ReturnType<typeof createAdminClient>, id: string): Promise<boolean> {
+  const { data, error } = await admin.rpc("email_outbox_dispatch_allowed", { p_id: id });
+  return error ? error.code === "PGRST202" : data === true;
 }
 
 /** Runs the outbox after the response, swallowing errors (they are recorded per email). */

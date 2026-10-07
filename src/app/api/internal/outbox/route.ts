@@ -18,7 +18,7 @@ async function run(request: Request) {
   const secret = serverEnv().OUTBOX_WORKER_SECRET;
   const supplied = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
   if (!secret || !safeEqual(supplied, secret)) return NextResponse.json({ status: "not_found" }, { status: 404 });
-  const documents = await processDocumentJobs({ limit: 5 }).catch(() => ({ claimed: 0, committed: 0, reused: 0, failed: 0, error: true }));
+  const documents = await processDocumentJobs({ limit: 5 }).catch(() => ({ claimed: 0, committed: 0, reused: 0, failed: 0, paused: 0, error: true }));
   const result = await processOutbox({ limit: 50 });
   return NextResponse.json({ status: "ok", ...result, documents }, { headers: { "Cache-Control": "no-store" } });
 }

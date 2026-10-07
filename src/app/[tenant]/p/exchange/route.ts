@@ -45,7 +45,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ ten
   if (error) return reply({ status: "error" }, 500);
   const result = data as { status: string; proposal_id?: string; tenant_id?: string; session_expires_at?: string };
   if (result.status !== "ok" || !result.proposal_id) {
-    return reply({ status: result.status === "superseded" ? "superseded" : "invalid" }, 404);
+    return reply({ status: result.status === "superseded" || result.status === "unavailable" ? result.status : "invalid" }, 404);
   }
 
   // The first opening queues a staff notice; deliver it after responding.

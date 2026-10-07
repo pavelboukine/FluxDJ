@@ -36,7 +36,8 @@ export async function readVerifiedDocument(admin: Db, doc: DocumentRef): Promise
   return bytes;
 }
 
-export type DocumentRunResult = { claimed: number; committed: number; reused: number; failed: number };
+/** "paused": the workspace was suspended mid-run; the job is pending again and resumes after restoration. */
+export type DocumentRunResult = { claimed: number; committed: number; reused: number; failed: number; paused: number };
 
 type Hooks = {
   /** Replaces rendering (tests simulate renderer failures). */
@@ -67,7 +68,7 @@ export async function processDocumentJobs(
   options: { admin?: Db; tenantId?: string; contractId?: string; limit?: number; leaseSeconds?: number; hooks?: Hooks } = {},
 ): Promise<DocumentRunResult> {
   const admin = options.admin ?? createAdminClient();
-  const result: DocumentRunResult = { claimed: 0, committed: 0, reused: 0, failed: 0 };
+  const result: DocumentRunResult = { claimed: 0, committed: 0, reused: 0, failed: 0, paused: 0 };
   const { data: jobs, error } = await admin.rpc("claim_document_jobs", {
     p_limit: options.limit ?? 3,
     p_lease_seconds: options.leaseSeconds ?? 120,
@@ -96,7 +97,7 @@ async function generate(
   admin: Db,
   job: { job_id: string; lease_token: string; tenant_id: string; contract_id: string },
   hooks?: Hooks,
-): Promise<"committed" | "reused"> {
+): Promise<"committed" | "reused" | "paused"> {
   // Already committed (e.g. a retry after a lost response): reuse it.
   const { data: existing } = await admin
     .from("contract_documents")
@@ -105,8 +106,8 @@ async function generate(
     .eq("kind", "signed_contract")
     .maybeSingle();
   if (existing) {
-    await commit(admin, job.job_id, existing.storage_path, existing.pdf_sha256, existing.byte_size, existing.signature_sha256);
-    return "reused";
+    const outcome = await commit(admin, job.job_id, existing.storage_path, existing.pdf_sha256, existing.byte_size, existing.signature_sha256);
+    return outcome.status === "suspended" ? "paused" : "reused";
   }
 
   const [{ data: contract, error: cErr }, { data: signature, error: sErr }] = await Promise.all([
@@ -143,6 +144,11 @@ async function generate(
 
   await hooks?.beforeCommit?.(job);
   const outcome = await commit(admin, job.job_id, path, pdfSha, pdf.length, signature.signature_sha256);
+  if (outcome.status === "suspended") {
+    // Nothing was committed: this upload is unused. The job is pending again.
+    await admin.storage.from(DOCUMENT_BUCKET).remove([path]).catch(() => undefined);
+    return "paused";
+  }
   if (outcome.status === "exists") {
     // Another worker's PDF is canonical; this upload is unused.
     await admin.storage.from(DOCUMENT_BUCKET).remove([path]).catch(() => undefined);
@@ -163,7 +169,7 @@ async function commit(admin: Db, jobId: string, path: string, pdfSha: string, si
   // Unknown outcome or a definite refusal: the upload is kept either way (it
   // may be canonical); the job is retried and the next attempt finds out.
   if (error) throw new Error(`The signed PDF could not be recorded (${error.message.slice(0, 200)}).`);
-  return data as { status: "committed" | "exists"; document_id: string; storage_path?: string };
+  return data as { status: "committed" | "exists" | "suspended"; document_id?: string; storage_path?: string };
 }
 
 /**

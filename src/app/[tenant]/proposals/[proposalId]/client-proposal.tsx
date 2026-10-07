@@ -30,6 +30,7 @@ const CLOSED_MESSAGES: Record<string, string> = {
   submitted: "This proposal has already been submitted for review.",
   approved: "This proposal has already been approved.",
   invalid: "Your session has ended. Open the proposal again from the link in your email.",
+  unavailable: "This proposal is temporarily unavailable, so your latest change wasn't saved. Please try again later or contact your DJ.",
 };
 
 function toDraft(selection: ProposalSelectionState) {

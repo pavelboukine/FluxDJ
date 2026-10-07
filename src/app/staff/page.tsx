@@ -6,40 +6,42 @@ import { requireUser } from "@/lib/auth/staff";
 import { signOut } from "@/app/auth/confirm/actions";
 
 export default async function StaffHome() {
-  const { supabase, user } = await requireUser();
-  const { data: memberships } = await supabase
-    .from("tenant_memberships")
-    .select("role, tenants(slug, display_name)")
-    .eq("user_id", user.id);
-  const tenants = (memberships ?? []).flatMap((m) => (m.tenants ? [{ ...m.tenants, role: m.role }] : []));
+  const { supabase } = await requireUser();
+  const { data: workspaces } = await supabase.rpc("my_workspaces");
+  const all = workspaces ?? [];
+  const active = all.filter((w) => !w.suspended);
 
-  if (tenants.length === 1) redirect(`/staff/${tenants[0].slug}`);
+  if (active.length === 1 && all.length === 1) redirect(`/staff/${active[0].slug}`);
   const platformAdmin = await isPlatformAdmin();
   // A platform administrator without a business of their own manages invitations.
-  if (tenants.length === 0 && platformAdmin) redirect("/platform/invitations");
+  if (all.length === 0 && platformAdmin) redirect("/platform/invitations");
   // Signed in without any staff role: a client. Their home lists what they can read.
-  if (tenants.length === 0) redirect("/my");
+  if (all.length === 0) redirect("/my");
 
   return (
     <main className="mx-auto grid w-full max-w-md gap-4 px-4 py-12">
       <h1 className="text-2xl font-semibold">Choose a business</h1>
-      {tenants.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          {user.email} is signed in but has no staff access to any DJ business.
-        </p>
-      ) : (
-        <ul className="grid gap-2">
-          {tenants.map((t) => (
-            <li key={t.slug}>
+      <ul className="grid gap-2">
+        {all.map((t) => (
+          <li key={t.slug}>
+            {t.suspended ? (
+              <span className="text-muted-foreground">{t.display_name}</span>
+            ) : (
               <Link className="underline" href={`/staff/${t.slug}`}>
                 {t.display_name}
-              </Link>{" "}
-              <span className="text-xs text-muted-foreground">({t.role})</span>
-            </li>
-          ))}
-        </ul>
-      )}
-      {platformAdmin ? <Link className="underline text-sm" href="/platform/invitations">DJ invitations</Link> : null}
+              </Link>
+            )}{" "}
+            <span className="text-xs text-muted-foreground">({t.suspended ? "unavailable" : t.role})</span>
+          </li>
+        ))}
+      </ul>
+      {active.length < all.length ? (
+        <p className="text-sm text-muted-foreground">
+          A business marked unavailable has been suspended by Flux DJ and can&apos;t be opened right now. Your other businesses and your
+          sign-in aren&apos;t affected.
+        </p>
+      ) : null}
+      {platformAdmin ? <Link className="underline text-sm" href="/platform/invitations">Platform administration</Link> : null}
       <form action={signOut}>
         <Button variant="outline" type="submit">
           Sign out

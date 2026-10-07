@@ -55,6 +55,8 @@ const answerValue = z.union([z.boolean(), z.string(), z.array(z.string())]);
 const viewSchema = z.discriminatedUnion("state", [
   z.object({ state: z.literal("invalid") }),
   z.object({ state: z.literal("superseded") }),
+  // The DJ's workspace is suspended: temporarily, nothing is shown or saved.
+  z.object({ state: z.literal("unavailable") }),
   z.object({
     state: z.enum(["open", "expired", "submitted", "approved"]),
     tenant: z.object({ slug: z.string(), display_name: z.string() }),
@@ -90,6 +92,7 @@ export type ClientSelectionDraft = {
 export type ClientView =
   | { state: "invalid" }
   | { state: "superseded" }
+  | { state: "unavailable" }
   | {
       state: "open" | "expired" | "submitted" | "approved";
       tenant: { slug: string; display_name: string };
@@ -113,7 +116,7 @@ export async function loadClientView(slug: string, proposalId: string): Promise<
   const parsed = viewSchema.safeParse(data);
   if (!parsed.success) return { state: "invalid" };
   const view = parsed.data;
-  if (view.state === "invalid" || view.state === "superseded") return { state: view.state };
+  if (view.state === "invalid" || view.state === "superseded" || view.state === "unavailable") return { state: view.state };
   return {
     state: view.state,
     tenant: view.tenant,

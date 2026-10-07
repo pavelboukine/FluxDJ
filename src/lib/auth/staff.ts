@@ -24,6 +24,11 @@ export const requireStaff = cache(async (tenantSlug: string) => {
     .eq("slug", tenantSlug)
     .maybeSingle();
   if (!tenant) {
+    // A member of a suspended workspace: a neutral "unavailable" page (no
+    // reason, no administrator). Only the user's own memberships are read,
+    // so non-members learn nothing about the workspace.
+    const { data: mine } = await supabase.rpc("my_workspaces");
+    if ((mine ?? []).some((w) => w.slug === tenantSlug && w.suspended)) redirect("/unavailable");
     // Signed in, but with no staff role anywhere: usually a client sign-in
     // link was opened in this browser and replaced the staff session (one
     // Supabase session per browser). Explain instead of a bare 404. This

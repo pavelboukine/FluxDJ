@@ -58,6 +58,9 @@ foundation is in place:
   owner by email; the DJ verifies that address, names the business and
   chooses its web address, and gets a new, empty workspace. See "DJ
   invitations and new workspaces".
+- Workspace suspension: a platform administrator can suspend a workspace
+  (blocking all access to it without deleting anything) and restore it. See
+  "Suspending and restoring a workspace".
 
 Everything has row-level security and tests. Not built yet: payment
 processing, PWA and offline access, reminders, cancellations and amendments.
@@ -729,6 +732,22 @@ docker exec -i supabase_db_flux-dj psql -U postgres -c \
 
 Revoke the local grant with `select private.revoke_platform_admin('…');`.
 
+#### Suspending a workspace
+
+With a local platform administrator (above) who does not belong to the
+workspace you suspend (an administrator can't suspend their own; use a
+throwaway workspace created through an invitation, never BOUPROD):
+
+1. Open http://127.0.0.1:3000/platform/workspaces and click **Suspend…** on
+   the workspace. Read the effects, enter an internal reason and click
+   **Suspend workspace**. It shows **Suspended** with the time, who did it and
+   the reason.
+2. In another browser signed in as that workspace's owner, reload any staff
+   page: it shows "This workspace is unavailable", with no reason. A client's
+   proposal page or emailed proposal link says it is temporarily unavailable.
+3. Click **Restore…**, enter a reason and click **Restore workspace**. The
+   owner's and client's pages work again; nothing is emailed.
+
 #### Installing Flux DJ on a phone
 
 Flux DJ can be added to a phone's home screen and opens without browser
@@ -911,6 +930,7 @@ in every relevant relationship.
 | `29_contacts_preferences` | Editors on their sections; this event's contacts in the view with name and phone only. Day-of contact: not decided (open), someone else needing a phone, phone checks, an event contact by id only (no copy), a phone for the day without changing the client, contacts of another event or business and names refused, a contact leaving the event (kept, unavailable, not resaved). Vendors: name or business, roles, phone and email checks, order, none refused while listed, retried adds once, stale conflicts. Preferences: no language copy, language from Event basics, discuss open, unknown questions refused. Music styles: list order once, unknown styles, DJ's choice exclusive, other style, slow songs. Hidden sections, other clients, events and businesses, anon, archived events, staff edits; no staff ids, notes, payment references or signing evidence; clients, event contacts and contractual records untouched |
 | `30_remaining_editors` | Editors in their library places (Dinner and Party sharing one); only moment-holding stages without an editor; nothing "not available". Arrival: ceremony reuse storing no copy, open while the Ceremony lacks it or is hidden, other place with overnight times and next day, event venue unknown, "no separate arrangements" refused with details and alone not applicable. Program: own times, agenda with exact, overnight, cue and undecided timings, titles needed, "No formal program" refused with entries. Activities: songs need title and artist and safe links, custom names, Party counted separately, stale tabs, unknown fields. Dedications: unfinished kept without invented songs, any time, songs needed, no durations, "No dedications". Retried adds once, stale conflicts, hidden stages, other clients, events and businesses, anon, archived events, staff edits, stage order unchanged; contractual records untouched |
 | `33_platform_invitations` | Only the database owner grants platform administration (not the app, the API or the service role), only to one verified identity, audited. Tenant owners, staff, clients, strangers, anon and unverified administrators can't invite, list, resend or revoke; administrators see no business, client, event or email. Normalized addresses, one open invitation per address (also enforced by a unique index), hashed tokens only, emails with no tenant and only the link id. The tenant worker never claims them. Resend limits, link rotation, cancelled queued emails, audit. Verification requests: service role only, old and malformed links, masked address, 3 per 15 minutes, invited address only. Wrong, unverified, revoked and expired accounts and invitations. Names, reserved and malformed addresses, existing businesses (untouched, invitation still open). One business and one owner membership for the signed-in user, defaults, an empty workspace, replays returning the same workspace, final accepted invitations, no deletes. Existing clients and staff keep their access; other owners see nothing. Archived businesses keep their address and a retry never creates another |
+| `34_workspace_suspension` | Only platform administrators suspend, restore or list workspaces (owners, staff, clients, strangers and anon can't); the suspension columns can't be written directly by any role. Reasons required, stale versions (PT409), repeats, and an administrator can't suspend their own workspace. While suspended: staff of the workspace read and write nothing (tables, settings, payments, planning, proposals, contracts, PDF requests, private media and uploads), learning only that it is suspended; staff of other businesses and strangers get the usual refusals; other businesses unaffected. Clients: events of the other business kept, contracts, invitations, signing, signed PDFs, signature images, payment summaries and planning unavailable. Proposal links open no session; sessions show and save nothing; expired sessions stay invalid. Every write refused for every role, including the service role, except the audit log. Undelivered emails cancelled (no reason in them), nothing claimed, a claimed email stopped before sending, other businesses' emails delivered. PDF jobs not claimed; a racing commit pauses without losing an attempt. Archiving stays independent. Restore: audited, sends and revives nothing, PDF job resumes, contracts, signatures, bookings, deadlines and payments unchanged, access back, revoked and expired links still invalid, no extended expiry |
 | `32_version_conflicts` | No function raises `serialization_failure` (40001); every optimistic-version check raises `PT409`; the re-created functions keep their grants |
 | `31_planning_cutoff` | Owner-only, versioned setting with limits (staff, other businesses, clients, anon, direct column writes). Plans copy the days and store the deadline at setup; later setting changes leave them; a deadline already on the event is kept. Midnight in the event's zone: DST start and end days in Toronto, skipped and repeated midnight (Havana, Beirut), quarter-hour offsets, 0 days, zones east of UTC, events without a start time. States a microsecond before, exactly at and after the deadline and a reopening's end. Client view fields; saves before; after: reads continue, both save functions refused before validation and revision checks, nothing changed, progress unchanged; staff saves continue. Reopening: already open, reason, future, 14-day maximum, stale version, clients, other businesses, anon; stored expiry, deadline kept, client saves, replays, audit (staff, time, reason, before/after), nothing leaked to clients, staff history; expiry; closing early, repeats, never closing an open plan. Deadline changes and stale tabs; date and zone changes don't move it, mismatch shown, explicit recalculation. Direct writes and the trigger; archived and revoked access during a reopening; other clients and slugs; every plan has a deadline; booking and emails untouched |
 | `25_planning` | Read-only tables for staff; starter templates added explicitly and once; template ownership across businesses, clients and direct writes; rename, move, remove and add with stable keys and versions; library placement enforced by trigger; duplicate and archive; one default per event type. Booking (real signing and deposit) creates one plan from the event-type default; the Basics fallback; setup before booking kept at booking; repeats and already-booked backfill. Frozen imports after catalog changes. Client access: booked, unbooked, other client, stranger, wrong slug, revoked, unverified, two DJs, anon, archived and unarchived, payment invalidation. Basics validation, conflicts, normalization, progress (imported and not applicable versus unanswered, unavailable sections excluded). Disable and restore keep answers and order and change nothing contractual. Non-destructive template replacement. Integrity |
@@ -2064,6 +2084,86 @@ that state (`business_settings_incomplete`, and `business_identity_missing`
 for drafts generated before). The dashboard says setup isn't finished, and
 Settings shows the legal-name field empty with a note naming the placeholder.
 
+### Suspending and restoring a workspace
+
+Migration `20261019000100_workspace_suspension.sql`. A platform
+administrator suspends a workspace from `/platform/workspaces` (business
+name, address, status, creation and suspension details only; no business
+data) and restores it later. Suspension is separate from archiving
+(`archived_at` keeps its meaning, and either can change without the other).
+
+**Changing it.** `suspend_workspace` and `restore_workspace` take the
+workspace's `suspension_version` and a required internal reason (3 to 500
+characters). They lock the tenant row, so concurrent and repeated requests
+take effect once: a repeat of a change that already happened returns it
+(`replayed`), and a stale version for a change that didn't is a conflict
+(`PT409`). Each change records the administrator, database time, reason and
+new version in `platform_audit_events`. An administrator can't suspend a
+workspace they belong to, and their administration never depends on their
+own workspaces. `tenants.suspended_at` and `suspension_version` can't be
+written any other way, by any role (a trigger checks a marker only these
+functions set). Nothing is deleted: memberships, Auth identities and all
+records stay.
+
+**While suspended**, for the workspace only:
+
+- *Staff* read nothing through RLS (`member_tenant_ids` and
+  `owner_tenant_ids` leave it out), so tables, Storage gear media and
+  signature images, staff functions and the staff PDF routes all refuse.
+  `require_staff_of` answers members with `workspace_suspended` (`PT423`).
+  Staff pages and Server Actions send members to `/unavailable` ("This
+  workspace is unavailable"), on the next request of any open tab. `/staff`
+  lists the workspace as unavailable. Non-members learn nothing.
+- *Clients* lose that workspace's events (`client_event_ids`), contracts,
+  signing, signed PDFs, signature images and payment summaries
+  (`signer_can_access_contract`), planning, and contract invitations
+  (`contract_invitation`): pages show their usual "not available" state.
+  Proposal links open no session and existing sessions show and save
+  nothing; both say "temporarily unavailable". Their events at other
+  businesses are unaffected.
+- *Every write* to the workspace's rows is refused for every role, including
+  the service role and security definer functions
+  (`private.tenant_write_guard`, `PT423`), except the append-only audit log
+  and outbox and PDF-job bookkeeping. The guard takes a key-share lock on
+  the tenant row, which the suspension's row lock waits for: a write already
+  in progress finishes first, every later one is refused. Unsaved form input
+  is never reported as saved.
+- *Public pages* (invitation and proposal pages) see no such business.
+- The internal reason and the administrator appear only on
+  `/platform/workspaces` and in the platform audit log, never in member or
+  client responses, emails or error text.
+
+**Background work.**
+
+- *Emails.* Suspension cancels the workspace's undelivered emails (pending,
+  and claimed ones not yet sent) in the same transaction, so restoration
+  never sends obsolete messages. Workers claim none of its emails while
+  suspended, and the worker checks again right before handing each email to
+  the provider (`email_outbox_dispatch_allowed`). An email already handed to
+  the provider can't be recalled; that window is the provider call itself.
+  Platform emails and other businesses' emails are unaffected.
+- *Signed PDFs.* Jobs are kept and not claimed while suspended. A PDF
+  rendered by a worker that claimed it just before the suspension isn't
+  committed: the job goes back to pending without using an attempt and its
+  upload is removed. After restoration the worker generates it as usual,
+  and a job queued at signing then emails the signed copies, as it would
+  have.
+- PDFs and emails already delivered, and short-lived signed URLs already
+  issued, can't be recalled.
+
+**Restoring** only lifts the block. It sends no email, creates no link,
+extends no link, session, invitation or planning deadline (expiry dates kept
+running during the suspension), revives nothing that was revoked or
+cancelled, and changes no booking, payment, signature or contract. Access
+returns under the usual identity, membership, expiry, event, contract and
+planning rules.
+
+**Links are blocked, not revoked.** Proposal links and sessions and contract
+invitations keep their rows and expiry, so a still-valid link works again
+after restoration. Revoking them would force every client to be re-sent
+links for a reversible, administrative action; the database blocks them
+without exception while suspended.
+
 ### Client access
 
 Clients never read `events` directly, because RLS limits rows, not columns.
@@ -2183,7 +2283,8 @@ src/lib/pricing/               Pure pricing module and offer snapshot schema
 src/lib/proposals/             Server-only selection pricing and recording
 src/app/staff/                 Staff screens and Server Actions
 src/app/login, src/app/auth/   Magic-link login and confirmation
-src/app/platform/              Platform administrators: DJ invitations
+src/app/platform/              Platform administrators: DJ invitations and workspace suspension
+src/app/unavailable/           Shown to members of a suspended workspace
 src/app/join/                  Invited DJs: verification request and workspace creation
 src/components/proposal/       Responsive proposal preview (live pricing)
 src/lib/media/                 File-signature detection for uploads
