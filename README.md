@@ -52,9 +52,11 @@ foundation is in place:
   event (owner setting, 14 by default), enforced by the database; staff keep
   editing, and can move one event's deadline or reopen client editing
   temporarily, with a reason, all audited.
+- DJ run sheet: a staff-only live view for gig night and an on-demand PDF,
+  both from one read-only projection of the latest saved plan.
 
 Everything has row-level security and tests. Not built yet: payment
-processing, the run sheet, PWA, reminders, cancellations and amendments.
+processing, PWA and offline access, reminders, cancellations and amendments.
 Approval and contract drafts are not bookings.
 
 ## Stack
@@ -600,6 +602,66 @@ How it works:
 - Nothing here changes progress, contracts, prices, payments, booking or
   emails, and it is not a frozen run sheet: staff can still edit.
 
+#### DJ run sheet
+
+Staff open **Run sheet** from the event page's Planning card or the planning
+page. It is read-only (edit links go back to planning) and built for a phone
+on gig night:
+
+- **Header:** event, date, time zone, venue, "Latest saved plan as of"
+  (database time) and a revision code, plus the client-editing state for
+  context. Archived events are labelled and stay available to staff.
+- **Essentials:** DJ service times from Event basics (next-day ends named),
+  guests, day-of contact with a call link (a phone for the day overrides the
+  contact's own), access and load-in, venue and room, MC with pronunciation,
+  officiant; announcement language, explicit lyrics, guest requests and DJ
+  interaction.
+- **To check:** timing warnings, songs that are also on Do not play, stage
+  times outside the DJ service times, and (folded under a count) what is
+  still unanswered, per section.
+- **Stages in your configured order:** times (exact, next day, "Not set"),
+  location, instructions and details; then each moment's rows: names with
+  pronunciation and announcement wording, linked songs with cue labels,
+  versions and start/fade notes, speeches and activities with their exact
+  time or cue ("Cue: After the main course", never a made-up clock time),
+  durations and AV needs, and explicit choices ("DJ's choice", "Not
+  applicable", "No introductions") kept distinct from "Not answered yet".
+- **Music lists** collapsed by default so long playlists don't bury the
+  cues; **Do not play** is linked from the top and open.
+
+**Download run sheet PDF** generates the same content on demand: header and
+gig overview (contacts, preferences, warnings, a time/cue, moment and people,
+song, instructions table per stage with the column header repeated on each
+page), then planning details (stage details, vendors, the frozen proposal
+answers under their own heading) and the full music lists in order. Pages
+are numbered, and the footer repeats the revision and the as-of time.
+
+How it works:
+
+- **One projection** (`src/lib/run-sheet/model.ts`) is shared by the page
+  and the PDF. It reads one `staff_planning_view` call: a STABLE function, so
+  every answer, revision and song link comes from one database snapshot even
+  during concurrent saves. Hidden stages and moments are left out. Reuse is
+  resolved from what was saved: "same as the event venue", the guest count
+  and end time from Event basics, the ceremony's place and arrival time,
+  Processional and Introductions links to Couple entrance and Entrance music
+  songs. People sharing one linked song are grouped so the song shows once,
+  and Entrance music only lists songs not already shown with an
+  introduction. Nothing is written; nothing comes from browser form state or
+  the current catalog.
+- **Revision:** a short hash of the projected content, so exports made
+  before and after an edit differ, and an unchanged plan gives the same
+  code. Staff changes after the client deadline appear on the next refresh.
+- **Access:** the page and `/run-sheet/pdf` recheck the staff session and
+  membership on every request (RLS and the planning functions decide).
+  Signed-out visitors, clients and other businesses get a 404; the PDF is
+  streamed with `private, no-store` and never stored. Internal event notes,
+  payments, signing evidence, client emails, audit reasons and staff
+  identities are not part of the projection.
+- It is a working document from the latest saved plan, never a contract
+  and never "final": staff can still change the plan after the client
+  deadline.
+
 ## Running the checks
 
 ```bash
@@ -944,6 +1006,25 @@ signed-out browser:
   editing until the shown end, closing early refusing a stale tab, a moved
   event date and explicit recalculation, no reasons or staff emails for the
   client, contract, payments and booking unchanged.
+- `tests/unit/run-sheet.test.ts`: the projection on a detailed French
+  wedding, a Simple Party and an incomplete plan (stage order, hidden items,
+  reuse, shared songs shown once, cues, overnight times, explicit choices,
+  conflicts, open answers, no staff-only data), then real PDFs: extracted text
+  checked for sections, pronunciation beside names, repeated column headers
+  only on overview pages, and no `undefined`, `null`, ids or contract wording.
+  Pages are written to `review-samples/run-sheet/` for review.
+- `tests/integration/run-sheet.test.ts`: linked songs resolved through the
+  real staff session; two readers during 15 rounds of concurrent relinking
+  never see a broken link; a staff change after the client deadline appears
+  with a new revision; clients, other businesses and anon get nothing;
+  archived events stay readable for staff.
+- `tests/e2e/run-sheet-flow.spec.ts`: on a phone, from the event page to the
+  read-only run sheet (no inputs, collapsed lists, Do not play one tap away,
+  no sideways scrolling); the PDF downloaded through the app (same revision,
+  private no-store headers, content and exclusions, pages rendered to
+  `review-samples/run-sheet/app-download/`); a change after the
+  deadline on refresh and in a new export; signed-out, client and other
+  business refused; nothing contractual changed.
 - `tests/integration/planning.test.ts`: concurrent payments and checks create
   one plan; repeated checks and setup never replace it; concurrent setup and
   starter installs; concurrent client saves (one wins, the rest conflict);

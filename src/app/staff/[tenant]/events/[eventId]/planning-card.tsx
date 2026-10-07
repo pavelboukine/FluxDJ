@@ -38,9 +38,12 @@ export async function PlanningCard({ staff, slug, eventId }: { staff: StaffConte
             {view.editing.schedule_changed ? <span className="text-amber-700 dark:text-amber-400"> The deadline no longer matches the event date.</span> : null}
           </p>
         ) : null}
-        <Link className="justify-self-start underline" href={`/staff/${slug}/events/${eventId}/planning`}>
-          {view.plan === null ? "Set up planning" : "Open planning"}
-        </Link>
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          <Link className="underline" href={`/staff/${slug}/events/${eventId}/planning`}>
+            {view.plan === null ? "Set up planning" : "Open planning"}
+          </Link>
+          {view.plan !== null ? <Link className="underline" href={`/staff/${slug}/events/${eventId}/run-sheet`}>Run sheet</Link> : null}
+        </div>
       </CardContent>
     </Card>
   );

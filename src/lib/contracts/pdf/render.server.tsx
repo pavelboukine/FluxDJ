@@ -13,7 +13,8 @@ export const PDF_RENDERER = "flux-signed-contract-pdf/1";
 const FONT_DIR = path.join(process.cwd(), "assets", "fonts", "dejavu");
 let fontsRegistered = false;
 
-function registerFonts() {
+/** Registers the bundled fonts once per process (also used by the DJ run sheet). */
+export function registerFonts() {
   if (fontsRegistered) return;
   Font.register({
     family: PDF_FONT,

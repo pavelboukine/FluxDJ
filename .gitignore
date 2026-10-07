@@ -47,4 +47,6 @@ supabase/.branches
 
 # playwright
 /test-results/
+# PDF and screenshot samples written by tests for visual review (never cleared by Playwright)
+/review-samples/
 /playwright-report/

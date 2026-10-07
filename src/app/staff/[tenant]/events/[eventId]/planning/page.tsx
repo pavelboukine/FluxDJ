@@ -52,7 +52,7 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
     <>
       <PageHeader
         title={`Planning: ${event.title}`}
-        description={<><Link className="underline" href={`/staff/${slug}/events/${event.id}`}>Back to the event</Link> · {formatEventDate(event.event_date)}</>}
+        description={<><Link className="underline" href={`/staff/${slug}/events/${event.id}`}>Back to the event</Link> · {formatEventDate(event.event_date)}{view.plan !== null ? <> · <Link className="underline" href={`/staff/${slug}/events/${event.id}/run-sheet`}>Run sheet</Link></> : null}</>}
         actions={archived ? <Badge variant="secondary">Archived</Badge> : null}
       />
       {archived ? (

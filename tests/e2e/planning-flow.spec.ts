@@ -126,8 +126,15 @@ test.describe.serial("planning", () => {
     await expect(staff.getByRole("button", { name: "Move Ceremony up", exact: true })).toBeDisabled();
     await staff.getByRole("button", { name: "Move Cocktail up", exact: true }).click();
     await expect.poll(stageKeys).toEqual(["cocktail", "ceremony", "reception_entrance", "dinner", "special_dances", "party", "closing"]);
+    // The database commits before the browser gets the action's response (with the new template
+    // version). Wait for the re-rendered order before the next move, or it is sent with the old
+    // version and correctly refused as a concurrent change. The signal must come from the
+    // refreshed page: a pending move only disables its own button, so "Move Ceremony up"
+    // becomes enabled only once Ceremony is rendered second.
+    await expect(staff.getByRole("button", { name: "Move Ceremony up", exact: true })).toBeEnabled();
     await staff.getByRole("button", { name: "Move Cocktail down", exact: true }).click();
     await expect.poll(stageKeys).toEqual(["ceremony", "cocktail", "reception_entrance", "dinner", "special_dances", "party", "closing"]);
+    await expect(staff.getByRole("button", { name: "Move Cocktail up", exact: true })).toBeEnabled();
 
     staff.once("dialog", (d) => void d.accept());
     await staff.getByRole("button", { name: "Remove Dedications", exact: true }).click();
