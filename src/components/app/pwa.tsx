@@ -85,9 +85,10 @@ function readDismissed(): boolean {
  * A small, dismissible "Add to Home Screen" card for signed-in pages. Shown
  * only where installing is possible: the browser's own install prompt
  * (Chrome, Edge, Android), or Safari's Share menu on iPhone and iPad. Never
- * shown inside the installed app, and never again once dismissed.
+ * shown inside the installed app, and never again once dismissed. `compact`
+ * is a quieter one-line strip for the staff shell.
  */
-export function InstallHelp() {
+export function InstallHelp({ compact = false }: { compact?: boolean } = {}) {
   const prompt = useSyncExternalStore(subscribe, () => deferred, () => null);
   const standalone = useStandalone();
   const [ready, setReady] = useState<{ platform: Platform; dismissed: boolean } | null>(null);
@@ -111,9 +112,16 @@ export function InstallHelp() {
   };
 
   return (
-    <aside aria-label="Add Flux DJ to your home screen" data-testid="install-help" className="flex flex-wrap items-start justify-between gap-3 rounded-xl border bg-muted/40 p-3 text-sm">
-      <div className="grid min-w-0 flex-1 gap-1">
-        <p className="font-medium">Open Flux DJ from your home screen</p>
+    <aside
+      aria-label="Add Flux DJ to your home screen"
+      data-testid="install-help"
+      className={cn(
+        "flex flex-wrap justify-between",
+        compact ? "items-center gap-x-3 gap-y-1 rounded-lg border border-dashed px-3 py-1.5 text-xs" : "items-start gap-3 rounded-xl border bg-muted/40 p-3 text-sm",
+      )}
+    >
+      <div className={cn("min-w-0 flex-1", compact ? "flex flex-wrap items-baseline gap-x-1.5" : "grid gap-1")}>
+        <p className="font-medium">Open Flux DJ from your home screen{compact ? "." : null}</p>
         {canPrompt ? (
           <p className="text-muted-foreground">Install it on this device for one-tap access. It still needs an internet connection.</p>
         ) : ready.platform === "ios-safari" ? (
@@ -131,7 +139,7 @@ export function InstallHelp() {
       <div className="flex gap-2">
         {canPrompt ? (
           <Button
-            size="sm"
+            size={compact ? "xs" : "sm"}
             type="button"
             onClick={async () => {
               const event = deferred;
@@ -145,7 +153,7 @@ export function InstallHelp() {
             Install
           </Button>
         ) : null}
-        <Button size="sm" variant="ghost" type="button" onClick={dismiss}>
+        <Button size={compact ? "xs" : "sm"} variant="ghost" type="button" onClick={dismiss}>
           Not now
         </Button>
       </div>

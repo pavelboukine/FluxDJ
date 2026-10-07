@@ -774,11 +774,17 @@ offline use and there is no service worker.
   their business (or the chooser) and clients to `/my`. No business, event,
   token or personal data is in the manifest, start URL or icons. Inside the
   app each DJ's pages keep their own branding.
-- **Icons:** a temporary "F" with level bars on the app's near-black colour
-  (192, 512, a maskable 512 and the 180 Apple touch icon, plus the favicon),
-  generated once by `node scripts/generate-app-icons.mjs` from the bundled font
-  and committed. Replace them when there is a final logo.
-- **Install help:** a small card on the staff dashboard and on `/my`. It
+- **Icons:** the supplied Flux app icon (`assets/brand/flux-app-icon.png`,
+  1080 x 1080) is scaled, never redrawn, by `node scripts/generate-app-icons.mjs`
+  into the 180 Apple touch icon, the 192 and 512 icons (rounded corners), a
+  maskable 512 (padded with the icon's own background so the artwork stays
+  inside the safe circle) and the 16/32/48 favicon. The outputs are committed;
+  builds never run the script. To change the icon, replace the source (any
+  square, ideally 1024 px or more) and run the script again; it warns if it
+  would upscale. Installed iPhone apps keep their old icon until they are
+  removed and added to the Home Screen again.
+- **Install help:** a quiet one-line strip on the staff dashboard and a small
+  card on `/my`. It
   offers the browser's own install prompt where there is one (Chrome, Edge,
   Android), explains Safari → Share → Add to Home Screen on iPhone and iPad
   (and to open Safari from other iPhone browsers), shows nothing elsewhere,
@@ -1171,6 +1177,13 @@ signed-out browser:
   within 2 seconds, write nothing and cause no retry loop. Set
   `FLUX_REST_V14_URL` to a second PostgREST on the same database to check
   another version too.
+- `tests/e2e/navigation-shell-flow.spec.ts`: the staff and platform shell:
+  every sidebar link and the active item on detail pages, owner, staff and
+  platform-administrator menus, two businesses with wide and light logos and
+  one without (centred, never stretched), the account menu and business
+  switch, sign-out, the phone drawer's focus trap, Escape and scroll lock,
+  320 px, landscape and installed-app layouts. `E2E_SCREENSHOTS=1` also keeps
+  review screenshots.
 - `tests/e2e/pwa-flow.spec.ts` (browser emulation, not a real iPhone): the
   manifest and icons (fields, sizes, types, nothing personal) and Chromium's
   installability check with no service worker; `/start` for signed-out,
@@ -2166,8 +2179,38 @@ failed and couldn't be removed). Clean-up stays a deliberate manual step.
 the logo frozen into the contract's party snapshot at generation (the
 snapshot point for contracts); canonical PDFs and contract hashes must not
 change, so it is a separate task. The run-sheet PDF could use the current
-logo (live branding) later. The shared Flux app icon, manifest and platform
-identity are unchanged.
+logo (live branding) later. The Flux app icon, manifest and platform identity
+stay shared by every business (see "Staff layout and navigation").
+
+### Staff layout and navigation
+
+Every page under `/staff/[tenant]` and `/platform` uses one shell
+(`src/components/app/app-shell.tsx`); client proposal, contract and planning
+pages don't.
+
+- **Top bar:** the Flux wordmark (`public/brand/`, shared platform artwork
+  generated from `assets/brand/` by `scripts/generate-app-icons.mjs`, never a
+  business's logo) links to the business dashboard. The active business's logo,
+  or its display name, is centred on the viewport (equal side columns), with
+  the existing light-logo backdrop. Platform pages show "Platform
+  administration" instead. The account menu shows the email, role and business,
+  switches between the user's businesses (suspended ones are listed as
+  unavailable), links to `/my` when the user also has client access, and signs
+  out.
+- **Navigation** (`src/lib/navigation.ts`): Main (Dashboard, Events, Clients),
+  Catalog (Gear, Packages), Templates (Proposal, Contract and Planning
+  templates, Questions & rules), Business (Emails, Settings), and Admin (DJ
+  invitations, Workspaces) for platform administrators only, never for a
+  tenant role. Links only point at existing routes and grant nothing; every
+  page checks access again. Contracts, payments, planning and run sheets are
+  reached through their event and highlight Events.
+- **Sizes:** a sidebar from 1024 px; below that, a left drawer (focus trapped,
+  Escape closes and returns focus, page scroll locked, closes after
+  navigating). Safe areas, landscape and zoom are respected; nothing scrolls
+  sideways at 320 px.
+- **Look:** shared tokens in `globals.css` (`--shell` grey canvas, tinted
+  `--sidebar`, white content surfaces). The staff shell looks the same for
+  every business; business colours brand client pages.
 
 ### Suspending and restoring a workspace
 

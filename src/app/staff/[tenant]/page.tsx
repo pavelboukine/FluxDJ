@@ -42,7 +42,7 @@ export default async function Dashboard({ params, searchParams }: PageProps<"/st
     ["Gear items", gear, "gear"],
     ["Packages", packages, "packages"],
     ["Questions", questions, "questions"],
-    ["Templates", templates, "templates"],
+    ["Proposal templates", templates, "templates"],
   ] as const;
 
   return (
@@ -76,7 +76,7 @@ export default async function Dashboard({ params, searchParams }: PageProps<"/st
           )}
         </p>
       ) : null}
-      <InstallHelp />
+      <InstallHelp compact />
       <PageHeader
         title="Dashboard"
         description="Set up your catalog once, then build proposals for each event."

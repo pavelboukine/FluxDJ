@@ -244,8 +244,9 @@ test.describe.serial("installable app shell", () => {
     await app.setOffline(false);
     await expect(page.getByTestId("offline-notice")).toHaveCount(0);
 
-    // Without browser controls every page offers a way on.
-    await page.getByRole("link", { name: "Dashboard" }).click();
+    // Without browser controls every page offers a way on (on a phone, the navigation is in the menu).
+    await page.getByRole("button", { name: "Open menu" }).click();
+    await page.getByRole("navigation", { name: "Staff" }).getByRole("link", { name: "Dashboard" }).click();
     await expect(page).toHaveURL(new RegExp(`/staff/${tenant.slug}$`));
     const missing = await page.goto(`/staff/${tenant.slug}/events/${randomUUID()}/run-sheet`);
     expect(missing?.status()).toBe(404);

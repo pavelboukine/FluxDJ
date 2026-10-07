@@ -1,38 +1,37 @@
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { signOut } from "@/app/auth/confirm/actions";
+import { AppShell } from "@/components/app/app-shell";
 import { requirePlatformAdmin } from "@/lib/auth/platform";
+import { platformNavigation } from "@/lib/navigation";
 
-const NAV = [
-  ["/platform/invitations", "DJ invitations"],
-  ["/platform/workspaces", "Workspaces"],
-] as const;
+const ROLE_LABEL: Record<string, string> = { owner: "Owner", staff: "Staff" };
 
-/** Platform administration. Every page and action checks the grant again. */
+/**
+ * Platform administration. Every page and action checks the grant again.
+ * There is no active business here, so the top bar shows a neutral label
+ * instead of a business logo, and the wordmark leads back to /staff.
+ */
 export default async function PlatformLayout({ children }: LayoutProps<"/platform">) {
-  const { user } = await requirePlatformAdmin();
+  const { supabase, user } = await requirePlatformAdmin();
+  const [{ data: workspaces }, { data: plans }, { data: contracts }] = await Promise.all([
+    supabase.rpc("my_workspaces"),
+    supabase.rpc("my_plans").limit(1),
+    supabase.rpc("my_contracts").limit(1),
+  ]);
+  const mine = workspaces ?? [];
   return (
-    <div className="flex min-h-full flex-1 flex-col">
-      <header className="border-b bg-background">
-        <div className="mx-auto flex w-full max-w-4xl flex-wrap items-center justify-between gap-2 px-4 py-3">
-          <span className="font-semibold">Flux DJ <span className="font-normal text-muted-foreground">· Platform</span></span>
-          <div className="flex items-center gap-3 text-sm text-muted-foreground">
-            <Link className="underline" href="/staff">Your workspace</Link>
-            <span className="hidden sm:inline">{user.email}</span>
-            <form action={signOut}><Button size="sm" variant="outline" type="submit">Sign out</Button></form>
-          </div>
-        </div>
-        <nav aria-label="Platform" className="mx-auto w-full max-w-4xl overflow-x-auto px-4">
-          <ul className="flex gap-1 pb-2 text-sm">
-            {NAV.map(([href, label]) => (
-              <li key={href}>
-                <Link className="block rounded-md px-2.5 py-1.5 whitespace-nowrap hover:bg-muted" href={href}>{label}</Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
-      </header>
-      <main className="mx-auto grid w-full max-w-4xl gap-6 px-4 py-6">{children}</main>
-    </div>
+    <AppShell
+      navLabel="Platform"
+      groups={platformNavigation({ hasWorkspaces: mine.length > 0 })}
+      homeHref="/staff"
+      center={<span className="block truncate text-sm font-medium text-muted-foreground">Platform administration</span>}
+      account={{
+        email: user.email ?? "",
+        roleLabel: "Platform administrator",
+        platformAdmin: true,
+        workspaces: mine.map((w) => ({ slug: w.slug, displayName: w.display_name, role: ROLE_LABEL[w.role] ?? w.role, suspended: w.suspended })),
+        clientArea: (plans?.length ?? 0) > 0 || (contracts?.length ?? 0) > 0,
+      }}
+    >
+      {children}
+    </AppShell>
   );
 }

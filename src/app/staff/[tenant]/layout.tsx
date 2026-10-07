@@ -1,68 +1,51 @@
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { AppShell } from "@/components/app/app-shell";
 import { BrandLogo } from "@/components/app/brand-logo";
 import { isPlatformAdmin } from "@/lib/auth/platform";
 import { logoUrl } from "@/lib/branding/logo.server";
 import { requireStaff } from "@/lib/auth/staff";
-import { signOut } from "@/app/auth/confirm/actions";
+import { staffNavigation } from "@/lib/navigation";
 
-const NAV = [
-  ["", "Dashboard"],
-  ["/events", "Events"],
-  ["/clients", "Clients"],
-  ["/gear", "Gear"],
-  ["/packages", "Packages"],
-  ["/questions", "Questions"],
-  ["/templates", "Templates"],
-  ["/planning-templates", "Planning templates"],
-  ["/contract-templates", "Contract templates"],
-  ["/emails", "Emails"],
-  ["/settings", "Settings"],
-] as const;
+const ROLE_LABEL: Record<string, string> = { owner: "Owner", staff: "Staff" };
 
 export default async function StaffTenantLayout({ children, params }: LayoutProps<"/staff/[tenant]">) {
   const { tenant: slug } = await params;
   const { supabase, tenant, user, membership } = await requireStaff(slug);
+  const [{ data: active }, platformAdmin, { data: workspaces }, { data: plans }, { data: contracts }] = await Promise.all([
+    supabase.from("tenants").select("logo_storage_path").eq("id", tenant.id).single(),
+    isPlatformAdmin(),
+    supabase.rpc("my_workspaces"),
+    // Client access (as on /my): only what this verified identity may read as a client.
+    supabase.rpc("my_plans").limit(1),
+    supabase.rpc("my_contracts").limit(1),
+  ]);
   // The active workspace's own logo (RLS: only its members read its logos).
-  const { data: active } = await supabase.from("tenants").select("logo_storage_path").eq("id", tenant.id).single();
   const { data: logoRow } = active?.logo_storage_path
     ? await supabase.from("tenant_logos").select("storage_path, needs_dark_background, width, height").eq("tenant_id", tenant.id).eq("storage_path", active.logo_storage_path).maybeSingle()
     : { data: null };
   const logo = await logoUrl(logoRow);
-  const platformAdmin = await isPlatformAdmin();
+  // Bounded on every side so the logo never meets the wordmark or the account button, even at 320 px.
+  const logoBox = "max-h-8 max-w-[calc(100vw-16rem)] sm:max-w-[calc(100vw-20rem)] lg:max-h-9 lg:max-w-72";
+
   return (
-    <div className="flex min-h-full flex-1 flex-col">
-      <header className="border-b bg-background">
-        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-3">
-          <Link href={`/staff/${tenant.slug}`} className="flex min-w-0 items-center gap-2 font-semibold" data-testid="workspace-brand">
-            <BrandLogo logo={logo} name={tenant.display_name} className="max-h-8 max-w-36 sm:max-w-48" />
-            <span className="font-normal text-muted-foreground">· Flux DJ staff</span>
-          </Link>
-          <div className="flex items-center gap-3 text-sm text-muted-foreground">
-            {platformAdmin ? <Link className="underline" href="/platform/invitations">DJ invitations</Link> : null}
-            <span className="hidden sm:inline">
-              {user.email} ({membership.role})
-            </span>
-            <form action={signOut}>
-              <Button size="sm" variant="outline" type="submit">
-                Sign out
-              </Button>
-            </form>
-          </div>
+    <AppShell
+      navLabel="Staff"
+      groups={staffNavigation(tenant.slug, { platformAdmin })}
+      homeHref={`/staff/${tenant.slug}`}
+      center={
+        <div data-testid="workspace-brand" className="flex min-w-0 items-center justify-center">
+          <BrandLogo logo={logo} name={tenant.display_name} className={logoBox} fallbackClassName={`block truncate text-sm font-semibold ${logoBox}`} />
         </div>
-        <nav aria-label="Staff" className="mx-auto w-full max-w-6xl overflow-x-auto px-4">
-          <ul className="flex gap-1 pb-2 text-sm">
-            {NAV.map(([path, label]) => (
-              <li key={path}>
-                <Link className="block rounded-md px-2.5 py-1.5 whitespace-nowrap hover:bg-muted" href={`/staff/${tenant.slug}${path}`}>
-                  {label}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
-      </header>
-      <main className="mx-auto grid w-full max-w-6xl gap-6 px-4 py-6">{children}</main>
-    </div>
+      }
+      account={{
+        email: user.email ?? "",
+        roleLabel: `${ROLE_LABEL[membership.role] ?? membership.role} · ${tenant.display_name}`,
+        platformAdmin,
+        workspaces: (workspaces ?? []).map((w) => ({ slug: w.slug, displayName: w.display_name, role: ROLE_LABEL[w.role] ?? w.role, suspended: w.suspended })),
+        currentSlug: tenant.slug,
+        clientArea: (plans?.length ?? 0) > 0 || (contracts?.length ?? 0) > 0,
+      }}
+    >
+      {children}
+    </AppShell>
   );
 }
