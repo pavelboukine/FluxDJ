@@ -90,7 +90,7 @@ test.describe.serial("planning", () => {
     await staff.goto(`/staff/${tenant.slug}/events/${eventId}`);
     const card = staff.locator("[data-slot=card]").filter({ has: staff.getByText("Planning", { exact: true }) });
     await expect(card).toContainText("Event basics only: choose a template to add the event's stages.");
-    await card.getByRole("link", { name: "Open planning" }).click();
+    await card.getByRole("link", { name: "Edit planning" }).click();
     await staff.waitForURL(`**${staffPlanningUrl}`);
     await expect(staff.getByText("Created with Event basics only, because no template was chosen. Set up when the event was booked.")).toBeVisible();
     await expect(staff.getByText("Choose a template below to add this event's stages and moments")).toBeVisible();

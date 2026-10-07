@@ -10,7 +10,7 @@ import { SelectionSummary } from "@/components/proposal/selection-summary";
 import type { StaffContext } from "@/lib/auth/staff";
 import { formatCents } from "@/lib/money";
 import type { PricedSelection } from "@/lib/pricing";
-import { ContractCard } from "../../contracts/contract-card";
+import { LoadedContractCard } from "../../contracts/contract-card";
 import { reviseProposal } from "../actions";
 import { ApprovePanel } from "./approve-panel";
 import { loadPreview } from "./load";
@@ -135,7 +135,7 @@ export async function SentProposalView({ staff, slug, proposalId }: { staff: Sta
           </Card>
 
           {active && approval && p.status === "approved" ? (
-            <ContractCard staff={staff} slug={slug} eventId={event.id} approvalId={approval.id} />
+            <LoadedContractCard staff={staff} slug={slug} eventId={event.id} approvalId={approval.id} />
           ) : null}
 
           {active ? (

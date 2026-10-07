@@ -21,7 +21,7 @@ export function RecordPaymentForm({
 }) {
   const [key, setKey] = useState(() => crypto.randomUUID());
   return (
-    <ActionForm action={action} submitLabel="Record payment" pendingLabel="Recording…" resetOnSuccess onSuccess={() => setKey(crypto.randomUUID())} className="sm:grid-cols-2">
+    <ActionForm action={action} submitLabel="Record payment" pendingLabel="Recording…" resetOnSuccess trackUnsaved onSuccess={() => setKey(crypto.randomUUID())} className="sm:grid-cols-2">
       {/* Remounted with each new key, so a form reset can't restore an old one. */}
       <input key={key} type="hidden" name="idempotency_key" defaultValue={key} />
       <TextField label={`Amount received (${currency})`} name="amount" inputMode="decimal" required placeholder="500.00" autoComplete="off" />

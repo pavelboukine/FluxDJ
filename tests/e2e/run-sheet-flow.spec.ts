@@ -96,7 +96,7 @@ test.describe.serial("DJ run sheet", () => {
 
   test("staff open the read-only run sheet from the event page on a phone", async () => {
     await staff.goto(`/staff/${tenant.slug}/events/${eventId}`);
-    await staff.getByRole("link", { name: "Run sheet" }).click();
+    await staff.locator("#planning").getByRole("link", { name: "Open run sheet" }).click();
     await expect(staff).toHaveURL(new RegExp(`${runSheetUrl}$`));
     await expect(staff.getByRole("heading", { level: 1 })).toContainText(`Mariage Gagnon–Lévesque ${run}`);
     await expect(staff.getByTestId("run-sheet-as-of")).toContainText(/Latest saved plan as of .* · Revision [0-9A-F]{8}/);

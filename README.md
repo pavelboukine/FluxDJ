@@ -1190,6 +1190,12 @@ signed-out browser:
   staff wording, empty states, quick actions) and a busy business (order,
   a real submitted proposal, planning, a deposit, an email failure, the
   attention cap and "Show all", every link) on desktop and a phone.
+- `tests/e2e/event-workspace-flow.spec.ts`: twelve real event states (new,
+  draft, sent, submitted, approved, regenerated contract draft, sent, signed
+  awaiting the deposit, booked, legacy, deposit corrected after booking,
+  archived): the next step and its links, summaries from the payment
+  summary, history, deep links opening sections, unsaved edits and errors
+  kept visible, the legacy booking check, and phone layouts at 390 and 320 px.
 - `tests/e2e/navigation-shell-flow.spec.ts`: the staff and platform shell:
   every sidebar link and the active item on detail pages, owner, staff and
   platform-administrator menus, two businesses with wide and light logos and
@@ -2281,6 +2287,57 @@ existing changes), and apps before it never call it, so apply it to the
 hosted database first (`db push --linked --dry-run`, then `db push
 --linked`), then deploy the app. An app deployed before the migration can't
 load the dashboard; every other page works.
+
+### Staff event page
+
+`/staff/[tenant]/events/[eventId]` is an event workspace: a compact header
+(date shown as a calendar date, never shifted; venue or "Venue not set";
+type; the existing status label; Archived), one **next step**, four
+summaries (proposal, contract, payments, planning), then the sections. The
+rules are in `src/lib/events/workspace.ts` (unit-tested); rendering only
+reads, so it never sets up a plan, books or sends anything. Every suggested
+action is a link to the existing screen or form, where the database still
+checks eligibility and asks for confirmation.
+
+Next step, from the actual records (first match):
+
+1. Archived: no action; the archive notice and Unarchive (#manage).
+2. Cancelled or completed: nothing to do (run sheet if planned).
+3. A signed contract: booked → Review planning (+ Open run sheet), or Set up
+   planning when there is no plan; awaiting the deposit → Record payment
+   (#record-payment, the outstanding amount from the payment summary); signed
+   before booking rules and not checked → Check booking (#payments). A
+   deposit corrected after booking keeps the booking and adds a warning.
+4. A sent contract: waiting for the signature; View contract (resend, void
+   and documents stay there).
+5. A contract draft: Review contract (or Prepare contract when the draft
+   can't be signed online).
+6. A current approval without a contract: Prepare contract (#contract),
+   unless the legal identity isn't saved or no template version is published,
+   which are named with links instead.
+7. A submitted proposal: Review submission.
+8. A draft: Continue proposal.
+9. A sent proposal: waiting for the client's choices; View proposal.
+10. Expired or declined: Revise offer. Otherwise: Create proposal. A missing
+    or archived primary contact is named (sending needs one).
+
+Payments summaries come only from `private.event_payment_summary` (signed or
+sent terms, labelled; received; deposit and what's still due; balance or
+credit). Planning shows progress, the editing state and its closing time in
+the event's time zone.
+
+Where things are: Proposal (current revision, the start/revise form, older
+revisions under "Proposal history"); Contract (current contract, generation,
+older drafts and void contracts under "Contract history"); Payments (booking
+state, summary, history; "Record a payment" and "Invoice link" open on
+demand); Planning (Edit planning, Open run sheet); Contacts (primary and
+signer labelled; "Add a contact" says whom a new primary replaces); Event
+details (staff-only notes; "Edit details"); Manage event (archive). Anchors:
+`#proposal`, `#contract`, `#payments`, `#record-payment`, `#invoice-link`,
+`#planning`, `#contacts`, `#add-contact`, `#details`, `#edit-details`,
+`#manage`. A link to a closed section opens it; a section with unsaved
+edits or a failed save can't be collapsed. The dashboard's deposit and
+booking-check items link to `#record-payment` and `#payments`.
 
 ### Suspending and restoring a workspace
 

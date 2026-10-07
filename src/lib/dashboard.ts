@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { eventStatusLabel } from "@/lib/events/status";
+import { dateIn, shortDate } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
+
+export { dateIn, shortDate };
 
 /**
  * The staff dashboard. public.staff_dashboard (see its migration) returns
@@ -63,21 +66,10 @@ export const UPCOMING_SHOWN = 8;
 // Dates
 // ---------------------------------------------------------------------------
 
-/** Today's date (YYYY-MM-DD) in a time zone at an instant. */
-export function dateIn(timeZone: string, at: Date): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(at);
-}
-
 const dayNumber = (isoDate: string) => {
   const [y, m, d] = isoDate.split("-").map(Number);
   return Date.UTC(y, m - 1, d) / 86_400_000;
 };
-
-/** "Sat, Aug 14, 2027": a calendar date, never shifted by time zones (events have a date, not a time). */
-export function shortDate(isoDate: string): string {
-  const [y, m, d] = isoDate.split("-").map(Number);
-  return new Intl.DateTimeFormat("en-CA", { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, d)));
-}
 
 /** "Today", "Tomorrow", "In 5 days" or null (further out), counted in the event's own time zone. */
 export function relativeDay(isoDate: string, timeZone: string, now: Date): string | null {
@@ -172,7 +164,7 @@ export function attentionItems(facts: DashboardFacts, slug: string): AttentionIt
       eventDate: d.event_date,
       reason: "Signed · waiting for the deposit",
       detail: d.deposit_outstanding_cents ? `${formatCents(d.deposit_outstanding_cents, d.currency)} still to receive before the booking is confirmed.` : null,
-      href: event(d.event_id),
+      href: `${event(d.event_id)}#record-payment`,
       action: "Record a payment",
       tone: "normal",
       sortKey: "",
@@ -187,7 +179,7 @@ export function attentionItems(facts: DashboardFacts, slug: string): AttentionIt
       eventDate: b.event_date,
       reason: "Contract signed · booking not checked yet",
       detail: "Signed before booking rules existed, so it isn't confirmed automatically.",
-      href: event(b.event_id),
+      href: `${event(b.event_id)}#payments`,
       action: "Check booking",
       tone: "normal",
       sortKey: "",

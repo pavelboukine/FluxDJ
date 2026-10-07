@@ -45,3 +45,9 @@ export function markAwaitingDepositLocally(eventId: string) {
   run(`set session_replication_role = replica;
        update public.events set lifecycle_status = 'awaiting_deposit' where id = ${uuid(eventId)};`);
 }
+
+/** Makes a test contract look generated before booking policies existed (as pgTAP 24 does), before it is signed. */
+export function clearBookingPolicyLocally(contractId: string) {
+  run(`set session_replication_role = replica;
+       update public.contracts set booking_policy = null where id = ${uuid(contractId)} and status <> 'signed';`);
+}

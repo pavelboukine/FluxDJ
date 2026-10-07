@@ -53,6 +53,8 @@ test.describe.serial("manual payments", () => {
     await expect(card).toContainText("No contract has been sent yet, so there is no total or deposit to compare.");
     await expect(card).not.toContainText("Remaining balance");
 
+    // Recording is behind an explicit disclosure on the event page.
+    await card.locator("#record-payment summary").click();
     await card.getByLabel(/Amount received/).fill("250");
     await card.getByLabel("Reference (optional)").fill("ET-STAFF-ONLY-123");
     await card.getByLabel("Internal note (optional)").fill("Staff-only note about the deposit");
@@ -91,6 +93,7 @@ test.describe.serial("manual payments", () => {
 
   test("an invoice link must be https and is shown safely", async () => {
     const card = staff.locator("[data-slot=card]").filter({ has: staff.getByText("Payments", { exact: true }) });
+    await card.locator("#invoice-link summary").click();
     await card.getByLabel("External invoice link (optional)").fill("http://invoice.example.com/42");
     await card.getByRole("button", { name: "Save invoice link" }).click();
     await expect(card.getByRole("alert")).toContainText("Enter a full https:// address");

@@ -84,9 +84,9 @@ describe("needs attention", () => {
       ["planning_closing", "Reopened planning closes in 2 days", "/staff/dj/events/re/planning"],
       ["planning_closing", "Planning closes in 3 days", "/staff/dj/events/soon/planning"],
       ["planning_closing", "Planning closes in 5 days", "/staff/dj/events/later/planning"],
-      ["deposit", "Signed · waiting for the deposit", "/staff/dj/events/d"],
-      ["deposit", "Signed · waiting for the deposit", "/staff/dj/events/z"],
-      ["booking_check", "Contract signed · booking not checked yet", "/staff/dj/events/l"],
+      ["deposit", "Signed · waiting for the deposit", "/staff/dj/events/d#record-payment"],
+      ["deposit", "Signed · waiting for the deposit", "/staff/dj/events/z#record-payment"],
+      ["booking_check", "Contract signed · booking not checked yet", "/staff/dj/events/l#payments"],
     ]);
   });
   it("gives the amount when known and counts missing answers", () => {

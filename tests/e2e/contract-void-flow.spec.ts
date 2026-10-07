@@ -95,7 +95,9 @@ test.describe.serial("voiding sent contracts", () => {
     await staff.goto(`/staff/${tenant.slug}`);
     await expect(staff.getByRole("heading", { name: "Dashboard" })).toBeVisible();
     await staff.goto(`/staff/${tenant.slug}/events/${eventId}`);
-    await staff.getByRole("link", { name: /Agreement \(DEMO\) v1/ }).first().click();
+    // A void contract is no longer current: it is listed under the event's contract history.
+    await staff.locator("#contract-history summary").click();
+    await staff.locator("#contract-history").getByRole("link", { name: /Agreement \(DEMO\) v1/ }).first().click();
     await expect(staff.getByText(new RegExp(`Voided .*: Internal reason ${run}`))).toBeVisible();
     expect(staff.url()).toBe(url);
 
