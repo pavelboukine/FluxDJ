@@ -444,9 +444,10 @@ test.describe.serial("staff interface", () => {
 
     await page.goto(`/staff/${tenant.slug}/events`);
     await expect(page.getByRole("link", { name: title })).toHaveCount(0);
+    // The list says an archived event matches and offers to include it (?show=all still works too).
     await page.getByRole("link", { name: "Include archived" }).click();
-    await expect(page).toHaveURL(/\?show=all$/);
-    const row = page.getByRole("row", { name: new RegExp(title) });
+    await expect(page).toHaveURL(/\?archived=1$/);
+    const row = page.getByTestId("event-row").filter({ hasText: title });
     await expect(row).toContainText("Archived");
 
     await row.getByRole("link", { name: title }).click();

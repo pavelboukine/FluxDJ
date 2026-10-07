@@ -275,7 +275,7 @@ test.describe.serial("contract signing", () => {
     await expect(staff.getByRole("button", { name: "Start a revised offer" })).toHaveCount(0);
     await expect(staff.getByText(/was signed .*A signed contract can't be voided, replaced or revised/)).toBeVisible();
     await staff.goto(`/staff/${tenant.slug}/events`);
-    await expect(staff.getByRole("row").filter({ hasText: eventTitle })).toContainText("Signed · awaiting deposit");
+    await expect(staff.getByTestId("event-row").filter({ hasText: eventTitle })).toContainText("Signed · awaiting deposit");
     const { data: stored } = await admin.from("events").select("lifecycle_status, booking_confirmed_at").eq("id", eventId).single();
     expect(stored).toEqual({ lifecycle_status: "awaiting_deposit", booking_confirmed_at: null });
   });

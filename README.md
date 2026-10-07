@@ -1190,6 +1190,12 @@ signed-out browser:
   staff wording, empty states, quick actions) and a busy business (order,
   a real submitted proposal, planning, a deposit, an email failure, the
   attention cap and "Show all", every link) on desktop and a phone.
+- `supabase/tests/database/37_staff_lists_client_archiving.test.sql` and
+  `tests/e2e/list-pages-flow.spec.ts`: who may list and archive, each
+  event's own date, ordering, status, search (literal % and _), archived
+  inclusion and counts, pages, client archive and restore (no restamp,
+  audited, links kept), empty states, URL state across Back, the dashboard's
+  Add client link, another business refused, and phone layouts.
 - `tests/e2e/event-workspace-flow.spec.ts`: twelve real event states (new,
   draft, sent, submitted, approved, regenerated contract draft, sent, signed
   awaiting the deposit, booked, legacy, deposit corrected after booking,
@@ -2338,6 +2344,46 @@ details (staff-only notes; "Edit details"); Manage event (archive). Anchors:
 `#manage`. A link to a closed section opens it; a section with unsaved
 edits or a failed save can't be collapsed. The dashboard's deposit and
 booking-check items link to `#record-payment` and `#payments`.
+
+### Events and Clients lists
+
+Both lists share one pattern (`src/components/app/list.tsx`, filters in
+`list-filters.tsx`): title and create action, a search and filter bar that is
+a plain GET form (state in the URL; selects and checkboxes apply at once),
+a result line, stacked rows, distinct empty states ("No events yet", "No
+events match these filters", archived matches hidden) with Clear filters,
+and 25 rows per page. Reads go through `public.staff_event_list` and
+`public.staff_client_list` (migration
+`20261022000100_staff_lists_client_archiving.sql`): read-only, staff of the
+business only, searching every record server-side.
+
+- **Events:** search title, venue and primary contact; Upcoming (default,
+  nearest first), Past (most recent first) or All dates (latest first),
+  each judged by the event's own time zone; status; Include archived (off by
+  default). The earlier `?show=all` link still lists every date with
+  archived events.
+- **Clients:** active only by default; search name or email; Include
+  archived; each row shows email, phone, and "Next event: Sat, Jun 12, 2027"
+  (linked; "(Today)"/"(Tomorrow)" only when true in the event's time zone) or
+  the event count. The header's Add client button (and the dashboard's
+  `#add-client` link) reveals the form with its first field focused; Cancel
+  asks before discarding typed details.
+
+**Client archiving.** On the client page, Archive… asks for confirmation and
+calls `public.set_client_archived`: it sets `archived_at` once (a repeat
+changes nothing), records an audit event, and changes nothing else: events,
+contact links, proposals, contracts, signed documents and client sign-ins
+stay. Archived clients can't be chosen for new events or contacts; a
+proposal can't be sent to an archived primary contact, nor a contract to an
+archived signer, until they're restored (sending says so: "signer_archived",
+migration `20261022000200_archived_signer_reason.sql`, distinct from a changed
+signer, which still says to regenerate). Saving a client's details no longer
+touches the archived state.
+
+**Deploying.** The migrations only add functions and replace one private
+check's wording, so apply them before the app
+(`db push --linked --dry-run`, then `db push --linked`); the previous app
+keeps working on the migrated database.
 
 ### Suspending and restoring a workspace
 

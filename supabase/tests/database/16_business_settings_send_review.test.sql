@@ -5,7 +5,7 @@ begin;
 \ir _catalog_fixtures.psql
 \ir _offer_fixtures.psql
 \ir _contract_fixtures.psql
-select plan(54);
+select plan(57);
 
 create function tests.identity_sections() returns jsonb language sql immutable as $$
   select jsonb_build_array(
@@ -203,6 +203,19 @@ select tests.login_as(tests.id('owner_a'));
 select is(tests.problems('tests.c100'), array['signer_missing'], 'an event with no signer is rejected');
 reset role;
 update public.event_clients set can_sign = true where event_id = tests.id('event_a1') and client_id = tests.id('a_client_x');
+
+-- An archived signer has its own reason (restore the client or change the signer), not "Regenerate the contract".
+update public.clients set archived_at = now() where id = tests.id('a_client_x');
+select tests.login_as(tests.id('owner_a'));
+select is(tests.problems('tests.c100'), array['signer_archived'], 'an archived signer is rejected as archived, not as changed');
+select ok((select p ->> 'message' from jsonb_array_elements(public.review_contract_for_send(current_setting('tests.c100')::uuid) -> 'problems') p
+           where p ->> 'code' = 'signer_archived') like '%is an archived client. Restore them on their client page, or make another contact the signer%',
+  'and the message says how to resolve it');
+reset role;
+update public.clients set archived_at = null where id = tests.id('a_client_x');
+select tests.login_as(tests.id('owner_a'));
+select is(tests.problems('tests.c100'), '{}'::text[], 'restoring the signer clears it');
+reset role;
 
 select tests.login_as(tests.id('owner_a'));
 select public.set_event_archived(tests.id('event_a1'), true);
