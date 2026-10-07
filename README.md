@@ -61,6 +61,9 @@ foundation is in place:
 - Workspace suspension: a platform administrator can suspend a workspace
   (blocking all access to it without deleting anything) and restore it. See
   "Suspending and restoring a workspace".
+- Business branding: each owner uploads a logo and picks a primary colour in
+  Settings; the workspace header and client pages use them. See "Business
+  branding".
 
 Everything has row-level security and tests. Not built yet: payment
 processing, PWA and offline access, reminders, cancellations and amendments.
@@ -748,6 +751,17 @@ throwaway workspace created through an invitation, never BOUPROD):
 3. Click **Restore…**, enter a reason and click **Restore workspace**. The
    owner's and client's pages work again; nothing is emailed.
 
+#### Branding
+
+1. As an owner, open **Settings** and scroll to **Branding**.
+2. Choose a PNG, JPEG or WebP logo and a primary colour. The preview beside
+   the form updates at once (nothing is saved or sent yet).
+3. Click **Save branding**. The header shows the logo instead of the
+   business name; client contract and planning pages, and proposals sent
+   from now on, use the logo and colour.
+4. Check another business (for example Other DJ) still shows its own name or
+   logo, and that **Remove the logo** brings the name back.
+
 #### Installing Flux DJ on a phone
 
 Flux DJ can be added to a phone's home screen and opens without browser
@@ -931,6 +945,7 @@ in every relevant relationship.
 | `30_remaining_editors` | Editors in their library places (Dinner and Party sharing one); only moment-holding stages without an editor; nothing "not available". Arrival: ceremony reuse storing no copy, open while the Ceremony lacks it or is hidden, other place with overnight times and next day, event venue unknown, "no separate arrangements" refused with details and alone not applicable. Program: own times, agenda with exact, overnight, cue and undecided timings, titles needed, "No formal program" refused with entries. Activities: songs need title and artist and safe links, custom names, Party counted separately, stale tabs, unknown fields. Dedications: unfinished kept without invented songs, any time, songs needed, no durations, "No dedications". Retried adds once, stale conflicts, hidden stages, other clients, events and businesses, anon, archived events, staff edits, stage order unchanged; contractual records untouched |
 | `33_platform_invitations` | Only the database owner grants platform administration (not the app, the API or the service role), only to one verified identity, audited. Tenant owners, staff, clients, strangers, anon and unverified administrators can't invite, list, resend or revoke; administrators see no business, client, event or email. Normalized addresses, one open invitation per address (also enforced by a unique index), hashed tokens only, emails with no tenant and only the link id. The tenant worker never claims them. Resend limits, link rotation, cancelled queued emails, audit. Verification requests: service role only, old and malformed links, masked address, 3 per 15 minutes, invited address only. Wrong, unverified, revoked and expired accounts and invitations. Names, reserved and malformed addresses, existing businesses (untouched, invitation still open). One business and one owner membership for the signed-in user, defaults, an empty workspace, replays returning the same workspace, final accepted invitations, no deletes. Existing clients and staff keep their access; other owners see nothing. Archived businesses keep their address and a retry never creates another |
 | `34_workspace_suspension` | Only platform administrators suspend, restore or list workspaces (owners, staff, clients, strangers and anon can't); the suspension columns can't be written directly by any role. Reasons required, stale versions (PT409), repeats, and an administrator can't suspend their own workspace. While suspended: staff of the workspace read and write nothing (tables, settings, payments, planning, proposals, contracts, PDF requests, private media and uploads), learning only that it is suspended; staff of other businesses and strangers get the usual refusals; other businesses unaffected. Clients: events of the other business kept, contracts, invitations, signing, signed PDFs, signature images, payment summaries and planning unavailable. Proposal links open no session; sessions show and save nothing; expired sessions stay invalid. Every write refused for every role, including the service role, except the audit log. Undelivered emails cancelled (no reason in them), nothing claimed, a claimed email stopped before sending, other businesses' emails delivered. PDF jobs not claimed; a racing commit pauses without losing an attempt. Archiving stays independent. Restore: audited, sends and revives nothing, PDF job resumes, contracts, signatures, bookings, deadlines and payments unchanged, access back, revoked and expired links still invalid, no extended expiry |
+| `35_business_branding` | Logos are registered only by the service role after the app's checks, only for the business's owner, only when the stored PNG exists with the declared size, under the business's own folder; registered logos are immutable. Staff, other owners, clients and anon can't change branding; nobody writes the logo or colour columns directly, and even privileged code can only activate a registered logo of the same business. Stale versions (PT409), colour format, another business's logo, normalization, kept colours, audit. Logo rows readable by the business's staff only; client pages get the live logo and colour of that business only. Sent proposals keep their logo and colour after replacement and removal; the frozen logo and its file stay; unused and unregistered logos are listed for clean-up. Suspended businesses can't change branding or add logos; archived ones follow their existing rules |
 | `32_version_conflicts` | No function raises `serialization_failure` (40001); every optimistic-version check raises `PT409`; the re-created functions keep their grants |
 | `31_planning_cutoff` | Owner-only, versioned setting with limits (staff, other businesses, clients, anon, direct column writes). Plans copy the days and store the deadline at setup; later setting changes leave them; a deadline already on the event is kept. Midnight in the event's zone: DST start and end days in Toronto, skipped and repeated midnight (Havana, Beirut), quarter-hour offsets, 0 days, zones east of UTC, events without a start time. States a microsecond before, exactly at and after the deadline and a reopening's end. Client view fields; saves before; after: reads continue, both save functions refused before validation and revision checks, nothing changed, progress unchanged; staff saves continue. Reopening: already open, reason, future, 14-day maximum, stale version, clients, other businesses, anon; stored expiry, deadline kept, client saves, replays, audit (staff, time, reason, before/after), nothing leaked to clients, staff history; expiry; closing early, repeats, never closing an open plan. Deadline changes and stale tabs; date and zone changes don't move it, mismatch shown, explicit recalculation. Direct writes and the trigger; archived and revoked access during a reopening; other clients and slugs; every plan has a deadline; booking and emails untouched |
 | `25_planning` | Read-only tables for staff; starter templates added explicitly and once; template ownership across businesses, clients and direct writes; rename, move, remove and add with stable keys and versions; library placement enforced by trigger; duplicate and archive; one default per event type. Booking (real signing and deposit) creates one plan from the event-type default; the Basics fallback; setup before booking kept at booking; repeats and already-booked backfill. Frozen imports after catalog changes. Client access: booked, unbooked, other client, stranger, wrong slug, revoked, unverified, two DJs, anon, archived and unarchived, payment invalidation. Basics validation, conflicts, normalization, progress (imported and not applicable versus unanswered, unavailable sections excluded). Disable and restore keep answers and order and change nothing contractual. Non-destructive template replacement. Integrity |
@@ -2084,6 +2099,76 @@ that state (`business_settings_incomplete`, and `business_identity_missing`
 for drafts generated before). The dashboard says setup isn't finished, and
 Settings shows the legal-name field empty with a note naming the placeholder.
 
+### Business branding
+
+Migration `20261020000100_business_branding.sql`. Each business owner sets a
+logo and a primary colour in **Settings → Branding**; other staff see them
+read-only. The active workspace decides what is shown, never the signed-in
+user: someone in two businesses sees each one's own branding.
+
+**Sources of truth.** The existing columns, now written only through
+`update_tenant_branding` (owner only, checked in the database, versioned by
+`tenants.branding_version`, stale saves raise `PT409`, audited):
+
+- `tenants.logo_storage_path`: the active logo, or null (the display name is
+  shown). A foreign key makes it a registered logo of the same business.
+- `tenants.brand_colors.primary`: `#rrggbb`, or absent for the default dark
+  grey. Other keys are kept.
+
+Suspended businesses can't change branding (`PT423`); archived ones follow
+their existing settings rules.
+
+**Logo uploads.**
+
+- PNG, JPEG or WebP; never SVG, never animated. Up to 4 MB, at least 16 and at
+  most 8000 pixels a side (`src/lib/branding/logo.server.ts`).
+- The content is sniffed (`src/lib/media/sniff.ts`) and must agree with what
+  the decoder finds; the declared type and extension are never trusted.
+- The image is decoded and re-encoded server-side with `sharp`: EXIF
+  orientation applied, metadata dropped, sRGB, fitted inside 1024 by 1024
+  pixels without enlarging, stretching or cropping, transparency kept, saved
+  as PNG (also usable by the PDF renderer later). Fully transparent images
+  are refused; mostly light artwork is marked to be shown on a dark backdrop.
+- The file reaches a Server Action (`serverActions.bodySizeLimit` is 4.5 MB,
+  under Vercel's request limit), which uploads only the re-encoded PNG to the
+  private `tenant-logos` bucket as `{tenant}/logos/{uuid}.png`, then
+  registers it (`register_tenant_logo`, service role only, which rechecks the
+  owner and the stored object). Only then can the save make it active.
+- Nothing is ever fetched from a URL. The bucket has no Storage policies: logos
+  are shown through one-hour signed URLs issued by the server after each
+  page's own authorization (staff membership, proposal session, client access).
+- Any failure (invalid file, upload, registration, stale save) leaves the
+  current logo active. Uploads limited to 20 an hour per owner and 30 a day
+  per business.
+
+**Where branding appears.**
+
+| Where | Branding |
+|---|---|
+| Staff workspace header | Current logo (alt text: the business name), else the name |
+| Client contract and planning pages | Current logo and colour (invitation pages show the name only) |
+| Proposals | Frozen when sent (`offer_snapshot.branding`): a sent proposal keeps its logo and colour after the owner changes them; staff previews of drafts use the current ones |
+| Run sheet (page and PDF) | Current colour (unchanged) |
+| Signed contract PDFs, emails | Unchanged; no logo (see below) |
+
+Buttons and headers on a brand colour use white or black text, whichever
+contrasts more (always at least 4.5:1, `src/lib/branding/colors.ts`). Errors,
+warnings and disabled controls keep their own styles.
+
+**Logos are never deleted.** A replacement gets a new path, so frozen
+proposals keep resolving their logo, and registered logos can't be updated or
+deleted by any role. `private.unused_tenant_logos()` (database owner only)
+lists registered logos neither active nor frozen into a proposal, and stored
+objects that never became a registered logo (an upload whose registration
+failed and couldn't be removed). Clean-up stays a deliberate manual step.
+
+**Deferred.** Signed contract PDFs and emails carry no logo. Adding one needs
+the logo frozen into the contract's party snapshot at generation (the
+snapshot point for contracts); canonical PDFs and contract hashes must not
+change, so it is a separate task. The run-sheet PDF could use the current
+logo (live branding) later. The shared Flux app icon, manifest and platform
+identity are unchanged.
+
 ### Suspending and restoring a workspace
 
 Migration `20261019000100_workspace_suspension.sql`. A platform
@@ -2285,6 +2370,7 @@ src/app/staff/                 Staff screens and Server Actions
 src/app/login, src/app/auth/   Magic-link login and confirmation
 src/app/platform/              Platform administrators: DJ invitations and workspace suspension
 src/app/unavailable/           Shown to members of a suspended workspace
+src/lib/branding/              Brand colours and contrast; logo verification, storage and signed URLs
 src/app/join/                  Invited DJs: verification request and workspace creation
 src/components/proposal/       Responsive proposal preview (live pricing)
 src/lib/media/                 File-signature detection for uploads

@@ -23,6 +23,12 @@ const nextConfig: NextConfig = {
   // this, a dev server started as plain `next dev` (localhost) blocks its own
   // scripts and HMR for 127.0.0.1 pages. Development only.
   allowedDevOrigins: ["127.0.0.1"],
+  // Logo uploads (Settings, Branding) send the image to a Server Action, which
+  // verifies and re-encodes it. Files are limited to 4 MB; this leaves room for
+  // the form around it and stays under Vercel's 4.5 MB request limit.
+  experimental: {
+    serverActions: { bodySizeLimit: "4.5mb" },
+  },
   // Signed-contract PDFs render with bundled fonts read from disk at runtime;
   // trace them into every server function (they are small and never fetched).
   outputFileTracingIncludes: {

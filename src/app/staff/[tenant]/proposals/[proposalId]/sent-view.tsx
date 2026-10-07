@@ -168,7 +168,7 @@ export async function SentProposalView({ staff, slug, proposalId }: { staff: Sta
           </CardHeader>
           <CardContent>
             {preview.ok ? (
-              <ProposalPreview offer={preview.offer} mediaUrls={preview.mediaUrls} event={event} />
+              <ProposalPreview offer={preview.offer} mediaUrls={preview.mediaUrls} logo={preview.logo} event={event} />
             ) : (
               <p className="text-sm">{preview.message}</p>
             )}

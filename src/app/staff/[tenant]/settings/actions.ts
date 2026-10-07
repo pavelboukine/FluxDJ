@@ -3,7 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { requireStaff } from "@/lib/auth/staff";
 import { describeDbError } from "@/lib/db-errors";
-import { fail, ok, text, type ActionState } from "@/lib/forms";
+import { checkbox, fail, int, ok, text, type ActionState } from "@/lib/forms";
+import { normalizeHex } from "@/lib/branding/colors";
+import { processLogo, storeLogo } from "@/lib/branding/logo.server";
+import { allowRequest } from "@/lib/rate-limit.server";
 import { CUTOFF_DAYS_MAX, CUTOFF_DAYS_MIN } from "@/lib/planning/cutoff";
 import { parseTaxSettingsForm } from "@/lib/pricing/tax-settings";
 
@@ -101,4 +104,50 @@ export async function savePlanningCutoff(slug: string, _state: ActionState, form
   if (error) return fail(describeDbError(error));
   revalidatePath(`/staff/${slug}`, "layout");
   return ok("Planning deadline saved. It applies to plans set up from now on; existing plans keep their deadlines.", version);
+}
+
+/**
+ * Saves branding: an optional new logo (verified, re-encoded and registered
+ * first), logo removal, and the primary colour, all checked against the
+ * branding version so a stale tab can't overwrite newer branding. Owner only;
+ * the database checks again. Any failure leaves the current logo active.
+ */
+export async function saveBranding(slug: string, _state: ActionState, form: FormData): Promise<ActionState> {
+  const { supabase, user, tenant, membership } = await requireStaff(slug);
+  if (membership.role !== "owner") return fail("Only the owner can change branding.");
+  const version = int(form, "draft_version", 0, 2_000_000_000);
+  if (version === null) return fail("Reload the page and try again.");
+  const rawColor = text(form, "primary_color");
+  const color = rawColor === "" ? null : normalizeHex(rawColor);
+  if (rawColor !== "" && !color) return fail("Enter the colour as a hex value like #1a2b3c.");
+
+  const file = form.get("logo");
+  let logoId: string | null;
+  if (file instanceof File && file.size > 0) {
+    if (!(await allowRequest("logo_upload", user.id, 20, 3600))) return fail("Too many logo uploads. Try again in an hour.");
+    const processed = await processLogo(Buffer.from(await file.arrayBuffer()));
+    if (!processed.ok) return fail(`${processed.message} Your current logo is unchanged.`);
+    const stored = await storeLogo(tenant.id, user.id, processed.logo);
+    if (!stored.ok) return fail(`${stored.error ? describeDbError(stored.error) : "The logo couldn't be stored."} Your current logo is unchanged.`);
+    logoId = stored.stored.logoId;
+  } else if (checkbox(form, "remove_logo")) {
+    logoId = null;
+  } else {
+    // Keep the active logo (if any).
+    const { data: current } = await supabase.from("tenants").select("logo_storage_path").eq("id", tenant.id).single();
+    const { data: logo } = current?.logo_storage_path
+      ? await supabase.from("tenant_logos").select("id").eq("tenant_id", tenant.id).eq("storage_path", current.logo_storage_path).maybeSingle()
+      : { data: null };
+    logoId = logo?.id ?? null;
+  }
+
+  const { data: newVersion, error } = await supabase.rpc("update_tenant_branding", {
+    p_tenant_id: tenant.id,
+    p_expected_version: version,
+    p_logo_id: logoId as string,
+    p_primary_color: color as string,
+  });
+  if (error) return fail(`${describeDbError(error)} Your current branding is unchanged.`);
+  revalidatePath(`/staff/${slug}`, "layout");
+  return ok("Branding saved. Proposals already sent keep the branding they were sent with.", newVersion ?? undefined);
 }

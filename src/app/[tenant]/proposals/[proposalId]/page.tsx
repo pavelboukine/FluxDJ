@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
-import type { CSSProperties } from "react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { frozenOfferMediaUrls, loadClientView, SLUG_PATTERN, type ClientView } from "@/lib/proposals/client-session.server";
 import { recommendedSelection, type ProposalSelectionState } from "@/lib/pricing";
 import { SelectionSummary } from "@/components/proposal/selection-summary";
+import { BrandLogo } from "@/components/app/brand-logo";
+import { brandStyle } from "@/lib/branding/colors";
+import { frozenOfferLogo } from "@/lib/branding/logo.server";
 import { ClientProposal } from "./client-proposal";
 import { ExpiredOffer } from "./expired-offer";
 
@@ -70,16 +72,18 @@ export default async function ClientProposalPage({ params }: PageProps<"/[tenant
   }
 
   const offer = view.proposal.offer;
-  const mediaUrls = await frozenOfferMediaUrls(offer);
+  const [mediaUrls, logo] = await Promise.all([frozenOfferMediaUrls(offer), frozenOfferLogo(offer)]);
   const dj = view.tenant.display_name;
   const brand = offer.branding.brand_colors;
-  const style = { "--brand": brand.primary ?? "#111827" } as CSSProperties;
+  const style = brandStyle(brand.primary);
 
   if (view.state === "submitted" || view.state === "approved") {
     return (
       <main style={style} className="mx-auto grid w-full max-w-3xl gap-6 px-4 py-8">
-        <header className="grid gap-2 rounded-2xl p-5 text-white" style={{ background: "var(--brand)" }}>
-          <p className="text-xs tracking-wide uppercase opacity-80">{dj}</p>
+        <header className="grid gap-2 rounded-2xl p-5" style={{ background: "var(--brand)", color: "var(--brand-foreground)" }}>
+          <div className="flex min-h-6 items-center">
+            <BrandLogo logo={logo} name={dj} className="max-h-12 max-w-48" fallbackClassName="text-xs tracking-wide uppercase opacity-80" />
+          </div>
           <h1 className="text-xl font-semibold">{view.event.title}</h1>
           <p className="opacity-90">{view.event.event_date}{view.event.venue_name ? ` · ${view.event.venue_name}` : ""}</p>
         </header>
@@ -106,7 +110,7 @@ export default async function ClientProposalPage({ params }: PageProps<"/[tenant
   return (
     <main className="mx-auto grid w-full max-w-4xl gap-4 px-4 py-6">
       {view.state === "expired" ? (
-        <ExpiredOffer offer={offer} mediaUrls={mediaUrls} event={event} selection={selection} djName={dj} />
+        <ExpiredOffer offer={offer} mediaUrls={mediaUrls} logo={logo} event={event} selection={selection} djName={dj} />
       ) : (
         <ClientProposal
           slug={slug}
@@ -114,6 +118,7 @@ export default async function ClientProposalPage({ params }: PageProps<"/[tenant
           djName={dj}
           offer={offer}
           mediaUrls={mediaUrls}
+          logo={logo}
           event={event}
           expiresAt={view.proposal.expires_at}
           initialSelection={selection}

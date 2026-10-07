@@ -1,9 +1,11 @@
 "use client";
 
 import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { BrandLogo } from "@/components/app/brand-logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { priceSelection, recommendedSelection, type AnswerValue, type OfferSnapshot, type PricingResult, type ProposalSelectionState } from "@/lib/pricing";
+import { brandStyle } from "@/lib/branding/colors";
 import { formatCents } from "@/lib/money";
 import { cn } from "@/lib/utils";
 
@@ -12,6 +14,8 @@ export type { ProposalSelectionState } from "@/lib/pricing";
 type ViewProps = {
   offer: OfferSnapshot;
   mediaUrls: Record<string, string>;
+  /** The logo frozen into this offer (signed URL), if any. */
+  logo?: { url: string; needsDarkBackground: boolean } | null;
   event: { title: string; event_date: string; venue_name: string | null };
   selection: ProposalSelectionState;
   onChange: (next: ProposalSelectionState) => void;
@@ -27,7 +31,7 @@ type ViewProps = {
  * frozen-offer shape, exactly as the server prices a submission. Required
  * gear cannot be reduced below its required quantity.
  */
-export function ProposalView({ offer, mediaUrls, event, selection, onChange, readOnly, footer }: ViewProps) {
+export function ProposalView({ offer, mediaUrls, logo, event, selection, onChange, readOnly, footer }: ViewProps) {
   const packageKey = selection.package_key;
   const addons = selection.addons;
   const answers = selection.answers;
@@ -49,7 +53,7 @@ export function ProposalView({ offer, mediaUrls, event, selection, onChange, rea
   const requiredExtra = new Map((priced?.requirements ?? []).map((r) => [r.gear_key, r.required_extra_quantity]));
   const money = (cents: number) => formatCents(cents, offer.currency);
   const brand = offer.branding.brand_colors;
-  const style = { "--brand": brand.primary ?? "#111827", "--brand-accent": brand.accent ?? brand.primary ?? "#111827" } as CSSProperties;
+  const style: CSSProperties = brandStyle(brand.primary, { "--brand-accent": brand.accent ?? brand.primary ?? "#111827" });
 
   const thumbnail = (gearKey: string) => {
     const media = offer.gear[gearKey]?.media[0];
@@ -66,8 +70,10 @@ export function ProposalView({ offer, mediaUrls, event, selection, onChange, rea
   return (
     <div style={style} className="grid gap-6 text-sm">
       <fieldset disabled={readOnly} className="m-0 grid min-w-0 gap-6 border-0 p-0">
-      <header className="grid gap-2 rounded-2xl p-5 text-white" style={{ background: "var(--brand)" }}>
-        <p className="text-xs tracking-wide uppercase opacity-80">{offer.branding.display_name}</p>
+      <header className="grid gap-2 rounded-2xl p-5" style={{ background: "var(--brand)", color: "var(--brand-foreground)" }}>
+        <div className="flex min-h-6 items-center">
+          <BrandLogo logo={logo ?? null} name={offer.branding.display_name} className="max-h-12 max-w-48" fallbackClassName="text-xs tracking-wide uppercase opacity-80" />
+        </div>
         <h2 className="text-xl font-semibold">{event.title}</h2>
         <p className="opacity-90">
           {event.event_date}
@@ -261,12 +267,13 @@ export function ProposalView({ offer, mediaUrls, event, selection, onChange, rea
 }
 
 /** Staff preview: local, unsaved selection state; nothing is sent or stored. */
-export function ProposalPreview({ offer, mediaUrls, event }: { offer: OfferSnapshot; mediaUrls: Record<string, string>; event: ViewProps["event"] }) {
+export function ProposalPreview({ offer, mediaUrls, logo, event }: { offer: OfferSnapshot; mediaUrls: Record<string, string>; logo?: ViewProps["logo"]; event: ViewProps["event"] }) {
   const [selection, setSelection] = useState(() => recommendedSelection(offer));
   return (
     <ProposalView
       offer={offer}
       mediaUrls={mediaUrls}
+      logo={logo}
       event={event}
       selection={selection}
       onChange={setSelection}

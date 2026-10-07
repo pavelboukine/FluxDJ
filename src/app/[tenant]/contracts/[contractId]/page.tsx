@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { PdfDownloadLink } from "@/components/app/pwa";
-import type { CSSProperties } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ContractDocument } from "@/components/contract/contract-document";
@@ -14,6 +13,9 @@ import { createClient } from "@/lib/supabase/server";
 import { InvoiceLink, PaymentFigures } from "@/components/payments/payment-summary";
 import type { ClientPaymentSummary } from "@/lib/payments";
 import { SignPanel } from "./sign-panel";
+import { BrandLogo } from "@/components/app/brand-logo";
+import { brandStyle } from "@/lib/branding/colors";
+import { liveBrand } from "@/lib/branding/logo.server";
 
 export const metadata: Metadata = { title: "Your contract", robots: { index: false, follow: false }, referrer: "strict-origin" };
 
@@ -73,7 +75,9 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
   const c = view.contract;
   const content = renderedContentSchema.parse(c.rendered_content);
   const money = (cents: number) => formatCents(cents, c.currency);
-  const brandStyle = { "--brand": view.brand.brand_colors.primary ?? "#111827" } as CSSProperties;
+  const pageStyle = brandStyle(view.brand.brand_colors.primary);
+  // Live branding (current logo), shown only after the access check above.
+  const brandLogo = (await liveBrand(slug))?.logo ?? null;
   // From the contract's frozen signing mode, never from its wording.
   const isDemo = c.signing_mode === "demo";
   const signing = view.signing;
@@ -90,9 +94,11 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
   }
 
   return (
-    <main style={brandStyle} className="mx-auto grid w-full max-w-3xl gap-6 px-4 py-8">
+    <main style={pageStyle} className="mx-auto grid w-full max-w-3xl gap-6 px-4 py-8">
       <header className="grid gap-1 border-b-4 border-[var(--brand)] pb-4">
-        <p className="text-sm font-semibold">{view.brand.display_name}</p>
+        <div className="flex min-h-6 items-center text-sm font-semibold">
+          <BrandLogo logo={brandLogo} name={view.brand.display_name} className="max-h-12 max-w-48" />
+        </div>
         <p className="text-sm text-muted-foreground">Contract for {c.event_title} · {c.event_date} · sent {new Intl.DateTimeFormat("en-CA", { dateStyle: "long" }).format(new Date(c.sent_at))}</p>
       </header>
       {isDemo ? (
@@ -125,7 +131,7 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
           </p>
           {signing.pdf_ready ? (
             <PdfDownloadLink
-              className="rounded-lg bg-[var(--brand)] px-3 py-2 text-sm font-medium text-white underline-offset-2 hover:underline"
+              className="rounded-lg bg-[var(--brand)] px-3 py-2 text-sm font-medium text-[var(--brand-foreground)] underline-offset-2 hover:underline"
               href={`/${slug}/contracts/${contractId}/signed-pdf`}
               fallbackName="signed-contract.pdf"
             >

@@ -16,7 +16,7 @@ export default async function FullPreview({ params }: PageProps<"/staff/[tenant]
         <Link className="underline" href={`/staff/${slug}/proposals/${proposal.id}`}>Back to the builder</Link>
       </p>
       {preview.ok ? (
-        <ProposalPreview offer={preview.offer} mediaUrls={preview.mediaUrls} event={proposal.events!} />
+        <ProposalPreview offer={preview.offer} mediaUrls={preview.mediaUrls} logo={preview.logo} event={proposal.events!} />
       ) : (
         <p className="text-sm">
           {preview.message} <TaxSetupLink slug={slug} message={preview.message} />

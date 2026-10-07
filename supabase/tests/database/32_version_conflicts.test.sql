@@ -29,6 +29,7 @@ $$, array[
   'update_booking_policy(uuid,text,integer)',
   'update_planning_cutoff_days(uuid,integer,integer)',
   'update_proposal_draft(uuid,integer,jsonb)',
+  'update_tenant_branding(uuid,integer,uuid,text)',
   'update_tax_settings(uuid,integer,jsonb,jsonb)'
 ], 'every optimistic-version check raises PT409');
 

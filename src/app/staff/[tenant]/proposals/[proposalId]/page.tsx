@@ -192,7 +192,7 @@ export default async function ProposalBuilder({ params, searchParams }: PageProp
           </CardHeader>
           <CardContent>
             {preview.ok ? (
-              <ProposalPreview offer={preview.offer} mediaUrls={preview.mediaUrls} event={event} />
+              <ProposalPreview offer={preview.offer} mediaUrls={preview.mediaUrls} logo={preview.logo} event={event} />
             ) : (
               <p role="status" className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
                 {preview.message} <TaxSetupLink slug={slug} message={preview.message} />

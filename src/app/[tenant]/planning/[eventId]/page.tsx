@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import type { CSSProperties } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BasicsEditor } from "@/components/planning/basics-editor";
@@ -15,6 +14,9 @@ import { SLUG_PATTERN } from "@/lib/proposals/client-session.server";
 import { clientPlanningViewSchema, formatEventDate } from "@/lib/planning/view";
 import { createClient } from "@/lib/supabase/server";
 import { saveClientItemAction } from "./actions";
+import { BrandLogo } from "@/components/app/brand-logo";
+import { brandStyle } from "@/lib/branding/colors";
+import { liveBrand } from "@/lib/branding/logo.server";
 
 export const metadata: Metadata = { title: "Event planning", robots: { index: false, follow: false }, referrer: "strict-origin" };
 
@@ -62,14 +64,17 @@ export default async function ClientPlanningPage({ params }: PageProps<"/[tenant
   }
 
   const dj = view.brand.display_name;
-  const brandStyle = { "--brand": view.brand.brand_colors.primary ?? "#111827" } as CSSProperties;
+  const pageStyle = brandStyle(view.brand.brand_colors.primary);
+  const brandLogo = (await liveBrand(slug))?.logo ?? null;
   const general = view.structure.general.filter((g) => g.key !== "basics");
   const basicsLabel = view.structure.general.find((g) => g.key === "basics")?.label ?? "Event basics";
 
   return (
-    <main style={brandStyle} className="mx-auto grid w-full max-w-3xl gap-6 px-4 py-8">
+    <main style={pageStyle} className="mx-auto grid w-full max-w-3xl gap-6 px-4 py-8">
       <header className="grid gap-1 border-b-4 border-[var(--brand)] pb-4">
-        <p className="text-sm font-semibold">{dj}</p>
+        <div className="flex min-h-6 items-center text-sm font-semibold">
+          <BrandLogo logo={brandLogo} name={dj} className="max-h-12 max-w-48" />
+        </div>
         <h1 className="text-2xl font-semibold tracking-tight [overflow-wrap:anywhere]">Planning: {view.event.title}</h1>
         <p className="text-sm text-muted-foreground">
           {formatEventDate(view.event.event_date)}

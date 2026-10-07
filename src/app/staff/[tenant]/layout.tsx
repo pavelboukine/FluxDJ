@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { BrandLogo } from "@/components/app/brand-logo";
 import { isPlatformAdmin } from "@/lib/auth/platform";
+import { logoUrl } from "@/lib/branding/logo.server";
 import { requireStaff } from "@/lib/auth/staff";
 import { signOut } from "@/app/auth/confirm/actions";
 
@@ -20,14 +22,21 @@ const NAV = [
 
 export default async function StaffTenantLayout({ children, params }: LayoutProps<"/staff/[tenant]">) {
   const { tenant: slug } = await params;
-  const { tenant, user, membership } = await requireStaff(slug);
+  const { supabase, tenant, user, membership } = await requireStaff(slug);
+  // The active workspace's own logo (RLS: only its members read its logos).
+  const { data: active } = await supabase.from("tenants").select("logo_storage_path").eq("id", tenant.id).single();
+  const { data: logoRow } = active?.logo_storage_path
+    ? await supabase.from("tenant_logos").select("storage_path, needs_dark_background, width, height").eq("tenant_id", tenant.id).eq("storage_path", active.logo_storage_path).maybeSingle()
+    : { data: null };
+  const logo = await logoUrl(logoRow);
   const platformAdmin = await isPlatformAdmin();
   return (
     <div className="flex min-h-full flex-1 flex-col">
       <header className="border-b bg-background">
         <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-3">
-          <Link href={`/staff/${tenant.slug}`} className="font-semibold">
-            {tenant.display_name} <span className="font-normal text-muted-foreground">· Flux DJ staff</span>
+          <Link href={`/staff/${tenant.slug}`} className="flex min-w-0 items-center gap-2 font-semibold" data-testid="workspace-brand">
+            <BrandLogo logo={logo} name={tenant.display_name} className="max-h-8 max-w-36 sm:max-w-48" />
+            <span className="font-normal text-muted-foreground">· Flux DJ staff</span>
           </Link>
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
             {platformAdmin ? <Link className="underline" href="/platform/invitations">DJ invitations</Link> : null}

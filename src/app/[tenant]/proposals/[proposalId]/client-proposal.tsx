@@ -15,6 +15,7 @@ type Props = {
   djName: string;
   offer: OfferSnapshot;
   mediaUrls: Record<string, string>;
+  logo: { url: string; needsDarkBackground: boolean } | null;
   event: { title: string; event_date: string; venue_name: string | null };
   expiresAt: string;
   initialSelection: ProposalSelectionState;
@@ -169,6 +170,7 @@ export function ClientProposal(props: Props) {
     <ProposalView
       offer={props.offer}
       mediaUrls={props.mediaUrls}
+      logo={props.logo}
       event={props.event}
       selection={selection}
       onChange={onChange}

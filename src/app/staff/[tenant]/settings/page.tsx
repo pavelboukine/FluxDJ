@@ -4,7 +4,11 @@ import { PageHeader, TextAreaField, TextField } from "@/components/app/fields";
 import { requireStaff } from "@/lib/auth/staff";
 import { ppmToPercent, readTaxSettings, usageText, type CategoryUsage } from "@/lib/pricing/tax-settings";
 import { CUTOFF_DAYS_MAX, CUTOFF_DAYS_MIN } from "@/lib/planning/cutoff";
-import { saveBookingPolicy, saveBusinessSettings, savePlanningCutoff, saveTaxSettings } from "./actions";
+import { BrandLogo } from "@/components/app/brand-logo";
+import { brandTheme, normalizeHex } from "@/lib/branding/colors";
+import { logoUrl } from "@/lib/branding/logo.server";
+import { saveBookingPolicy, saveBranding, saveBusinessSettings, savePlanningCutoff, saveTaxSettings } from "./actions";
+import { BrandingForm } from "./branding-form";
 import { TaxSettingsForm } from "./tax-settings-form";
 
 export default async function BusinessSettings({ params }: PageProps<"/staff/[tenant]/settings">) {
@@ -12,10 +16,15 @@ export default async function BusinessSettings({ params }: PageProps<"/staff/[te
   const { supabase, tenant, membership } = await requireStaff(slug);
   const { data: settings } = await supabase
     .from("tenants")
-    .select("business_name, display_name, business_address, contact_email, deposit_percent, tax_config, tax_categories, tax_settings_version, booking_confirmation_policy, booking_policy_version, planning_lock_days, planning_settings_version")
+    .select("business_name, display_name, business_address, contact_email, deposit_percent, tax_config, tax_categories, tax_settings_version, booking_confirmation_policy, booking_policy_version, planning_lock_days, planning_settings_version, brand_colors, logo_storage_path, branding_version")
     .eq("id", tenant.id)
     .single();
   const isOwner = membership.role === "owner";
+  const { data: activeLogo } = settings?.logo_storage_path
+    ? await supabase.from("tenant_logos").select("storage_path, needs_dark_background, width, height").eq("tenant_id", tenant.id).eq("storage_path", settings.logo_storage_path).maybeSingle()
+    : { data: null };
+  const currentLogo = await logoUrl(activeLogo);
+  const primaryColor = normalizeHex((settings?.brand_colors as Record<string, unknown> | null)?.primary);
   // Never saved (update_business_settings sets address and email together): the legal
   // name is still the placeholder copied from the display name at sign-up.
   const legalNamePending = !settings?.business_address && !settings?.contact_email;
@@ -76,6 +85,41 @@ export default async function BusinessSettings({ params }: PageProps<"/staff/[te
             </dl>
           )}
           <p className="mt-4 text-xs text-muted-foreground">Display name (branding, not changed here): {settings?.display_name}</p>
+        </CardContent>
+      </Card>
+      <Card id="branding" className="scroll-mt-4">
+        <CardHeader>
+          <CardTitle>Branding</CardTitle>
+          <CardDescription>
+            Your logo and colour on your client pages and in your workspace. Proposals already sent keep the branding they were sent with;
+            other pages use the current branding.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isOwner ? (
+            <BrandingForm
+              action={saveBranding.bind(null, slug)}
+              version={settings?.branding_version ?? 0}
+              displayName={settings?.display_name ?? tenant.display_name}
+              currentLogo={currentLogo}
+              currentColor={primaryColor}
+            />
+          ) : (
+            <dl className="grid gap-3 text-sm">
+              <p role="status" className="text-muted-foreground">Only the owner can change branding.</p>
+              <div className="grid gap-1">
+                <dt className="text-muted-foreground">Logo</dt>
+                <dd>{currentLogo ? <BrandLogo logo={currentLogo} name={tenant.display_name} className="max-h-12 max-w-48" /> : "None (the business name is shown)"}</dd>
+              </div>
+              <div className="grid gap-1">
+                <dt className="text-muted-foreground">Primary colour</dt>
+                <dd className="flex items-center gap-2">
+                  <span aria-hidden className="size-4 rounded border" style={{ background: brandTheme(primaryColor).color }} />
+                  {primaryColor ?? "Default"}
+                </dd>
+              </div>
+            </dl>
+          )}
         </CardContent>
       </Card>
       <Card id="booking" className="scroll-mt-4">

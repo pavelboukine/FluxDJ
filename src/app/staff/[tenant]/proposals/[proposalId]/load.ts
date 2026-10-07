@@ -4,8 +4,11 @@ import { parseOfferSnapshot, type OfferSnapshot } from "@/lib/pricing";
 import { describeDbError } from "@/lib/db-errors";
 import { UUID_RE } from "@/lib/forms";
 import type { StaffContext } from "@/lib/auth/staff";
+import { frozenOfferLogo, type BrandLogo } from "@/lib/branding/logo.server";
 
-export type PreviewResult = { ok: true; offer: OfferSnapshot; mediaUrls: Record<string, string> } | { ok: false; message: string };
+export type PreviewResult =
+  | { ok: true; offer: OfferSnapshot; mediaUrls: Record<string, string>; logo: BrandLogo | null }
+  | { ok: false; message: string };
 
 export async function loadProposal({ supabase, tenant }: StaffContext, proposalId: string) {
   if (!UUID_RE.test(proposalId)) notFound();
@@ -34,5 +37,6 @@ export async function loadPreview({ supabase }: StaffContext, proposalId: string
     const { data: signed } = await supabase.storage.from("gear-media").createSignedUrls(paths, 900);
     for (const s of signed ?? []) if (s.path && s.signedUrl) mediaUrls[s.path] = s.signedUrl;
   }
-  return { ok: true, offer, mediaUrls };
+  // The logo this offer carries (the business's current logo for a draft, the frozen one once sent).
+  return { ok: true, offer, mediaUrls, logo: await frozenOfferLogo(offer) };
 }

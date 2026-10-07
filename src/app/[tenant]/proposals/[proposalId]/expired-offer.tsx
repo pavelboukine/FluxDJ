@@ -7,6 +7,7 @@ import type { OfferSnapshot } from "@/lib/pricing";
 export function ExpiredOffer(props: {
   offer: OfferSnapshot;
   mediaUrls: Record<string, string>;
+  logo: { url: string; needsDarkBackground: boolean } | null;
   event: { title: string; event_date: string; venue_name: string | null };
   selection: ProposalSelectionState;
   djName: string;
@@ -15,6 +16,7 @@ export function ExpiredOffer(props: {
     <ProposalView
       offer={props.offer}
       mediaUrls={props.mediaUrls}
+      logo={props.logo}
       event={props.event}
       selection={props.selection}
       onChange={() => {}}
