@@ -3,6 +3,10 @@
 -- work, and what restoration does (and doesn't) bring back.
 begin;
 \ir _fixtures.psql
+-- Today in the time zone of the business that owns an event (the date rule of record_event_payment).
+create function tests.business_today(event text) returns date language sql stable security definer set search_path = '' as $$
+  select (now() at time zone t.timezone)::date from public.events e join public.tenants t on t.id = e.tenant_id where e.id = tests.id(event);
+$$;
 \ir _catalog_fixtures.psql
 \ir _offer_fixtures.psql
 \ir _contract_fixtures.psql
@@ -83,7 +87,9 @@ reset role;
 select is(tests.sign(current_setting('tests.c2')::uuid, 'client_y') ->> 'status', 'signed', 'setup: Client Y signs the A2 contract');
 -- A payment on A2, recorded by staff.
 select tests.login_as(tests.id('owner_a'));
-select public.record_event_payment(tests.id('event_a2'), 10000, current_date, 'E-transfer', null, gen_random_uuid());
+-- Dated today where the business is, as record_event_payment judges it (UTC's
+-- current_date is already tomorrow there in the evening).
+select public.record_event_payment(tests.id('event_a2'), 10000, tests.business_today('event_a2'), 'E-transfer', null, gen_random_uuid());
 reset role;
 -- An expired proposal session (expiry stays expired after restoration).
 insert into public.proposal_sessions (tenant_id, proposal_id, access_link_id, session_hash, expires_at)
@@ -187,7 +193,7 @@ select throws_ok($$ insert into public.clients (tenant_id, name, email) values (
 select throws_ok($$ select public.update_business_settings(tests.id('tenant_a'), 'X', 'Y', 'z@example.test', 40) $$, 'PT423', null,
   'settings writes are refused (workspace_suspended)');
 select throws_ok($$ select public.event_payment_summary(tests.id('event_a2')) $$, 'PT423', null, 'staff functions answer workspace_suspended to members');
-select throws_ok($$ select public.record_event_payment(tests.id('event_a2'), 500, current_date, 'Cash', null, gen_random_uuid()) $$,
+select throws_ok($$ select public.record_event_payment(tests.id('event_a2'), 500, tests.business_today('event_a2'), 'Cash', null, gen_random_uuid()) $$,
   'PT423', null, 'payments cannot be recorded');
 select throws_ok($$ select public.staff_planning_view(tests.id('event_a2')) $$, 'PT423', null, 'planning and the run sheet cannot be read');
 select throws_ok($$ select public.open_proposal_draft(tests.id('event_a1')) $$, 'PT423', null, 'no proposal work');

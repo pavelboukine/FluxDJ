@@ -195,3 +195,25 @@ export function containsFilter(columns: readonly string[], q: string): string {
   const quoted = `"${pattern.replace(/["\\]/g, "\\$&")}"`;
   return columns.map((c) => `${c}.ilike.${quoted}`).join(",");
 }
+
+export type PackageListParams = GearListParams;
+
+/** Defaults: active packages only. */
+export function parsePackageListParams(sp: Params): PackageListParams {
+  return { q: search(sp.q), archived: one(sp.archived) === "1", page: page(sp.page) };
+}
+
+export const packageListHref = gearListHref;
+export const isDefaultPackageList = isDefaultGearList;
+
+/**
+ * "2 × Wireless microphone, Main sound system +2 more": a package's included
+ * gear in a few words (quantity shown when more than one).
+ */
+export function includedGearSummary(items: { name: string; quantity: number }[], shown = 3): string {
+  if (items.length === 0) return "No gear included";
+  const sorted = [...items].sort((a, b) => a.name.localeCompare(b.name));
+  const names = sorted.slice(0, shown).map((i) => (i.quantity > 1 ? `${i.quantity} × ${i.name}` : i.name));
+  const more = sorted.length - shown;
+  return `Includes ${names.join(", ")}${more > 0 ? ` +${more} more` : ""}`;
+}

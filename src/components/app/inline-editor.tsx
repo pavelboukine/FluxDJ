@@ -87,7 +87,7 @@ function Editor({ id, title, editLabel, view, children, action, submitLabel, dis
   }
 
   return (
-    <section id={id} aria-labelledby={`${id}-heading`} className="scroll-mt-20 grid gap-4 rounded-xl border bg-card p-4 sm:p-5">
+    <section id={id} aria-labelledby={`${id}-heading`} className="scroll-mt-20 grid min-w-0 gap-4 rounded-xl border bg-card p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 id={`${id}-heading`} className="text-base font-semibold">{editing ? editLabel : title}</h2>
         {editing ? (

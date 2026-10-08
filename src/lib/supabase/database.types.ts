@@ -1326,6 +1326,9 @@ isOneToOne: false
 "create_contract_template":
 { Args: { "p_name": string,"p_sections": Json,"p_tenant_id": string,"p_title": string }; Returns: string
                            },
+"create_package":
+{ Args: { "p_base_price_cents": number,"p_description": string,"p_items": Json,"p_key": string,"p_name": string,"p_package_id": string,"p_sort_order": number,"p_tax_category": string,"p_tenant_id": string }; Returns: Json
+                           },
 "create_planning_template":
 { Args: { "p_description": string,"p_name": string,"p_tenant_id": string }; Returns: string
                            },
@@ -1500,6 +1503,9 @@ isOneToOne: false
                            },
 "set_event_plan_item_enabled":
 { Args: { "p_enabled": boolean,"p_expected_version": number,"p_item_id": string }; Returns: number
+                           },
+"set_package_archived":
+{ Args: { "p_archived": boolean,"p_package_id": string }; Returns: Json
                            },
 "set_package_items":
 { Args: { "p_items": Json,"p_package_id": string }; Returns: undefined

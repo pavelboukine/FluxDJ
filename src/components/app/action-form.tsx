@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { unstable_rethrow, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useDraftEditorState, useSharedDraftVersion } from "@/components/app/draft-version";
 import { idleState, type ActionState } from "@/lib/forms";
@@ -115,7 +115,15 @@ export function ActionForm({
     const submitted = snapshot(form);
 
     startTransition(async () => {
-      const result = await action(state, data);
+      let result: ActionState;
+      try {
+        result = await action(state, data);
+      } catch (error) {
+        // Navigation (a redirect after saving) continues as usual; a request
+        // that never reached the server keeps everything typed, as an error.
+        unstable_rethrow(error);
+        result = { status: "error", message: "The save didn't go through. Check your connection, then try again." };
+      }
       setState(result);
       if (result.status !== "success") return;
       if (result.version !== undefined) {

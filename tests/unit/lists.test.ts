@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clientListHref, contactRoleLabel, containsFilter, eventListHref, gearListHref, isDefaultEventList, isDefaultGearList, isUpcomingEvent, parseGearListParams, utcDateFrom, nearDay, nextEventLabel, parseClientListParams, parseEventListParams, rangeText } from "@/lib/lists";
+import { clientListHref, contactRoleLabel, includedGearSummary, packageListHref, parsePackageListParams, containsFilter, eventListHref, gearListHref, isDefaultEventList, isDefaultGearList, isUpcomingEvent, parseGearListParams, utcDateFrom, nearDay, nextEventLabel, parseClientListParams, parseEventListParams, rangeText } from "@/lib/lists";
 
 describe("events list parameters", () => {
   it("defaults to upcoming, any status, archived excluded", () => {
@@ -92,5 +92,19 @@ describe("gear list parameters", () => {
   it("searches literally, whatever the punctuation", () => {
     expect(containsFilter(["name", "description"], "mic")).toBe('name.ilike."%mic%",description.ilike."%mic%"');
     expect(containsFilter(["name"], '50% off_(a,b) "x"\\')).toBe('name.ilike."%50\\\\% off\\\\_(a,b) \\"x\\"\\\\\\\\%"');
+  });
+});
+
+describe("package list", () => {
+  it("defaults to active packages; parameters round-trip", () => {
+    expect(parsePackageListParams({})).toEqual({ q: "", archived: false, page: 1 });
+    expect(parsePackageListParams({ show: "archived" }).archived).toBe(false);
+    expect(packageListHref("/p", parsePackageListParams({ q: "gold", archived: "1", page: "3" }))).toBe("/p?q=gold&archived=1&page=3");
+  });
+
+  it("summarises included gear by name, with quantities above one", () => {
+    expect(includedGearSummary([])).toBe("No gear included");
+    expect(includedGearSummary([{ name: "Wireless mic", quantity: 2 }, { name: "Main system", quantity: 1 }])).toBe("Includes Main system, 2 × Wireless mic");
+    expect(includedGearSummary(["A", "B", "C", "D", "E"].map((name) => ({ name, quantity: 1 })))).toBe("Includes A, B, C +2 more");
   });
 });

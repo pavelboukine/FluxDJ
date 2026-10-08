@@ -1,6 +1,5 @@
-import type { ReactNode } from "react";
-import Link from "next/link";
-import { SelectField, TextAreaField, TextField } from "@/components/app/fields";
+import { FieldGroup as Group, TaxCategoryField } from "@/components/app/catalog-fields";
+import { TextAreaField, TextField } from "@/components/app/fields";
 import { centsToInputValue } from "@/lib/money";
 
 type Gear = {
@@ -11,30 +10,6 @@ type Gear = {
   default_price_cents: number;
   tax_category: string;
 };
-
-/**
- * Tax category choices: the categories configured in Settings. With none
- * configured yet, "standard" (the category Settings always offers). The
- * item's current category is always kept as an option, so an edit never
- * silently changes it; the server still accepts only configured ones.
- */
-export function taxCategoryOptions(configured: string[], current?: string) {
-  const keys = configured.length > 0 ? configured : ["standard"];
-  const all = current && !keys.includes(current) ? [current, ...keys] : keys;
-  return all.map((c) => ({ value: c, label: configured.includes(c) ? c : `${c} (taxes not set up)` }));
-}
-
-function Group({ legend, hint, children }: { legend: string; hint?: ReactNode; children: ReactNode }) {
-  return (
-    <fieldset className="grid gap-4 sm:grid-cols-2">
-      <legend className="mb-3 grid gap-0.5">
-        <span className="text-sm font-semibold">{legend}</span>
-        {hint ? <span className="text-xs font-normal text-muted-foreground">{hint}</span> : null}
-      </legend>
-      {children}
-    </fieldset>
-  );
-}
 
 /** The gear item form: name and description, pricing and tax, then the reference key. */
 export function GearFields({
@@ -51,8 +26,6 @@ export function GearFields({
   slug: string;
   isNew?: boolean;
 }) {
-  const options = taxCategoryOptions(taxCategories, gear?.tax_category);
-  const selected = gear?.tax_category ?? (taxCategories.includes("standard") ? "standard" : options[0]?.value);
   return (
     <div className="grid gap-6">
       <p className="text-xs text-muted-foreground">All fields are required unless marked optional.</p>
@@ -79,25 +52,7 @@ export function GearFields({
           hint="Before tax. For example 150 or 150.00."
         />
         <TextField label="Unit (optional)" name="unit_label" maxLength={40} defaultValue={gear?.unit_label ?? "unit"} hint="What one unit is: speaker, pack, set." />
-        <SelectField
-          label="Tax category"
-          name="tax_category"
-          required
-          defaultValue={selected}
-          options={options}
-          hint={
-            taxCategories.length === 0 ? (
-              <>
-                No taxes are set up yet, so proposals with this item can&apos;t be sent until they are.{" "}
-                <Link className="font-medium underline" href={`/staff/${slug}/settings#taxes`}>Open tax settings</Link> (owner only).
-              </>
-            ) : (
-              <>
-                Which taxes apply is set per category in <Link className="underline" href={`/staff/${slug}/settings#taxes`}>tax settings</Link>.
-              </>
-            )
-          }
-        />
+        <TaxCategoryField configured={taxCategories} current={gear?.tax_category} slug={slug} noun="item" />
       </Group>
       <Group legend="Reference">
         {isNew ? (

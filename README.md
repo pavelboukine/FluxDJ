@@ -2385,6 +2385,60 @@ check's wording, so apply them before the app
 (`db push --linked --dry-run`, then `db push --linked`); the previous app
 keeps working on the migrated database.
 
+### Gear and packages
+
+Both catalog lists follow the Events and Clients list pattern: search over
+name and description on the server (`containsFilter` in `src/lib/lists.ts`:
+quoted, with % and _ literal), Include archived, 25 per page, all in the
+URL. Item pages show an overview with Edit details, "Used in" links and a
+separate Manage section for archiving.
+
+**Package pricing.** A package has one base price (before tax, in its tax
+category), charged as a single line. Its included gear and quantities are
+shown on proposals but never charged; extras the client adds, and any
+quantity a rule requires beyond what's included, are charged at each gear
+item's unit price. A package's price is not the sum of its gear.
+`packages.is_popular` is kept in the database but no longer shown or
+edited (nothing reads it, and saving details leaves it unchanged): each
+template (its recommended package) and proposal chooses the most popular
+package.
+
+**Included gear.** Each gear item once, quantity 1 to 100. A new package
+and its gear are saved together by `public.create_package` (migration
+`20261023000200_package_create.sql`): both or neither, so a failed save
+leaves nothing behind and keeps the form as typed. The form makes a request
+id once per visit and the function uses it as the package id, so a retry
+after a lost response returns the package already created ("This package
+was already saved…") instead of creating another. Editing a package's gear
+uses `public.set_package_items`, which replaces it in one call (all or
+nothing). Archived gear already included stays listed and flagged;
+proposals with that package can't be previewed or sent until it's removed or
+restored.
+
+**Package archiving.** Archive… asks for confirmation and calls
+`public.set_package_archived` (migration
+`20261023000100_package_archiving.sql`): it sets `active` only, records an
+audit event, and treats a repeat as a no-op. Included gear, templates and
+sent proposals are unchanged; an archived package can't be chosen for
+templates or drafts, and proposals that offer it can't be previewed or sent
+until another package is chosen or it's restored. Saving details never
+changes the archived state. (Gear archiving is still a direct, unaudited
+update of `gear_items.active`.)
+
+**Deploying.** The two package migrations only add functions, so apply them
+before the app (`db push --linked --dry-run`, then `db push --linked`); the
+previous app keeps working on the migrated database. The new app needs
+them to create packages and to archive or restore them.
+
+**Gear photos on proposals.** The frozen offer stores, per gear item, its
+active media at freeze time (`storage_path`, `kind`, `content_type`,
+`alt_text`, in sort order). The client proposal redesign must make these
+photos large and browsable (requirement in `docs/Flux-DJ-V1-Spec.md`).
+Known limits for that work: only original files are stored (images up to
+15 MB, no resized versions or image transformations), no width/height or
+poster frame is recorded, there is no caption beyond alt text, and client
+signed URLs last 10 minutes.
+
 ### Suspending and restoring a workspace
 
 Migration `20261019000100_workspace_suspension.sql`. A platform

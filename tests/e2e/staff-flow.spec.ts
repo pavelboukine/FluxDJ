@@ -227,11 +227,12 @@ test.describe.serial("staff interface", () => {
     await page.goto(`/staff/${tenant.slug}/packages/new`);
     await page.getByLabel("Name").fill(`E2E Package ${run}`);
     await page.getByLabel("Base price (CAD)").fill("1000");
-    await page.getByRole("button", { name: "Create package" }).click();
+    await page.getByRole("button", { name: "Save package" }).click();
     await expect(page.getByRole("heading", { name: `E2E Package ${run}` })).toBeVisible();
-    await page.getByLabel(new RegExp(gearName)).fill("1");
+    await page.getByRole("button", { name: "Edit included gear" }).click();
+    await page.getByRole("button", { name: `Add ${gearName}` }).click();
     await page.getByRole("button", { name: "Save included gear" }).click();
-    await expect(page.getByText("Included gear saved.")).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "Included gear saved." })).toBeVisible();
   });
 
   test("templates: compose three packages, a recommended one, addons and questions", async () => {
