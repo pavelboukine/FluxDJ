@@ -2439,6 +2439,60 @@ Known limits for that work: only original files are stored (images up to
 poster frame is recorded, there is no caption beyond alt text, and client
 signed URLs last 10 minutes.
 
+### Proposal templates and questions & rules
+
+Both lists follow the catalog list pattern (search on the server, Include
+archived, 25 per page, all in the URL). Templates search name and intro;
+questions search the question.
+
+**Templates.** A template offers three packages in positions 1 to 3 (the
+order clients see), at most one recommended package among them (shown as
+"Most popular"; the database requires it to be one of the three), optional
+extras (gear with a preselected quantity and a maximum) and questions in the
+order clients see them. Its contents are saved together by
+`public.set_proposal_template_composition`; a new template and its contents
+by `public.create_proposal_template` (migration
+`20261024000100_proposal_template_create.sql`), keyed by a per-visit request
+id like `create_package`, so a failed save leaves nothing and a retry after a
+lost response returns the template already created. Archived packages,
+questions and gear a template already uses stay listed and flagged (saving
+never drops them), and the overview lists what would stop a proposal from
+being sent, mirroring `build_offer_snapshot`, with a link to fix each. A
+proposal draft copies the template when it's started or the template is
+applied, so later template edits don't reach existing drafts. Archiving a
+template only hides it from "Start from template".
+
+**Questions.** Four answer types (yes/no, one choice, several choices, short
+text); the type and key never change once saved. Choices keep their value
+when relabelled; a new choice's value is made from its label. A choice that
+any rule uses (active or archived) can't be removed: the database refuses the
+change (`validate_question_rules`). Optional questions left blank apply no
+rules. Question and rule edits reach every proposal previewed or sent from
+then on that asks the question, drafts included; sent proposals never change.
+
+**Rules.** "When [question] is [answer], require [quantity] × [gear]", with
+a reason shown to the client. Conditions: is Yes/No, is one of the choices,
+or (several choices) includes a choice. Short text can't have rules. In
+pricing (`src/lib/pricing/price-selection.ts`), the quantities of all
+matching rules add up per gear item; units the chosen package includes count
+toward that total and only the remainder is charged, at the gear's unit
+price; if the client also picked that gear as an extra, the larger quantity
+is charged, not both. Rules can be edited, archived and restored, not
+deleted. The database never keeps two identical active rules (same
+question, answer, gear, quantity and reason; "any of" values in any order):
+trigger `logistics_rules_no_duplicates` (migration
+`20261024000200_logistics_rule_duplicates.sql`) refuses such an insert, edit
+or restore, serialized per question, because a duplicate would double the
+requirement. Duplicates saved before it are left alone and can be archived or
+edited. A retried "Add rule" whose first save went through says so.
+
+**Deploying.** The two migrations (`20261024000100_proposal_template_create`
+and `20261024000200_logistics_rule_duplicates`) only add functions and a
+trigger, so apply them before the app (`db push --linked --dry-run`, then
+`db push --linked`). The previous app keeps working on the migrated database
+(an identical rule it tries to add gets a generic "already used" message).
+The new app needs them to create templates and to report duplicate rules.
+
 ### Suspending and restoring a workspace
 
 Migration `20261019000100_workspace_suspension.sql`. A platform

@@ -21,6 +21,10 @@ type Props = {
   submitLabel: string;
   /** Asked before Cancel discards typed changes. */
   discardMessage: string;
+  /** For an editor nested in a section (e.g. one rule among several): a smaller h3 heading. */
+  nested?: boolean;
+  /** Other controls shown beside Edit while not editing (e.g. Archive). */
+  actions?: ReactNode;
 };
 
 /**
@@ -39,7 +43,7 @@ export function InlineEditor(props: Props) {
   );
 }
 
-function Editor({ id, title, editLabel, view, children, action, submitLabel, discardMessage }: Props) {
+function Editor({ id, title, editLabel, view, children, action, submitLabel, discardMessage, nested, actions }: Props) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
@@ -68,6 +72,19 @@ function Editor({ id, title, editLabel, view, children, action, submitLabel, dis
     return () => window.cancelAnimationFrame(frame);
   }, [id]);
 
+  // An in-page link to #id ("Choose packages") opens the editor too, unless
+  // it's already open (which would start over and drop typed changes).
+  useEffect(() => {
+    if (editing) return;
+    const onClick = (e: MouseEvent) => {
+      const link = (e.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
+      if (!link || link.pathname !== window.location.pathname || link.hash !== `#${id}`) return;
+      open();
+    };
+    document.addEventListener("click", onClick);
+    return () => document.removeEventListener("click", onClick);
+  }, [id, editing]);
+
   useEffect(() => {
     if (!unsaved) return;
     const warn = (e: BeforeUnloadEvent) => e.preventDefault();
@@ -87,16 +104,23 @@ function Editor({ id, title, editLabel, view, children, action, submitLabel, dis
   }
 
   return (
-    <section id={id} aria-labelledby={`${id}-heading`} className="scroll-mt-20 grid min-w-0 gap-4 rounded-xl border bg-card p-4 sm:p-5">
+    <section id={id} aria-labelledby={`${id}-heading`} className={nested ? "scroll-mt-20 grid min-w-0 gap-3 rounded-lg border p-3" : "scroll-mt-20 grid min-w-0 gap-4 rounded-xl border bg-card p-4 sm:p-5"}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id={`${id}-heading`} className="text-base font-semibold">{editing ? editLabel : title}</h2>
+        {nested ? (
+          <h3 id={`${id}-heading`} className="min-w-0 text-sm font-medium [overflow-wrap:anywhere]">{editing ? editLabel : title}</h3>
+        ) : (
+          <h2 id={`${id}-heading`} className="text-base font-semibold">{editing ? editLabel : title}</h2>
+        )}
         {editing ? (
           <Button type="button" variant="ghost" size="sm" onClick={cancel}>Cancel</Button>
         ) : (
-          <Button ref={editButton} type="button" variant="outline" size="sm" onClick={open}>
-            <Pencil aria-hidden />
-            {editLabel}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {actions}
+            <Button ref={editButton} type="button" variant="outline" size="sm" onClick={open}>
+              <Pencil aria-hidden />
+              {editLabel}
+            </Button>
+          </div>
         )}
       </div>
       {editing ? null : (

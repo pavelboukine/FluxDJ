@@ -1335,6 +1335,9 @@ isOneToOne: false
 "create_platform_invitation":
 { Args: { "p_email": string,"p_link_id": string,"p_token_hash": string }; Returns: Json
                            },
+"create_proposal_template":
+{ Args: { "p_addons": Json,"p_default_package_id": string,"p_expiry_days": number,"p_intro": string,"p_name": string,"p_package_ids": Json,"p_question_ids": Json,"p_template_id": string,"p_tenant_id": string }; Returns: Json
+                           },
 "current_user_is_platform_admin":
 { Args: Record<PropertyKey, never>; Returns: boolean
                            },

@@ -379,7 +379,9 @@ test.describe.serial("packages", () => {
     // Proposal templates keep their own recommended package.
     const { data: template } = await must(admin.from("proposal_templates").select("id").eq("tenant_id", tenant.id).eq("name", "Wedding (DEMO)").single());
     await page.goto(`/staff/${tenant.slug}/templates/${template!.id}`);
-    await expect(page.getByLabel("Recommended (most popular) package")).toBeVisible();
+    await expect(page.getByTestId("template-package").nth(1)).toContainText("Recommended");
+    await page.getByRole("button", { name: "Edit packages, questions and extras" }).click();
+    await expect(page.getByRole("group", { name: "Recommended package" }).getByRole("radio", { name: "Signature" })).toBeChecked();
     await page.context().close();
   });
 

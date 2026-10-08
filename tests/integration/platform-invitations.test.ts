@@ -49,8 +49,14 @@ async function invite(email: string) {
 }
 
 /** Makes queued emails of an invitation due now (retries back off otherwise). */
+/**
+ * Makes a pending retry due. A minute in the past, not "now": the test's clock
+ * and the database's (Docker VM) clock can differ by tens of milliseconds, and
+ * an immediate claim would then still see the retry as in the future.
+ */
 async function makeDue(invitationId: string) {
-  await must(admin.from("email_outbox").update({ next_attempt_at: new Date().toISOString() }).eq("entity_id", invitationId).eq("status", "pending"));
+  const dueAt = new Date(Date.now() - 60_000).toISOString();
+  await must(admin.from("email_outbox").update({ next_attempt_at: dueAt }).eq("entity_id", invitationId).eq("status", "pending"));
 }
 
 const linkIn = (m: EmailMessage, pattern: RegExp) => pattern.exec(m.text)?.[1] ?? null;

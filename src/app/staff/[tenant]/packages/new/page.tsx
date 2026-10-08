@@ -6,7 +6,7 @@ import { RequestIdField } from "@/components/app/request-id-field";
 import { GuardedCancel, UnsavedGuard } from "@/components/app/unsaved-guard";
 import { requireStaff } from "@/lib/auth/staff";
 import { createPackage } from "../actions";
-import { loadGearChoices } from "../gear-choices";
+import { loadGearChoices } from "@/lib/catalog/gear-choices.server";
 import { IncludedGearEditor } from "../included-gear-editor";
 import { PackageFields } from "../package-fields";
 

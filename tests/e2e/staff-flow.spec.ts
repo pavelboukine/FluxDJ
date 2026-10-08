@@ -236,34 +236,37 @@ test.describe.serial("staff interface", () => {
   });
 
   test("templates: compose three packages, a recommended one, addons and questions", async () => {
-    await page.goto(`/staff/${tenant.slug}/templates`);
+    await page.goto(`/staff/${tenant.slug}/templates/new`);
     await page.getByLabel("Name").fill(`E2E Wedding ${run}`);
-    await page.getByRole("button", { name: "Create template" }).click();
+    await page.getByLabel("Package 1", { exact: true }).selectOption({ label: "Essential · $1,500.00" });
+    await page.getByLabel("Package 2", { exact: true }).selectOption({ label: "Signature · $2,200.00" });
+    await page.getByLabel("Package 3", { exact: true }).selectOption({ label: "Premium · $3,000.00" });
+    await page.getByRole("radio", { name: "Signature" }).check();
+    await page.getByRole("button", { name: `Add ${gearName}` }).click();
+    await page.getByRole("button", { name: "Add DEMO: Where will the ceremony take place?" }).click();
+    await page.getByRole("button", { name: "Add DEMO: Where will cocktail hour take place?" }).click();
+    await page.getByRole("button", { name: "Save template" }).click();
+    await expect(page.getByText("Template created.")).toBeVisible();
     await expect(page.getByRole("heading", { name: `E2E Wedding ${run}` })).toBeVisible();
-    await page.getByLabel("Package 1").selectOption({ label: "Essential ($1,500.00)" });
-    await page.getByLabel("Package 2").selectOption({ label: "Signature ($2,200.00)" });
-    await page.getByLabel("Package 3").selectOption({ label: "Premium ($3,000.00)" });
-    await page.getByLabel("Recommended (most popular) package").selectOption({ label: "Signature ($2,200.00)" });
-    await page.getByRole("checkbox", { name: new RegExp(gearName) }).check();
-    await page.getByRole("checkbox", { name: "DEMO: Where will the ceremony take place?" }).check();
-    await page.getByRole("checkbox", { name: "DEMO: Where will cocktail hour take place?" }).check();
-    await page.getByRole("button", { name: "Save template contents" }).click();
-    await expect(page.getByText("Template saved.")).toBeVisible();
   });
 
   test("questions: create a question and a rule that requires gear", async () => {
-    await page.goto(`/staff/${tenant.slug}/questions`);
-    await page.getByLabel("Question", { exact: true }).fill(`E2E Will there be fog effects? ${run}`);
-    await page.getByLabel("Answer type").selectOption("boolean");
-    await page.getByRole("button", { name: "Create question" }).click();
-    await expect(page.getByRole("heading", { name: `E2E Will there be fog effects? ${run}` })).toBeVisible();
-    await page.getByLabel("When the answer is").selectOption("true");
-    await page.getByLabel("Require gear").selectOption({ label: gearName });
-    await page.getByLabel("Reason shown to the client").fill("Fog effects need a fog machine.");
-    await page.getByRole("button", { name: "Add rule" }).click();
-    await expect(page.getByText(`If answer is yes → require 1 × ${gearName}`)).toBeVisible();
-    await page.getByRole("button", { name: "Archive" }).click();
-    await expect(page.getByRole("button", { name: "Restore" })).toBeVisible();
+    const prompt = `E2E Will there be fog effects? ${run}`;
+    await page.goto(`/staff/${tenant.slug}/questions/new`);
+    await page.getByLabel("Question", { exact: true }).fill(prompt);
+    await page.getByRole("radio", { name: /^Yes \/ no/ }).check();
+    await page.getByRole("button", { name: "Save question" }).click();
+    await expect(page.getByRole("heading", { name: prompt })).toBeVisible();
+    const add = page.getByRole("region", { name: "Add a rule" });
+    await add.getByRole("radio", { name: "Yes", exact: true }).check();
+    const gearValue = await add.getByLabel("Require this gear").locator("option", { hasText: gearName }).getAttribute("value");
+    await add.getByLabel("Require this gear").selectOption(gearValue!);
+    await add.getByLabel("Reason shown to the client").fill("Fog effects need a fog machine.");
+    await add.getByRole("button", { name: "Add rule" }).click();
+    const statement = `When “${prompt}” is Yes, require 1 × ${gearName}.`;
+    await expect(page.getByRole("heading", { name: statement })).toBeVisible();
+    await page.getByRole("button", { name: `Archive rule: ${statement}` }).click();
+    await expect(page.getByRole("button", { name: `Restore rule: ${statement}` })).toBeVisible();
   });
 
   test("every staff page renders", async () => {

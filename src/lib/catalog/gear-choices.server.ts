@@ -4,7 +4,7 @@ import type { StaffContext } from "@/lib/auth/staff";
 /** Gear offered in the package gear picker, at most this many. */
 export const GEAR_CHOICES_LIMIT = 300;
 
-export type GearChoice = { id: string; name: string; unitLabel: string; active: boolean; thumbUrl: string | null };
+export type GearChoice = { id: string; name: string; unitLabel: string; active: boolean; thumbUrl: string | null; taxCategory: string };
 
 /**
  * Gear a package can include: every active item (by name, bounded), plus the
@@ -17,7 +17,7 @@ export async function loadGearChoices({ supabase, tenant }: StaffContext, includ
   const base = () =>
     supabase
       .from("gear_items")
-      .select("id, name, unit_label, active, thumb:gear_media(storage_path)")
+      .select("id, name, unit_label, active, tax_category, thumb:gear_media(storage_path)")
       .eq("tenant_id", tenant.id)
       .eq("thumb.active", true)
       .eq("thumb.kind", "image")
@@ -38,7 +38,7 @@ export async function loadGearChoices({ supabase, tenant }: StaffContext, includ
     : { data: [] as { path: string | null; signedUrl: string }[] };
   const urlFor = new Map((signed ?? []).map((s) => [s.path, s.signedUrl]));
   const choices = [...rows.values()]
-    .map((g) => ({ id: g.id, name: g.name, unitLabel: g.unit_label, active: g.active, thumbUrl: g.thumb[0] ? (urlFor.get(g.thumb[0].storage_path) ?? null) : null }))
+    .map((g) => ({ id: g.id, name: g.name, unitLabel: g.unit_label, active: g.active, taxCategory: g.tax_category, thumbUrl: g.thumb[0] ? (urlFor.get(g.thumb[0].storage_path) ?? null) : null }))
     .sort((a, b) => a.name.localeCompare(b.name));
   return { choices, capped: (active.data?.length ?? 0) >= GEAR_CHOICES_LIMIT };
 }

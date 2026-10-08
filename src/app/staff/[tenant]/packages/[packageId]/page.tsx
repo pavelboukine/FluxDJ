@@ -8,8 +8,9 @@ import { requireStaff } from "@/lib/auth/staff";
 import { UUID_RE } from "@/lib/forms";
 import { formatCents } from "@/lib/money";
 import { savePackageItems, updatePackage } from "../actions";
-import { loadGearChoices, type GearChoice } from "../gear-choices";
-import { GearThumb, IncludedGearEditor } from "../included-gear-editor";
+import { loadGearChoices, type GearChoice } from "@/lib/catalog/gear-choices.server";
+import { GearThumb } from "@/components/app/gear-thumb";
+import { IncludedGearEditor } from "../included-gear-editor";
 import { PackageFields } from "../package-fields";
 import { PackageArchivePanel } from "./package-archive-panel";
 
