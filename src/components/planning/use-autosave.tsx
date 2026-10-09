@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { answersKey } from "@/lib/planning/basics";
 import type { SaveItemResult } from "@/lib/planning/view";
 import { usePlanProgress } from "./progress";
+import { useRegisterSave } from "./save-registry";
 
 export type SaveState = "saved" | "unsaved" | "saving" | "invalid" | "error" | "conflict" | "signed_out" | "unavailable" | "locked";
 type Parsed<A> = { ok: true; answers: A } | { ok: false; field: string; message: string };
@@ -21,6 +22,10 @@ const AUTOSAVE_DELAY_MS = 800;
  * never sent. When the client's planning closes (a save comes back "locked"),
  * the shared plan state turns every editor read-only; unsaved input stays on
  * screen, marked as not saved, and nothing more is sent.
+ *
+ * On the client's page the state is also reported to the save registry, so
+ * section navigation can show it and send a debounced save as soon as the
+ * client moves to another section (the editor itself stays mounted).
  */
 export function useAutosave<F extends Record<string, unknown>, A extends Record<string, unknown>>(opts: {
   initialForm: F;
@@ -52,7 +57,8 @@ export function useAutosave<F extends Record<string, unknown>, A extends Record<
   });
 
   const save = useCallback(async (): Promise<void> => {
-    if (inFlight.current) await inFlight.current;
+    // One save at a time: every waiter rechecks, so two can't start together after the same save.
+    while (inFlight.current) await inFlight.current;
     if (stopped.current) return;
     const { parse, save: send, onSaved } = optsRef.current;
     const parsed = parse(formRef.current);
@@ -122,7 +128,7 @@ export function useAutosave<F extends Record<string, unknown>, A extends Record<
     })();
     inFlight.current = run;
     await run;
-    inFlight.current = null;
+    if (inFlight.current === run) inFlight.current = null;
   }, [plan]);
 
   useEffect(() => {
@@ -149,6 +155,15 @@ export function useAutosave<F extends Record<string, unknown>, A extends Record<
     if (timer.current) clearTimeout(timer.current);
     void save();
   }
+
+  /** Sends a debounced save now; nothing to do when none is waiting. */
+  function flush() {
+    if (!timer.current || saveState !== "unsaved") return;
+    clearTimeout(timer.current);
+    timer.current = null;
+    void save();
+  }
+  useRegisterSave(saveState, flush);
 
   return { form, update, saveState, message, fieldError, retry };
 }

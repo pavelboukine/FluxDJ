@@ -15,7 +15,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { bookEvent, contractualState, must, sessionFor } from "./booking";
-import { admin, signInStaff, signInWithLink } from "./support";
+import { admin, openPlanMoment, openPlanSection, signInStaff, signInWithLink } from "./support";
 import { archiveTestTenant, createTestTenant, type TestTenant } from "./tenant";
 
 let tenant: TestTenant;
@@ -24,10 +24,12 @@ const clientEmail = `e2e-contacts-${run}@example.test`;
 
 const noSideways = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
+/** Opens a staff card unless it is already open. */
 async function openCard(card: Locator): Promise<Locator> {
   if (!(await card.evaluate((el) => (el as HTMLDetailsElement).open))) await card.locator("summary").first().click();
   return card;
 }
+const contactsStatus = (page: Page) => page.locator("#plan-panel-contacts_vendors").getByTestId("section-status");
 
 async function answers(eventId: string, key: string) {
   const { data } = await admin.from("event_plans").select("event_plan_items(id, key)").eq("event_id", eventId).single();
@@ -99,7 +101,7 @@ test.describe.serial("contacts and preferences", () => {
   });
 
   test("the day-of contact reuses an event contact by reference, with a phone for the day; the MC and officiant aren't re-entered", async () => {
-    const card = await openCard(client.getByTestId("section-contacts_vendors"));
+    const card = await openPlanSection(client, "contacts_vendors");
     await expect(card.getByTestId("known-people")).toContainText("MC: Kiara Okafor · kiara@example.test");
     await expect(card.getByTestId("known-people")).toContainText("Officiant: Rev. Sam Park · 514 555-0177");
     await expect(card.getByTestId("known-people")).toContainText("No need to list them again as vendors.");
@@ -129,7 +131,7 @@ test.describe.serial("contacts and preferences", () => {
   });
 
   test("vendors: add with checked phone and email, edit, reorder, remove with undo; a reload keeps the order", async () => {
-    const card = await openCard(client.getByTestId("section-contacts_vendors"));
+    const card = await openPlanSection(client, "contacts_vendors");
     await addVendor(card, async (form) => {
       await form.getByRole("button", { name: "Add", exact: true }).click();
       await expect(form).toContainText("Choose a role.");
@@ -154,7 +156,7 @@ test.describe.serial("contacts and preferences", () => {
     const rows = card.getByTestId("entry-row");
     await expect(rows.nth(1)).toContainText("2. Planner or coordinator: Sasha Roy");
     await expect(rows.nth(1)).toContainText("Shared notes: Cue the DJ for the entrance");
-    await expect(client.getByTestId("section-contacts_vendors").locator("summary").first()).toContainText("Complete");
+    await expect(contactsStatus(client)).toContainText("Complete");
 
     await card.getByRole("button", { name: 'Move "Sasha Roy" up' }).click();
     await card.getByRole("button", { name: 'Edit "String quartet"' }).click();
@@ -167,7 +169,7 @@ test.describe.serial("contacts and preferences", () => {
     await expect(card.getByText("All changes saved")).toBeVisible();
 
     await client.reload();
-    const again = await openCard(client.getByTestId("section-contacts_vendors"));
+    const again = await openPlanSection(client, "contacts_vendors");
     await expect(again.getByTestId("entry-row")).toHaveText([/Planner or coordinator: Sasha Roy/, /Photographer: Lumière Photo/, /Live musician: String quartet/]);
     expect((await answers(eventId, "contacts_vendors"))!.vendors!.map((v) => `${v.role}|${v.name ?? ""}|${v.business ?? ""}|${v.phone ?? ""}|${v.email ?? ""}`)).toEqual([
       "planner|Sasha Roy||514 555 0123|", "photographer||Lumière Photo||hello@lumiere.test", "musician|String quartet||438 555 0100|",
@@ -178,18 +180,18 @@ test.describe.serial("contacts and preferences", () => {
   test("a referenced contact who leaves the event is shown as unavailable and leaves the day-of contact open", async () => {
     await must(admin.from("clients").update({ archived_at: new Date().toISOString() }).eq("id", secondId));
     await client.reload();
-    const card = await openCard(client.getByTestId("section-contacts_vendors"));
+    const card = await openPlanSection(client, "contacts_vendors");
     await expect(card).toContainText("That contact isn't on this event any more. Choose another contact or enter someone.");
     await expect(card.getByLabel("Contact", { exact: true })).toHaveValue(secondId);
-    await expect(client.getByTestId("section-contacts_vendors").locator("summary").first()).toContainText("In progress");
+    await expect(contactsStatus(client)).toContainText("still needed");
     await must(admin.from("clients").update({ archived_at: null }).eq("id", secondId));
     await client.reload();
-    await expect(client.getByTestId("section-contacts_vendors").locator("summary").first()).toContainText("Complete");
+    await expect(contactsStatus(client)).toContainText("Complete");
   });
 
   test("DJ expectations read the announcement language from Event basics; discuss stays open", async () => {
-    const card = await openCard(client.getByTestId("section-dj_preferences"));
-    await expect(card.getByTestId("language-from-basics")).toContainText("Not set yet: choose it in Event basics above.");
+    const card = await openPlanSection(client, "dj_preferences");
+    await expect(card.getByTestId("language-from-basics")).toContainText("Not set yet: choose it in Event basics.");
     await card.getByLabel("Interactive: get the crowd going").check();
     await card.getByLabel("Clean versions only").check();
     await card.getByLabel(`Not sure yet, discuss with ${tenant.displayName}`).last().check();
@@ -198,8 +200,11 @@ test.describe.serial("contacts and preferences", () => {
     await expect(card).toContainText("2 of 4 needed answers");
     await expect(card).toContainText(`Discuss with ${tenant.displayName} (still open)`);
 
-    await client.getByTestId("section-basics").getByLabel("Language for announcements (optional)").selectOption({ label: "Bilingual (French and English)" });
-    await expect(client.getByTestId("section-basics").getByText("All changes saved")).toBeVisible();
+    // Another section's answer reaches this one (it stays mounted while hidden).
+    const basics = await openPlanSection(client, "basics");
+    await basics.getByLabel("Language for announcements (optional)").selectOption({ label: "Bilingual (French and English)" });
+    await expect(basics.getByText("All changes saved")).toBeVisible();
+    await openPlanSection(client, "dj_preferences");
     await expect(card.getByTestId("language-from-basics")).toContainText("Bilingual (French and English), from Event basics.");
     await expect(card).toContainText("3 of 4 needed answers");
     await card.getByLabel("Guests may request songs (never anything on Do not play)").check();
@@ -209,8 +214,8 @@ test.describe.serial("contacts and preferences", () => {
   });
 
   test("music preferences: styles or DJ's choice and slow songs; typing during saves, failed saves and stale tabs keep answers", async () => {
-    const stage = await openCard(client.getByTestId("stage-party"));
-    const card = await openCard(stage.getByTestId("moment-music_preferences"));
+    const card = await openPlanMoment(client, "party", "music_preferences");
+    const stage = client.getByTestId("stage-party");
     await card.getByLabel("Pop", { exact: true }).check();
     await card.getByLabel("Rock", { exact: true }).check();
     await card.getByLabel("Other style (optional)").fill("Afrobeats");
@@ -221,7 +226,7 @@ test.describe.serial("contacts and preferences", () => {
 
     let release = () => {};
     let held = false;
-    await client.route(`**${planningUrl}`, async (route) => {
+    await client.route(`**${planningUrl}*`, async (route) => {
       if (!held && route.request().method() === "POST" && route.request().headers()["next-action"]) {
         held = true;
         await new Promise<void>((resolve) => (release = resolve));
@@ -233,24 +238,24 @@ test.describe.serial("contacts and preferences", () => {
     await card.getByLabel("Favourite artists (optional)").fill("Daft Punk, Beyoncé");
     release();
     await expect(card.getByText("All changes saved")).toBeVisible();
-    await client.unroute(`**${planningUrl}`);
+    await client.unroute(`**${planningUrl}*`);
     await expect.poll(async () => await answers(eventId, "music_preferences")).toEqual({
       genres: ["pop", "rock", "disco_funk"], other_style: "Afrobeats", slow_songs: "a_few", favorite_artists: "Daft Punk, Beyoncé",
     });
 
-    await client.route(`**${planningUrl}`, (route) =>
+    await client.route(`**${planningUrl}*`, (route) =>
       route.request().method() === "POST" && route.request().headers()["next-action"] ? route.abort() : route.continue(),
     );
     await card.getByLabel("Dance-floor atmosphere (optional)").fill("Peak late");
     await expect(card.getByRole("alert")).toContainText("Couldn't save. Check your connection and retry.");
     await expect(card.getByLabel("Dance-floor atmosphere (optional)")).toHaveValue("Peak late");
-    await client.unroute(`**${planningUrl}`);
+    await client.unroute(`**${planningUrl}*`);
     await card.getByRole("button", { name: "Retry saving" }).click();
     await expect(card.getByText("All changes saved")).toBeVisible();
 
     const other = await clientContext.newPage();
     await other.goto(planningUrl);
-    const otherCard = await openCard((await openCard(other.getByTestId("stage-party"))).getByTestId("moment-music_preferences"));
+    const otherCard = await openPlanMoment(other, "party", "music_preferences");
     await card.getByLabel("Latin", { exact: true }).check();
     await expect(card.getByText("All changes saved")).toBeVisible();
     await otherCard.getByLabel("Country", { exact: true }).check();
@@ -277,7 +282,7 @@ test.describe.serial("contacts and preferences", () => {
     await staff.getByRole("button", { name: "Restore Contacts and vendors", exact: true }).click();
     await expect(staff.getByRole("button", { name: "Hide Contacts and vendors from the client", exact: true })).toBeVisible();
     await client.reload();
-    const back = await openCard(client.getByTestId("section-contacts_vendors"));
+    const back = await openPlanSection(client, "contacts_vendors");
     await expect(back.getByTestId("entry-row")).toHaveCount(3);
     await expect(client.locator("body")).not.toContainText("E2E INTERNAL NOTE");
     await expect(client.locator("body")).not.toContainText("E2E-PAYMENT-REF-SECRET");

@@ -215,7 +215,7 @@ export function PreferencesEditor(props: Common<PreferencesAnswers>) {
         <div className="grid gap-1 text-sm" data-testid="language-from-basics">
           <p className="font-medium">Announcement language (needed)</p>
           <p className={language ? "" : "text-amber-700 dark:text-amber-400"}>
-            {language ? `${language}, from Event basics.` : "Not set yet: choose it in Event basics above."}
+            {language ? `${language}, from Event basics.` : "Not set yet: choose it in Event basics."}
           </p>
           <p className="text-xs text-muted-foreground">It is kept in one place, Event basics, so it never disagrees.</p>
         </div>

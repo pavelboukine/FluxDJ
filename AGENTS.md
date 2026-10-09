@@ -30,6 +30,8 @@ Full commands and rationale: README, "Day-to-day testing". In short:
   and never rerun a spec only for screenshots or timings: failures keep screenshots
   and traces in `test-results/`, and `E2E_SCREENSHOTS=1` keeps one for every test in
   a run.
+- Don't take screenshots or create screenshot deliverables unless the task asks for
+  them; the automatic failure screenshots stay enabled.
 - New browser specs sign in with `signInStaff`, `signInWithLink` or
   `verifyContractInvitation` from `tests/e2e/support.ts`, never through the `/login`
   or invitation forms. Those forms and their per-IP limits belong to `staff-flow` and

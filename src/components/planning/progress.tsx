@@ -70,12 +70,12 @@ export function EditingNotice({ djName }: { djName: string }) {
       role={closed ? "alert" : "status"}
       data-testid="editing-notice"
       data-state={e.state}
-      className={closed ? "grid gap-1 rounded-xl border border-amber-500/60 bg-amber-500/10 p-4 text-sm" : "grid gap-1 rounded-xl border p-4 text-sm"}
+      className={closed ? "grid gap-1 rounded-xl border border-amber-500/60 bg-amber-500/10 p-4 text-sm" : "grid gap-1 rounded-xl border bg-card p-4 text-sm"}
     >
       <p className={closed ? "font-medium" : undefined}>{clientEditingText(e, djName)}</p>
       {closed ? (
         <p className="text-muted-foreground">
-          The planning deadline was {formatInstant(e.deadline, e.timezone)}. Everything you saved is below.
+          The planning deadline was {formatInstant(e.deadline, e.timezone)}. You can still open every section to see what was saved.
         </p>
       ) : null}
     </section>

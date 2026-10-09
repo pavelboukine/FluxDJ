@@ -19,7 +19,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { bookEvent, contractualState, must, sessionFor } from "./booking";
-import { admin, signInStaff, signInWithLink } from "./support";
+import { admin, openPlanMoment, openPlanSection, signInStaff, signInWithLink } from "./support";
 import { archiveTestTenant, createTestTenant, type TestTenant } from "./tenant";
 
 let tenant: TestTenant;
@@ -28,12 +28,9 @@ const clientEmail = `e2e-music-${run}@example.test`;
 
 const noSideways = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
-/** Opens a stage card and one of its moment cards (unless already open); returns the moment's song editor. */
+/** Opens a moment's card in its stage's section (unless already open); returns the moment's song editor. */
 async function openMoment(page: Page, stageKey: string, momentKey: string): Promise<Locator> {
-  for (const card of [page.getByTestId(`stage-${stageKey}`), page.getByTestId(`moment-${momentKey}`)]) {
-    if (!(await card.evaluate((el) => (el as HTMLDetailsElement).open))) await card.locator("summary").first().click();
-  }
-  return page.getByTestId(`music-${momentKey}`);
+  return (await openPlanMoment(page, stageKey, momentKey)).getByTestId(`music-${momentKey}`);
 }
 
 /** Fills the "Add a song" form of an editor and adds the song. */
@@ -232,7 +229,7 @@ test.describe.serial("songs in planning", () => {
     await expect(final.getByText("All changes saved")).toBeVisible();
     await expect(final).toContainText(`Discuss with ${tenant.displayName} (still open)`);
     await expect(client.getByTestId("moment-final_song")).toContainText("In progress");
-    await expect(client.getByText(/1 detail is marked "discuss with DJ" and still open/)).toBeVisible();
+    await expect(client.locator("#plan-panel-closing").getByTestId("section-status")).toContainText("1 to discuss");
 
     // DJ's choice and not applicable count; discuss stays open.
     await expect(headline).toHaveText(new RegExp(`^${before + 2} of \\d+ required answers$`));
@@ -266,7 +263,7 @@ test.describe.serial("songs in planning", () => {
     const first = await openMoment(client, "special_dances", "first_dance");
     let release = () => {};
     let held = false;
-    await client.route(`**${planningUrl}`, async (route) => {
+    await client.route(`**${planningUrl}*`, async (route) => {
       if (!held && route.request().method() === "POST" && route.request().headers()["next-action"]) {
         held = true;
         await new Promise<void>((resolve) => (release = resolve));
@@ -279,15 +276,15 @@ test.describe.serial("songs in planning", () => {
     release();
     await expect(first.getByText("All changes saved")).toBeVisible();
     await expect.poll(async () => (await responses(eventId, "first_dance"))?.answers.songs?.map((s) => s.title)).toEqual(["At Last", "Perfect"]);
-    await client.unroute(`**${planningUrl}`);
+    await client.unroute(`**${planningUrl}*`);
 
-    await client.route(`**${planningUrl}`, (route) =>
+    await client.route(`**${planningUrl}*`, (route) =>
       route.request().method() === "POST" && route.request().headers()["next-action"] ? route.abort() : route.continue(),
     );
     await first.getByRole("button", { name: 'Move "Perfect" up' }).click();
     await expect(first.getByRole("alert")).toContainText("Couldn't save. Check your connection and retry. Your answers are still here.");
     await expect(rows(first)).toHaveText([/Perfect/, /At Last/]);
-    await client.unroute(`**${planningUrl}`);
+    await client.unroute(`**${planningUrl}*`);
     await first.getByRole("button", { name: "Retry saving" }).click();
     await expect(first.getByText("All changes saved")).toBeVisible();
     expect((await responses(eventId, "first_dance"))!.answers.songs!.map((s) => s.title)).toEqual(["Perfect", "At Last"]);
@@ -320,7 +317,7 @@ test.describe.serial("songs in planning", () => {
     await staff.getByRole("button", { name: "Hide Must play from the client", exact: true }).click();
     await expect(staff.getByRole("button", { name: "Restore Must play", exact: true })).toBeVisible();
     await client.reload();
-    await client.getByTestId("stage-party").locator("summary").first().click();
+    await openPlanSection(client, "party");
     await expect(client.getByTestId("moment-must_play")).toHaveCount(0);
     expect((await responses(eventId, "must_play"))!.answers.songs).toHaveLength(2);
     await staff.getByRole("button", { name: "Restore Must play", exact: true }).click();

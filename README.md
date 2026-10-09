@@ -875,6 +875,8 @@ reserved for release checkpoints.
    deferred; targeted checks are not a full regression pass.
 4. Keep failure exit codes and useful output, and don't rerun passing,
    unchanged tests (for example only to collect screenshots).
+5. Don't take screenshots or produce screenshot deliverables for a task
+   unless it asks for them. The automatic failure screenshots stay on.
 
 Most browser specs are `describe.serial`: later tests build on earlier ones.
 Selecting a single test that depends on earlier ones (by line or `-g`) skips

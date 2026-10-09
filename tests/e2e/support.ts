@@ -107,3 +107,31 @@ export async function verifyContractInvitation(page: Page, invitationUrl: string
   await signInWithLink(page, signerEmail, `/${slug}/invitations/${link.id}`);
   await page.waitForURL(`**/${slug}/invitations/${link.id}`);
 }
+
+/**
+ * Opens a section of the client's planning page (a library key, or null for
+ * the overview) the way a client does: the navigation column on wide
+ * screens, the section picker on phones. Returns the section's panel.
+ */
+export async function openPlanSection(page: Page, key: string | null) {
+  const view = key ?? "overview";
+  const panel = page.locator(`#plan-panel-${view}`);
+  if (await panel.isVisible()) return panel;
+  const picker = page.getByTestId("section-picker");
+  if (await picker.isVisible()) {
+    if (!(await picker.evaluate((el) => (el as HTMLDetailsElement).open))) await picker.locator("summary").first().click();
+    await picker.getByTestId(`nav-${view}`).click();
+  } else {
+    await page.getByRole("navigation", { name: "Planning sections" }).getByTestId(`nav-${view}`).click();
+  }
+  await expect(panel).toBeVisible();
+  return panel;
+}
+
+/** Opens a moment's card within its stage's section; returns the card. */
+export async function openPlanMoment(page: Page, stageKey: string, momentKey: string) {
+  const panel = await openPlanSection(page, stageKey);
+  const card = panel.getByTestId(`moment-${momentKey}`);
+  if (!(await card.evaluate((el) => (el as HTMLDetailsElement).open))) await card.locator("summary").first().click();
+  return card;
+}

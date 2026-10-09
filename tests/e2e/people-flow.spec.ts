@@ -16,7 +16,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { bookEvent, contractualState, must, sessionFor } from "./booking";
-import { admin, signInStaff, signInWithLink } from "./support";
+import { admin, openPlanMoment, signInStaff, signInWithLink } from "./support";
 import { archiveTestTenant, createTestTenant, type TestTenant } from "./tenant";
 
 let tenant: TestTenant;
@@ -25,8 +25,9 @@ const clientEmail = `e2e-people-${run}@example.test`;
 
 const noSideways = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
-/** Opens a stage card and one of its moment cards (unless already open); returns the moment's card. */
+/** Opens a moment's card: on the client's page through its stage's section, on the staff page its stage card first. */
 async function openMoment(page: Page, stageKey: string, momentKey: string, root: Page | Locator = page): Promise<Locator> {
+  if (root === page) return openPlanMoment(page, stageKey, momentKey);
   const stage = root.getByTestId(new RegExp(`^(staff-)?stage-${stageKey}$`));
   const moment = stage.getByTestId(`moment-${momentKey}`);
   for (const card of [stage, moment]) {
@@ -306,7 +307,7 @@ test.describe.serial("people in planning", () => {
     // Edits typed while a save is pending survive.
     let release = () => {};
     let held = false;
-    await client.route(`**${planningUrl}`, async (route) => {
+    await client.route(`**${planningUrl}*`, async (route) => {
       if (!held && route.request().method() === "POST" && route.request().headers()["next-action"]) {
         held = true;
         await new Promise<void>((resolve) => (release = resolve));
@@ -321,18 +322,18 @@ test.describe.serial("people in planning", () => {
     await leo.getByRole("checkbox", { name: /Next day/ }).check();
     release();
     await expect(card.getByText("All changes saved")).toBeVisible();
-    await client.unroute(`**${planningUrl}`);
+    await client.unroute(`**${planningUrl}*`);
     await expect.poll(async () => (await answers(eventId, "speeches"))!.entries![2]).toMatchObject({ timing: "time", time: "00:30", next_day: true });
     await expect(card).toContainText("Speeches and toasts is complete.");
     await expect(leo).toContainText("At 00:30 (next day, Sun, Aug 15)");
 
     // A failed save keeps the edit and retries.
-    await client.route(`**${planningUrl}`, (route) =>
+    await client.route(`**${planningUrl}*`, (route) =>
       route.request().method() === "POST" && route.request().headers()["next-action"] ? route.abort() : route.continue(),
     );
     await card.getByRole("button", { name: 'Move "Uncle Leo" up' }).click();
     await expect(card.getByRole("alert")).toContainText("Couldn't save. Check your connection and retry.");
-    await client.unroute(`**${planningUrl}`);
+    await client.unroute(`**${planningUrl}*`);
     await card.getByRole("button", { name: "Retry saving" }).click();
     await expect(card.getByText("All changes saved")).toBeVisible();
     expect((await answers(eventId, "speeches"))!.entries!.map((e) => e.speaker)).toEqual(["Dana Dubois", "Uncle Leo", "Priya Raman"]);

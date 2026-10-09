@@ -22,7 +22,7 @@ import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import { bookEvent, contractualState, must, sessionFor } from "./booking";
-import { admin, signInStaff, signInWithLink } from "./support";
+import { admin, openPlanSection, signInStaff, signInWithLink } from "./support";
 import { archiveTestTenant, createTestTenant, type TestTenant } from "./tenant";
 
 let tenant: TestTenant;
@@ -107,6 +107,8 @@ test.describe.serial("planning cutoff and reopening", () => {
     // 2027-08-14 minus 14 days, at 00:00 in Toronto.
     await expect(notice).toContainText("You can make changes until Saturday, July 31, 2027");
     await expect(notice).toContainText(/12:00\sa\.m\. EDT \(America\/Toronto\)/);
+    await expect(client.getByTestId("editing-chip")).toHaveText("Planning open");
+    await openPlanSection(client, "basics");
     await client.getByLabel("Guest count (needed)").fill("150");
     await expect.poll(async () => (await basicsAnswers(eventId))?.answers).toMatchObject({ guest_count: 150 });
     await expect(client.getByTestId("section-basics").getByText("All changes saved")).toBeVisible();
@@ -121,16 +123,24 @@ test.describe.serial("planning cutoff and reopening", () => {
     await expect(client.getByTestId("editing-notice")).toContainText("Planning is read-only. Contact your DJ for changes.");
     await expect(client.getByLabel("Guest count (needed)")).toHaveValue("175");
     await expect(client.getByLabel("Guest count (needed)")).toBeDisabled();
-    // Another editor on the page turned read-only too (shared state).
-    const ceremony = client.getByTestId("stage-ceremony");
-    await ceremony.locator("summary").first().click();
+    await expect(client.getByTestId("editing-chip")).toHaveText("Read-only");
+    // Another section's editors turned read-only too (shared state); the rejected edit is flagged, never shown as saved.
+    const ceremony = await openPlanSection(client, "ceremony");
     await expect(ceremony.locator("input").first()).toBeDisabled();
+    await expect(client.getByTestId("section-picker").getByTestId("nav-basics")).toContainText("Not saved");
+    await expect(client.getByTestId("unsaved-elsewhere")).toContainText("Open Event basics");
     expect((await basicsAnswers(eventId))!.answers).toMatchObject({ guest_count: 150 });
 
-    await client.reload();
+    // Read-only planning stays browsable: every section opens, and the overview offers "View planning".
+    await client.goto(planningUrl);
     await expect(client.getByTestId("editing-notice")).toContainText("Planning is read-only. Contact your DJ for changes.");
+    await expect(client.getByTestId("plan-primary")).toHaveText("View planning");
+    await client.getByTestId("plan-primary").click();
     await expect(client.getByLabel("Guest count (needed)")).toHaveValue("150");
     await expect(client.getByLabel("Guest count (needed)")).toBeDisabled();
+    await openPlanSection(client, "party");
+    await expect(client.locator("#plan-panel-party input").first()).toBeDisabled();
+    await openPlanSection(client, "basics");
     expect(await noSideways(client)).toBeLessThanOrEqual(0);
   });
 
@@ -161,7 +171,8 @@ test.describe.serial("planning cutoff and reopening", () => {
     await client.reload();
     const notice = client.getByTestId("editing-notice");
     await expect(notice).toHaveAttribute("data-state", "reopened");
-    await expect(notice).toContainText("reopened planning for you. You can make changes until");
+    await expect(notice).toContainText(/reopened planning for you\. You can make changes until .+ \(America\/Toronto\)\./);
+    await expect(client.getByTestId("editing-chip")).toHaveText("Reopened");
     await client.getByLabel("Guest count (needed)").fill("165");
     await expect.poll(async () => (await basicsAnswers(eventId))?.answers).toMatchObject({ guest_count: 165 });
     await expect(client.getByTestId("section-basics").getByText("All changes saved")).toBeVisible();
