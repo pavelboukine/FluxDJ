@@ -13,7 +13,7 @@ import type { PricedSelection } from "@/lib/pricing";
 import { LoadedContractCard } from "../../contracts/contract-card";
 import { reviseProposal } from "../actions";
 import { ApprovePanel } from "./approve-panel";
-import { loadPreview } from "./load";
+import { loadPreview, staffMediaBase } from "./load";
 
 const EMAIL_LABEL: Record<string, string> = {
   proposal_sent: "Proposal email to client",
@@ -161,14 +161,14 @@ export async function SentProposalView({ staff, slug, proposalId }: { staff: Sta
           ) : null}
         </div>
 
-        <Card className="content-start">
+        <Card className="content-start lg:sticky lg:top-4 lg:self-start">
           <CardHeader>
             <CardTitle>Frozen offer</CardTitle>
             <CardDescription>Exactly what the client received. Catalog changes do not affect it.</CardDescription>
           </CardHeader>
           <CardContent>
             {preview.ok ? (
-              <ProposalPreview offer={preview.offer} mediaUrls={preview.mediaUrls} logo={preview.logo} event={event} />
+              <ProposalPreview offer={preview.offer} mediaBase={staffMediaBase(slug, p.id)} logo={preview.logo} event={event} contained />
             ) : (
               <p className="text-sm">{preview.message}</p>
             )}

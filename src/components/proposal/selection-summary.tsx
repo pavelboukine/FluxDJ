@@ -1,5 +1,6 @@
 import type { OfferSnapshot, PricedSelection } from "@/lib/pricing";
 import { formatCents } from "@/lib/money";
+import { PriceLines } from "./price-summary";
 
 function answerLabel(offer: OfferSnapshot, key: string, value: unknown): string {
   const question = offer.questions.find((q) => q.key === key);
@@ -9,16 +10,21 @@ function answerLabel(offer: OfferSnapshot, key: string, value: unknown): string 
   return label(value);
 }
 
-/** The exact submitted selection: package, extras, required gear, answers and totals. */
-export function SelectionSummary({ offer, selection }: { offer: OfferSnapshot; selection: PricedSelection }) {
+/**
+ * A priced selection, read-only: package and included equipment, equipment
+ * the answers require, extras, answers and the price. Used for the client's
+ * review step, the submitted proposal and the staff's view of a submission.
+ */
+export function SelectionSummary({ offer, selection, headingLevel = 3 }: { offer: OfferSnapshot; selection: PricedSelection; headingLevel?: 2 | 3 }) {
+  const Heading = headingLevel === 2 ? "h2" : "h3";
   const money = (cents: number) => formatCents(cents, selection.currency);
   const pkg = offer.packages.find((p) => p.key === selection.package_key);
-  const charged = selection.lines.filter((l) => l.line_total_cents > 0);
   const included = selection.lines.filter((l) => l.source === "included");
+  const extras = selection.lines.filter((l) => l.source === "optional");
   return (
-    <div className="grid gap-4 text-sm">
+    <div className="grid gap-5 text-sm">
       <section className="grid gap-1">
-        <h3 className="font-semibold">Package</h3>
+        <Heading className="font-semibold">Package</Heading>
         <p>
           {pkg?.name ?? selection.package_key} · {pkg ? money(pkg.base_price_cents) : null}
         </p>
@@ -32,7 +38,7 @@ export function SelectionSummary({ offer, selection }: { offer: OfferSnapshot; s
       </section>
       {selection.requirements.length > 0 ? (
         <section className="grid gap-1">
-          <h3 className="font-semibold">Required gear</h3>
+          <Heading className="font-semibold">Required gear</Heading>
           <ul className="grid gap-1">
             {selection.requirements.map((r) => (
               <li key={r.gear_key}>
@@ -48,35 +54,32 @@ export function SelectionSummary({ offer, selection }: { offer: OfferSnapshot; s
           </ul>
         </section>
       ) : null}
+      {extras.length > 0 ? (
+        <section className="grid gap-1">
+          <Heading className="font-semibold">Extras</Heading>
+          <ul>
+            {extras.map((l) => (
+              <li key={l.item_key}>
+                {l.quantity} × {l.name}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
       <section className="grid gap-1">
-        <h3 className="font-semibold">Answers</h3>
-        <dl className="grid gap-1">
+        <Heading className="font-semibold">Answers</Heading>
+        <dl className="grid gap-2">
           {offer.questions.map((q) => (
-            <div key={q.key} className="grid gap-0.5 sm:grid-cols-[1fr_auto] sm:gap-3">
+            <div key={q.key} className="grid gap-0.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] sm:gap-3">
               <dt className="text-muted-foreground">{q.prompt}</dt>
-              <dd>{q.key in selection.logistics_answers ? answerLabel(offer, q.key, selection.logistics_answers[q.key]) : "—"}</dd>
+              <dd className="break-words whitespace-pre-line">{q.key in selection.logistics_answers ? answerLabel(offer, q.key, selection.logistics_answers[q.key]) : "—"}</dd>
             </div>
           ))}
         </dl>
       </section>
-      <section className="grid gap-1">
-        <h3 className="font-semibold">Total</h3>
-        <ul className="grid gap-1">
-          {charged.map((l) => (
-            <li key={`${l.source}-${l.item_key}`} className="flex justify-between gap-2">
-              <span>
-                {l.source === "package" ? `${l.name} package` : `${l.quantity} × ${l.name}`}
-                {l.source === "required" ? <span className="text-muted-foreground"> (required)</span> : null}
-              </span>
-              <span className="tabular-nums">{money(l.line_total_cents)}</span>
-            </li>
-          ))}
-          <li className="flex justify-between gap-2 border-t pt-1"><span>Subtotal</span><span className="tabular-nums">{money(selection.subtotal_cents)}</span></li>
-          {selection.tax_breakdown.filter((t) => t.amount_cents > 0).map((t) => (
-            <li key={t.code} className="flex justify-between gap-2 text-muted-foreground"><span>{t.label}</span><span className="tabular-nums">{money(t.amount_cents)}</span></li>
-          ))}
-          <li className="flex justify-between gap-2 border-t pt-1 text-base font-semibold"><span>Total</span><span className="tabular-nums">{money(selection.total_cents)}</span></li>
-        </ul>
+      <section className="grid gap-2">
+        <Heading className="font-semibold">Total</Heading>
+        <PriceLines priced={selection} />
       </section>
     </div>
   );

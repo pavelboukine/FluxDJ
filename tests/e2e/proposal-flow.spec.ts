@@ -95,7 +95,7 @@ test.describe.serial("send, open, edit, submit, approve", () => {
     await expect(client.getByRole("heading", { name: eventTitle })).toBeVisible();
     await expect(client.getByText(tenant.displayName, { exact: true }).first()).toBeVisible();
     // The DJ's recommended selections are preselected.
-    await expect(client.getByRole("button", { name: /^Signature Most popular/ })).toHaveAttribute("aria-pressed", "true");
+    await expect(client.getByRole("radio", { name: /^Signature/ })).toBeChecked();
     await expect(client.getByRole("group", { name: "Uplights (pack of 4) quantity" })).toContainText("1");
     await expect(client.locator("body")).not.toContainText(`E2E internal note ${run}`);
 
@@ -127,7 +127,7 @@ test.describe.serial("send, open, edit, submit, approve", () => {
       await route.fulfill({ response });
     });
     await client.getByRole("button", { name: "More Uplights (pack of 4)" }).click();
-    await expect(client.getByText("Saving…")).toBeVisible();
+    await expect(client.locator("#price-summary").getByText("Saving…")).toBeVisible();
     const notes = client.getByRole("textbox", { name: /venue/i });
     await notes.fill("Loading dock behind the kitchen");
     release();
@@ -174,7 +174,9 @@ test.describe.serial("send, open, edit, submit, approve", () => {
 
   test("a double-clicked submit creates exactly one submission and never says booked", async () => {
     const before = Date.now();
-    await client.getByRole("button", { name: `Submit for ${tenant.displayName} to review` }).dblclick();
+    await client.getByRole("button", { name: "Review proposal" }).click();
+    await expect(client.getByRole("heading", { name: "Review your choices" })).toBeVisible();
+    await client.getByRole("button", { name: "Submit proposal" }).dblclick();
     await expect(client.getByText("Submitted for DJ review.")).toBeVisible();
     await expect(client.locator("body")).not.toContainText(/booking (is )?confirmed|you're booked|booked!/i);
     const { data: proposal } = await admin.from("proposals").select("id, status").eq("event_id", eventId).eq("status", "submitted").single();
@@ -259,7 +261,8 @@ test.describe.serial("send, open, edit, submit, approve", () => {
     await expect(client.getByText("All changes saved")).toBeVisible();
     const proposalId = clientProposalUrl.split("/").pop()!;
     await admin.from("proposals").update({ expires_at: new Date(Date.now() - 60_000).toISOString() }).eq("id", proposalId);
-    await client.getByRole("button", { name: `Submit for ${tenant.displayName} to review` }).click();
+    await client.getByRole("button", { name: "Review proposal" }).click();
+    await client.getByRole("button", { name: "Submit proposal" }).click();
     await expect(client.getByText(/This proposal has expired/)).toBeVisible();
     const { count } = await admin.from("proposal_selections").select("id", { count: "exact", head: true }).eq("proposal_id", proposalId);
     expect(count).toBe(0);

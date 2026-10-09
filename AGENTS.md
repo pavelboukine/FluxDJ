@@ -16,11 +16,20 @@ Full commands and rationale: README, "Day-to-day testing". In short:
   (`pnpm test:e2e tests/e2e/<spec>.ts:<line>`) or one spec, one integration file
   (`pnpm test:integration tests/integration/<file>.test.ts`), `pnpm test:unit`,
   `pnpm db:test` for SQL. After a fix, rerun only what failed (`pnpm test:e2e --last-failed`).
-- Run the affected suites once the feature is stable, and `pnpm check` once before
-  delivery or deployment. Don't repeat broad suites without new changes or an
-  unresolved failure, and never rerun a spec only for screenshots or timings:
-  failures keep screenshots and traces in `test-results/`, and `E2E_SCREENSHOTS=1`
-  keeps one for every test in a run.
+- Individual tasks get focused verification only: `pnpm lint`, `pnpm typecheck`, the
+  affected unit tests, and specifically chosen browser/integration specs (or pgTAP
+  for SQL). If a serial browser spec needs its earlier tests, run that whole spec,
+  not the suite. Add other specs only when a shared change creates a concrete risk,
+  and say why.
+- Do not run `pnpm check`, the unfiltered `pnpm test:e2e` (≈ 20 min) or
+  `pnpm test:integration`, or a local `pnpm build`, unless the user explicitly asks
+  for a release checkpoint or the change is broad enough to genuinely need it.
+  Always report which broad suites were deferred, and never describe targeted
+  checks as a full regression pass.
+- Keep failure exit codes and useful output. Don't repeat passing, unchanged tests,
+  and never rerun a spec only for screenshots or timings: failures keep screenshots
+  and traces in `test-results/`, and `E2E_SCREENSHOTS=1` keeps one for every test in
+  a run.
 - New browser specs sign in with `signInStaff`, `signInWithLink` or
   `verifyContractInvitation` from `tests/e2e/support.ts`, never through the `/login`
   or invitation forms. Those forms and their per-IP limits belong to `staff-flow` and
@@ -32,7 +41,7 @@ Full commands and rationale: README, "Day-to-day testing". In short:
 - Keep Playwright at one worker.
 - Long runs: redirect output to a file and read that file while the run continues.
   Don't pipe through `tail` (it shows nothing until the end) or through `grep`/`tee`
-  without `pipefail` (it hides failures). Full browser suite ≈ 3.5 min, integration
+  without `pipefail` (it hides failures). Full browser suite ≈ 20 min, integration
   ≈ 1–2 min, pgTAP ≈ 12 s: check progress every 30–60 s and schedule no fallback
   wakeup much longer than the expected run time.
 - `pnpm build` is safe while `pnpm dev` runs (separate `.next/dev` output).

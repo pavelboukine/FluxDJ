@@ -845,7 +845,8 @@ to `.next`, and a build's cleanup keeps `.next/dev`. Run the build with
 
 ### Day-to-day testing
 
-Run the smallest check that covers the change, and the whole suite once.
+Run the smallest check that covers the change. Full regression runs are
+reserved for release checkpoints.
 
 | While you… | Run |
 |---|---|
@@ -857,13 +858,23 @@ Run the smallest check that covers the change, and the whole suite once.
 | Change server code with integration tests | `pnpm test:integration tests/integration/planning.test.ts`, or `pnpm test:integration --changed` |
 | Change SQL | `pnpm db:test` (pgTAP, about 12 seconds) and `pnpm db:lint` |
 | Restarted local Supabase | `pnpm db:versions` (local must match the hosted versions) |
-| Are about to deliver or deploy | `pnpm check` once, then `pnpm build` |
+| Finish an individual task | `pnpm lint`, `pnpm typecheck`, affected unit tests and the specifically affected browser/integration specs |
+| Reach an explicitly requested release checkpoint | `pnpm check` once, then `pnpm build` |
 
 1. Run targeted tests during implementation, and rerun only the failing
    test after each fix.
-2. Run the affected suites once the feature is stable.
-3. Run `pnpm check` once before delivery or deployment. Repeat broad checks
-   only after further changes or for an unresolved failure.
+2. When an individual task is stable, run lint, typecheck, the affected
+   unit tests and the specs that cover the change. If a serial browser spec
+   needs its earlier tests, run that whole spec, not the suite. Add other
+   specs only when a shared change creates a concrete additional risk, and
+   say why.
+3. Don't run `pnpm check`, the unfiltered browser suite (about 20 minutes)
+   or integration suite, or a local `pnpm build` for an individual task.
+   Those are for an explicitly requested release checkpoint, or a change
+   broad enough to genuinely need them. Report which broad suites were
+   deferred; targeted checks are not a full regression pass.
+4. Keep failure exit codes and useful output, and don't rerun passing,
+   unchanged tests (for example only to collect screenshots).
 
 Most browser specs are `describe.serial`: later tests build on earlier ones.
 Selecting a single test that depends on earlier ones (by line or `-g`) skips
@@ -906,7 +917,7 @@ contract's job.
 Keep `workers: 1`. Specs share the per-IP limits, Mailpit and the dev server,
 so parallel runs would trade a little time for flaky failures.
 
-**Long runs and logs.** A full browser run takes about 3.5 minutes. To keep a
+**Long runs and logs.** A full browser run takes about 20 minutes. To keep a
 log, redirect to a file and read it while it runs, rather than piping through
 `tail` (which shows nothing until the end):
 

@@ -38,7 +38,10 @@ const nextConfig: NextConfig = {
     return [
       { source: "/:tenant/p", headers: privatePageHeaders },
       { source: "/:tenant/p/exchange", headers: privatePageHeaders },
-      { source: "/:tenant/proposals/:path*", headers: privatePageHeaders },
+      { source: "/:tenant/proposals/:proposalId", headers: privatePageHeaders },
+      // Proposal photos: private like the page, but the media route sets its own
+      // Cache-Control (private, one hour, then revalidated with an access check).
+      { source: "/:tenant/proposals/:proposalId/media/:path*", headers: privatePageHeaders.filter((h) => h.key !== "Cache-Control") },
       { source: "/:tenant/invite", headers: clientFormPageHeaders },
       { source: "/:tenant/invitations/:path*", headers: clientFormPageHeaders },
       { source: "/:tenant/contracts/:path*", headers: clientFormPageHeaders },

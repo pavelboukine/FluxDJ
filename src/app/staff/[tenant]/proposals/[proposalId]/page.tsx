@@ -11,7 +11,7 @@ import { TaxSetupLink } from "@/components/app/tax-setup-link";
 import { requireStaff } from "@/lib/auth/staff";
 import { formatCents } from "@/lib/money";
 import { applyTemplate, saveDraft } from "../actions";
-import { loadPreview, loadProposal } from "./load";
+import { loadPreview, loadProposal, staffMediaBase } from "./load";
 import { SendPanel } from "./send-panel";
 import { SentProposalView } from "./sent-view";
 
@@ -117,13 +117,13 @@ export default async function ProposalBuilder({ params, searchParams }: PageProp
                 <CardContent>
                   <ActionForm key={editorKey} action={saveDraft.bind(null, slug, proposal.id)} version={proposal.draft_version} submitLabel="Save draft" trackUnsaved>
                     <fieldset className="grid gap-3">
-                      <legend className="mb-1 text-sm font-medium">Three packages (exactly one most popular)</legend>
+                      <legend className="mb-1 text-sm font-medium">Three packages (exactly one recommended)</legend>
                       {[1, 2, 3].map((n) => (
                         <div key={n} className="grid grid-cols-[1fr_auto] items-end gap-3">
                           <SelectField label={`Package ${n}`} name={`package_${n}`} id={`package_${n}`} defaultValue={chosenPackages[n - 1]?.package_id ?? ""} options={packageOptions} placeholder="— none —" />
                           <label className="flex h-8 items-center gap-1.5 text-sm">
                             <input type="radio" name="popular" value={String(n)} defaultChecked={popularIndex === n - 1} className="size-4 accent-primary" />
-                            Most popular
+                            Recommended
                           </label>
                         </div>
                       ))}
@@ -185,14 +185,14 @@ export default async function ProposalBuilder({ params, searchParams }: PageProp
           )}
         </div>
 
-        <Card className="content-start">
+        <Card className="content-start lg:sticky lg:top-4 lg:self-start">
           <CardHeader>
             <CardTitle>Client preview</CardTitle>
             <CardDescription>Live pricing with the same engine the server uses. Staff only; nothing is sent.</CardDescription>
           </CardHeader>
           <CardContent>
             {preview.ok ? (
-              <ProposalPreview offer={preview.offer} mediaUrls={preview.mediaUrls} logo={preview.logo} event={event} />
+              <ProposalPreview offer={preview.offer} mediaBase={staffMediaBase(slug, proposal.id)} logo={preview.logo} event={event} contained />
             ) : (
               <p role="status" className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
                 {preview.message} <TaxSetupLink slug={slug} message={preview.message} />

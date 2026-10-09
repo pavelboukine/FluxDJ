@@ -297,8 +297,9 @@ test.describe.serial("staff interface", () => {
     proposalUrl = page.url();
 
     const preview = page.locator("section", { has: page.getByRole("heading", { name: "Your total" }) });
-    // The most popular package is badged and preselected.
-    await expect(page.getByRole("button", { name: /^Signature Most popular/ })).toHaveAttribute("aria-pressed", "true");
+    // The recommended package is badged and preselected.
+    await expect(page.getByRole("radio", { name: /^Signature/ })).toBeChecked();
+    await expect(page.getByTestId("package-card").getByText("Recommended", { exact: true })).toHaveCount(1);
     await expect(preview).toContainText("Provisional");
 
     await page.getByRole("group", { name: /ceremony/i }).getByLabel("A separate space").check();
@@ -309,7 +310,7 @@ test.describe.serial("staff interface", () => {
     await expect(preview).toContainText("$2,701.91");
     await expect(preview).not.toContainText("Provisional");
 
-    await page.getByRole("button", { name: /^Essential/ }).click();
+    await page.getByRole("radio", { name: /^Essential/ }).check({ force: true });
     await expect(preview).toContainText("2 × Additional-location speaker");
   });
 

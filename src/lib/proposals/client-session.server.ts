@@ -46,7 +46,7 @@ export function proposalCookieOptions(slug: string, proposalId: string, maxAgeSe
   };
 }
 
-async function sessionHash(): Promise<string | null> {
+export async function sessionHash(): Promise<string | null> {
   const token = (await cookies()).get(PROPOSAL_COOKIE)?.value;
   return token && SESSION_TOKEN_PATTERN.test(token) ? sha256Hex(token) : null;
 }
@@ -126,16 +126,6 @@ export async function loadClientView(slug: string, proposalId: string): Promise<
     submission: view.submission ? { ...view.submission, selection: view.submission.selection as PricedSelection } : null,
     approvedAt: view.approved_at,
   };
-}
-
-/** Short-lived signed URLs, only for media referenced by the frozen offer (verified at upload). */
-export async function frozenOfferMediaUrls(offer: OfferSnapshot): Promise<Record<string, string>> {
-  const paths = Object.values(offer.gear).flatMap((g) => g.media.map((m) => m.storage_path));
-  if (paths.length === 0) return {};
-  const { data } = await createAdminClient().storage.from("gear-media").createSignedUrls(paths, 600);
-  const urls: Record<string, string> = {};
-  for (const item of data ?? []) if (item.path && item.signedUrl) urls[item.path] = item.signedUrl;
-  return urls;
 }
 
 export type SaveDraftResult =

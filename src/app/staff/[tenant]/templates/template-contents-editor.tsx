@@ -139,7 +139,7 @@ export function TemplateContentsEditor({
         </ol>
         <fieldset className="grid min-w-0 gap-1.5">
           <legend className="mb-1 text-sm font-medium">Recommended package</legend>
-          <p className="text-xs text-muted-foreground">Shown to clients as “Most popular” and preselected. Clients can still choose another.</p>
+          <p className="text-xs text-muted-foreground">Shown to clients as “Recommended” and preselected. Clients can still choose another.</p>
           <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
             {chosen.map((id) => (
               <label key={id} className="flex items-center gap-2">
