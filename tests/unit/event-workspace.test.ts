@@ -188,6 +188,8 @@ describe("summaries", () => {
     expect(planningLine({ exists: true, progress, editing: editing("open") })).toBe("Client editing open until Oct 16, 2026, 12:00 a.m. EDT (America/Toronto).");
     expect(planningLine({ exists: true, progress, editing: editing("reopened") })).toBe("Client editing reopened until Oct 20, 2026, 12:00 a.m. EDT (America/Toronto).");
     expect(planningLine({ exists: true, progress, editing: editing("closed") })).toContain("read-only since Oct 16, 2026");
+    expect(planningLine({ exists: true, progress, editing: { ...editing("closed"), closed_at: "2026-10-02T15:00:00+00:00" } }))
+      .toBe("Client editing closed by staff since Oct 2, 2026, 11:00 a.m. EDT (America/Toronto). Staff can still edit.");
     expect(planningLine({ exists: false, progress: null, editing: null })).toBeNull();
   });
 });

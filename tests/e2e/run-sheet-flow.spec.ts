@@ -105,6 +105,9 @@ test.describe.serial("DJ run sheet", () => {
     // Read-only: no inputs at all; links back to planning instead.
     await expect(staff.locator("main input, main textarea, main select")).toHaveCount(0);
     await expect(staff.getByRole("link", { name: "Edit planning" })).toBeVisible();
+    // Each stage links to its own section in planning.
+    await expect(staff.getByTestId("run-stage-ceremony").getByRole("link", { name: /Edit in planning/ }))
+      .toHaveAttribute("href", `/staff/${tenant.slug}/events/${eventId}/planning?section=ceremony`);
 
     const entrance = staff.getByTestId("run-stage-reception_entrance");
     await expect(entrance).toContainText("Parents du marié [lay-VESK]");
@@ -124,8 +127,8 @@ test.describe.serial("DJ run sheet", () => {
     expect(await noSideways(staff)).toBeLessThanOrEqual(0);
     await expect(staff.locator("main")).not.toContainText("E2E INTERNAL NOTE");
     await expect(staff.locator("main")).not.toContainText("E2E-PAYMENT-REF");
-    // For visual review of the phone layout (kept with the PDF samples).
-    await staff.screenshot({ path: "review-samples/run-sheet/live-phone.png", fullPage: true });
+    // For visual review of the phone layout (kept with the PDF samples), only when screenshots are asked for.
+    if (process.env.E2E_SCREENSHOTS) await staff.screenshot({ path: "review-samples/run-sheet/live-phone.png", fullPage: true });
   });
 
   test("the PDF downloaded through the app matches, with private headers and the same revision", async () => {
@@ -136,8 +139,10 @@ test.describe.serial("DJ run sheet", () => {
     expect(bytes.subarray(0, 5).toString("latin1")).toBe("%PDF-");
     expect((await download).suggestedFilename()).toBe(`run-sheet-mariage-gagnon-levesque-${run}-2027-08-14.pdf`);
     const pages = await pdfPageTexts(bytes);
-    await rasterizePdf(bytes, "review-samples/run-sheet/app-download");
-    writeFileSync("review-samples/run-sheet/app-download.pdf", bytes);
+    if (process.env.E2E_SCREENSHOTS) {
+      await rasterizePdf(bytes, "review-samples/run-sheet/app-download");
+      writeFileSync("review-samples/run-sheet/app-download.pdf", bytes);
+    }
     const text = pages.join("\n");
     expect(pages[0]).toContain(`Revision ${firstRevision}`);
     for (const expected of ["Gig overview", "Chloé Gagnon et François Lévesque [klo-AY gah-NYON]", "Cue: After the main course", "Loading dock at the back, door 4.", "DO NOT PLAY", "Chanson 80", "01:00 (next day, Sun, Aug 15)"]) {

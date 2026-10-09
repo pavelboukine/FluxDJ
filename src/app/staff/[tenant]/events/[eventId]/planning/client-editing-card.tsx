@@ -11,25 +11,26 @@ import {
   historyLabel,
   localInputValue,
   REASON_MAX,
+  staffEditingText,
   type CutoffHistoryEntry,
   type StaffEditing,
 } from "@/lib/planning/cutoff";
-import { closeClientEditing, recalculateClientCutoff, reopenClientEditing, setClientCutoffDays } from "./actions";
+import { recalculateClientCutoff, reopenClientEditing, setClientCutoffDays } from "./actions";
 
 const HOUR = 3_600_000;
 
 /** Several dialogs can be open at once, so each reason field has its own id. */
-function Reason({ id, placeholder }: { id: string; placeholder: string }) {
+function Reason({ id, placeholder, optional }: { id: string; placeholder: string; optional?: boolean }) {
   return (
     <TextAreaField
       id={id}
-      label="Reason"
+      label={optional ? "Note (optional)" : "Reason"}
       name="reason"
-      required
+      required={!optional}
       rows={2}
       maxLength={REASON_MAX}
       placeholder={placeholder}
-      hint="Required. Kept in this event's history with your name and the time; never shown to the client."
+      hint={`${optional ? "" : "Required. "}Kept in this event's history with your name and the time; never shown to the client.`}
     />
   );
 }
@@ -38,6 +39,8 @@ function change(entry: CutoffHistoryEntry, timeZone: string): string {
   const show = (v: unknown) => (typeof v === "string" ? formatInstant(v, timeZone) : "none");
   const before = entry.before ?? {};
   const after = entry.after ?? {};
+  if ("closed_at" in after) return `Closed at ${show(after.closed_at)}`;
+  if ("open_until" in after) return `Open until the deadline, ${show(after.open_until)}`;
   if ("reopened_until" in after) return `Reopened until: ${show(before.reopened_until)} → ${show(after.reopened_until)}`;
   if ("deadline" in after) {
     const days = typeof after.days === "number" ? ` (${after.days} days)` : "";
@@ -47,9 +50,10 @@ function change(entry: CutoffHistoryEntry, timeZone: string): string {
 }
 
 /**
- * The client's editing state for staff: the deadline, a reopening, whether
- * the deadline still matches the event's schedule, and the actions with
- * confirmations. Staff editing below is never affected.
+ * The deadline side of client editing for staff: the scheduled deadline,
+ * whether it still matches the event's schedule, changing it, changing an
+ * active reopening, and the history. Opening and closing now are in
+ * EditingControl. Staff editing is never affected.
  */
 export function ClientEditingCard({ slug, eventId, editing, archived, booked }: {
   slug: string;
@@ -61,32 +65,23 @@ export function ClientEditingCard({ slug, eventId, editing, archived, booked }: 
   const tz = editing.timezone;
   const deadline = formatInstant(editing.deadline, tz);
   const now = Date.parse(editing.now);
-  const badge = { open: "Open", reopened: "Reopened", closed: "Read-only" }[editing.state];
-  const canReopen = editing.state !== "open";
+  const { title, detail } = staffEditingText(editing);
 
   return (
     <Card id="client-editing" className="scroll-mt-4" data-testid="client-editing">
       <CardHeader>
         <CardTitle className="flex flex-wrap items-center gap-2">
-          Client editing <Badge variant={editing.state === "closed" ? "secondary" : "outline"} data-testid="client-editing-state">{badge}</Badge>
+          Deadline and history <Badge variant={editing.state === "closed" ? "secondary" : "outline"} data-testid="client-editing-state">{title}</Badge>
         </CardTitle>
         <CardDescription>
-          When the client can change planning. You and your staff can edit after the deadline; nothing here changes answers, progress,
-          the contract, payments or the booking.
+          When the client&apos;s planning closes by itself. You and your staff can edit after the deadline; nothing here changes answers,
+          progress, the contract, payments or the booking.
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4 text-sm">
         <div className="grid gap-1" data-testid="client-editing-summary">
-          {editing.state === "open" ? (
-            <p>The client can edit until <strong>{deadline}</strong>.</p>
-          ) : editing.state === "reopened" ? (
-            <p>
-              Temporarily reopened: the client can edit until <strong>{formatInstant(editing.reopened_until!, tz)}</strong>. The normal
-              deadline, {deadline}, is unchanged.
-            </p>
-          ) : (
-            <p>The client&apos;s planning has been read-only since <strong>{deadline}</strong>. They can still read it.</p>
-          )}
+          <p>{detail}</p>
+          <p>Normal deadline: <strong>{deadline}</strong>.</p>
           <p className="text-muted-foreground">
             Deadline: {editing.cutoff_days} {editing.cutoff_days === 1 ? "day" : "days"} before the event date, at 00:00 in {tz}.
             Business default for new plans: {editing.business_days} days.
@@ -102,44 +97,28 @@ export function ClientEditingCard({ slug, eventId, editing, archived, booked }: 
         ) : null}
 
         {archived ? (
-          <p className="text-muted-foreground">Unarchive the event to change the deadline or reopen client editing.</p>
+          <p className="text-muted-foreground">Unarchive the event to change the deadline.</p>
         ) : (
           <DraftVersionProvider version={editing.version}>
             <div className="grid gap-3">
-              {canReopen ? (
-                <ConfirmPanel label={editing.state === "reopened" ? "Change the reopening…" : "Reopen client editing…"} title="Reopen client editing">
+              {editing.reopen_active ? (
+                <ConfirmPanel label="Change the reopening…" title="Change the reopening">
                   <p className="text-muted-foreground">
-                    The client can edit again until the time you choose, at most {editing.reopen_max_days} days from now, then planning closes
-                    again by itself. The normal deadline stays {deadline}. Saved answers are kept. Archived events and clients without
-                    access stay closed. No email is sent.
+                    The client can edit until the time you choose, at most {editing.reopen_max_days} days from now, then planning closes
+                    again by itself. The normal deadline stays {deadline}.
                   </p>
-                  <ActionForm action={reopenClientEditing.bind(null, slug, eventId)} version={editing.version} submitLabel="Reopen client editing" pendingLabel="Reopening…">
+                  <ActionForm action={reopenClientEditing.bind(null, slug, eventId)} version={editing.version} submitLabel="Change the reopening" pendingLabel="Saving…">
                     <TextField
                       label={`Client can edit until (${tz} time)`}
                       name="until"
                       type="datetime-local"
                       required
-                      defaultValue={localInputValue(new Date(now + 48 * HOUR).toISOString(), tz)}
+                      defaultValue={localInputValue(editing.reopened_until ?? new Date(now + 48 * HOUR).toISOString(), tz)}
                       min={localInputValue(new Date(now).toISOString(), tz)}
                       max={localInputValue(new Date(now + editing.reopen_max_days * 24 * HOUR).toISOString(), tz)}
                       className="max-w-xs"
                     />
-                    <Reason id="reopen-reason" placeholder="e.g. The couple needs to update the guest count" />
-                  </ActionForm>
-                </ConfirmPanel>
-              ) : (
-                <p className="text-muted-foreground" data-testid="already-open">
-                  Client editing is already open until the deadline, so there is nothing to reopen. To give more time, change the deadline.
-                </p>
-              )}
-              {editing.reopen_active ? (
-                <ConfirmPanel label="Close client editing now…" title="Close client editing now">
-                  <p className="text-muted-foreground">
-                    Ends the reopening immediately: the client&apos;s planning becomes read-only again. What they saved is kept, and you can
-                    still edit everything.
-                  </p>
-                  <ActionForm action={closeClientEditing.bind(null, slug, eventId)} version={editing.version} submitLabel="Close client editing" pendingLabel="Closing…" variant="destructive">
-                    <Reason id="close-reason" placeholder="e.g. Changes received" />
+                    <Reason id="reopen-reason" placeholder="e.g. The couple needs one more day" optional />
                   </ActionForm>
                 </ConfirmPanel>
               ) : null}

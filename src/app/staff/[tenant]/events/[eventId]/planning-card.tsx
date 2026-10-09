@@ -40,7 +40,9 @@ export function PlanningCard({ slug, eventId, view, archived }: { slug: string; 
               ? `Client editing open until ${formatInstant(view.editing.deadline, view.editing.timezone)}.`
               : view.editing.state === "reopened"
                 ? `Client editing reopened until ${formatInstant(view.editing.closes_at ?? view.editing.deadline, view.editing.timezone)}.`
-                : `Client planning is read-only (deadline passed ${formatInstant(view.editing.deadline, view.editing.timezone)}). Staff can still edit.`}
+                : view.editing.closed_at
+                  ? `Client editing closed by staff (${formatInstant(view.editing.closed_at, view.editing.timezone)}). Staff can still edit.`
+                  : `Client planning is read-only (deadline passed ${formatInstant(view.editing.deadline, view.editing.timezone)}). Staff can still edit.`}
             {view.editing.schedule_changed ? <span className="text-amber-700 dark:text-amber-400"> The deadline no longer matches the event date.</span> : null}
           </p>
         ) : null}

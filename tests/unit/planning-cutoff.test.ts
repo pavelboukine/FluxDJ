@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkReason, clientEditingText, formatInstant, localInputValue, parseLocalInput, staffEditingSchema } from "@/lib/planning/cutoff";
+import { checkReason, clientEditingText, formatInstant, localInputValue, parseLocalInput, staffEditingSchema, staffEditingText } from "@/lib/planning/cutoff";
 import { clientPlanningViewSchema, saveResultSchema } from "@/lib/planning/view";
 
 describe("planning deadline display", () => {
@@ -68,7 +68,25 @@ describe("planning deadline shapes", () => {
       imported: null,
       progress: { scope: "available_sections_only", items: [], requirements_total: 0, requirements_met: 0, percent: null, available_sections: 0, complete_sections: 0, unavailable_sections: 0 },
     });
-    expect(view.state === "available" && view.editing).toEqual({ state: "open", deadline: "2026-10-16T04:00:00+00:00", closes_at: "2026-10-16T04:00:00+00:00", timezone: "America/Toronto" });
+    expect(view.state === "available" && view.editing).toEqual({
+      state: "open", deadline: "2026-10-16T04:00:00+00:00", closes_at: "2026-10-16T04:00:00+00:00", closed_by_dj: false, timezone: "America/Toronto",
+    });
+  });
+
+  it("tells staff why the client can or can't edit: deadline, reopening, manual close", () => {
+    const staff = (over: Record<string, unknown>) => staffEditingSchema.parse({
+      state: "open", deadline: "2026-10-16T04:00:00+00:00", closes_at: "2026-10-16T04:00:00+00:00", timezone: "America/Toronto",
+      now: "2026-10-01T12:00:00+00:00", cutoff_days: 14, business_days: 14, expected_deadline: "2026-10-16T04:00:00+00:00",
+      schedule_changed: false, reopened_until: null, reopen_active: false, reopen_max_days: 14, version: 1, history: [], ...over,
+    });
+    expect(staffEditingText(staff({}))).toEqual({ title: "Client editing open", detail: expect.stringMatching(/^Open until the normal deadline, Friday, October 16, 2026/) });
+    expect(staffEditingText(staff({ state: "reopened", closes_at: "2026-10-20T22:00:00+00:00" })).detail).toMatch(/^Reopened by staff until Tuesday, October 20, 2026/);
+    // A manual close wins over a deadline still to come.
+    const closed = staff({ state: "closed", closes_at: null, closed_by_dj: true, closed_at: "2026-10-02T15:00:00+00:00" });
+    expect(staffEditingText(closed)).toEqual({ title: "Client editing closed", detail: expect.stringMatching(/^Closed by staff on Friday, October 2, 2026 .* whatever the deadline\.$/) });
+    expect(staffEditingText(staff({ state: "closed", closes_at: null })).detail).toMatch(/^The deadline passed on Friday, October 16, 2026/);
+    // Older databases omit the manual close.
+    expect(staff({}).closed_at).toBeNull();
   });
 
   it("keeps working with a database that predates the cutoff (no editing field)", () => {

@@ -111,7 +111,7 @@ describe("planning cutoff (local Supabase)", () => {
     for (const r of [item.data, basics.data]) {
       expect(r).toMatchObject({ status: "locked" });
       expect(Object.keys(r as object).sort()).toEqual(["editing", "status"]);
-      expect(Object.keys((r as { editing: object }).editing).sort()).toEqual(["closes_at", "deadline", "state", "timezone"]);
+      expect(Object.keys((r as { editing: object }).editing).sort()).toEqual(["closed_by_dj", "closes_at", "deadline", "state", "timezone"]);
     }
     expect(await revision(b.itemId)).toEqual({ revision: 1, answers: { guest_count: 100 } });
     // Staff still edit.
@@ -164,6 +164,28 @@ describe("planning cutoff (local Supabase)", () => {
         expect(stored).toEqual({ revision: 0, answers: null });
       }
       expect((await save(b, stored.revision, { guest_count: 1 })).data).toMatchObject({ status: "locked" });
+    }
+  }, 60_000);
+
+  it("a save racing a manual close before the deadline either commits fully or changes nothing; staff still edit", async () => {
+    for (let round = 0; round < 4; round++) {
+      const b = await bookedEvent(90);
+      const v = await cutoffVersion(b.eventId);
+      const [saved, closed] = await Promise.all([
+        save(b, 0, { guest_count: 300 + round }),
+        staff.rpc("close_plan_client_editing", { p_event_id: b.eventId, p_expected_version: v, p_reason: "" }),
+      ]);
+      expect(closed.data).toMatchObject({ status: "closed", editing: { state: "closed", closed_by_dj: true } });
+      const stored = await revision(b.itemId);
+      if ((saved.data as { status: string }).status === "saved") expect(stored).toEqual({ revision: 1, answers: { guest_count: 300 + round } });
+      else {
+        expect(saved.data).toMatchObject({ status: "locked" });
+        expect(stored).toEqual({ revision: 0, answers: null });
+      }
+      // The deadline is still weeks away; the close holds anyway, for every later save.
+      expect((await save(b, stored.revision, { guest_count: 1 })).data).toMatchObject({ status: "locked", editing: { closed_by_dj: true } });
+      const staffSave = await staff.rpc("staff_save_plan_item", { p_event_id: b.eventId, p_item_id: b.itemId, p_expected_revision: stored.revision, p_answers: { guest_count: 2 } });
+      expect(staffSave.data).toMatchObject({ status: "saved" });
     }
   }, 60_000);
 

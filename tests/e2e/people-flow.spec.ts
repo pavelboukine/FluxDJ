@@ -16,7 +16,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { bookEvent, contractualState, must, sessionFor } from "./booking";
-import { admin, openPlanMoment, signInStaff, signInWithLink } from "./support";
+import { admin, openPlanMoment, openPlanSection, signInStaff, signInWithLink } from "./support";
 import { archiveTestTenant, createTestTenant, type TestTenant } from "./tenant";
 
 let tenant: TestTenant;
@@ -25,15 +25,9 @@ const clientEmail = `e2e-people-${run}@example.test`;
 
 const noSideways = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
-/** Opens a moment's card: on the client's page through its stage's section, on the staff page its stage card first. */
-async function openMoment(page: Page, stageKey: string, momentKey: string, root: Page | Locator = page): Promise<Locator> {
-  if (root === page) return openPlanMoment(page, stageKey, momentKey);
-  const stage = root.getByTestId(new RegExp(`^(staff-)?stage-${stageKey}$`));
-  const moment = stage.getByTestId(`moment-${momentKey}`);
-  for (const card of [stage, moment]) {
-    if (!(await card.evaluate((el) => (el as HTMLDetailsElement).open))) await card.locator("summary").first().click();
-  }
-  return moment;
+/** Opens a moment's card through its stage's section (the client's and the staff page navigate the same way). */
+async function openMoment(page: Page, stageKey: string, momentKey: string): Promise<Locator> {
+  return openPlanMoment(page, stageKey, momentKey);
 }
 
 async function addSong(scope: Locator, song: { title: string; artist: string; cue?: string }) {
@@ -252,6 +246,7 @@ test.describe.serial("people in planning", () => {
 
   test("a hidden Entrance music keeps the links, shown as not in the active plan", async () => {
     await staff.goto(staffPlanningUrl);
+    await openPlanSection(staff, "plan-structure");
     await staff.getByRole("button", { name: "Hide Entrance music from the client", exact: true }).click();
     await expect(staff.getByRole("button", { name: "Restore Entrance music", exact: true })).toBeVisible();
     await client.reload();
@@ -357,8 +352,8 @@ test.describe.serial("people in planning", () => {
 
   test("staff on a phone see and edit the same people; nothing scrolls sideways; nothing contractual changes", async () => {
     await staff.goto(staffPlanningUrl);
-    await expect(staff.getByText("Stage details, music and people", { exact: true })).toBeVisible();
-    const intros = await openMoment(staff, "reception_entrance", "introductions", staff.locator("main"));
+    await expect(staff.getByTestId("staff-plan-overview")).toBeVisible();
+    const intros = await openMoment(staff, "reception_entrance", "introductions");
     await intros.getByRole("button", { name: 'Edit "The wedding party"' }).click();
     await intros.getByTestId("entry-row").filter({ hasText: "The wedding party" }).getByLabel("Pronunciation guide (optional)").fill("the WED-ding PAR-tee");
     await expect(intros.getByText("All changes saved")).toBeVisible();

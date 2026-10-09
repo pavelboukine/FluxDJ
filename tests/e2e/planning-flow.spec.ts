@@ -99,6 +99,10 @@ test.describe.serial("planning", () => {
     const frozen = staff.locator("[data-slot=card]").filter({ has: staff.getByText("From the signed contract (frozen)") });
     await expect(frozen).toContainText("DEMO: Where will the ceremony take place?");
     await expect(frozen).toContainText("Same room as the reception");
+    // Staff see the client's editing state up front, and the run sheet is one tap away.
+    await expect(staff.getByTestId("client-editing-status")).toHaveText("Client editing open");
+    await expect(staff.getByRole("link", { name: "Run sheet" })).toHaveAttribute("href", `/staff/${tenant.slug}/events/${eventId}/run-sheet`);
+    await openPlanSection(staff, "plan-structure");
     await expect(staff.getByRole("link", { name: "Manage planning templates" })).toBeVisible();
   });
 
@@ -261,9 +265,10 @@ test.describe.serial("planning", () => {
   });
 
   test("staff apply a template without losing answers; the client sees the stages in order", async () => {
-    await staff.goto(staffPlanningUrl);
+    await staff.goto(`${staffPlanningUrl}?section=basics`);
     await expect(staff.getByText("Last saved by the client.")).toBeVisible();
     await expect(staff.getByLabel("Guest count (needed)")).toHaveValue("175");
+    await openPlanSection(staff, "plan-structure");
     const apply = staff.locator("[data-slot=card]").filter({ has: staff.getByText("Replace the structure with a template") });
     await apply.getByLabel("Template").selectOption({ label: "Wedding" });
     await apply.getByRole("button", { name: "Apply template" }).click();
@@ -271,6 +276,14 @@ test.describe.serial("planning", () => {
     await apply.getByLabel(/I understand this replaces/).check();
     await apply.getByRole("button", { name: "Apply template" }).click();
     await expect(apply.getByText("Template applied: 1 kept, 37 added, 0 hidden. No answers were removed.")).toBeVisible();
+    // The staff overview lists what still needs attention, in plan order, and opens it.
+    await openPlanSection(staff, null);
+    const attention = staff.getByTestId("plan-attention");
+    await expect(attention.getByRole("link").first()).toContainText("Contacts and vendors");
+    await expect(staff.getByTestId("progress-headline")).toHaveText("5 of 48 required answers");
+    await attention.getByRole("link", { name: /Ceremony/ }).click();
+    await expect(staff.locator("#plan-panel-ceremony")).toBeVisible();
+    expect(new URL(staff.url()).searchParams.get("section")).toBe("ceremony");
     expect((await basicsRow(eventId))!.answers).toMatchObject({ guest_count: 175, venue_room: "Grand hall" });
 
     await client.reload();
@@ -492,19 +505,20 @@ test.describe.serial("planning", () => {
 
   test("staff edit stage details reusing Event basics; hidden stages keep their answers; nothing contractual changes", async () => {
     await staff.goto(staffPlanningUrl);
-    const card = staff.getByTestId("staff-stage-dinner");
-    await card.locator("summary").first().click();
+    const card = await openPlanSection(staff, "dinner");
     const dinner = card.getByTestId("details-dinner");
     await dinner.getByLabel(/Same as the event venue/).check();
     await dinner.getByLabel("Dinner start (needed)").fill("19:30");
     await dinner.getByLabel("Same as the guest count in Event basics (175)").check();
     await expect(dinner.getByText("All changes saved")).toBeVisible();
-    await expect(card.locator("summary").first()).toContainText("Complete");
+    await expect(card.getByTestId("details-status")).toContainText("Complete");
     expect((await stageRow(eventId, "dinner"))).toMatchObject({ answers: { location_source: "event_venue", start_time: "19:30", guest_count_source: "basics" }, updated_by_actor: "staff" });
     // The reuse is stored as a choice, not a copied number.
     expect((await stageRow(eventId, "dinner"))!.answers).not.toHaveProperty("guest_count");
-    await expect(staff.getByTestId("staff-stage-ceremony").locator("summary").first()).toContainText("Complete");
+    // Staff and client read the same progress for the ceremony the client completed.
+    await expect(staff.locator("#plan-panel-ceremony").getByTestId("details-status")).toContainText("Complete");
 
+    await openPlanSection(staff, "plan-structure");
     await staff.getByRole("button", { name: "Hide Cocktail from the client", exact: true }).click();
     await expect(staff.getByTestId("staff-stage-cocktail")).toHaveCount(0);
     // The client is still on Cocktail: once hidden, the link safely falls back to the overview.
@@ -516,7 +530,7 @@ test.describe.serial("planning", () => {
     await expect(client.getByTestId("section-picker").getByTestId("nav-cocktail")).toHaveCount(0);
     expect((await stageRow(eventId, "cocktail"))!.answers).toMatchObject({ atmosphere: "Swing" });
     await staff.getByRole("button", { name: "Restore Cocktail", exact: true }).click();
-    await expect(staff.getByTestId("staff-stage-cocktail")).toBeVisible();
+    await expect(staff.getByTestId("staff-stage-cocktail")).toHaveCount(1);
     await client.reload();
     await openPlanSection(client, "cocktail");
     await expect(client.getByTestId("details-cocktail").getByLabel("Atmosphere or music style (optional)")).toHaveValue("Swing");
@@ -529,6 +543,7 @@ test.describe.serial("planning", () => {
 
   test("hiding a stage hides it from the client and keeps its moments; restoring brings them back in order", async () => {
     await staff.goto(staffPlanningUrl);
+    await openPlanSection(staff, "plan-structure");
     await staff.getByRole("button", { name: "Hide Dinner from the client", exact: true }).click();
     await expect(staff.getByRole("button", { name: "Restore Dinner", exact: true })).toBeVisible();
     await client.reload();
@@ -558,7 +573,10 @@ test.describe.serial("planning", () => {
     const phone = await staffContext.newPage();
     await phone.setViewportSize({ width: 390, height: 844 });
     await phone.goto(staffPlanningUrl);
-    await expect(phone.getByRole("heading", { name: `Planning: ${title}` })).toBeVisible();
+    await expect(phone.getByRole("heading", { level: 1, name: title })).toBeVisible();
+    await openPlanSection(phone, "ceremony");
+    expect(await noSideways(phone)).toBeLessThanOrEqual(0);
+    await openPlanSection(phone, null);
     expect(await noSideways(phone)).toBeLessThanOrEqual(0);
     await phone.close();
   });

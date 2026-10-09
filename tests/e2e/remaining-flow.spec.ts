@@ -16,7 +16,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { bookEvent, contractualState, must, sessionFor } from "./booking";
-import { admin, openPlanMoment, signInStaff, signInWithLink } from "./support";
+import { admin, openPlanMoment, openPlanSection, signInStaff, signInWithLink } from "./support";
 import { archiveTestTenant, createTestTenant, type TestTenant } from "./tenant";
 
 let tenant: TestTenant;
@@ -25,15 +25,9 @@ const clientEmail = `e2e-remaining-${run}@example.test`;
 
 const noSideways = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
-/** Opens a moment's card: on the client's page through its stage's section, on the staff page its stage card first. */
+/** Opens a moment's card through its stage's section (the client's and the staff page navigate the same way). */
 async function openMoment(root: Page | Locator, stageKey: string, momentKey: string): Promise<Locator> {
-  if ("goto" in root) return openPlanMoment(root, stageKey, momentKey);
-  const stage = root.getByTestId(new RegExp(`^(staff-)?stage-${stageKey}$`));
-  const moment = stage.getByTestId(`moment-${momentKey}`);
-  for (const card of [stage, moment]) {
-    if (!(await card.evaluate((el) => (el as HTMLDetailsElement).open))) await card.locator("summary").first().click();
-  }
-  return moment;
+  return openPlanMoment("goto" in root ? root : root.page(), stageKey, momentKey);
 }
 
 async function addEntry(card: Locator, testId: string, fill: (form: Locator) => Promise<void>) {
@@ -265,6 +259,7 @@ test.describe.serial("remaining planning editors", () => {
     await expect(program.getByText("All changes saved")).toBeVisible();
     expect(await noSideways(staff)).toBeLessThanOrEqual(0);
 
+    await openPlanSection(staff, "plan-structure");
     await staff.getByRole("button", { name: "Hide Speeches and program from the client", exact: true }).click();
     await expect(staff.getByRole("button", { name: "Restore Speeches and program", exact: true })).toBeVisible();
     await client.reload();

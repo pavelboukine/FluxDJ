@@ -8,11 +8,13 @@
  *   - a client tab left open across the deadline gets a clear locked
  *     response: nothing is saved, the typed value stays on screen, and every
  *     editor turns read-only at once; after reload, all saved answers read;
- *   - staff still edit, reopen with a reason and an expiry, the client edits
- *     during the reopening, staff close it early and a stale client tab is
- *     refused again;
+ *   - staff still edit, open editing again until a chosen time (the deadline
+ *     has passed), the client edits during the reopening, staff close it and
+ *     a stale client tab is refused again;
  *   - a moved event date shows the deadline no longer matches; staff
- *     recalculate it explicitly;
+ *     recalculate it explicitly; a staff close still holds before the new
+ *     deadline; opening before it needs no end; closing before it refuses
+ *     the client's open tab at once while staff keep editing;
  *   - no reasons, staff identities or internal notes reach the client;
  *     nothing contractual changes; no sideways scrolling.
  * The deadline is moved with trusted SQL as time passing would, never waited for.
@@ -144,23 +146,25 @@ test.describe.serial("planning cutoff and reopening", () => {
     expect(await noSideways(client)).toBeLessThanOrEqual(0);
   });
 
-  test("staff still edit, see the read-only status and reopen with a reason and an expiry", async () => {
+  test("staff still edit, see the closed status up front and open editing again for a limited time", async () => {
     await staff.goto(staffPlanningUrl);
-    const card = staff.getByTestId("client-editing");
-    await expect(card.getByTestId("client-editing-state")).toHaveText("Read-only");
-    await expect(staff.getByTestId("already-open")).toHaveCount(0);
+    const control = staff.getByTestId("client-editing-control");
+    await expect(control.getByTestId("client-editing-status")).toHaveText("Client editing closed");
+    await expect(control.getByTestId("client-editing-detail")).toContainText("The deadline passed on");
+    await openPlanSection(staff, "basics");
     await staff.getByLabel("Guest count (needed)").fill("160");
     await expect.poll(async () => (await basicsAnswers(eventId))?.answers).toMatchObject({ guest_count: 160 });
 
-    await card.getByRole("button", { name: "Reopen client editing…" }).click();
-    const dialog = card.getByRole("dialog", { name: "Reopen client editing" });
+    // After the deadline, opening is temporary: it needs an end, at most 14 days away.
+    await control.getByRole("button", { name: "Open client editing…" }).click();
+    const dialog = control.getByRole("dialog", { name: "Open client editing" });
     await expect(dialog).toContainText("at most 14 days from now");
-    await dialog.getByRole("button", { name: "Reopen client editing", exact: true }).click();
-    await expect(dialog.getByLabel("Reason")).toHaveJSProperty("validity.valid", false);
-    await dialog.getByLabel("Reason").fill(REASON);
-    await dialog.getByRole("button", { name: "Reopen client editing", exact: true }).click();
-    await expect(dialog.getByText(/Client editing reopened until .* The normal deadline is unchanged\./)).toBeVisible();
-    await expect(card.getByTestId("client-editing-state")).toHaveText("Reopened");
+    await expect(dialog.getByLabel(/Client can edit until/)).toBeVisible();
+    await dialog.getByLabel("Note (optional)").fill(REASON);
+    await dialog.getByRole("button", { name: "Open client editing", exact: true }).click();
+    await expect(control.getByTestId("client-editing-status")).toHaveText("Client editing open");
+    await expect(control.getByTestId("client-editing-detail")).toContainText(/Reopened by staff until .*\(America\/Toronto\)\. The normal deadline was /);
+    const card = await openPlanSection(staff, "client-editing");
     await card.locator("summary", { hasText: "History" }).click();
     await expect(card.getByTestId("client-editing-history")).toContainText(REASON);
     await expect(card.getByTestId("client-editing-history")).toContainText(tenant.ownerEmail);
@@ -183,13 +187,14 @@ test.describe.serial("planning cutoff and reopening", () => {
   });
 
   test("staff close client editing early; the client's open tab is refused and keeps its input", async () => {
-    const card = staff.getByTestId("client-editing");
-    await card.getByRole("button", { name: "Close client editing now…" }).click();
-    const dialog = card.getByRole("dialog", { name: "Close client editing now" });
-    await dialog.getByLabel("Reason").fill("Changes received");
+    const control = staff.getByTestId("client-editing-control");
+    await control.getByRole("button", { name: "Close client editing…" }).click();
+    const dialog = control.getByRole("dialog", { name: "Close client editing" });
+    await expect(dialog).toContainText("including in a page they already have open");
+    await dialog.getByLabel("Note (optional)").fill("Changes received");
     await dialog.getByRole("button", { name: "Close client editing", exact: true }).click();
-    await expect(dialog.getByText("Client editing closed. The client can still read the plan, and you can still edit it.")).toBeVisible();
-    await expect(card.getByTestId("client-editing-state")).toHaveText("Read-only");
+    await expect(control.getByTestId("client-editing-status")).toHaveText("Client editing closed");
+    await expect(control.getByTestId("client-editing-detail")).toContainText("Closed by staff on");
 
     await client.getByLabel("Guest count (needed)").fill("190");
     await expect(client.getByTestId("section-basics").getByRole("alert")).toContainText("Not saved: planning is now read-only");
@@ -197,28 +202,58 @@ test.describe.serial("planning cutoff and reopening", () => {
     expect((await basicsAnswers(eventId))!.answers).toMatchObject({ guest_count: 165 });
   });
 
-  test("a moved event date: the deadline stays, staff see the mismatch and recalculate explicitly", async () => {
+  test("a moved event date: staff recalculate the deadline, and a staff close still holds before it", async () => {
     await must(admin.from("events").update({ event_date: "2027-09-04" }).eq("id", eventId));
     await staff.reload();
+    const control = staff.getByTestId("client-editing-control");
     const card = staff.getByTestId("client-editing");
     await expect(card.getByTestId("schedule-changed")).toContainText("no longer matches");
     await expect(card.getByTestId("schedule-changed")).toContainText("Saturday, August 21, 2027");
     await card.getByRole("button", { name: "Recalculate the deadline…" }).click();
-    const dialog = card.getByRole("dialog", { name: "Recalculate the deadline" });
-    await dialog.getByLabel("Reason").fill("Wedding moved three weeks");
-    await dialog.getByRole("button", { name: "Recalculate the deadline", exact: true }).click();
-    await expect(dialog.getByText("Check the box to confirm moving the deadline.")).toBeVisible();
-    await dialog.getByLabel("Move the deadline to match the event's current date.").check();
-    await dialog.getByRole("button", { name: "Recalculate the deadline", exact: true }).click();
-    await expect(dialog.getByText(/Deadline recalculated: Saturday, August 21, 2027/)).toBeVisible();
-    await expect(card.getByTestId("client-editing-state")).toHaveText("Open");
+    const recalc = card.getByRole("dialog", { name: "Recalculate the deadline" });
+    await recalc.getByLabel("Reason").fill("Wedding moved three weeks");
+    await recalc.getByRole("button", { name: "Recalculate the deadline", exact: true }).click();
+    await expect(recalc.getByText("Check the box to confirm moving the deadline.")).toBeVisible();
+    await recalc.getByLabel("Move the deadline to match the event's current date.").check();
+    await recalc.getByRole("button", { name: "Recalculate the deadline", exact: true }).click();
+    await expect(recalc.getByText(/Deadline recalculated: Saturday, August 21, 2027/)).toBeVisible();
     await expect(card.getByTestId("schedule-changed")).toHaveCount(0);
-    await expect(staff.getByTestId("already-open")).toBeVisible();
+    // The deadline is in the future again, but the staff close wins until staff open editing.
+    await expect(control.getByTestId("client-editing-status")).toHaveText("Client editing closed");
+    await client.reload();
+    await expect(client.getByTestId("editing-notice")).toHaveAttribute("data-state", "closed");
+    await expect(client.getByTestId("editing-notice")).toContainText(`${tenant.displayName} has closed planning to changes.`);
+    await expect(client.getByLabel("Guest count (needed)")).toBeDisabled();
 
+    // Before the deadline, opening needs no end: editing follows the normal deadline.
+    await control.getByRole("button", { name: "Open client editing…" }).click();
+    const open = control.getByRole("dialog", { name: "Open client editing" });
+    await expect(open).toContainText("until the normal deadline (Saturday, August 21, 2027");
+    await expect(open.getByLabel(/Client can edit until/)).toHaveCount(0);
+    await open.getByRole("button", { name: "Open client editing", exact: true }).click();
+    await expect(control.getByTestId("client-editing-status")).toHaveText("Client editing open");
+    await expect(control.getByTestId("client-editing-detail")).toContainText("Open until the normal deadline, Saturday, August 21, 2027");
     await client.reload();
     await expect(client.getByTestId("editing-notice")).toHaveAttribute("data-state", "open");
     await expect(client.getByLabel("Guest count (needed)")).toBeEnabled();
     await expect(client.getByLabel("Guest count (needed)")).toHaveValue("165");
+
+    // Closing before the deadline takes effect at once, even in the client's open tab; staff keep editing.
+    await control.getByRole("button", { name: "Close client editing…" }).click();
+    await control.getByRole("dialog", { name: "Close client editing" }).getByRole("button", { name: "Close client editing", exact: true }).click();
+    await expect(control.getByTestId("client-editing-status")).toHaveText("Client editing closed");
+    await client.getByLabel("Guest count (needed)").fill("170");
+    await expect(client.getByTestId("section-basics").getByRole("alert")).toContainText("Not saved: planning is now read-only");
+    await expect(client.getByTestId("editing-notice")).toContainText(`${tenant.displayName} has closed planning to changes.`);
+    await expect(client.getByLabel("Guest count (needed)")).toHaveValue("170");
+    const basics = await openPlanSection(staff, "basics");
+    await basics.getByLabel("Guest count (needed)").fill("168");
+    await expect.poll(async () => (await basicsAnswers(eventId))?.answers).toMatchObject({ guest_count: 168 });
+
+    await control.getByRole("button", { name: "Open client editing…" }).click();
+    await control.getByRole("dialog", { name: "Open client editing" }).getByRole("button", { name: "Open client editing", exact: true }).click();
+    await expect(control.getByTestId("client-editing-status")).toHaveText("Client editing open");
+    expect(await noSideways(staff)).toBeLessThanOrEqual(0);
   });
 
   test("the event page shows the planning status; nothing contractual changed", async () => {
@@ -227,5 +262,22 @@ test.describe.serial("planning cutoff and reopening", () => {
     expect(await contractualState(eventId)).toBe(contractual);
     const { data: emails } = await must(admin.from("email_outbox").select("event_type").eq("tenant_id", tenant.id).like("event_type", "planning%"));
     expect(emails).toHaveLength(0);
+  });
+  test("a Simple Party plan stays small for staff, in planning and on the run sheet", async () => {
+    const partyId = randomUUID();
+    await must(admin.from("events").insert({ id: partyId, tenant_id: tenant.id, title: `E2E Party ${run}`, event_type: "party", event_date: "2027-09-18", venue_name: "Loft E2E" }));
+    const { data: party } = await must(admin.from("planning_templates").select("id").eq("tenant_id", tenant.id).eq("starter_key", "simple_party").single());
+    await must((await sessionFor(tenant.ownerEmail)).rpc("setup_event_plan", { p_event_id: partyId, p_template_id: party!.id }));
+    await staff.goto(`/staff/${tenant.slug}/events/${partyId}/planning`);
+    await expect(staff.getByRole("heading", { level: 1, name: `E2E Party ${run}` })).toBeVisible();
+    const stages = staff.getByTestId("section-picker").getByRole("list", { name: "Stages of the event, in order", includeHidden: true }).locator(":scope > li");
+    await expect(stages).toHaveText([/1\. Party/]);
+    const panel = await openPlanSection(staff, "party");
+    await expect(panel.getByTestId("moment-must_play")).toHaveCount(1);
+    expect(await noSideways(staff)).toBeLessThanOrEqual(0);
+    await staff.goto(`/staff/${tenant.slug}/events/${partyId}/run-sheet`);
+    await expect(staff.locator("[data-testid^=run-stage-]")).toHaveCount(1);
+    await expect(staff.getByTestId("run-stage-party")).toBeVisible();
+    expect(await noSideways(staff)).toBeLessThanOrEqual(0);
   });
 });

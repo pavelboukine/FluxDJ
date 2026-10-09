@@ -16,8 +16,10 @@ import { itemProgress, type PlanProgress, type PlanStructure, type TimelineWarni
 
 /** The query parameter naming the open section; absent means the overview. */
 export const SECTION_PARAM = "section";
-/** The proposal answers view. Library keys never contain "-", so this can't collide with a section. */
+/** Extra views (not plan sections). Library keys never contain "-", so these can't collide with a section. */
 export const PROVIDED_SECTION = "already-provided";
+export const CLIENT_EDITING_SECTION = "client-editing";
+export const STRUCTURE_SECTION = "plan-structure";
 
 /** Element ids of a view's panel and heading (null is the overview), and of the area the views open in. */
 export const panelId = (view: string | null) => `plan-panel-${view ?? "overview"}`;
@@ -120,20 +122,20 @@ export function firstIncompleteSection(sections: PlanSection[], progress: PlanPr
   return sections.find((s) => isIncomplete(sectionStatus(s, progress, warnings))) ?? null;
 }
 
-/** The open view for a query value: a section key, the proposal answers, or null for the overview (also for unknown or hidden keys). */
-export function resolveSection(value: string | null, sections: PlanSection[], hasProvided: boolean): string | null {
+/** The open view for a query value: a section key, an extra view, or null for the overview (also for unknown or hidden keys). */
+export function resolveSection(value: string | null, sections: PlanSection[], extras: string[] = []): string | null {
   if (!value) return null;
-  if (value === PROVIDED_SECTION) return hasProvided ? value : null;
+  if (extras.includes(value)) return value;
   return sections.some((s) => s.key === value) ? value : null;
 }
 
-/** Views in reading order: the overview (null), every section, then the proposal answers. */
-export function viewOrder(sections: PlanSection[], hasProvided: boolean): (string | null)[] {
-  return [null, ...sections.map((s) => s.key), ...(hasProvided ? [PROVIDED_SECTION] : [])];
+/** Views in reading order: the overview (null), every section, then the extra views (proposal answers, settings). */
+export function viewOrder(sections: PlanSection[], extras: string[] = []): (string | null)[] {
+  return [null, ...sections.map((s) => s.key), ...extras];
 }
 
-export function neighbours(sections: PlanSection[], hasProvided: boolean, active: string | null) {
-  const order = viewOrder(sections, hasProvided);
+export function neighbours(sections: PlanSection[], extras: string[], active: string | null) {
+  const order = viewOrder(sections, extras);
   const i = order.indexOf(active);
   return {
     previous: i > 0 ? { key: order[i - 1] } : null,

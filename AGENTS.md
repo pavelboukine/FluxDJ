@@ -14,7 +14,8 @@ Full commands and rationale: README, "Day-to-day testing". In short:
 
 - Run the narrowest check while implementing: one browser test
   (`pnpm test:e2e tests/e2e/<spec>.ts:<line>`) or one spec, one integration file
-  (`pnpm test:integration tests/integration/<file>.test.ts`), `pnpm test:unit`,
+  (`pnpm exec vitest run tests/integration/<file>.test.ts --no-file-parallelism`;
+  `pnpm test:integration <file>` runs every integration file), `pnpm test:unit`,
   `pnpm db:test` for SQL. After a fix, rerun only what failed (`pnpm test:e2e --last-failed`).
 - Individual tasks get focused verification only: `pnpm lint`, `pnpm typecheck`, the
   affected unit tests, and specifically chosen browser/integration specs (or pgTAP

@@ -3,13 +3,14 @@
 -- into each plan when it is set up and never moved silently; client writes
 -- refused at and after it on every path while reads continue; staff edits
 -- after it; reopening (only after the deadline, future, at most 14 days,
--- expiring by database time, never moving the deadline) and closing early;
+-- expiring by database time, never moving the deadline) and closing at any
+-- time (a manual close wins over the deadline until staff open editing);
 -- deadline changes and explicit recalculation after schedule changes;
 -- versions, replays, reasons and audit; revoked, archived and cross-tenant
 -- access; client-safe responses; nothing else changed.
 begin;
 \ir _fixtures.psql
-select plan(141);
+select plan(176);
 
 alter function tests.id(text) rename to id_base;
 create function tests.id(name text) returns uuid language sql immutable as $$
@@ -242,8 +243,8 @@ select is(private.plan_editing_state('2027-01-01 05:00+00', '2026-12-31 00:00+00
 -- ---------------------------------------------------------------------------
 
 select is(tests.view('co_open') -> 'editing' ->> 'state', 'open', 'the client sees an open plan');
-select is((select array_agg(k order by k) from jsonb_object_keys(tests.view('co_open') -> 'editing') k), array['closes_at', 'deadline', 'state', 'timezone'],
-  'and only the state, deadline, closing time and time zone');
+select is((select array_agg(k order by k) from jsonb_object_keys(tests.view('co_open') -> 'editing') k), array['closed_by_dj', 'closes_at', 'deadline', 'state', 'timezone'],
+  'and only the state, deadline, closing time, whether the DJ closed it and time zone');
 select is((tests.view('co_open') -> 'editing' ->> 'closes_at')::timestamptz, tests.lock_at('co_open'), 'editing closes at the deadline');
 select is(tests.view('co_open') -> 'editing' ->> 'timezone', 'America/Toronto', 'in the event''s time zone');
 select is(tests.save('co_open', '{"guest_count": 120}') ->> 'status', 'saved', 'clients save before the deadline');
@@ -282,8 +283,8 @@ select is(tests.reopen('co_open', 1, tests.local('co_open', '2 days'), 'Client a
 select is(tests.override('co_open'), null, 'and changes nothing');
 select is(tests.version('co_open'), 1, 'not even the version');
 
-select throws_ok($$ select tests.reopen('co_closed', 1, tests.local('co_closed', '2 days'), '  ') $$,
-  '22023', 'planning_invalid: enter a reason (it is kept in the history and never shown to the client)', 'a reason is required');
+select throws_ok($$ select tests.reopen('co_closed', 1, tests.local('co_closed', '2 days'), repeat('x', 501)) $$,
+  '22023', 'planning_invalid: keep the reason under 500 characters', 'the note is optional but limited');
 select throws_ok($$ select tests.reopen('co_closed', 1, tests.local('co_closed', '-1 minute'), 'Late change') $$,
   '22023', 'planning_invalid: choose an end time in the future', 'the expiry must be in the future');
 select throws_ok($$ select tests.reopen('co_closed', 1, tests.local('co_closed', '14 days 1 minute'), 'Late change') $$,
@@ -337,11 +338,11 @@ select is(tests.stored('co_closed'), '{"guest_count": 95}'::jsonb, 'with the ans
 
 -- Closing early.
 select is(tests.close('co_closed', 2, 'Nothing to end') ->> 'status',
-  'not_reopened', 'closing an expired reopening changes nothing');
+  'already_closed', 'closing after a reopening expired changes nothing');
 select is(tests.reopen('co_closed', 2, tests.local('co_closed', '1 day'), 'One more change') ->> 'status',
   'reopened', 'staff reopen again');
-select throws_ok($$ select tests.close('co_closed', 3, '') $$,
-  '22023', null, 'closing needs a reason');
+select throws_ok($$ select tests.close('co_closed', 3, repeat('x', 501)) $$,
+  '22023', null, 'a closing note over 500 characters is refused');
 select throws_ok($$ select tests.close('co_closed', 2, 'Done') $$,
   'PT409', null, 'closing from a stale tab is refused while the reopening is active');
 select is(tests.close('co_closed', 3, 'Client confirmed, done') ->> 'status',
@@ -350,11 +351,59 @@ select is(tests.override('co_closed'), null, 'the reopening ends');
 select is(tests.lock_at('co_closed'), :'closed_deadline'::timestamptz, 'the deadline stays');
 select is(tests.save('co_closed', '{"guest_count": 97}') ->> 'status', 'locked', 'client saves are refused again');
 select is(tests.close('co_closed', 3, 'Again') ->> 'status',
-  'not_reopened', 'a repeated close changes nothing');
-select is(tests.audits('co_closed', 'planning_client_reopen_closed'), 1, 'and is audited once');
-select is(tests.close('co_open', 1, 'Close it') ->> 'status',
-  'already_open', 'closing never closes a plan before its deadline');
-select is(tests.save('co_open', '{"guest_count": 121}') ->> 'status', 'saved', 'which stays open');
+  'already_closed', 'a repeated close changes nothing');
+select is(tests.audits('co_closed', 'planning_client_closed'), 1, 'and is audited once');
+select is(tests.save('co_open', '{"guest_count": 121}') ->> 'status', 'saved', 'other plans stay open');
+
+-- Closing before the deadline: a manual close wins until staff open editing again.
+select tests.booked('co_manual', 60);
+select is(tests.save('co_manual', '{"guest_count": 40}') ->> 'status', 'saved', 'before the deadline the client saves');
+select tests.basics('co_manual') as manual_item \gset
+select tests.rev('co_manual') as manual_rev \gset
+select throws_ok($$ select tests.close('co_manual', 1, 'x', 'owner_b') $$, 'P0002', null, 'another business can''t close it');
+select throws_ok($$ select tests.close('co_manual', 1, 'x', 'client_y') $$, 'P0002', null, 'nor can the client');
+select throws_ok($$ select tests.close('co_manual', 9, 'x') $$, 'PT409', null, 'closing from a stale tab is refused');
+select is(tests.close('co_manual', 1, '') ->> 'status', 'closed', 'staff close before the deadline, without a note');
+select ok(tests.lock_at('co_manual') > clock_timestamp(), 'the deadline stays where it was, in the future');
+select ok((select planning_client_closed_at is not null and planning_override_until is null from public.events where id = tests.id('co_manual')),
+  'the close is stored apart from the deadline');
+select is(tests.view('co_manual') -> 'editing' ->> 'state', 'closed', 'the client sees planning closed');
+select is(tests.view('co_manual') -> 'editing' -> 'closed_by_dj', 'true'::jsonb, 'by the DJ (no reason or staff identity)');
+select tests.login_as(tests.id('client_y'));
+select is(public.client_save_plan_item(tests.id('co_manual'), 'test-bouprod', :'manual_item', :manual_rev, '{"guest_count": 41}') ->> 'status', 'locked',
+  'a save from a tab opened before the close is refused');
+select tests.su();
+select is(tests.stored('co_manual'), '{"guest_count": 40}'::jsonb, 'and stores nothing');
+select is(tests.staff_save('co_manual', '{"guest_count": 42}') ->> 'status', 'saved', 'staff still edit');
+select is(tests.close('co_manual', 2, 'Again') ->> 'status', 'already_closed', 'closing again changes nothing');
+select ok((select count(*) = 1 and bool_and(metadata ->> 'reason' is null and metadata -> 'before' ->> 'state' = 'open' and actor_id = tests.id('staff_a'))
+           from public.audit_events where entity_id = tests.id('co_manual') and action = 'planning_client_closed'),
+  'audited once, with the staff user and the state before');
+select is(tests.staff_view('co_manual') -> 'editing' -> 'history' -> 0 ->> 'action', 'planning_client_closed', 'staff see it in the history');
+select ok(tests.staff_view('co_manual') -> 'editing' ->> 'closed_at' is not null, 'and when it was closed');
+select is(tests.set_days('co_manual', 2, 10, 'Venue wants it later') ->> 'status', 'changed', 'moving the deadline');
+select is(tests.view('co_manual') -> 'editing' ->> 'state', 'closed', 'doesn''t lift a manual close');
+select throws_ok($$ select tests.reopen('co_manual', 3, null, 'x', 'owner_b') $$, 'P0002', null, 'another business can''t open it');
+select throws_ok($$ select tests.reopen('co_manual', 9, null, 'x') $$, 'PT409', null, 'opening from a stale tab is refused');
+select is(tests.reopen('co_manual', 3, null, null) ->> 'status', 'opened', 'before the deadline, opening needs no end time');
+select is(tests.view('co_manual') -> 'editing' ->> 'state', 'open', 'the client can edit until the normal deadline');
+select is(tests.override('co_manual'), null, 'with no open-ended reopening');
+select is(tests.save('co_manual', '{"guest_count": 43}') ->> 'status', 'saved', 'and saves');
+select is(tests.audits('co_manual', 'planning_client_opened'), 1, 'opening is audited');
+select is(tests.reopen('co_manual', 4, null, null) ->> 'status', 'already_open', 'opening an open plan changes nothing');
+select is(tests.close('co_manual', 4, 'Final timeline') ->> 'status', 'closed', 'closed again');
+select tests.set_cutoff('co_manual', clock_timestamp() - interval '1 day', null);
+select throws_ok($$ select tests.reopen('co_manual', 5, null, null) $$, '22023', 'planning_invalid: choose when the reopening ends',
+  'after the deadline, opening needs an end time');
+select is(tests.reopen('co_manual', 5, tests.local('co_manual', '1 day'), null) ->> 'status', 'reopened', 'and reopens until it');
+select ok((select planning_client_closed_at is null from public.events where id = tests.id('co_manual')), 'which lifts the manual close');
+select is(tests.save('co_manual', '{"guest_count": 44}') ->> 'status', 'saved', 'the client saves after the deadline');
+select is(tests.close('co_manual', 6, null) ->> 'status', 'closed', 'closing a reopening closes it');
+select is(tests.override('co_manual'), null, 'and ends the reopening');
+select tests.login_as(tests.id('staff_a'));
+select is((select x ->> 'state' from jsonb_array_elements(public.staff_dashboard(tests.id('tenant_a')) -> 'planning') x where x ->> 'event_id' = tests.id('co_manual')::text),
+  'closed', 'the staff dashboard shows the same state');
+select tests.su();
 
 -- ---------------------------------------------------------------------------
 -- Changing the deadline, and schedule changes
@@ -402,9 +451,13 @@ select throws_ok($$ update public.events set planning_override_until = now() + i
 select throws_ok($$ update public.events set planning_lock_at = now() + interval '1 day' where id = tests.id('co_closed') $$, '42501', null,
   'nor the deadline');
 select throws_ok($$ update public.event_plans set client_cutoff_days = 1 $$, '42501', null, 'nor the plan''s days');
+select throws_ok($$ update public.events set planning_client_closed_at = now() where id = tests.id('co_closed') $$, '42501', null,
+  'nor the manual close');
 select tests.su();
 select throws_ok($$ update public.events set planning_override_until = now() + interval '1 day' where id = tests.id('co_closed') $$, '23514', null,
   'even trusted code changes them only through the cutoff functions');
+select throws_ok($$ update public.events set planning_client_closed_at = now() where id = tests.id('co_closed') $$, '23514', null,
+  'including the manual close');
 
 -- Archived: no client reads or writes, no reopening.
 select tests.login_as(tests.id('staff_a'));

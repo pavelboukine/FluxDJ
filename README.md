@@ -855,7 +855,7 @@ reserved for release checkpoints.
 | Rerun only what just failed | `pnpm test:e2e --last-failed` |
 | Need screenshots for review | `E2E_SCREENSHOTS=1 pnpm test:e2e <spec>` (PNG files under `test-results/`) |
 | Change unit-tested code | `pnpm test:unit` (about a second), or `pnpm exec vitest related --run <changed files>` |
-| Change server code with integration tests | `pnpm test:integration tests/integration/planning.test.ts`, or `pnpm test:integration --changed` |
+| Change server code with integration tests | `pnpm exec vitest run tests/integration/planning.test.ts --no-file-parallelism` (`pnpm test:integration` with a file still runs every integration file) |
 | Change SQL | `pnpm db:test` (pgTAP, about 12 seconds) and `pnpm db:lint` |
 | Restarted local Supabase | `pnpm db:versions` (local must match the hosted versions) |
 | Finish an individual task | `pnpm lint`, `pnpm typecheck`, affected unit tests and the specifically affected browser/integration specs |

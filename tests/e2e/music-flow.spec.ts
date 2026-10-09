@@ -302,11 +302,8 @@ test.describe.serial("songs in planning", () => {
 
   test("staff see and edit the same songs; hiding keeps them; archived plans are read-only; other businesses get nothing", async () => {
     await staff.goto(staffPlanningUrl);
-    await expect(staff.getByText("Stage details, music and people", { exact: true })).toBeVisible();
-    const dances = staff.getByTestId("staff-stage-special_dances");
-    await dances.locator("summary").first().click();
-    await dances.getByTestId("moment-first_dance").locator("summary").first().click();
-    const first = dances.getByTestId("music-first_dance");
+    await expect(staff.getByTestId("staff-plan-overview")).toBeVisible();
+    const first = await openMoment(staff, "special_dances", "first_dance");
     await expect(rows(first)).toHaveText([/Perfect/, /At Last/, /Can't Help Falling in Love/]);
     await first.getByRole("button", { name: 'Edit "At Last"' }).click();
     await rows(first).filter({ hasText: "At Last" }).getByLabel("Instructions (optional)").fill("Second half only");
@@ -314,6 +311,7 @@ test.describe.serial("songs in planning", () => {
     expect((await responses(eventId, "first_dance"))!).toMatchObject({ updated_by_actor: "staff" });
 
     // Hide Must play: it leaves the client's plan with its songs kept; Restore brings them back.
+    await openPlanSection(staff, "plan-structure");
     await staff.getByRole("button", { name: "Hide Must play from the client", exact: true }).click();
     await expect(staff.getByRole("button", { name: "Restore Must play", exact: true })).toBeVisible();
     await client.reload();
@@ -329,8 +327,7 @@ test.describe.serial("songs in planning", () => {
     // Archived: staff editors are read-only, the client is closed out.
     await must(admin.from("events").update({ archived_at: new Date().toISOString() }).eq("id", eventId));
     await staff.reload();
-    await staff.getByTestId("staff-stage-special_dances").locator("summary").first().click();
-    await staff.getByTestId("moment-first_dance").locator("summary").first().click();
+    await openMoment(staff, "special_dances", "first_dance");
     await expect(staff.getByTestId("music-first_dance")).toContainText("Unarchive the event to edit planning.");
     await expect(staff.getByTestId("music-first_dance").getByRole("button", { name: /Remove/ })).toHaveCount(0);
     await client.reload();

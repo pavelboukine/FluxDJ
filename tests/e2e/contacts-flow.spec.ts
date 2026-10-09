@@ -24,11 +24,6 @@ const clientEmail = `e2e-contacts-${run}@example.test`;
 
 const noSideways = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
-/** Opens a staff card unless it is already open. */
-async function openCard(card: Locator): Promise<Locator> {
-  if (!(await card.evaluate((el) => (el as HTMLDetailsElement).open))) await card.locator("summary").first().click();
-  return card;
-}
 const contactsStatus = (page: Page) => page.locator("#plan-panel-contacts_vendors").getByTestId("section-status");
 
 async function answers(eventId: string, key: string) {
@@ -266,14 +261,15 @@ test.describe.serial("contacts and preferences", () => {
 
   test("staff on a phone see and edit the same answers; hiding keeps them; nothing contractual changes", async () => {
     await staff.goto(staffPlanningUrl);
-    await expect(staff.getByText("Contacts and preferences", { exact: true })).toBeVisible();
-    const card = await openCard(staff.getByTestId("staff-section-contacts_vendors"));
+    await expect(staff.getByTestId("staff-plan-overview")).toBeVisible();
+    const card = await openPlanSection(staff, "contacts_vendors");
     await card.getByRole("button", { name: 'Edit "Sasha Roy"' }).click();
     await card.getByTestId("entry-row").filter({ hasText: "Sasha Roy" }).getByLabel("Coordination notes (optional, shared with you and the DJ)").fill("Cue the DJ for the entrance and the cake");
     await expect(card.getByText("All changes saved")).toBeVisible();
     expect((await answers(eventId, "contacts_vendors"))!.vendors![0].notes).toBe("Cue the DJ for the entrance and the cake");
     expect(await noSideways(staff)).toBeLessThanOrEqual(0);
 
+    await openPlanSection(staff, "plan-structure");
     await staff.getByRole("button", { name: "Hide Contacts and vendors from the client", exact: true }).click();
     await expect(staff.getByRole("button", { name: "Restore Contacts and vendors", exact: true })).toBeVisible();
     await client.reload();

@@ -303,6 +303,7 @@ export function planningLine(p: WorkspaceFacts["planning"]): string | null {
   const zone = ` (${e.timezone})`;
   if (e.state === "open") return `Client editing open until ${shortInstant(e.closes_at ?? e.deadline, e.timezone)}${zone}.`;
   if (e.state === "reopened") return `Client editing reopened until ${shortInstant(e.closes_at ?? e.deadline, e.timezone)}${zone}.`;
+  if (e.closed_at) return `Client editing closed by staff since ${shortInstant(e.closed_at, e.timezone)}${zone}. Staff can still edit.`;
   return `Client planning is read-only since ${shortInstant(e.deadline, e.timezone)}${zone}. Staff can still edit.`;
 }
 

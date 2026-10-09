@@ -121,20 +121,20 @@ describe("planning sections", () => {
   });
 
   it("resolves the section parameter safely", () => {
-    expect(resolveSection("ceremony", sections, false)).toBe("ceremony");
-    expect(resolveSection(null, sections, false)).toBeNull();
-    expect(resolveSection("closing", sections, false)).toBeNull(); // hidden
-    expect(resolveSection("special_dances", sections, false)).toBeNull(); // nothing to fill in
-    expect(resolveSection("Vows", sections, false)).toBeNull(); // labels are never identifiers
-    expect(resolveSection(PROVIDED_SECTION, sections, false)).toBeNull();
-    expect(resolveSection(PROVIDED_SECTION, sections, true)).toBe(PROVIDED_SECTION);
+    expect(resolveSection("ceremony", sections)).toBe("ceremony");
+    expect(resolveSection(null, sections)).toBeNull();
+    expect(resolveSection("closing", sections)).toBeNull(); // hidden
+    expect(resolveSection("special_dances", sections)).toBeNull(); // nothing to fill in
+    expect(resolveSection("Vows", sections)).toBeNull(); // labels are never identifiers
+    expect(resolveSection(PROVIDED_SECTION, sections, [])).toBeNull();
+    expect(resolveSection(PROVIDED_SECTION, sections, [PROVIDED_SECTION])).toBe(PROVIDED_SECTION);
   });
 
-  it("orders Previous and Next from the overview to the proposal answers", () => {
-    expect(neighbours(sections, true, null)).toEqual({ previous: null, next: { key: "basics" } });
-    expect(neighbours(sections, true, "basics")).toEqual({ previous: { key: null }, next: { key: "dj_preferences" } });
-    expect(neighbours(sections, true, "reception_entrance").next).toEqual({ key: PROVIDED_SECTION });
-    expect(neighbours(sections, false, "reception_entrance").next).toBeNull();
+  it("orders Previous and Next from the overview to the extra views", () => {
+    expect(neighbours(sections, [PROVIDED_SECTION], null)).toEqual({ previous: null, next: { key: "basics" } });
+    expect(neighbours(sections, [PROVIDED_SECTION], "basics")).toEqual({ previous: { key: null }, next: { key: "dj_preferences" } });
+    expect(neighbours(sections, [PROVIDED_SECTION], "reception_entrance").next).toEqual({ key: PROVIDED_SECTION });
+    expect(neighbours(sections, [], "reception_entrance").next).toBeNull();
   });
 
   it("builds the URL search while keeping other parameters", () => {

@@ -3,19 +3,18 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CalendarDays, Lock, MapPin } from "lucide-react";
 import { BasicsEditor } from "@/components/planning/basics-editor";
+import { EditingChip, PlanOverview } from "@/components/planning/client-planning";
 import {
-  EditingChip,
   PanelHeading,
   PlanMoment,
   PlanNavigation,
-  PlanOverview,
   PlanPanel,
   PlanSidebar,
   SectionHeader,
   SectionPager,
   SectionPicker,
   UnsavedElsewhere,
-} from "@/components/planning/client-planning";
+} from "@/components/planning/plan-navigation";
 import { AlreadyProvided } from "@/components/planning/plan-overview";
 import { ceremonyDetails, generalEditor, knownPeople, momentEditor, savedIntroductions, savedProcessionalPeople } from "@/components/planning/moment-editor";
 import { MusicListsProvider } from "@/components/planning/music-editor";
@@ -143,7 +142,7 @@ export default async function ClientPlanningPage({ params }: PageProps<"/[tenant
 
             <EditingNotice djName={dj} />
 
-            <PlanNavigation sections={sections} hasProvided={providedCount > 0} providedLabel="Already provided">
+            <PlanNavigation sections={sections} extras={providedCount > 0 ? [{ key: PROVIDED_SECTION, label: "Already provided" }] : []}>
               <div id={WORKSPACE_ID} className="grid scroll-mt-4 gap-4 lg:grid-cols-[16rem_minmax(0,1fr)] lg:items-start">
                 <PlanSidebar />
                 <div className="grid min-w-0 gap-4">

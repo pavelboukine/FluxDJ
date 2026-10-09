@@ -12,7 +12,8 @@ import { itemProgress, progressHeadline, progressScopeNote, type PlanProgress, t
  * the saved Event basics (stage editors reuse its venue, guest count and end
  * time) and, on the client's page, whether the client can still edit. The
  * page renders the server's values; each successful save returns new ones,
- * which replace them here. Nothing is computed from forms.
+ * which replace them here, and so does a server refresh of the page. Nothing
+ * is computed from forms.
  *
  * Editing is one shared state for every editor: when any save comes back
  * "locked" (the deadline passed while the page was open), every editor turns
@@ -39,6 +40,15 @@ export function PlanProgressProvider({ initial, warnings, basics, editing = null
   children: ReactNode;
 }) {
   const [state, setState] = useState({ progress: initial, warnings, basics, editing });
+  // A server refresh (after a structure change or an editing action on the staff page) brings
+  // newer values from the database: adopt them. Saves in between update the same state.
+  // Compared by content, so re-rendering with the same server data never undoes a save.
+  const incoming = JSON.stringify([initial, warnings, basics, editing]);
+  const [source, setSource] = useState(incoming);
+  if (incoming !== source) {
+    setSource(incoming);
+    setState({ progress: initial, warnings, basics, editing });
+  }
   const value: PlanState = {
     ...state,
     applySaved: (r) => setState((s) => ({ ...s, progress: r.progress, warnings: r.timeline_warnings })),
@@ -75,7 +85,8 @@ export function EditingNotice({ djName }: { djName: string }) {
       <p className={closed ? "font-medium" : undefined}>{clientEditingText(e, djName)}</p>
       {closed ? (
         <p className="text-muted-foreground">
-          The planning deadline was {formatInstant(e.deadline, e.timezone)}. You can still open every section to see what was saved.
+          {e.closed_by_dj ? `${djName} has closed planning to changes.` : `The planning deadline was ${formatInstant(e.deadline, e.timezone)}.`} You can
+          still open every section to see what was saved.
         </p>
       ) : null}
     </section>

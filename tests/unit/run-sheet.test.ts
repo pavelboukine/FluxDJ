@@ -239,6 +239,16 @@ describe("run sheet model", () => {
     expect(sheet.editing).toMatch(/^Client editing closed since .*Staff can still change the plan\.$/);
   });
 
+  it("says when staff closed client editing; the content (and so the revision) doesn't depend on it", () => {
+    const v = wedding.plan === null ? wedding : { ...wedding, editing: { ...wedding.editing!, closed_by_dj: true, closed_at: "2027-07-01T15:00:00+00:00" } };
+    const closed = buildRunSheet(input(v, { title: "Mariage Gagnon–Lévesque" }));
+    expect(closed.editing).toMatch(/^Client editing closed by staff since Thursday, July 1, 2027 .*Staff can still change the plan\.$/);
+    const { editing: _a, asOf: _b, ...withClose } = closed;
+    const { editing: _c, asOf: _d, ...without } = sheet;
+    void [_a, _b, _c, _d];
+    expect(withClose).toEqual(without);
+  });
+
   it("a Simple Party plan and an unset plan", () => {
     const p = buildRunSheet(input(party, { title: "Fête de Sam" }));
     expect(p.stages.map((s) => s.label)).toEqual(["Party"]);

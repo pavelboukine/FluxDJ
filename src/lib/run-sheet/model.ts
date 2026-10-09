@@ -515,6 +515,7 @@ export function buildRunSheet(input: RunSheetInput): RunSheet {
   const e = view.editing;
   if (e) base.editing = e.state === "open" ? `Client editing open until ${formatInstant(e.deadline, e.timezone)}.`
     : e.state === "reopened" ? `Client editing temporarily reopened until ${formatInstant(e.closes_at ?? e.deadline, e.timezone)}.`
+    : e.closed_at ? `Client editing closed by staff since ${formatInstant(e.closed_at, e.timezone)}. Staff can still change the plan.`
     : `Client editing closed since ${formatInstant(e.deadline, e.timezone)}. Staff can still change the plan.`;
 
   // -- Frozen proposal answers ---------------------------------------------------

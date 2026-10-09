@@ -8,7 +8,9 @@ import { z } from "zod";
  * Deadline: 00:00 in the event's time zone on the event date minus the plan's
  * days (the first moment of that day where DST skips or repeats midnight).
  * open: before it; reopened: after it, until a staff reopening ends; closed:
- * otherwise. Times are ISO instants; display them in the event's zone.
+ * otherwise, or whenever staff closed editing (a manual close wins over a
+ * deadline still to come, until staff open editing again). Times are ISO
+ * instants; display them in the event's zone.
  */
 
 /** Setting limits, mirrored from the database checks. */
@@ -22,6 +24,8 @@ export const clientEditingSchema = z.object({
   deadline: z.string(),
   /** When editing closes: the deadline, or the reopening's end. Null when closed. */
   closes_at: z.string().nullable(),
+  /** Staff closed editing (whatever the deadline). Optional: older databases omit it. */
+  closed_by_dj: z.boolean().optional().default(false),
   timezone: z.string(),
 });
 export type ClientEditing = z.infer<typeof clientEditingSchema>;
@@ -45,6 +49,8 @@ export const staffEditingSchema = clientEditingSchema.extend({
   reopened_until: z.string().nullable(),
   reopen_active: z.boolean(),
   reopen_max_days: z.number().int(),
+  /** When staff closed client editing; null when no manual close is in force. */
+  closed_at: z.string().nullable().optional().default(null),
   version: z.number().int(),
   history: z.array(historySchema),
 });
@@ -78,6 +84,11 @@ export function parseLocalInput(value: string): string | null {
   return `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:00`;
 }
 
+/** Validates the optional note on opening or closing client editing. */
+export function checkOptionalReason(reason: string): string | null {
+  return reason.trim().length > REASON_MAX ? `Keep the reason under ${REASON_MAX} characters.` : null;
+}
+
 /** Validates a staff reason the way the database does. */
 export function checkReason(reason: string): string | null {
   if (reason.trim().length === 0) return "Enter a reason. It is kept in the history and never shown to the client.";
@@ -91,13 +102,28 @@ const ACTION_LABELS: Record<string, string> = {
   planning_cutoff_recalculated: "Deadline recalculated",
   planning_client_reopened: "Client editing reopened",
   planning_client_reopen_closed: "Client editing closed early",
+  planning_client_closed: "Client editing closed",
+  planning_client_opened: "Client editing opened",
 };
 export function historyLabel(action: string): string {
   return ACTION_LABELS[action] ?? action;
 }
 
+/** For staff: whether the client can edit, and why (normal deadline, a reopening, a manual close or the deadline). */
+export function staffEditingText(e: StaffEditing): { title: string; detail: string } {
+  const deadline = formatInstant(e.deadline, e.timezone);
+  if (e.state === "open") return { title: "Client editing open", detail: `Open until the normal deadline, ${deadline}.` };
+  if (e.state === "reopened") {
+    return { title: "Client editing open", detail: `Reopened by staff until ${formatInstant(e.closes_at ?? e.deadline, e.timezone)}. The normal deadline was ${deadline}.` };
+  }
+  if (e.closed_at) {
+    return { title: "Client editing closed", detail: `Closed by staff on ${formatInstant(e.closed_at, e.timezone)}. It stays closed until you open it, whatever the deadline.` };
+  }
+  return { title: "Client editing closed", detail: `The deadline passed on ${deadline}.` };
+}
+
 /** The client's one-line status. */
-export function clientEditingText(e: ClientEditing, djName: string): string {
+export function clientEditingText(e: Pick<ClientEditing, "state" | "deadline" | "closes_at" | "timezone">, djName: string): string {
   if (e.state === "closed") return "Planning is read-only. Contact your DJ for changes.";
   if (e.state === "reopened") return `${djName} reopened planning for you. You can make changes until ${formatInstant(e.closes_at ?? e.deadline, e.timezone)}.`;
   return `You can make changes until ${formatInstant(e.closes_at ?? e.deadline, e.timezone)}. After that, planning becomes read-only; contact ${djName} for changes.`;
