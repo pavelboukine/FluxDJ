@@ -181,7 +181,9 @@ test.describe.serial("contract sending and verified client access", () => {
     await page.reload();
     await expect(page.getByRole("heading", { name: "This contract isn't available" })).toBeVisible();
     await page.goto("/my");
-    await expect(page.getByText(/has no contracts to read yet/)).toBeVisible();
+    // The event stays listed (the client keeps event access), but no contract can be opened.
+    await expect(page.getByRole("heading", { name: eventTitle })).toBeVisible();
+    await expect(page.getByRole("link", { name: /contract/i })).toHaveCount(0);
     await returning.close();
   });
 });

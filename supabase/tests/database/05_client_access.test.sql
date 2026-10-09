@@ -2,7 +2,7 @@
 -- and cannot alter staff data (spec 7 and 11).
 begin;
 \ir _fixtures.psql
-select plan(22);
+select plan(23);
 
 -- ---------------------------------------------------------------------------
 -- my_events(): event-scoped, verified, unrevoked access only.
@@ -53,6 +53,14 @@ select is_empty($$ select * from public.my_events() $$,
   'events of an archived tenant are hidden');
 reset role;
 update public.tenants set archived_at = null where id = tests.id('tenant_b');
+
+-- Archived events are hidden too, like every other client view.
+update public.events set archived_at = now() where id = tests.id('event_b1');
+select tests.login_as(tests.id('client_x'));
+select is_empty($$ select * from public.my_events() $$,
+  'an archived event is hidden (its business is active)');
+reset role;
+update public.events set archived_at = null where id = tests.id('event_b1');
 
 -- ---------------------------------------------------------------------------
 -- Clients get no direct table rows, so staff columns never leak.

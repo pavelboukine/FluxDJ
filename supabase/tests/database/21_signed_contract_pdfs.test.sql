@@ -7,7 +7,7 @@ begin;
 \ir _catalog_fixtures.psql
 \ir _offer_fixtures.psql
 \ir _contract_fixtures.psql
-select plan(73);
+select plan(77);
 
 create function tests.send_c(contract uuid) returns jsonb language plpgsql as $$
 declare v_link uuid := gen_random_uuid();
@@ -200,6 +200,8 @@ select tests.login_as(tests.id('owner_a'));
 select public.set_event_archived(tests.id('event_a2'), true);
 select tests.login_as(tests.id('client_y'));
 select is(public.client_signed_document(current_setting('tests.c')::uuid, 'test-bouprod'), null, 'archiving blocks the signer''s download');
+select is(public.client_payment_summary(current_setting('tests.c')::uuid, 'test-bouprod'), null, 'archiving blocks the signer''s payment summary');
+select is(public.client_signature_object(current_setting('tests.c')::uuid, 'test-bouprod'), null, 'and their signature image');
 reset role;
 select is((select count(*)::int from public.contract_documents where contract_id = current_setting('tests.c')::uuid), 1, 'but keeps the PDF');
 select is((select count(*)::int from public.email_outbox where entity_id = current_setting('tests.c')::uuid and event_type = 'contract_signed_copy' and status = 'cancelled'), 2,
@@ -210,6 +212,8 @@ select throws_like($$ select public.send_signed_contract_copies(current_setting(
 select public.set_event_archived(tests.id('event_a2'), false);
 select tests.login_as(tests.id('client_y'));
 select is(public.client_signed_document(current_setting('tests.c')::uuid, 'test-bouprod') ->> 'storage_path', current_setting('tests.pdf1'), 'unarchiving restores the same PDF, not a new one');
+select isnt(public.client_payment_summary(current_setting('tests.c')::uuid, 'test-bouprod'), null, 'unarchiving restores the payment summary');
+select isnt(public.client_signature_object(current_setting('tests.c')::uuid, 'test-bouprod'), null, 'and the signature image');
 
 -- ===========================================================================
 -- Staff: recipient-confirmed resend, per-recipient state

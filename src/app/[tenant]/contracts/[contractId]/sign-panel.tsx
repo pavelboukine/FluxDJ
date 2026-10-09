@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import SignaturePad, { type PointGroup } from "signature_pad";
+import { Eraser, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,6 +37,9 @@ export function SignPanel(props: Props) {
   const [hasDrawing, setHasDrawing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const [signedOut, setSignedOut] = useState(false);
+  // After a review attempt, missing fields are marked next to themselves too.
+  const [attempted, setAttempted] = useState(false);
   const [result, setResult] = useState<SignResult | null>(null);
   const [pending, start] = useTransition();
 
@@ -104,11 +108,13 @@ export function SignPanel(props: Props) {
       hasDrawing && !padRef.current?.isEmpty() ? null : "draw your signature",
       consent ? null : "check the consent box",
     ].filter(Boolean);
+    setAttempted(true);
     if (missing.length) {
       setProblem(`To sign, ${missing.join(", ")}.`);
       return;
     }
     setProblem(null);
+    setSignedOut(false);
     setConfirming(true);
   }
 
@@ -134,6 +140,7 @@ export function SignPanel(props: Props) {
           router.refresh();
         } else {
           setConfirming(false);
+          setSignedOut(outcome.code === "signed_out");
           setProblem(outcome.message);
         }
       } catch {
@@ -146,23 +153,34 @@ export function SignPanel(props: Props) {
 
   if (result?.status === "signed") {
     return (
-      <section role="status" className="mx-auto grid w-full max-w-prose gap-1 rounded-lg border-2 border-emerald-600 p-4 text-base">
+      <section role="status" className="grid gap-1 rounded-2xl border-2 border-emerald-600 bg-card p-4 text-base shadow-sm sm:p-6">
         <h2 className="text-lg font-semibold">Contract signed.</h2>
         <p>Your DJ will follow up with the next steps.</p>
       </section>
     );
   }
 
+  const nameMissing = attempted && !typedName.trim();
+  const drawingMissing = attempted && !hasDrawing;
+  const consentMissing = attempted && !consent;
+  const step = "flex size-6 shrink-0 items-center justify-center rounded-full bg-[var(--brand)] text-xs font-semibold text-[var(--brand-foreground)]";
+
   return (
-    <section aria-labelledby="sign-heading" className="mx-auto grid w-full max-w-prose gap-4 rounded-lg border p-4">
-      <h2 id="sign-heading" className="text-lg font-semibold">Sign this contract</h2>
+    <section id="sign" aria-labelledby="sign-heading" className="grid scroll-mt-4 gap-5 rounded-2xl border bg-card p-4 shadow-sm sm:p-6">
+      <div className="grid gap-1">
+        <h2 id="sign-heading" className="text-lg font-semibold">Sign this contract</h2>
+        <p className="text-sm text-muted-foreground">Nothing is signed until you confirm on the last step.</p>
+      </div>
       {props.isDemo ? (
-        <p className="rounded-md border border-destructive/60 p-2 text-sm text-destructive">
+        <p className="rounded-lg border border-destructive/60 p-2 text-sm text-destructive">
           DEMO: the agreement and the consent statement below are test wording. They have not been reviewed by a lawyer.
         </p>
       ) : null}
-      <div className="grid gap-1.5">
-        <Label htmlFor="typed_name">Your full name</Label>
+      <div className="grid gap-2">
+        <div className="flex items-center gap-2">
+          <span aria-hidden className={step}>1</span>
+          <Label htmlFor="typed_name">Your full name</Label>
+        </div>
         <Input
           id="typed_name"
           name="typed_name"
@@ -171,12 +189,17 @@ export function SignPanel(props: Props) {
           value={typedName}
           onChange={(e) => setTypedName(e.target.value)}
           aria-describedby="typed_name_hint"
+          aria-invalid={nameMissing || undefined}
+          className="h-11 text-base sm:text-sm"
         />
         <p id="typed_name_hint" className="text-xs text-muted-foreground">This contract names {props.expectedName} as the signer.</p>
       </div>
-      <div className="grid gap-1.5">
-        <span id="signature_label" className="text-sm font-medium">Your signature</span>
-        <div className="relative rounded-md border-2 border-dashed bg-white">
+      <div className="grid gap-2">
+        <div className="flex items-center gap-2">
+          <span aria-hidden className={step}>2</span>
+          <span id="signature_label" className="text-sm font-medium">Your signature</span>
+        </div>
+        <div className={`relative rounded-xl border-2 border-dashed bg-white ${drawingMissing ? "border-destructive" : ""}`}>
           <canvas
             ref={canvasRef}
             role="img"
@@ -186,45 +209,74 @@ export function SignPanel(props: Props) {
             className="block aspect-[3/1] w-full touch-none select-none"
           />
           <span aria-hidden className="pointer-events-none absolute bottom-3 left-4 right-4 border-b border-neutral-300" />
+          {!hasDrawing ? (
+            <span aria-hidden className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 text-center text-sm text-neutral-400">
+              Sign here
+            </span>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p id="signature_hint" className="text-xs text-muted-foreground">Sign with your finger, a stylus or the mouse.</p>
-          <Button type="button" variant="outline" size="sm" onClick={clear} disabled={pending}>
+          <p id="signature_hint" className="text-xs text-muted-foreground">
+            Sign with your finger, a stylus or the mouse. Scroll the page outside this box.
+          </p>
+          <Button type="button" variant="outline" className="min-h-11 sm:min-h-9" onClick={clear} disabled={pending || !hasDrawing}>
+            <Eraser aria-hidden />
             Clear signature
           </Button>
         </div>
       </div>
-      <label className="flex items-start gap-2 text-sm">
-        <input
-          type="checkbox"
-          name="consent"
-          checked={consent}
-          onChange={(e) => setConsent(e.target.checked)}
-          className="mt-0.5 size-4 shrink-0 accent-primary"
-        />
-        <span>{props.consentText}</span>
-      </label>
+      <div className="grid gap-2">
+        <div className="flex items-center gap-2">
+          <span aria-hidden className={step}>3</span>
+          <span className="text-sm font-medium">Your consent</span>
+        </div>
+        <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-sm ${consentMissing ? "border-destructive" : ""}`}>
+          <input
+            type="checkbox"
+            name="consent"
+            checked={consent}
+            onChange={(e) => setConsent(e.target.checked)}
+            aria-invalid={consentMissing || undefined}
+            className="mt-0.5 size-5 shrink-0 accent-primary"
+          />
+          <span>{props.consentText}</span>
+        </label>
+      </div>
       {problem ? (
-        <p role="alert" className="text-sm text-destructive">
-          {problem}
-        </p>
+        <div role="alert" className="grid gap-1 rounded-lg border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive">
+          <p>{problem}</p>
+          {signedOut ? (
+            <p>
+              <a className="font-medium underline" href="/login" target="_blank" rel="noopener">
+                Sign in again in a new tab
+              </a>
+              , then come back here and sign.
+            </p>
+          ) : null}
+        </div>
       ) : null}
       {confirming ? (
-        <div role="dialog" aria-label="Confirm signing" className="grid gap-3 rounded-xl border-2 border-primary/40 p-4">
+        <div role="dialog" aria-label="Confirm signing" className="grid gap-3 rounded-xl border-2 border-[var(--brand)] p-4">
           <p className="font-medium">Sign this contract as {typedName.trim()}?</p>
           <p className="text-sm text-muted-foreground">Your typed name, drawn signature and consent will be recorded with this exact contract. A signed contract can&apos;t be changed.</p>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" onClick={sign} disabled={pending}>
-              {pending ? "Signing…" : "Sign contract"}
-            </Button>
-            <Button type="button" variant="outline" onClick={() => setConfirming(false)} disabled={pending}>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row">
+            <Button type="button" variant="outline" className="min-h-11" onClick={() => setConfirming(false)} disabled={pending}>
               Go back
+            </Button>
+            <Button type="button" className="min-h-11 px-5" style={{ background: "var(--brand)", color: "var(--brand-foreground)" }} onClick={sign} disabled={pending}>
+              {pending ? (
+                <>
+                  <Loader2 aria-hidden className="animate-spin" /> Signing…
+                </>
+              ) : (
+                "Sign contract"
+              )}
             </Button>
           </div>
         </div>
       ) : (
         <div>
-          <Button type="button" onClick={review} disabled={pending}>
+          <Button type="button" className="min-h-11 px-5 max-sm:w-full" style={{ background: "var(--brand)", color: "var(--brand-foreground)" }} onClick={review} disabled={pending}>
             Review and sign…
           </Button>
         </div>

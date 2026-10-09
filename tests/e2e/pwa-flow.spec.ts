@@ -117,7 +117,7 @@ test.describe.serial("installable app shell", () => {
     await signInWithLink(client, clientEmail);
     await client.goto("/start");
     await expect(client).toHaveURL(/\/my$/);
-    await expect(client.getByRole("link", { name: `Plan E2E PWA Wedding ${run}` })).toBeVisible();
+    await expect(client.getByRole("link", { name: `Plan your event for E2E PWA Wedding ${run}` })).toBeVisible();
     await clientContext.close();
 
     // Both roles: staff of one business and a client elsewhere -> the staff workspace, as /staff already does.
@@ -174,7 +174,7 @@ test.describe.serial("installable app shell", () => {
     const ap = await android.newPage();
     await signInWithLink(ap, clientEmail);
     await ap.goto("/my");
-    await expect(ap.getByRole("heading", { name: "Your event planning" })).toBeVisible();
+    await expect(ap.getByRole("heading", { name: "Your events", exact: true })).toBeVisible();
     await expect(ap.getByTestId("install-help")).toHaveCount(0);
     await android.close();
 
@@ -189,7 +189,7 @@ test.describe.serial("installable app shell", () => {
     await ip.getByTestId("install-help").getByRole("button", { name: "Not now" }).click();
     await expect(ip.getByTestId("install-help")).toHaveCount(0);
     await ip.reload();
-    await expect(ip.getByRole("heading", { name: "Your event planning" })).toBeVisible();
+    await expect(ip.getByRole("heading", { name: "Your events", exact: true })).toBeVisible();
     await expect(ip.getByTestId("install-help")).toHaveCount(0);
     await iphone.close();
 
@@ -207,7 +207,7 @@ test.describe.serial("installable app shell", () => {
     const sp = await installed.newPage();
     await signInWithLink(sp, clientEmail);
     await sp.goto("/my");
-    await expect(sp.getByRole("heading", { name: "Your event planning" })).toBeVisible();
+    await expect(sp.getByRole("heading", { name: "Your events", exact: true })).toBeVisible();
     await expect(sp.getByTestId("install-help")).toHaveCount(0);
     await installed.close();
   });
@@ -272,7 +272,7 @@ test.describe.serial("installable app shell", () => {
     await signInWithLink(page, clientEmail);
     await page.goto("/start");
     await expect(page).toHaveURL(/\/my$/);
-    await page.getByRole("link", { name: `Plan E2E PWA Wedding ${run}` }).click();
+    await page.getByRole("link", { name: `Plan your event for E2E PWA Wedding ${run}` }).click();
     await expect(page.getByTestId("editing-notice")).toBeVisible();
     expect(await noSideways(page)).toBeLessThanOrEqual(0);
     // Typing scrolls the field into view and saves as before.
@@ -287,10 +287,10 @@ test.describe.serial("installable app shell", () => {
     expect(res!.headers()["cache-control"]).not.toContain("public");
     await page.getByRole("link", { name: "Your events and contracts" }).click();
     await expect(page).toHaveURL(/\/my$/);
-    await page.getByRole("link", { name: `E2E PWA Wedding ${run}`, exact: true }).click();
+    await page.getByRole("link", { name: `View signed contract for E2E PWA Wedding ${run}` }).click();
     await expect(page).toHaveURL(/\/contracts\//);
     expect(await noSideways(page)).toBeLessThanOrEqual(0);
-    await page.getByRole("link", { name: "Your events and contracts" }).click();
+    await page.getByRole("link", { name: "Your events", exact: true }).click();
     await expect(page).toHaveURL(/\/my$/);
     await app.close();
   });

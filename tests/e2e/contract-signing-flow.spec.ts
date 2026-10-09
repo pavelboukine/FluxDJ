@@ -184,7 +184,9 @@ test.describe.serial("contract signing", () => {
     await expect(client.getByRole("img", { name: "Signature of Morgan Lee" })).toBeVisible();
     await expect(client.getByRole("heading", { name: "Sign this contract" })).toHaveCount(0);
     await client.goto("/my");
-    await expect(client.getByText(/Contract signed/)).toBeVisible();
+    await expect(client.getByTestId("event-status")).toHaveText("Signed · awaiting deposit");
+    await expect(client.getByRole("link", { name: `View deposit details for ${eventTitle}` })).toBeVisible();
+    await expect(client.locator("body")).not.toContainText(/pay now/i);
 
     const { data: contract } = await admin.from("contracts").select("status, signed_at, content_sha256").eq("id", contractId).single();
     expect(contract!.status).toBe("signed");

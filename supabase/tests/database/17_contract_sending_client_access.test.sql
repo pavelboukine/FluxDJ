@@ -5,7 +5,7 @@ begin;
 \ir _catalog_fixtures.psql
 \ir _offer_fixtures.psql
 \ir _contract_fixtures.psql
-select plan(81);
+select plan(82);
 
 -- Raw invitation token in tests: 'invite-' || link id (the app uses an HMAC).
 create function tests.send_c(contract text, fn text default 'send_contract') returns jsonb language plpgsql as $$
@@ -166,6 +166,7 @@ select is((select array_agg(k order by k) from jsonb_object_keys(current_setting
   'the contract DTO has exactly the intended fields');
 select is(public.client_contract_view(current_setting('tests.c')::uuid, 'test-other-dj') ->> 'state', 'unavailable', 'not under another tenant slug');
 select is((select count(*)::int from public.my_contracts()), 1, 'the client home lists it');
+select is((select event_id from public.my_contracts()), tests.id('event_a2'), 'the listing names the contract''s own event');
 select is((select count(*)::int from public.contracts), 0, 'direct table reads still return nothing to clients');
 select is((select count(*)::int from public.events), 0, 'nor events');
 select tests.login_as(tests.id('client_x'));

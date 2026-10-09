@@ -164,7 +164,7 @@ test.describe.serial("planning", () => {
     clientContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
     client = await clientContext.newPage();
     await signInClient(client, clientEmail);
-    await client.getByRole("link", { name: `Plan ${title}` }).click();
+    await client.getByRole("link", { name: `Plan your event for ${title}` }).click();
     await client.waitForURL(`**${planningUrl}`);
     await expect(client.getByRole("heading", { name: `Planning: ${title}` })).toBeVisible();
     await expect(client.getByTestId("progress-headline")).toHaveText("1 of 5 required answers");

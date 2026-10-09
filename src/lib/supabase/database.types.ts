@@ -1379,7 +1379,7 @@ isOneToOne: false
                            },
 "my_contracts":
 { Args: Record<PropertyKey, never>; Returns: {
-              "contract_id": string,"event_date": string,"event_title": string,"sent_at": string,"signed_at": string,"status": string,"tenant_display_name": string,"tenant_slug": string
+              "contract_id": string,"event_date": string,"event_id": string,"event_title": string,"sent_at": string,"signed_at": string,"status": string,"tenant_display_name": string,"tenant_slug": string
             }[]
                            },
 "my_events":

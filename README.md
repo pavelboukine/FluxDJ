@@ -1555,9 +1555,9 @@ Clients can read a sent contract. They cannot sign it yet.
   - that the contract is sent, its approval current, and the event and
     tenant not archived
 
-  `/my` lists readable contracts. Returning clients sign in at `/login`
-  with the same magic-link form and land on `/my`. Signing in never grants
-  planning access or confirms a booking.
+  `/my` lists the client's events (see "Client home" below). Returning
+  clients sign in at `/login` with the same magic-link form and land on
+  `/my`. Signing in never grants planning access or confirms a booking.
 - **Resend** (`resend_contract`). It revokes earlier invitations, cancels
   their pending emails, issues a fresh invitation and email, and is audited.
   `sent_at`, content, hashes and granted access are kept. It is limited to
@@ -2590,6 +2590,34 @@ Clients never read `events` directly, because RLS limits rows, not columns.
 They call `public.my_events()`, a hardened security definer function that
 returns only client-safe columns for events with active access and a verified
 email.
+It hides archived events and events of archived or suspended businesses,
+like every other client function (migration `20261025000100`).
+
+#### Client home (`/my`)
+
+One card per event the signed-in client can open, upcoming first (by the
+event's own time zone; date-only values are never shifted), past events
+collapsed. The page itself stays neutral (Flux), and each card carries its
+own business's current logo and colour, since a client can have events with
+several DJs. Every fact comes from client views that check access in the
+database: `my_events`, `my_contracts` (signer only; it names each contract's
+`event_id`), `client_contract_view`, `client_payment_summary`, `my_plans`
+and `client_planning_view`. `src/lib/client-home.ts` only maps those facts
+to wording and one recommended action:
+
+- a sent contract for this signer: "Review and sign contract" (or "Read
+  contract" when it can't be signed online);
+- signed, awaiting deposit: "View deposit details" (never "Pay now": Flux
+  DJ takes no payments, and only staff record them);
+- booked with planning allowed: "Plan your event", or "View planning" once
+  client editing has closed;
+- otherwise the signed contract, or no action with a short explanation
+  (proposal stage, choices submitted, contract with the person signing,
+  "booking not confirmed yet" for legacy signed contracts).
+
+Someone with access who isn't the signer sees statuses and planning, never
+contract, payment or signing links (contracts are readable only by their
+signer). Anonymous proposal links are not connected to `/my`.
 
 `event_access` rows can only be created by trusted server code using the
 service role, after magic-link email verification (Phase 2). Staff can revoke
