@@ -11,7 +11,7 @@ type Props = {
   /** Structure or template version, sent as "draft_version". */
   version: number;
   fields: Record<string, string>;
-  submitLabel: string;
+  submitLabel: ReactNode;
   /** Accessible name when the visible label is ambiguous ("Move Ceremony up"). */
   ariaLabel?: string;
   pendingLabel?: string;
@@ -21,6 +21,10 @@ type Props = {
   /** Inputs shown before the button (e.g. a label to rename). */
   children?: ReactNode;
   className?: string;
+  /** Called after a successful change (e.g. to close an inline rename). */
+  onSuccess?: () => void;
+  /** Accessible names for the button's icon-only content: pass an icon as submitLabel and its name as ariaLabel. */
+  size?: "sm" | "icon-sm";
 };
 
 /**
@@ -30,7 +34,7 @@ type Props = {
  * changes in a row work while another tab still gets a conflict. Typed text
  * is never reset; errors are announced next to the control.
  */
-export function RowAction({ action, version, fields, submitLabel, ariaLabel, pendingLabel, confirmText, variant = "outline", disabled, children, className }: Props) {
+export function RowAction({ action, version, fields, submitLabel, ariaLabel, pendingLabel, confirmText, variant = "outline", disabled, children, className, onSuccess, size = "sm" }: Props) {
   const shared = useSharedDraftVersion();
   const saved = useRef<number | undefined>(undefined);
   const [state, setState] = useState<ActionState>(idleState);
@@ -49,6 +53,7 @@ export function RowAction({ action, version, fields, submitLabel, ariaLabel, pen
         saved.current = result.version;
         if (shared) shared.current = Math.max(shared.current, result.version);
       }
+      if (result.status === "success") onSuccess?.();
     });
   }
 
@@ -58,8 +63,8 @@ export function RowAction({ action, version, fields, submitLabel, ariaLabel, pen
         <input key={name} type="hidden" name={name} value={value} />
       ))}
       {children}
-      <Button type="submit" size="sm" variant={variant} disabled={pending || disabled} aria-label={ariaLabel}>
-        {pending ? (pendingLabel ?? "Saving…") : submitLabel}
+      <Button type="submit" size={size} variant={variant} disabled={pending || disabled} aria-label={ariaLabel}>
+        {pending && size !== "icon-sm" ? (pendingLabel ?? "Saving…") : submitLabel}
       </Button>
       {state.status === "error" ? (
         <p role="alert" className="basis-full text-xs text-destructive">{state.message}</p>

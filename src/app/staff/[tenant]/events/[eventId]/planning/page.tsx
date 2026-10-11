@@ -115,7 +115,8 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
             <CardDescription>
               Booking sets planning up automatically
               {defaultTemplate ? ` from "${defaultTemplate.name}", the default for ${typeLabel} events` : `, with Event basics only (no template is the default for ${typeLabel} events)`}.
-              Set it up now to choose a template before the booking.
+              Set it up now to choose a template before the booking. The template is copied into this event then; later edits to the template
+              don&apos;t change this event&apos;s planning.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -205,9 +206,19 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
                     : "The client can open planning once the event is booked. Until then, only staff see it."}
                 </p>
                 <p className="text-muted-foreground">
-                  {plan.origin === "template"
-                    ? `Copied from the template "${plan.source_template_name}". Later edits to that template don't change this plan.`
-                    : "Created with Event basics only, because no template was chosen."}{" "}
+                  {plan.origin === "template" ? (
+                    <>
+                      Copied from the template{" "}
+                      {plan.source_template_id ? (
+                        <Link className="underline" href={`/staff/${slug}/planning-templates/${plan.source_template_id}`}>{plan.source_template_name}</Link>
+                      ) : (
+                        `"${plan.source_template_name}"`
+                      )}
+                      . This event has its own copy: later edits to that template don&apos;t change it.
+                    </>
+                  ) : (
+                    "Created with Event basics only, because no template was chosen."
+                  )}{" "}
                   {plan.initialized_via === "booking" ? "Set up when the event was booked." : plan.initialized_via === "backfill" ? "Set up for an event booked before planning existed." : "Set up by staff."}
                 </p>
                 {plan.origin === "fallback" ? (
@@ -358,7 +369,6 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
             </CardHeader>
             <CardContent>
               <StructureEditor
-                mode="plan"
                 general={view.structure.general}
                 stages={view.structure.stages.map((s) => ({ ...s, editor: null, removable: true, moments: s.moments.map((m) => ({ ...m, removable: true })) }))}
                 version={plan.structure_version}

@@ -1332,6 +1332,12 @@ isOneToOne: false
 "create_planning_template":
 { Args: { "p_description": string,"p_name": string,"p_tenant_id": string }; Returns: string
                            },
+"create_planning_template_from_starter":
+{ Args: { "p_description": string,"p_name": string,"p_starter": string,"p_tenant_id": string }; Returns: string
+                           },
+"create_planning_template_once":
+{ Args: { "p_description": string,"p_name": string,"p_source_template_id": string,"p_start": string,"p_template_id": string,"p_tenant_id": string }; Returns: Json
+                           },
 "create_platform_invitation":
 { Args: { "p_email": string,"p_link_id": string,"p_token_hash": string }; Returns: Json
                            },

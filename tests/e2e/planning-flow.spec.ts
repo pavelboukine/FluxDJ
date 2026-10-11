@@ -106,23 +106,29 @@ test.describe.serial("planning", () => {
     await expect(staff.getByRole("link", { name: "Manage planning templates" })).toBeVisible();
   });
 
-  test("starter templates are added explicitly and once; staff rename, reorder, trim and duplicate with stable keys", async () => {
+  test("starter templates are added explicitly and once; staff rename, reorder, trim, copy, create from an outline and preview with stable keys", async () => {
     await staff.goto(`/staff/${tenant.slug}/planning-templates`);
     await expect(staff.getByText("No planning templates yet.")).toBeVisible();
     await staff.getByRole("button", { name: "Add starter templates" }).click();
-    await expect(staff.getByText("Added Wedding and Simple Party.")).toBeVisible();
-    await staff.getByRole("button", { name: "Add starter templates" }).click();
-    await expect(staff.getByText("The starter templates are already here")).toBeVisible();
+    // Both starters are in the list, and the offer goes away (adding again is a no-op: pgTAP 25_planning).
+    await expect(staff.getByTestId("planning-template-row")).toHaveCount(2);
+    await expect(staff.getByTestId("starter-offer")).toHaveCount(0);
     expect((await admin.from("planning_templates").select("id").eq("tenant_id", tenant.id)).data).toHaveLength(2);
+    await expect(staff.getByTestId("planning-template-row").filter({ hasText: "Wedding" })).toContainText("3 general sections · 7 stages · 29 moments");
 
     await staff.getByRole("link", { name: "Wedding", exact: true }).click();
     await staff.waitForURL(/planning-templates\/[0-9a-f-]{36}$/);
     const templateId = staff.url().split("/").pop()!;
     const stageKeys = async () =>
       ((await admin.from("planning_template_items").select("key, position").eq("template_id", templateId).eq("kind", "stage").order("position")).data ?? []).map((r) => r.key);
+    await expect(staff.getByTestId("future-events-note")).toContainText("Existing event plans won't change");
+    // Every item says what it becomes for the client; Event basics says why it stays.
+    await expect(staff.getByTestId("row-basics")).toContainText("Every plan has it, so it can't be removed.");
+    await expect(staff.getByTestId("row-special_dances")).toContainText("The stage itself has no questions.");
 
-    await staff.getByLabel("Label for Party", { exact: true }).fill("Dance party");
     await staff.getByRole("button", { name: "Rename Party", exact: true }).click();
+    await staff.getByLabel("Label for Party", { exact: true }).fill("Dance party");
+    await staff.getByRole("button", { name: "Save the name of Party", exact: true }).click();
     await expect(staff.getByRole("button", { name: "Rename Dance party", exact: true })).toBeVisible();
     const { data: party } = await admin.from("planning_template_items").select("key, label").eq("template_id", templateId).eq("label", "Dance party").single();
     expect(party!.key).toBe("party");
@@ -140,28 +146,73 @@ test.describe.serial("planning", () => {
     await expect.poll(stageKeys).toEqual(["ceremony", "cocktail", "reception_entrance", "dinner", "special_dances", "party", "closing"]);
     await expect(staff.getByRole("button", { name: "Move Cocktail up", exact: true })).toBeEnabled();
 
+    // Moments open per stage; removing one offers it back under "Not in this template".
+    const partyStage = staff.getByTestId("stage-party");
+    await partyStage.getByRole("button", { name: "6 moments in Dance party" }).click();
     staff.once("dialog", (d) => void d.accept());
-    await staff.getByRole("button", { name: "Remove Dedications", exact: true }).click();
+    await partyStage.getByRole("button", { name: "Remove Dedications", exact: true }).click();
     await expect(staff.getByRole("button", { name: "Remove Dedications", exact: true })).toHaveCount(0);
+    await expect(partyStage.getByRole("button", { name: "Add Dedications to Dance party" })).toBeVisible();
     await expect(staff.getByRole("button", { name: "Remove Event basics", exact: true })).toHaveCount(0);
 
     // A stale tab gets a conflict instead of overwriting.
     const stale = await staffContext.newPage();
     await stale.goto(staff.url());
-    await staff.getByLabel("Label for Closing", { exact: true }).fill("Last dance");
     await staff.getByRole("button", { name: "Rename Closing", exact: true }).click();
+    await staff.getByLabel("Label for Closing", { exact: true }).fill("Last dance");
+    await staff.getByRole("button", { name: "Save the name of Closing", exact: true }).click();
     await expect(staff.getByRole("button", { name: "Rename Last dance", exact: true })).toBeVisible();
-    await stale.getByLabel("Label for Cocktail", { exact: true }).fill("Cocktail hour");
     await stale.getByRole("button", { name: "Rename Cocktail", exact: true }).click();
+    await stale.getByLabel("Label for Cocktail", { exact: true }).fill("Cocktail hour");
+    await stale.getByRole("button", { name: "Save the name of Cocktail", exact: true }).click();
     await expect(stale.locator("main").getByRole("alert")).toContainText("Someone else saved changes first");
     await expect(stale.getByLabel("Label for Cocktail", { exact: true })).toHaveValue("Cocktail hour");
     await stale.close();
 
-    await staff.getByLabel("Name of the copy").fill("Wedding (French)");
-    await staff.getByRole("button", { name: "Duplicate" }).click();
-    await staff.waitForURL((url) => !url.pathname.endsWith(templateId));
+    // The preview shows the client's sections in the saved order, without touching any event.
+    const plansBefore = (await admin.from("event_plans").select("id").eq("tenant_id", tenant.id)).data!.length;
+    await staff.getByRole("link", { name: "Preview" }).click();
+    await expect(staff.getByTestId("preview-note")).toContainText("nothing is saved");
+    await expect(staff.getByTestId("preview-sections").locator(":scope > li h2")).toHaveText([
+      "Event basics", "Contacts and vendors", "DJ expectations and overall preferences",
+      "Ceremony", "Cocktail", "Reception entrance", "Dinner", "Special dances", "Dance party", "Last dance",
+    ]);
+    await expect(staff.getByTestId("preview-reception_entrance")).toContainText("Participants and names: included in Introductions");
+    await expect(staff.getByTestId("preview-party")).not.toContainText("Dedications");
+    expect((await admin.from("event_plans").select("id").eq("tenant_id", tenant.id)).data!.length).toBe(plansBefore);
+    await staff.getByRole("link", { name: "Back to the template" }).click();
+
+    // Copy it as a starting point.
+    await staff.getByRole("link", { name: "Use as a starting point" }).click();
+    await expect(staff.getByRole("radio", { name: /^Wedding\s*3 general sections/ })).toBeChecked();
+    await expect(staff.getByLabel("Template name")).toHaveValue("Wedding (copy)");
+    await staff.getByLabel("Template name").fill("Wedding (French)");
+    await staff.getByRole("button", { name: "Create template" }).click();
+    await staff.waitForURL((url) => !url.pathname.endsWith(templateId) && !url.pathname.endsWith("/new"));
     await expect(staff.getByRole("heading", { name: "Wedding (French)" })).toBeVisible();
     await expect(staff.getByRole("button", { name: "Rename Dance party", exact: true })).toBeVisible();
+
+    // A new template from the Simple Party outline, with its own name; the installed starter stays as it was.
+    await staff.goto(`/staff/${tenant.slug}/planning-templates/new`);
+    await staff.getByRole("radio", { name: /^Simple Party outline/ }).check();
+    await expect(staff.getByLabel("Template name")).toHaveValue("Party");
+    await staff.getByLabel("Template name").fill("Birthday");
+    await staff.getByRole("button", { name: "Create template" }).click();
+    await expect(staff.getByRole("heading", { name: "Birthday" })).toBeVisible();
+    const birthdayId = staff.url().split("/").pop()!;
+    const { data: birthday } = await admin.from("planning_templates").select("starter_key, planning_template_items!planning_template_items_template_fk(key)").eq("id", birthdayId).single();
+    expect(birthday!.starter_key).toBeNull();
+    expect(birthday!.planning_template_items.map((i) => i.key).sort()).toEqual(["basics", "do_not_play", "must_play", "party"]);
+
+    // The template workspace and its preview fit a phone.
+    const phone = await staffContext.newPage();
+    await phone.setViewportSize({ width: 390, height: 844 });
+    await phone.goto(`/staff/${tenant.slug}/planning-templates/${templateId}`);
+    await phone.getByTestId("stage-ceremony").getByRole("button", { name: /moments in Ceremony/ }).click();
+    expect(await noSideways(phone)).toBeLessThanOrEqual(0);
+    await phone.goto(`/staff/${tenant.slug}/planning-templates/${templateId}/preview`);
+    expect(await noSideways(phone)).toBeLessThanOrEqual(0);
+    await phone.close();
   });
 
   test("the client opens planning from /my on a phone, sees imported answers read-only and fills Event basics", async () => {
@@ -563,8 +614,9 @@ test.describe.serial("planning", () => {
     // Template edits don't reach this event's plan.
     const { data: template } = await admin.from("planning_templates").select("id").eq("tenant_id", tenant.id).eq("name", "Wedding").single();
     await staff.goto(`/staff/${tenant.slug}/planning-templates/${template!.id}`);
-    await staff.getByLabel("Label for Ceremony", { exact: true }).fill("Vows");
     await staff.getByRole("button", { name: "Rename Ceremony", exact: true }).click();
+    await staff.getByLabel("Label for Ceremony", { exact: true }).fill("Vows");
+    await staff.getByRole("button", { name: "Save the name of Ceremony", exact: true }).click();
     await expect(staff.getByRole("button", { name: "Rename Vows", exact: true })).toBeVisible();
     await client.reload();
     await expect(client.getByTestId("section-picker").getByTestId("nav-ceremony")).toContainText("Ceremony");

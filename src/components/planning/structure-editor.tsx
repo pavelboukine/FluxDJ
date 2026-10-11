@@ -11,8 +11,6 @@ export type StructureStage = StructureItem & { moments: StructureItem[] };
 export type LibraryRow = { kind: string; key: string; parent_keys: string[] | null; default_label: string; description: string | null };
 
 type Props = {
-  /** template: items are removed. plan: items are hidden and restored, keeping answers. */
-  mode: "template" | "plan";
   general: StructureItem[];
   stages: StructureStage[];
   version: number;
@@ -23,11 +21,12 @@ type Props = {
 };
 
 /**
- * Small, explicit structure controls: rename, Move up / Move down, remove
- * (templates) or hide / restore (event plans), and add from the library.
- * Items are identified by id and library key, never by label.
+ * An event plan's structure controls: rename, Move up / Move down, hide /
+ * restore (keeping answers), and add from the library. Items are identified
+ * by id and library key, never by label. (Planning templates have their own
+ * editor on the template page.)
  */
-export function StructureEditor({ mode, general, stages, version, itemAction, addAction, library, readOnly }: Props) {
+export function StructureEditor({ general, stages, version, itemAction, addAction, library, readOnly }: Props) {
   const present = new Set([...general.map((g) => g.key), ...stages.flatMap((s) => [s.key, ...s.moments.map((m) => m.key)])]);
   const stageByKey = new Map(stages.map((s) => [s.key, s]));
   const addable = {
@@ -43,7 +42,7 @@ export function StructureEditor({ mode, general, stages, version, itemAction, ad
     ),
   };
 
-  const row = (item: StructureItem, opts: { movable: boolean; first: boolean; last: boolean; childCount?: number }) => (
+  const row = (item: StructureItem, opts: { movable: boolean; first: boolean; last: boolean }) => (
     <div className={`flex flex-wrap items-center gap-2 ${item.disabled ? "opacity-70" : ""}`} data-testid={`row-${item.key}`}>
       <RowAction action={itemAction} version={version} fields={{ op: "rename", item_id: item.id }} submitLabel="Rename" ariaLabel={`Rename ${item.label}`} disabled={readOnly}>
         <Input name="label" defaultValue={item.label} maxLength={120} required aria-label={`Label for ${item.label}`} className="h-8 w-48 sm:w-64" disabled={readOnly} />
@@ -54,19 +53,7 @@ export function StructureEditor({ mode, general, stages, version, itemAction, ad
           <RowAction action={itemAction} version={version} fields={{ op: "down", item_id: item.id }} submitLabel="Move down" ariaLabel={`Move ${item.label} down`} disabled={readOnly || opts.last} pendingLabel="Moving…" />
         </>
       ) : null}
-      {item.removable && mode === "template" ? (
-        <RowAction
-          action={itemAction}
-          version={version}
-          fields={{ op: "remove", item_id: item.id }}
-          submitLabel="Remove"
-          ariaLabel={`Remove ${item.label}`}
-          variant="ghost"
-          disabled={readOnly}
-          confirmText={`Remove "${item.label}"${opts.childCount ? ` and its ${opts.childCount} moments` : ""} from this template? Events already planned with it keep theirs.`}
-        />
-      ) : null}
-      {item.removable && mode === "plan" ? (
+      {item.removable ? (
         item.disabled ? (
           <RowAction action={itemAction} version={version} fields={{ op: "restore", item_id: item.id }} submitLabel="Restore" ariaLabel={`Restore ${item.label}`} disabled={readOnly} />
         ) : (
@@ -81,21 +68,21 @@ export function StructureEditor({ mode, general, stages, version, itemAction, ad
 
   return (
     <div className="grid gap-6">
-      <section className="grid gap-2" aria-labelledby={`${mode}-general`}>
-        <h3 id={`${mode}-general`} className="text-sm font-semibold">General sections</h3>
+      <section className="grid gap-2" aria-labelledby="plan-general">
+        <h3 id="plan-general" className="text-sm font-semibold">General sections</h3>
         <ul className="grid gap-2">
           {general.map((g) => (
             <li key={g.id} className="rounded-lg border p-2">{row(g, { movable: false, first: true, last: true })}</li>
           ))}
         </ul>
       </section>
-      <section className="grid gap-2" aria-labelledby={`${mode}-stages`}>
-        <h3 id={`${mode}-stages`} className="text-sm font-semibold">Stages, in event order</h3>
+      <section className="grid gap-2" aria-labelledby="plan-stages">
+        <h3 id="plan-stages" className="text-sm font-semibold">Stages, in event order</h3>
         {stages.length === 0 ? <p className="text-sm text-muted-foreground">No stages yet. Add one below.</p> : null}
         <ol className="grid gap-3">
           {stages.map((s, i) => (
             <li key={s.id} className="grid gap-2 rounded-lg border p-2">
-              {row(s, { movable: true, first: i === 0, last: i === stages.length - 1, childCount: s.moments.length })}
+              {row(s, { movable: true, first: i === 0, last: i === stages.length - 1 })}
               {s.moments.length > 0 ? (
                 <ol className="grid gap-2 border-l-2 pl-3 sm:ml-4" aria-label={`Moments in ${s.label}`}>
                   {s.moments.map((m, j) => (
