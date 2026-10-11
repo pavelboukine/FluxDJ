@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { loginHref } from "@/lib/auth/redirects";
 import { notFound } from "next/navigation";
 import { AlertTriangle, CalendarDays, CheckCircle2, Clock, FileText, Lock, MapPin, PenLine } from "lucide-react";
 import { PdfDownloadLink } from "@/components/app/pwa";
@@ -89,7 +90,7 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
     return (
       <Notice title="Sign in to read your contract" icon={Lock}>
         <p>Your contract is private. Sign in with the email address your DJ sent it to.</p>
-        <Link className="inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-4 font-semibold text-primary-foreground" href="/login">
+        <Link className="inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-4 font-semibold text-primary-foreground" href={loginHref("client", `/${slug}/contracts/${contractId}`)}>
           Sign in with your email
         </Link>
       </Notice>

@@ -1,8 +1,10 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { safeNext, safeOtpType } from "@/lib/auth/redirects";
+import { retrySignInHref, safeNext, safeOtpType } from "@/lib/auth/redirects";
+import { SIGN_IN_NEXT_COOKIE } from "@/lib/auth/sign-in-next";
 
 /**
  * Verifies a magic-link token. Runs only on an explicit POST from the confirm
@@ -16,9 +18,12 @@ export async function confirmSignIn(form: FormData) {
   const supabase = await createClient();
   // The type and destination come from the form, so both are re-validated:
   // only "email" or "invite", and only allow-listed same-site paths.
+  const next = safeNext(form.get("next"));
   const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: safeOtpType(form.get("type")) });
-  if (error) redirect("/login?error=link");
-  redirect(safeNext(form.get("next")));
+  // Expired, used or wrong: back to sign-in to request a new link, keeping where it was going.
+  if (error) redirect(retrySignInHref(next));
+  (await cookies()).delete({ name: SIGN_IN_NEXT_COOKIE, path: "/auth/confirm" });
+  redirect(next);
 }
 
 export async function signOut() {

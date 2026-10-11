@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { loginHref } from "@/lib/auth/redirects";
 import { notFound } from "next/navigation";
 import { CalendarDays, Lock, MapPin } from "lucide-react";
 import { BasicsEditor } from "@/components/planning/basics-editor";
@@ -72,7 +73,7 @@ export default async function ClientPlanningPage({ params }: PageProps<"/[tenant
   if (!auth.user) {
     return (
       <Notice title="Sign in to plan your event" email={null}>
-        <p>Your planning is private. <Link className="underline" href="/login">Sign in with your email</Link> to open it.</p>
+        <p>Your planning is private. <Link className="underline" href={loginHref("client", `/${slug}/planning/${eventId}`)}>Sign in with your email</Link> to open it.</p>
       </Notice>
     );
   }

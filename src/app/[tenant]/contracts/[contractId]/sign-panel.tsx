@@ -247,7 +247,7 @@ export function SignPanel(props: Props) {
           <p>{problem}</p>
           {signedOut ? (
             <p>
-              <a className="font-medium underline" href="/login" target="_blank" rel="noopener">
+              <a className="font-medium underline" href="/login?role=client" target="_blank" rel="noopener">
                 Sign in again in a new tab
               </a>
               , then come back here and sign.

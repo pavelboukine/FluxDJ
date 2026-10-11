@@ -209,7 +209,7 @@ test.describe.serial("send, open, edit, submit, approve", () => {
 
   test("a proposal link grants no staff, event or direct database access", async () => {
     await client.goto(`/staff/${tenant.slug}`);
-    await expect(client).toHaveURL(/\/login$/);
+    await expect(client).toHaveURL(/\/login\?role=dj&next=/);
     const { count } = await admin.from("event_access").select("id", { count: "exact", head: true }).eq("event_id", eventId);
     expect(count).toBe(0);
     const anon = await fetch(`${status.API_URL}/rest/v1/proposals?select=*`, { headers: { apikey: status.ANON_KEY, Authorization: `Bearer ${status.ANON_KEY}` } });

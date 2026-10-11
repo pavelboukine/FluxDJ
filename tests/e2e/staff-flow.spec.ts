@@ -55,15 +55,18 @@ async function latestEmailHtml(email: string, after: number): Promise<string> {
   throw new Error(`no sign-in email for ${email}`);
 }
 
-async function signIn(page: Page, email: string) {
+/** Signs in through the form, starting from a staff page while signed out: the sign-in comes back to that page. */
+async function signIn(page: Page, email: string, from: string) {
   const started = Date.now();
-  await page.goto("/login");
+  await page.goto(from);
+  await expect(page).toHaveURL(`/login?role=dj&next=${encodeURIComponent(from)}`);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Sign in to Flux DJ");
   await page.getByLabel("Email").fill(email);
   await page.getByRole("button", { name: "Email me a sign-in link" }).click();
   await expectLinkRequested(page, /If that email has a Flux DJ account/, SIGN_IN_LIMIT);
   await page.goto(await latestMagicLink(email, started));
   await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL(`**/staff/${tenant.slug}`);
+  await page.waitForURL(`**${from}`);
 }
 
 test.describe.serial("staff interface", () => {
@@ -91,7 +94,7 @@ test.describe.serial("staff interface", () => {
     const anonymousContext = await browser.newContext();
     const anonymous = await anonymousContext.newPage();
     await anonymous.goto(`/staff/${tenant.slug}/gear`);
-    await expect(anonymous).toHaveURL(/\/login$/);
+    await expect(anonymous).toHaveURL(`/login?role=dj&next=${encodeURIComponent(`/staff/${tenant.slug}/gear`)}`);
     const stranger = `nobody-${run}@example.test`;
     await anonymous.getByLabel("Email").fill(stranger);
     await anonymous.getByRole("button", { name: "Email me a sign-in link" }).click();
@@ -104,8 +107,9 @@ test.describe.serial("staff interface", () => {
   });
 
   test("staff sign in with a magic link", async () => {
-    await signIn(page, tenant.ownerEmail);
-    await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+    // The link continues to the page that asked for sign-in (remembered by this browser when the link was requested).
+    await signIn(page, tenant.ownerEmail, `/staff/${tenant.slug}/gear`);
+    await expect(page.getByRole("heading", { level: 1, name: "Gear" })).toBeVisible();
   });
 
   test("sign-in links are not consumed by a GET, and Sign in works even before scripts run", async () => {
@@ -130,7 +134,7 @@ test.describe.serial("staff interface", () => {
     await scan.goto(link);
     const policy = await scan.locator('meta[name="referrer"]').getAttribute("content");
     await scan.goto(`/staff/${otherTenant.slug}`);
-    await expect(scan).toHaveURL(/\/login$/);
+    await expect(scan).toHaveURL(/\/login\?role=dj&next=/);
     await scanner.close();
 
     const post = p.waitForRequest((r) => r.method() === "POST" && r.url().includes("/auth/confirm"));
@@ -155,6 +159,8 @@ test.describe.serial("staff interface", () => {
     const started = Date.now();
     await app.goto("/start");
     await expect(app).toHaveURL(/\/login$/);
+    // A page that asked for sign-in: the code also continues there.
+    await app.goto(`/login?role=dj&next=${encodeURIComponent(`/staff/${tenant.slug}/events`)}`);
     await app.getByLabel("Email").fill(email);
     await app.getByRole("button", { name: "Email me a sign-in link" }).click();
     await expectLinkRequested(app, /If that email has a Flux DJ account/, SIGN_IN_LIMIT);
@@ -170,12 +176,12 @@ test.describe.serial("staff interface", () => {
     await form.getByLabel("Code from the email").fill(code === "000000" ? "111111" : "000000");
     await form.getByRole("button", { name: "Sign in with code" }).click();
     await expect(form.getByRole("alert")).toContainText("That code is wrong or has expired");
-    await expect(app).toHaveURL(/\/login$/);
+    await expect(app).toHaveURL(/\/login\?role=dj&next=/);
 
     await form.getByLabel("Code from the email").fill(code!);
     await form.getByRole("button", { name: "Sign in with code" }).click();
-    await app.waitForURL(`**/staff/${tenant.slug}`);
-    await expect(app.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+    await app.waitForURL(`**/staff/${tenant.slug}/events`);
+    await expect(app.getByRole("heading", { level: 1, name: "Events" })).toBeVisible();
     // Nothing about the sign-in is kept in browser storage.
     const stored = await app.evaluate(() => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }));
     expect(stored).not.toContain(code!);
@@ -468,7 +474,7 @@ test.describe.serial("staff interface", () => {
     const anonymous = await browser.newContext();
     const p = await anonymous.newPage();
     await p.goto(`${proposalUrl}/preview`);
-    await expect(p).toHaveURL(/\/login$/);
+    await expect(p).toHaveURL(/\/login\?role=dj&next=/);
     await anonymous.close();
   });
 });

@@ -2,10 +2,11 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import type { Database } from "./database.types";
 import { publicEnv } from "@/lib/env";
+import { allowedNext } from "@/lib/auth/redirects";
 
 /**
  * Refreshes the Supabase session cookie on each matched request and makes an
- * optimistic redirect to /login for signed-out visitors of /staff. This is not
+ * optimistic redirect to the DJ sign-in for signed-out visitors of /staff. This is not
  * authorization: pages and actions verify the user and membership themselves.
  */
 export async function updateSession(request: NextRequest) {
@@ -32,7 +33,9 @@ export async function updateSession(request: NextRequest) {
   if (!signedIn && request.nextUrl.pathname.startsWith("/staff")) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    url.search = "";
+    // The DJ sign-in, coming back to this page afterwards when it's an allowed destination.
+    const next = allowedNext(request.nextUrl.pathname);
+    url.search = next && next !== "/staff" ? `?role=dj&next=${encodeURIComponent(next)}` : "?role=dj";
     const redirect = NextResponse.redirect(url);
     for (const cookie of response.cookies.getAll()) redirect.cookies.set(cookie);
     return redirect;
