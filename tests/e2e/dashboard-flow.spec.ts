@@ -1,6 +1,6 @@
 /**
  * The staff dashboard in real browsers, in dedicated test businesses: a new,
- * empty workspace (setup checklist, owner and staff wording, calm empty
+ * empty workspace (missing required setup, owner and staff wording, calm empty
  * states) and a busy one (upcoming events in order, a real submitted
  * proposal, planning closing and closed, a deposit, an email failure, the
  * attention cap and "Show all"), on desktop and a phone, with working links.
@@ -114,12 +114,15 @@ test.describe.serial("staff dashboard", () => {
     await signInStaff(page, empty.ownerEmail);
     await page.goto(`/staff/${empty.slug}`);
     const checklist = page.getByTestId("setup-checklist");
-    await expect(checklist).toContainText("0 of 5 done");
-    for (const key of ["identity", "taxes", "packages", "proposal-template", "contract-template"]) {
+    // Only the required steps that are missing; the setup guide has the rest.
+    await expect(checklist).toContainText("0 of 4 required steps ready");
+    await expect(checklist.getByRole("listitem")).toHaveCount(4);
+    for (const key of ["identity", "taxes", "packages", "contract-template"]) {
       await expect(checklist.getByTestId(`setup-${key}`)).toHaveAttribute("data-done", "false");
     }
-    await expect(checklist.getByRole("link", { name: "Legal name, address and contact email" })).toHaveAttribute("href", `/staff/${empty.slug}/settings`);
+    await expect(checklist.getByRole("link", { name: "Business details" })).toHaveAttribute("href", `/staff/${empty.slug}/settings`);
     await expect(checklist.getByRole("link", { name: "Taxes" })).toHaveAttribute("href", `/staff/${empty.slug}/settings#taxes`);
+    await expect(checklist.getByRole("link", { name: "Continue setup" })).toHaveAttribute("href", `/staff/${empty.slug}/setup`);
     await expect(checklist).not.toContainText("Only the owner");
     await expect(page.getByTestId("attention-empty")).toHaveText("Nothing needs your attention right now.");
     await expect(page.getByTestId("upcoming-empty")).toContainText("No upcoming events.");

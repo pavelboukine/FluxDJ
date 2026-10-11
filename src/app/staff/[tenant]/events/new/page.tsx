@@ -1,17 +1,20 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ActionForm } from "@/components/app/action-form";
 import { PageHeader, SelectField } from "@/components/app/fields";
+import { SetupReturn } from "@/components/app/setup-return";
 import { requireStaff } from "@/lib/auth/staff";
 import { ClientFields } from "../../clients/client-fields";
 import { createEvent } from "../actions";
 import { EventFields } from "../event-fields";
 
-export default async function NewEvent({ params }: PageProps<"/staff/[tenant]/events/new">) {
+export default async function NewEvent({ params, searchParams }: PageProps<"/staff/[tenant]/events/new">) {
   const { tenant: slug } = await params;
+  const { from } = await searchParams;
   const { supabase, tenant } = await requireStaff(slug);
   const { data: clients } = await supabase.from("clients").select("id, name, email").eq("tenant_id", tenant.id).is("archived_at", null).order("name");
   return (
     <>
+      <SetupReturn slug={slug} from={from} />
       <PageHeader title="New event" description="Create the event and its primary contact, then start a proposal." />
       <Card>
         <CardContent>

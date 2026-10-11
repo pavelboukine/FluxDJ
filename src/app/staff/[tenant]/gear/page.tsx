@@ -8,13 +8,15 @@ import { ListFilters } from "@/components/app/list-filters";
 import { requireStaff } from "@/lib/auth/staff";
 import { PAGE_SIZE, containsFilter, gearListHref, isDefaultGearList, parseGearListParams, rangeText } from "@/lib/lists";
 import { formatCents } from "@/lib/money";
+import { SetupReturn } from "@/components/app/setup-return";
 
 const SEARCHED = ["name", "description"] as const;
 
 /** The gear catalog: active items by default, searchable by name or description, all in the URL. Read-only. */
 export default async function GearList({ params, searchParams }: PageProps<"/staff/[tenant]/gear">) {
   const { tenant: slug } = await params;
-  const p = parseGearListParams(await searchParams);
+  const query = await searchParams;
+  const p = parseGearListParams(query);
   const { supabase, tenant } = await requireStaff(slug);
   const base = `/staff/${slug}/gear`;
   const from = (p.page - 1) * PAGE_SIZE;
@@ -56,6 +58,7 @@ export default async function GearList({ params, searchParams }: PageProps<"/sta
 
   return (
     <>
+      <SetupReturn slug={slug} from={query.from} />
       <PageHeader
         title="Gear"
         description="Items you offer on proposals. Changes apply to new proposals; sent ones keep their own copy."

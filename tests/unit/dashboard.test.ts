@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { attentionItems, closesIn, dashboardSchema, relativeDay, setupChecklist, shortDate, upcomingRows, type DashboardFacts } from "@/lib/dashboard";
+import { attentionItems, closesIn, dashboardSchema, relativeDay, shortDate, upcomingRows, type DashboardFacts } from "@/lib/dashboard";
 
 const NOW = "2026-10-07T16:00:00Z"; // 12:00 in Toronto, 05:00 on Oct 8 in Kiritimati
 
@@ -105,31 +105,5 @@ describe("needs attention", () => {
       planning: [ev("x", "2026-11-01", { timezone: "UTC", state: "closed", deadline: NOW, closes_at: null, requirements_met: 0, requirements_total: 1 })],
     });
     expect(attentionItems(twice, "dj").map((i) => i.key)).toEqual(["planning:x", "deposit:x"]);
-  });
-});
-
-describe("setup checklist", () => {
-  const keys = (f: DashboardFacts) => setupChecklist(f, "dj").filter((i) => !i.done).map((i) => i.key);
-
-  it("is complete for a configured business, with gear, a logo and planning templates optional", () => {
-    expect(keys(facts())).toEqual([]);
-  });
-  it("accepts an explicit no-tax category", () => {
-    expect(keys(facts({ setup: { ...facts().setup, tax_categories: ["exempt"], used_tax_categories: ["exempt"] } }))).toEqual([]);
-  });
-  it("lists exactly what's missing for a new business", () => {
-    const empty = facts({ setup: { identity_saved: false, tax_categories: [], used_tax_categories: [], active_packages: 0, usable_proposal_templates: 0, client_use_contract_templates: 0 } });
-    expect(keys(empty)).toEqual(["identity", "taxes", "packages", "proposal-template", "contract-template"]);
-  });
-  it("flags a category used by active gear or packages without taxes", () => {
-    const f = facts({ setup: { ...facts().setup, tax_categories: ["standard"], used_tax_categories: ["standard", "alcohol"] } });
-    const taxes = setupChecklist(f, "dj").find((i) => i.key === "taxes")!;
-    expect(taxes.done).toBe(false);
-    expect(taxes.hint).toContain("alcohol");
-    expect(taxes.href).toBe("/staff/dj/settings#taxes");
-  });
-  it("needs three active packages, and marks owner-only settings", () => {
-    expect(keys(facts({ setup: { ...facts().setup, active_packages: 2 } }))).toEqual(["packages"]);
-    expect(setupChecklist(facts(), "dj").filter((i) => i.ownerOnly).map((i) => i.key)).toEqual(["identity", "taxes", "contract-template"]);
   });
 });

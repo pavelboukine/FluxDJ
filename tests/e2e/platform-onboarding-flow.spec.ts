@@ -130,7 +130,13 @@ test.describe.serial("invite-only DJ onboarding", () => {
     await expect(dj.getByText("Welcome to Flux DJ, DJ Maxwell Events", { exact: true })).toBeVisible();
     // The setup checklist starts with the legal identity, which contracts need.
     await expect(dj.getByTestId("setup-identity")).toHaveAttribute("data-done", "false");
-    await expect(dj.getByRole("link", { name: "Legal name, address and contact email" })).toHaveAttribute("href", `/staff/${slug}/settings`);
+    await expect(dj.getByRole("link", { name: "Business details" })).toHaveAttribute("href", `/staff/${slug}/settings`);
+    // The welcome leads to the setup guide for this new business; nothing forces it.
+    await dj.getByRole("link", { name: "Open the setup guide" }).click();
+    await dj.waitForURL(`**/staff/${slug}/setup`);
+    await expect(dj.getByRole("heading", { level: 1, name: "Let's get your business ready" })).toBeVisible();
+    await expect(dj.getByTestId("setup-progress")).toHaveText("0 of 4 required steps ready");
+    await expect(dj.getByTestId("workspace-brand")).toContainText("DJ Maxwell Events");
 
     const { data: tenant } = await admin.from("tenants").select("id, display_name, business_name, business_address, contact_email").eq("slug", slug).single();
     createdTenantId = tenant!.id;
@@ -165,6 +171,8 @@ test.describe.serial("invite-only DJ onboarding", () => {
     await expect(operator.getByTestId("dj-invitation").filter({ hasText: djEmail })).toContainText(`/${slug}`);
     // Platform administration gives no access to the business (the operator has no staff role anywhere).
     await operator.goto(`/staff/${slug}`);
+    await operator.waitForURL("**/login?notice=no-staff-access");
+    await operator.goto(`/staff/${slug}/setup`);
     await operator.waitForURL("**/login?notice=no-staff-access");
     await operator.goto("/platform/invitations");
   });

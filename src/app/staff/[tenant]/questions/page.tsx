@@ -8,11 +8,13 @@ import { ListFilters } from "@/components/app/list-filters";
 import { requireStaff } from "@/lib/auth/staff";
 import { answerTypeLabel, canHaveRules } from "@/lib/catalog/rules";
 import { PAGE_SIZE, containsFilter, isDefaultPackageList, packageListHref, parsePackageListParams, rangeText } from "@/lib/lists";
+import { SetupReturn } from "@/components/app/setup-return";
 
 /** The questions clients answer and the rules that use the answers: active by default, searchable, all in the URL. Read-only. */
 export default async function Questions({ params, searchParams }: PageProps<"/staff/[tenant]/questions">) {
   const { tenant: slug } = await params;
-  const p = parsePackageListParams(await searchParams);
+  const query = await searchParams;
+  const p = parsePackageListParams(query);
   const { supabase, tenant } = await requireStaff(slug);
   const base = `/staff/${slug}/questions`;
   const from = (p.page - 1) * PAGE_SIZE;
@@ -39,6 +41,7 @@ export default async function Questions({ params, searchParams }: PageProps<"/st
 
   return (
     <>
+      <SetupReturn slug={slug} from={query.from} />
       <PageHeader
         title="Questions & rules"
         description="Questions clients answer on proposals, and the rules that turn answers into required gear (a separate ceremony space needs its own speaker)."

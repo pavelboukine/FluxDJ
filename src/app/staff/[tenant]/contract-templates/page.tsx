@@ -8,11 +8,13 @@ import { ListFilters } from "@/components/app/list-filters";
 import { requireStaff } from "@/lib/auth/staff";
 import { PAGE_SIZE, containsFilter, isDefaultPackageList, packageListHref, parsePackageListParams, rangeText } from "@/lib/lists";
 import { UsageBadge } from "./usage-badge";
+import { SetupReturn } from "@/components/app/setup-return";
 
 /** The business's contract templates: active by default, searchable by name, all in the URL. */
 export default async function ContractTemplates({ params, searchParams }: PageProps<"/staff/[tenant]/contract-templates">) {
   const { tenant: slug } = await params;
-  const p = parsePackageListParams(await searchParams);
+  const query = await searchParams;
+  const p = parsePackageListParams(query);
   const { supabase, tenant } = await requireStaff(slug);
   const base = `/staff/${slug}/contract-templates`;
   const from = (p.page - 1) * PAGE_SIZE;
@@ -38,6 +40,7 @@ export default async function ContractTemplates({ params, searchParams }: PagePr
 
   return (
     <>
+      <SetupReturn slug={slug} from={query.from} />
       <PageHeader
         title="Contract templates"
         description="The agreements your clients sign. Write one, copy one or import your Word document, then publish it."

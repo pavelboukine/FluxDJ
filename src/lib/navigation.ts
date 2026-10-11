@@ -73,7 +73,7 @@ export function staffNavigation(slug: string, { platformAdmin }: { platformAdmin
       label: "Business",
       items: [
         { href: `${base}/emails`, label: "Emails", icon: "emails" },
-        { href: `${base}/settings`, label: "Settings", icon: "settings" },
+        { href: `${base}/settings`, label: "Settings", icon: "settings", also: [`${base}/setup`] },
       ],
     },
   ];

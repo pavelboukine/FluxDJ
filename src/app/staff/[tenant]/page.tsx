@@ -7,7 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { PageHeader } from "@/components/app/fields";
 import { InstallHelp } from "@/components/app/pwa";
 import { requireStaff } from "@/lib/auth/staff";
-import { ATTENTION_SHOWN, UPCOMING_SHOWN, attentionItems, dashboardSchema, setupChecklist, shortDate, upcomingRows } from "@/lib/dashboard";
+import { ATTENTION_SHOWN, UPCOMING_SHOWN, attentionItems, dashboardSchema, shortDate, upcomingRows } from "@/lib/dashboard";
+import { offerablePackages, requiredSetup } from "@/lib/setup";
 import { cn } from "@/lib/utils";
 
 /** What's coming up and what needs attention. Read-only: viewing it changes nothing and sends nothing. */
@@ -27,8 +28,15 @@ export default async function Dashboard({ params, searchParams }: PageProps<"/st
   const tasks = attentionItems(facts, slug);
   const showAll = attention === "all";
   const shownTasks = showAll ? tasks : tasks.slice(0, ATTENTION_SHOWN);
-  const setup = setupChecklist(facts, slug);
-  const setupDone = setup.filter((s) => s.done).length;
+  // Active packages whose included gear is all active, as sending requires.
+  const { data: packages, error: packagesError } = await supabase
+    .from("packages")
+    .select("package_items(gear_items!package_items_gear_item_fk(active))")
+    .eq("tenant_id", tenant.id)
+    .eq("active", true);
+  if (packagesError) throw new Error("The dashboard couldn't be loaded.");
+  const setup = requiredSetup({ ...facts.setup, offerable_packages: offerablePackages(packages) }, slug);
+  const missing = setup.filter((s) => !s.done);
 
   return (
     <>
@@ -59,39 +67,37 @@ export default async function Dashboard({ params, searchParams }: PageProps<"/st
         </p>
       ) : null}
 
-      {setupDone < setup.length ? (
+      {missing.length > 0 ? (
         <Card size="sm" data-testid="setup-checklist">
           <CardHeader>
             <CardTitle>{welcome === "1" && isOwner ? `Welcome to Flux DJ, ${tenant.display_name}` : "Finish setting up"}</CardTitle>
             <CardDescription>
-              {setupDone} of {setup.length} done. This list checks what&apos;s saved; it doesn&apos;t review your terms or prices.
+              {welcome === "1" && isOwner
+                ? "Let's get your business ready. These steps are needed before you can send proposals and contracts; the setup guide also covers branding, gear and planning."
+                : `${setup.length - missing.length} of ${setup.length} required steps ready. Still needed before you can send proposals and contracts:`}
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
             <ul className="grid gap-1.5 sm:grid-cols-2 sm:gap-x-6">
-              {setup.map((item) => (
+              {missing.map((item) => (
                 <li key={item.key} data-testid={`setup-${item.key}`} data-done={item.done} className="flex items-start gap-2">
-                  {item.done ? (
-                    <CheckCircle2 aria-label="Done" className="mt-0.5 size-4 shrink-0 text-emerald-600" />
-                  ) : (
-                    <Circle aria-label="To do" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                  )}
+                  <Circle aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                   <span className="grid min-w-0">
-                    {item.done ? (
-                      <span className="text-muted-foreground">{item.label}</span>
-                    ) : (
-                      <>
-                        <Link className="font-medium underline-offset-4 hover:underline" href={item.href}>{item.label}</Link>
-                        <span className="text-xs text-muted-foreground">
-                          {item.ownerOnly && !isOwner ? "Only the owner can complete this. " : null}
-                          {item.hint}
-                        </span>
-                      </>
-                    )}
+                    <Link className="font-medium underline-offset-4 hover:underline" href={item.href}>{item.label}</Link>
+                    <span className="text-xs text-muted-foreground">
+                      {item.ownerOnly && !isOwner ? "Only the owner can complete this. " : null}
+                      {item.hint}
+                    </span>
                   </span>
                 </li>
               ))}
             </ul>
+            <div>
+              <Link className={buttonVariants({ size: "sm" })} href={`/staff/${slug}/setup`}>
+                {welcome === "1" ? "Open the setup guide" : "Continue setup"}
+                <ArrowRight aria-hidden />
+              </Link>
+            </div>
             {welcome === "1" && isOwner ? (
               <p className="text-xs text-muted-foreground">
                 Using Flux DJ from your phone&apos;s home screen? Sign in there with the code from the sign-in email: the home-screen app keeps

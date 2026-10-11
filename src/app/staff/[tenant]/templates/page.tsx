@@ -7,13 +7,15 @@ import { EmptyList, FilterCheckbox, ListRows, Pagination, ResultLine } from "@/c
 import { ListFilters } from "@/components/app/list-filters";
 import { requireStaff } from "@/lib/auth/staff";
 import { PAGE_SIZE, containsFilter, isDefaultPackageList, packageListHref, parsePackageListParams, rangeText } from "@/lib/lists";
+import { SetupReturn } from "@/components/app/setup-return";
 
 const SEARCHED = ["name", "intro"] as const;
 
 /** The business's proposal templates: active by default, searchable by name or intro, all in the URL. Read-only. */
 export default async function Templates({ params, searchParams }: PageProps<"/staff/[tenant]/templates">) {
   const { tenant: slug } = await params;
-  const p = parsePackageListParams(await searchParams);
+  const query = await searchParams;
+  const p = parsePackageListParams(query);
   const { supabase, tenant } = await requireStaff(slug);
   const base = `/staff/${slug}/templates`;
   const from = (p.page - 1) * PAGE_SIZE;
@@ -43,6 +45,7 @@ export default async function Templates({ params, searchParams }: PageProps<"/st
 
   return (
     <>
+      <SetupReturn slug={slug} from={query.from} />
       <PageHeader
         title="Proposal templates"
         description="Starting points for proposals: three packages, a recommended one, questions and optional extras."

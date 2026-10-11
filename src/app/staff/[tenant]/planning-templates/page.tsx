@@ -11,13 +11,15 @@ import { PAGE_SIZE, containsFilter, isDefaultPackageList, packageListHref, parse
 import { plural, structureCounts } from "@/lib/planning/template-structure";
 import { EVENT_TYPES } from "../events/event-form";
 import { installStarterTemplates } from "./actions";
+import { SetupReturn } from "@/components/app/setup-return";
 
 const SEARCHED = ["name", "description"] as const;
 
 /** The business's planning templates: active by default, searchable by name or description, all in the URL. */
 export default async function PlanningTemplates({ params, searchParams }: PageProps<"/staff/[tenant]/planning-templates">) {
   const { tenant: slug } = await params;
-  const p = parsePackageListParams(await searchParams);
+  const query = await searchParams;
+  const p = parsePackageListParams(query);
   const { supabase, tenant } = await requireStaff(slug);
   const base = `/staff/${slug}/planning-templates`;
   const from = (p.page - 1) * PAGE_SIZE;
@@ -53,6 +55,7 @@ export default async function PlanningTemplates({ params, searchParams }: PagePr
 
   return (
     <>
+      <SetupReturn slug={slug} from={query.from} />
       <PageHeader
         title="Planning templates"
         description="The planning structure clients fill in: general sections, then the event's stages and their moments, in order."

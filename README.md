@@ -731,7 +731,8 @@ docker exec -i supabase_db_flux-dj psql -U postgres -c \
 4. Open "Confirm your email to set up Flux DJ", click **Confirm and
    continue**, then **Sign in**.
 5. Enter a business name and web address and click **Create my workspace**.
-   You land on the new, empty workspace with a welcome message.
+   You land on the new, empty workspace with a welcome message listing the
+   required steps still missing, and **Open the setup guide** (`/staff/{slug}/setup`).
 
 Revoke the local grant with `select private.revoke_platform_admin('…');`.
 
@@ -753,7 +754,7 @@ throwaway workspace created through an invitation, never BOUPROD):
 
 #### Branding
 
-1. As an owner, open **Settings** and scroll to **Branding**.
+1. As an owner, open **Settings** and choose **Branding** in the section links.
 2. Choose a PNG, JPEG or WebP logo and a primary colour. The preview beside
    the form updates at once (nothing is saved or sent yet).
 3. Click **Save branding**. The header shows the logo instead of the
@@ -1613,6 +1614,14 @@ undelivered contract emails visibly.
 
 ### Business settings and contract send review
 
+- **Layout.** `/staff/{tenant}/settings` is one page in five sections with
+  section links (a column from 1024 px, wrapped links below): Business
+  profile (display name, time zone, currency and reply-to shown read-only, as
+  no screen changes them; legal details and deposit), Branding (`#branding`),
+  Bookings and taxes (`#booking`, `#taxes`, and how a proposal becomes a
+  booking), Planning (`#planning` deadline, and the default planning template
+  per event type, set on each template), and Access (your role and the
+  number of owners and staff). Every form and action is unchanged.
 - **Owner-only settings.** The owner manages `/staff/{tenant}/settings`:
   - legal business name (`tenants.business_name`)
   - business address
@@ -2113,8 +2122,9 @@ revocations are recorded in `public.platform_audit_events`.
    changes nothing and leaves the invitation open. Repeated or concurrent
    submissions by the same user return the same workspace; an accepted
    invitation never creates another, and nobody else can use it.
-6. The DJ lands on `/staff/{slug}?welcome=1`: a welcome card links to
-   Settings, gear, packages and the three template screens.
+6. The DJ lands on `/staff/{slug}?welcome=1`: a welcome card lists the
+   required setup steps still missing and opens the setup guide (see "Setup
+   guide"). Nothing is mandatory; the whole workspace stays usable.
 
 **Delivery.** Platform emails use `email_outbox` with `tenant_id` null (a
 check constraint allows that only for these two types; staff never see them).
@@ -2289,15 +2299,16 @@ appear.
 - **Email failures:** a notice when this business's emails have status
   `failed` (retries used up), linking to Emails. Pending and sending emails,
   including normal retries, and platform invitation emails are not counted.
-- **Setup checklist** (shown until complete; from saved data only): the legal
-  name, address and contact email; taxes (at least one tax category, and
-  every category used by active gear or packages configured; an empty list is
-  a valid "no tax"); three active packages (every offer has three); an active
-  proposal template whose three packages are all active; an active contract
-  template with a version published for client use. Gear, a logo and
-  planning templates are optional. Staff see which items only the owner can
-  complete. The list checks what's saved, not whether terms or prices are
-  right.
+- **Setup card** (shown until the required steps are saved; from saved data
+  only, `requiredSetup` in `src/lib/setup.ts`): lists only the required
+  steps still missing, with **Continue setup** to the setup guide. Required
+  means the app refuses the workflow without it: the legal name, address and
+  contact email (contracts); taxes (at least one tax category, and every
+  category used by active gear or packages configured; an empty list is a
+  valid "no tax") and three active packages with no archived included gear
+  (proposals; every offer has three); a contract template version published for client use (contracts).
+  A proposal template is recommended, not required: a draft can pick its
+  three packages directly. Staff see which items only the owner can complete.
 - **Quick actions:** New event and Add client open the existing screens. The
   compact install help stays.
 
@@ -2306,6 +2317,36 @@ existing changes), and apps before it never call it, so apply it to the
 hosted database first (`db push --linked --dry-run`, then `db push
 --linked`), then deploy the app. An app deployed before the migration can't
 load the dashboard; every other page works.
+
+### Setup guide
+
+`/staff/[tenant]/setup` (linked from the dashboard's setup card and from
+Settings; it highlights **Settings** in the navigation and adds no menu item).
+Read-only: it reuses `staff_dashboard`'s setup facts and a few RLS-scoped
+counts, so there is no onboarding state, no migration and nothing to dismiss.
+Every step links to the existing screen with `?from=setup`, which shows a
+**Back to setup guide** link there (and nowhere else).
+
+| Step | Level | Ready when |
+|---|---|---|
+| Business details | required (contracts) | legal identity saved |
+| Customize branding | optional | a logo or a primary colour is saved (the step says which) |
+| Deposit and booking confirmation | recommended | legal details (with the deposit) saved and `booking_policy_version > 0` (the owner saved the policy once; the default is otherwise "not reviewed") |
+| Taxes | required (proposals) | as on the dashboard |
+| Gear and services | optional | an active gear item |
+| Three packages | required (proposals) | three active packages whose included gear is all active (`build_offer_snapshot` refuses archived gear) |
+| Proposal template | recommended | an active template whose three packages are active |
+| Questions & rules | optional | an active question |
+| Contract template | required (contracts) | a version published for client use |
+| Planning template | recommended | an active template is the default for an event type |
+| Your first event | optional | an unarchived event |
+
+Statuses are Ready, Needs attention (required or recommended, partly done),
+Not started, and Optional. The summary counts only the four required steps and
+says what sending proposals and contracts still needs. Steps check what is
+saved, not whether terms or prices are right; each proposal and contract is
+still validated when it is previewed and sent. Suspended workspaces get the
+existing unavailable page; other businesses get 404.
 
 ### Staff event page
 

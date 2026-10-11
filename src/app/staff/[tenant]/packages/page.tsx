@@ -8,13 +8,15 @@ import { ListFilters } from "@/components/app/list-filters";
 import { requireStaff } from "@/lib/auth/staff";
 import { PAGE_SIZE, containsFilter, includedGearSummary, isDefaultPackageList, packageListHref, parsePackageListParams, rangeText } from "@/lib/lists";
 import { formatCents } from "@/lib/money";
+import { SetupReturn } from "@/components/app/setup-return";
 
 const SEARCHED = ["name", "description"] as const;
 
 /** The business's packages: active by default, searchable by name or description, all in the URL. Read-only. */
 export default async function PackageList({ params, searchParams }: PageProps<"/staff/[tenant]/packages">) {
   const { tenant: slug } = await params;
-  const p = parsePackageListParams(await searchParams);
+  const query = await searchParams;
+  const p = parsePackageListParams(query);
   const { supabase, tenant } = await requireStaff(slug);
   const base = `/staff/${slug}/packages`;
   const from = (p.page - 1) * PAGE_SIZE;
@@ -43,6 +45,7 @@ export default async function PackageList({ params, searchParams }: PageProps<"/
 
   return (
     <>
+      <SetupReturn slug={slug} from={query.from} />
       <PageHeader
         title="Packages"
         description="What proposals offer: each proposal shows three packages. Changes apply to new proposals; sent ones keep their own copy."
