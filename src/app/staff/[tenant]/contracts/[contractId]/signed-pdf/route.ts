@@ -17,7 +17,7 @@ export async function GET(_request: NextRequest, ctx: RouteContext<"/staff/[tena
   if (!auth.user) return privateError(404, "Not found.");
   const { data: tenant } = await supabase.from("tenants").select("id").eq("slug", slug).maybeSingle();
   if (!tenant) return privateError(404, "Not found.");
-  const { data: membership } = await supabase.from("tenant_memberships").select("id").eq("tenant_id", tenant.id).eq("user_id", auth.user.id).maybeSingle();
+  const { data: membership } = await supabase.from("tenant_memberships").select("id").eq("tenant_id", tenant.id).eq("user_id", auth.user.id).is("removed_at", null).maybeSingle();
   if (!membership) return privateError(404, "Not found.");
   const { data: doc } = await supabase
     .from("contract_documents")

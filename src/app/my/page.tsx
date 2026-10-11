@@ -30,7 +30,7 @@ export default async function MyEvents() {
     supabase.rpc("my_events"),
     supabase.rpc("my_contracts"),
     supabase.rpc("my_plans"),
-    supabase.from("tenant_memberships").select("id", { count: "exact", head: true }).eq("user_id", user.id),
+    supabase.from("tenant_memberships").select("id", { count: "exact", head: true }).eq("user_id", user.id).is("removed_at", null),
   ]);
 
   // Readable contracts (signer only) per event, with their signing and PDF state and the booking/payment summary.

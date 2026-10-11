@@ -1168,6 +1168,31 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"staff_invitations": {
+                  Row: {
+                    "accepted_at": string | null,"accepted_by": string | null,"created_at": string,"email": string,"expires_at": string,"id": string,"invited_by": string,"last_sent_at": string,"link_id": string,"membership_id": string | null,"revoked_at": string | null,"revoked_by": string | null,"role": string,"send_count": number,"tenant_id": string,"token_hash": string,"updated_at": string
+                  }
+                  Insert: {
+                    "accepted_at"?: string | null,"accepted_by"?: string | null,"created_at"?: string,"email": string,"expires_at": string,"id": string,"invited_by": string,"last_sent_at"?: string,"link_id": string,"membership_id"?: string | null,"revoked_at"?: string | null,"revoked_by"?: string | null,"role"?: string,"send_count"?: number,"tenant_id": string,"token_hash": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "accepted_at"?: string | null,"accepted_by"?: string | null,"created_at"?: string,"email"?: string,"expires_at"?: string,"id"?: string,"invited_by"?: string,"last_sent_at"?: string,"link_id"?: string,"membership_id"?: string | null,"revoked_at"?: string | null,"revoked_by"?: string | null,"role"?: string,"send_count"?: number,"tenant_id"?: string,"token_hash"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "staff_invitations_membership_fk"
+      columns: ["tenant_id","membership_id"]
+isOneToOne: false
+      referencedRelation: "tenant_memberships"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "staff_invitations_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"tenant_logos": {
                   Row: {
                     "byte_size": number,"created_at": string,"height": number,"id": string,"needs_dark_background": boolean,"sha256": string,"storage_path": string,"tenant_id": string,"uploaded_by": string,"width": number
@@ -1189,13 +1214,13 @@ isOneToOne: false
                   ]
                 },"tenant_memberships": {
                   Row: {
-                    "created_at": string,"id": string,"role": string,"tenant_id": string,"updated_at": string,"user_id": string
+                    "created_at": string,"id": string,"removed_at": string | null,"removed_by": string | null,"role": string,"tenant_id": string,"updated_at": string,"user_id": string
                   }
                   Insert: {
-                    "created_at"?: string,"id"?: string,"role": string,"tenant_id": string,"updated_at"?: string,"user_id": string
+                    "created_at"?: string,"id"?: string,"removed_at"?: string | null,"removed_by"?: string | null,"role": string,"tenant_id": string,"updated_at"?: string,"user_id": string
                   }
                   Update: {
-                    "created_at"?: string,"id"?: string,"role"?: string,"tenant_id"?: string,"updated_at"?: string,"user_id"?: string
+                    "created_at"?: string,"id"?: string,"removed_at"?: string | null,"removed_by"?: string | null,"role"?: string,"tenant_id"?: string,"updated_at"?: string,"user_id"?: string
                   }
                   Relationships: [
                     {
@@ -1237,6 +1262,9 @@ isOneToOne: false
 "accept_platform_invitation":
 { Args: { "p_display_name": string,"p_invitation_id": string,"p_slug": string }; Returns: Json
                            },
+"accept_staff_invitation":
+{ Args: { "p_invitation_id": string }; Returns: Json
+                           },
 "add_event_plan_item":
 { Args: { "p_event_id": string,"p_expected_version": number,"p_key": string,"p_parent_key": string }; Returns: number
                            },
@@ -1251,6 +1279,9 @@ isOneToOne: false
                            },
 "cancel_email_outbox":
 { Args: { "p_id": string,"p_reason": string }; Returns: undefined
+                           },
+"cancel_staff_invitation":
+{ Args: { "p_invitation_id": string,"p_tenant_id": string }; Returns: Json
                            },
 "check_event_booking":
 { Args: { "p_event_id": string }; Returns: Json
@@ -1268,6 +1299,11 @@ isOneToOne: false
 "claim_platform_email_outbox":
 { Args: { "p_invitation_id"?: string,"p_limit"?: number,"p_lock_seconds"?: number }; Returns: {
               "attempts": number,"deliverable": boolean,"event_type": string,"id": string,"invitation_id": string,"link_id": string,"payload": Json,"recipient_email": string,"token_hash": string
+            }[]
+                           },
+"claim_staff_email_outbox":
+{ Args: { "p_invitation_id"?: string,"p_limit"?: number,"p_lock_seconds"?: number,"p_tenant_id"?: string }; Returns: {
+              "attempts": number,"deliverable": boolean,"event_type": string,"expires_at": string,"id": string,"invitation_id": string,"link_id": string,"payload": Json,"recipient_email": string,"tenant_display_name": string,"tenant_id": string,"tenant_reply_to": string,"tenant_slug": string,"token_hash": string
             }[]
                            },
 "client_contract_view":
@@ -1346,6 +1382,9 @@ isOneToOne: false
                            },
 "create_proposal_template":
 { Args: { "p_addons": Json,"p_default_package_id": string,"p_expiry_days": number,"p_intro": string,"p_name": string,"p_package_ids": Json,"p_question_ids": Json,"p_template_id": string,"p_tenant_id": string }; Returns: Json
+                           },
+"create_staff_invitation":
+{ Args: { "p_email": string,"p_invitation_id": string,"p_link_id": string,"p_tenant_id": string,"p_token_hash": string }; Returns: Json
                            },
 "current_user_is_platform_admin":
 { Args: Record<PropertyKey, never>; Returns: boolean
@@ -1456,6 +1495,9 @@ isOneToOne: false
 "remove_planning_template_item":
 { Args: { "p_expected_version": number,"p_item_id": string }; Returns: number
                            },
+"remove_staff_member":
+{ Args: { "p_membership_id": string,"p_tenant_id": string }; Returns: Json
+                           },
 "rename_event_plan_item":
 { Args: { "p_expected_version": number,"p_item_id": string,"p_label": string }; Returns: number
                            },
@@ -1474,11 +1516,17 @@ isOneToOne: false
 "request_signed_contract_pdf":
 { Args: { "p_contract_id": string }; Returns: Json
                            },
+"request_staff_sign_in":
+{ Args: { "p_token_hash": string }; Returns: Json
+                           },
 "resend_contract":
 { Args: { "p_contract_id": string,"p_link_id": string,"p_token_hash": string }; Returns: Json
                            },
 "resend_platform_invitation":
 { Args: { "p_invitation_id": string,"p_link_id": string,"p_token_hash": string }; Returns: Json
+                           },
+"resend_staff_invitation":
+{ Args: { "p_invitation_id": string,"p_link_id": string,"p_tenant_id": string,"p_token_hash": string }; Returns: Json
                            },
 "restore_workspace":
 { Args: { "p_expected_version": number,"p_reason": string,"p_tenant_id": string }; Returns: Json
@@ -1546,6 +1594,12 @@ isOneToOne: false
 "staff_event_list":
 { Args: { "p_include_archived"?: boolean,"p_limit"?: number,"p_offset"?: number,"p_query"?: string,"p_status"?: string,"p_tenant_id": string,"p_view"?: string }; Returns: Json
                            },
+"staff_invitation_for_token":
+{ Args: { "p_token_hash": string }; Returns: string
+                           },
+"staff_invitation_status":
+{ Args: { "p_invitation_id": string }; Returns: Json
+                           },
 "staff_planning_view":
 { Args: { "p_event_id": string }; Returns: Json
                            },
@@ -1554,6 +1608,9 @@ isOneToOne: false
                            },
 "staff_save_plan_item":
 { Args: { "p_answers": Json,"p_event_id": string,"p_expected_revision": number,"p_item_id": string }; Returns: Json
+                           },
+"staff_team_overview":
+{ Args: { "p_tenant_id": string }; Returns: Json
                            },
 "suspend_workspace":
 { Args: { "p_expected_version": number,"p_reason": string,"p_tenant_id": string }; Returns: Json

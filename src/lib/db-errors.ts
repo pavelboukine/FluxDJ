@@ -35,7 +35,7 @@ export function describeDbError(error: { code?: string; message?: string } | nul
   }
   const workspace = /workspace_(?:reason_required|own): (.*)$/.exec(message);
   if (workspace) return `${workspace[1].charAt(0).toUpperCase()}${workspace[1].slice(1)}.`;
-  const invitation = /invitation_(?:invalid|limit|not_resendable|not_revocable|resend_too_soon): (.*)$/.exec(message);
+  const invitation = /(?:invitation_(?:invalid|limit|not_resendable|not_revocable|not_cancellable|resend_too_soon)|member_owner_protected|workspace_archived): (.*)$/.exec(message);
   if (invitation) return `${invitation[1].charAt(0).toUpperCase()}${invitation[1].slice(1)}${/[.!?]$/.test(invitation[1]) ? "" : "."}`;
   const contract = /contract_(?:stale_approval|not_allowed|input_invalid): (.*)$/.exec(message);
   if (contract) return `A contract can't be generated: ${contract[1]}.`;

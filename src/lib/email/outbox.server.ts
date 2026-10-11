@@ -2,7 +2,7 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { publicEnv } from "@/lib/env";
 import { serverEnv } from "@/lib/env.server";
-import { contractInviteToken, platformInviteToken, proposalLinkToken, sha256Hex } from "@/lib/proposals/tokens.server";
+import { contractInviteToken, platformInviteToken, proposalLinkToken, sha256Hex, staffInviteToken } from "@/lib/proposals/tokens.server";
 import { IntegrityError, readVerifiedDocument } from "@/lib/contracts/documents.server";
 import { formatSignedAt, signedPdfFileName } from "@/lib/contracts/pdf/data";
 import { configuredTransport, type EmailTransport } from "./transport.server";
@@ -15,6 +15,8 @@ import {
   renderPlatformInvitationEmail,
   renderPlatformSignInEmail,
   renderSignedCopyEmail,
+  renderStaffInvitationEmail,
+  renderStaffSignInEmail,
   type OutboxEventType,
   type RenderedEmail,
 } from "./templates";
@@ -53,12 +55,13 @@ export type OutboxRunResult = { claimed: number; sent: number; failed: number; c
  * the row's frozen values (payload, frozen sender) and the canonical PDF, so
  * a retry is the same request even if Business settings changed meanwhile.
  *
- * DJ invitations (platform emails, no tenant) are claimed separately; see
- * deliverPlatformEmails. `tenantId` limits a run to one business's emails and
- * `platformInvitationId` to one invitation's.
+ * DJ invitations (platform emails, no tenant) and staff invitations are
+ * claimed separately; see deliverPlatformEmails and deliverStaffEmails.
+ * `tenantId` limits a run to one business's emails, `platformInvitationId`
+ * and `staffInvitationId` to one invitation's.
  */
 export async function processOutbox(
-  options: { transport?: EmailTransport; tenantId?: string; platformInvitationId?: string; limit?: number } = {},
+  options: { transport?: EmailTransport; tenantId?: string; platformInvitationId?: string; staffInvitationId?: string; limit?: number } = {},
 ): Promise<OutboxRunResult> {
   const admin = createAdminClient();
   const transport = options.transport ?? configuredTransport();
@@ -68,6 +71,8 @@ export async function processOutbox(
 
   if (!options.tenantId) await deliverPlatformEmails(admin, transport, appUrl, fromAddress, result, options);
   if (options.platformInvitationId) return result;
+  await deliverStaffEmails(admin, transport, appUrl, fromAddress, result, options);
+  if (options.staffInvitationId) return result;
 
   const { data: rows, error } = await admin.rpc("claim_email_outbox", {
     p_limit: options.limit ?? 20,
@@ -439,6 +444,91 @@ async function deliverPlatformEmails(
         });
       }
       const sent = await transport.send({ fromName: "Flux DJ", fromAddress, to: row.recipient_email, replyTo: null, ...email, idempotencyKey });
+      await admin.rpc("complete_email_outbox", { p_id: row.id, p_provider_message_id: sent.id });
+      result.sent += 1;
+    } catch (cause) {
+      // Error text must never include the link: transports report status codes only.
+      const message = cause instanceof Error ? cause.message.slice(0, 300) : "Unknown delivery error";
+      await admin.rpc("fail_email_outbox", { p_id: row.id, p_error: message, p_permanent: false });
+      result.failed += 1;
+    }
+  }
+}
+
+/**
+ * Staff invitations, sent as "{business} via Flux DJ" with the business's
+ * reply-to. Rechecked at claim time like DJ invitations (still open and
+ * unexpired, the row belongs to the current link and address, the business
+ * is active) and again right before sending (suspension). "staff_invitation"
+ * rebuilds the link from the link id, with a provider idempotency key;
+ * "staff_sign_in" asks Supabase Auth for a fresh verification link now,
+ * returning to /join/team/{invitation}; no Auth token is stored.
+ */
+async function deliverStaffEmails(
+  admin: ReturnType<typeof createAdminClient>,
+  transport: EmailTransport,
+  appUrl: string,
+  fromAddress: string,
+  result: OutboxRunResult,
+  options: { tenantId?: string; staffInvitationId?: string; limit?: number },
+) {
+  const { data: rows, error } = await admin.rpc("claim_staff_email_outbox", {
+    p_limit: options.limit ?? 20,
+    p_lock_seconds: 120,
+    p_tenant_id: options.tenantId,
+    p_invitation_id: options.staffInvitationId,
+  });
+  // Before migration 20261030000100 there is nothing to claim; other emails still go out.
+  if (error) return;
+
+  for (const row of rows ?? []) {
+    result.claimed += 1;
+    try {
+      if (!row.deliverable || !row.invitation_id || !row.link_id) {
+        await admin.rpc("cancel_email_outbox", {
+          p_id: row.id,
+          p_reason: "The invitation was accepted, cancelled, expired or resent with a new link before delivery.",
+        });
+        result.cancelled += 1;
+        continue;
+      }
+      let email: RenderedEmail;
+      let idempotencyKey: string | undefined;
+      if (row.event_type === "staff_invitation") {
+        const token = staffInviteToken(row.link_id);
+        if (sha256Hex(token) !== row.token_hash) {
+          await admin.rpc("fail_email_outbox", {
+            p_id: row.id,
+            p_error: "The link secret changed after this invitation was created. Resend the invitation to issue a new link.",
+            p_permanent: true,
+          });
+          result.failed += 1;
+          continue;
+        }
+        email = renderStaffInvitationEmail({
+          tenantDisplayName: row.tenant_display_name,
+          invitationLink: `${appUrl}/join/team#${token}`,
+          expiresAt: row.expires_at,
+        });
+        idempotencyKey = `flux-staff-invite-${row.id}`;
+      } else {
+        email = renderStaffSignInEmail({
+          tenantDisplayName: row.tenant_display_name,
+          verificationLink: await verificationLink(admin, row.recipient_email, appUrl, `/join/team/${row.invitation_id}`),
+        });
+      }
+      if (!(await dispatchAllowed(admin, row.id))) {
+        result.cancelled += 1;
+        continue;
+      }
+      const sent = await transport.send({
+        fromName: `${row.tenant_display_name} via Flux DJ`,
+        fromAddress,
+        to: row.recipient_email,
+        replyTo: row.tenant_reply_to,
+        ...email,
+        idempotencyKey,
+      });
       await admin.rpc("complete_email_outbox", { p_id: row.id, p_provider_message_id: sent.id });
       result.sent += 1;
     } catch (cause) {

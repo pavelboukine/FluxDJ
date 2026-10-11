@@ -79,9 +79,9 @@ select is_empty(
 select is_empty(
   $$ update public.event_access set revoked_at = now() where tenant_id = tests.id('tenant_b') returning id $$,
   'owner A cannot revoke tenant B event access');
-select is_empty(
-  $$ delete from public.tenant_memberships where tenant_id = tests.id('tenant_b') returning id $$,
-  'owner A cannot delete tenant B memberships');
+select throws_ok(
+  $$ delete from public.tenant_memberships where tenant_id = tests.id('tenant_b') $$,
+  '42501', null, 'owner A cannot delete tenant B memberships');
 
 -- ---------------------------------------------------------------------------
 -- Changing tenant_id: not granted to authenticated, and blocked by trigger

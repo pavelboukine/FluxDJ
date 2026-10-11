@@ -11,12 +11,12 @@ select tests.login_as(tests.id('staff_a'));
 select throws_ok(
   $$ insert into public.tenant_memberships (tenant_id, user_id, role) values (tests.id('tenant_a'), tests.id('stranger'), 'staff') $$,
   '42501', null, 'staff cannot add members');
-select is_empty(
-  $$ update public.tenant_memberships set role = 'owner' where user_id = tests.id('staff_a') returning id $$,
-  'staff cannot promote themselves to owner');
-select is_empty(
-  $$ delete from public.tenant_memberships where user_id = tests.id('owner_a') returning id $$,
-  'staff cannot remove the owner');
+select throws_ok(
+  $$ update public.tenant_memberships set role = 'owner' where user_id = tests.id('staff_a') $$,
+  '42501', null, 'staff cannot promote themselves to owner');
+select throws_ok(
+  $$ delete from public.tenant_memberships where user_id = tests.id('owner_a') $$,
+  '42501', null, 'staff cannot remove the owner');
 select throws_ok(
   $$ insert into public.tenant_memberships (tenant_id, user_id, role) values (tests.id('tenant_b'), tests.id('staff_a'), 'staff') $$,
   '42501', null, 'staff cannot join another tenant');
@@ -25,7 +25,8 @@ select is_empty(
   'staff cannot change tenant settings');
 
 -- ---------------------------------------------------------------------------
--- Owner manages staff of their own tenant only, and never owner rows.
+-- Memberships change only through audited functions (staff invitations,
+-- remove_staff_member; 45_staff_invitations): owners can't write them directly.
 -- ---------------------------------------------------------------------------
 select tests.login_as(tests.id('owner_a'));
 
@@ -38,15 +39,15 @@ select throws_ok(
 select throws_ok(
   $$ insert into public.tenant_memberships (tenant_id, user_id, role) values (tests.id('tenant_b'), tests.id('stranger'), 'staff') $$,
   '42501', null, 'owner A cannot add staff to tenant B');
-select is_empty(
-  $$ delete from public.tenant_memberships where user_id = tests.id('owner_a') returning id $$,
-  'owner cannot delete their own owner row (prevents orphaned tenants)');
-select lives_ok(
+select throws_ok(
+  $$ delete from public.tenant_memberships where user_id = tests.id('owner_a') $$,
+  '42501', null, 'owner cannot delete their own owner row (prevents orphaned tenants)');
+select throws_ok(
   $$ insert into public.tenant_memberships (tenant_id, user_id, role) values (tests.id('tenant_a'), tests.id('stranger'), 'staff') $$,
-  'owner can add staff to their tenant');
-select isnt_empty(
-  $$ delete from public.tenant_memberships where user_id = tests.id('staff_a') returning id $$,
-  'owner can remove staff');
+  '42501', null, 'owner cannot add a member directly (only an accepted invitation can)');
+select throws_ok(
+  $$ delete from public.tenant_memberships where user_id = tests.id('staff_a') $$,
+  '42501', null, 'owner cannot delete a membership directly (remove_staff_member keeps it for attribution)');
 
 -- ---------------------------------------------------------------------------
 -- Tenant settings: owner edits allowed fields only.

@@ -18,6 +18,7 @@ export const metadata: Metadata = { title: "Confirm sign in · Flux DJ", referre
 
 /** What the page says, by where the sign-in continues. Nothing here is authorization: the destination checks access. */
 function wording(to: string): { heading: string; text: string } {
+  if (to.startsWith("/join/team/")) return { heading: "Join your team on Flux DJ", text: "Confirm to verify your email and continue to your team invitation on this device." };
   if (to.startsWith("/join/")) return { heading: "Continue setting up Flux DJ", text: "Confirm to verify your email and continue setting up your DJ business on this device." };
   if (to.includes("/invitations/")) return { heading: "Open your contract", text: "Confirm to verify your email and continue to your contract on this device." };
   if (/^\/[^/]+\/contracts\//.test(to)) return { heading: "Open your contract", text: "You're almost there. Confirm to sign in on this device and continue to your contract." };

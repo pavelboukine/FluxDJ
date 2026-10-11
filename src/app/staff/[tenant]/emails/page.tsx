@@ -16,6 +16,8 @@ const LABEL: Record<string, string> = {
   proposal_link_opened: "Link opened (best effort)",
   proposal_submitted: "Submitted for review",
   proposal_approved: "Approval acknowledgement",
+  staff_invitation: "Team invitation",
+  staff_sign_in: "Team invitation sign-in link",
 };
 
 const fmt = (iso: string | null) => (iso ? new Intl.DateTimeFormat("en-CA", { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso)) : "—");

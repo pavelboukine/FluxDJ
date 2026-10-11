@@ -287,3 +287,44 @@ export function renderPlatformSignInEmail(input: { verificationLink: string }): 
     html: layout("Confirm it's you", lines, { label: "Confirm and continue", href: input.verificationLink }),
   };
 }
+
+/**
+ * Staff invitation (outbox event "staff_invitation"), from the business via
+ * Flux DJ. The link opens /join/team, whose token stays in the URL fragment;
+ * it only lets the invited address ask for a verification email. Carries a
+ * bearer token: never log it.
+ */
+export function renderStaffInvitationEmail(input: { tenantDisplayName: string; invitationLink: string; expiresAt: string | null }): RenderedEmail {
+  const business = input.tenantDisplayName;
+  const expires = formatDate(input.expiresAt);
+  const lines = [
+    "Hi,",
+    `${business} has invited you to join their team on Flux DJ.`,
+    "Accept your invitation to access the business's events, clients and planning tools. You'll first confirm this email address; no password is needed.",
+    expires ? `This invitation expires on ${expires}. Please don't forward it.` : "Please don't forward this invitation.",
+    "If you weren't expecting it, you can ignore this email.",
+  ];
+  return {
+    subject: `You've been invited to join ${business} on Flux DJ`,
+    text: `${lines.join("\n\n")}\n\nAccept invitation: ${input.invitationLink}\n`,
+    html: layout(`Join ${business} on Flux DJ`, lines, { label: "Accept invitation", href: input.invitationLink }),
+  };
+}
+
+/**
+ * Verification for a staff invitation (outbox event "staff_sign_in"). The
+ * Supabase link is generated at delivery time and never stored; it opens the
+ * explicit "Sign in" confirmation page, so scanners cannot use it.
+ */
+export function renderStaffSignInEmail(input: { tenantDisplayName: string; verificationLink: string }): RenderedEmail {
+  const lines = [
+    "Hi,",
+    `Use this link to confirm your email address and join ${input.tenantDisplayName} on Flux DJ.`,
+    "It works once and expires in one hour. You can open it on any device. If you didn't ask for it, you can ignore this email.",
+  ];
+  return {
+    subject: `Confirm your email to join ${input.tenantDisplayName} on Flux DJ`,
+    text: `${lines.join("\n\n")}\n\nConfirm and continue: ${input.verificationLink}\n`,
+    html: layout("Confirm it's you", lines, { label: "Confirm and continue", href: input.verificationLink }),
+  };
+}

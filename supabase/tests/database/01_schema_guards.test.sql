@@ -30,7 +30,7 @@ select is_empty(
 -- authenticated has only the table-level privileges intended. Writes beyond
 -- these are column-scoped grants (checked in behavior tests).
 select table_privs_are('public', 'tenants',            'authenticated', array['SELECT'], 'tenants: no table-wide write/delete for authenticated');
-select table_privs_are('public', 'tenant_memberships', 'authenticated', array['SELECT', 'DELETE'], 'memberships: select + delete only at table level');
+select table_privs_are('public', 'tenant_memberships', 'authenticated', array['SELECT'], 'memberships: select only (changes go through audited functions)');
 select table_privs_are('public', 'clients',            'authenticated', array['SELECT'], 'clients: no delete, no table-wide write');
 select table_privs_are('public', 'events',             'authenticated', array['SELECT'], 'events: no delete, no table-wide write');
 select table_privs_are('public', 'event_clients',      'authenticated', array['SELECT', 'DELETE'], 'event_clients: select + delete at table level');

@@ -736,6 +736,17 @@ docker exec -i supabase_db_flux-dj psql -U postgres -c \
 
 Revoke the local grant with `select private.revoke_platform_admin('…');`.
 
+#### Inviting staff
+
+1. As an owner, open **Settings → Access → Manage team** (`/staff/{slug}/team`).
+2. Enter an email and click **Send invitation**. Open "You've been invited to
+   join … on Flux DJ" in Mailpit, in a private window, and click **Accept
+   invitation**, then **Continue**.
+3. Open "Confirm your email to join …", click **Confirm and continue**, then
+   **Sign in**, then **Accept invitation** and **Open business dashboard**.
+   Someone already signed in with the invited address skips the second email.
+4. Back on Team, **Remove** ends that person's access on their next click.
+
 #### Suspending a workspace
 
 With a local platform administrator (above) who does not belong to the
@@ -902,10 +913,11 @@ the contract invitation page). Every local browser comes from
 - Only `staff-flow.spec.ts` (login form, unknown emails, link scanners,
   JavaScript off, sign-in with the emailed code), `contract-send-flow.spec.ts`
   (invitation request, verification, returning-client login) and
-  `platform-onboarding-flow.spec.ts` (the DJ invitation request) use the real
-  forms. A full run uses 5 `sign_in_link`, 2 `sign_in_code`, 1
-  `contract_sign_in`, 2 `platform_sign_in` (10 per 15 minutes) and 3
-  `workspace_create` (20 per 15 minutes).
+  `platform-onboarding-flow.spec.ts` (the DJ invitation request) and
+  `team-flow.spec.ts` (the staff invitation request) use the real forms. A
+  full run uses 5 `sign_in_link`, 2 `sign_in_code`, 1 `contract_sign_in`, 2
+  `platform_sign_in` (10 per 15 minutes), 1 `staff_sign_in` (10 per 15
+  minutes) and 3 `workspace_create` (20 per 15 minutes).
 - If a limit is used up, the test fails at once with the limit's name and the
   time it resets. Nothing resets the counters, and production limits are
   unchanged. The limiter itself is proven by the pgTAP tests (`12_…`, `17_…`).
@@ -945,7 +957,9 @@ in every relevant relationship.
 | `01_schema_guards` | RLS is on for every table; anon has no grants; security definer functions pin `search_path`; no RLS-bypassing views; the client projection omits staff fields |
 | `02_staff_tenant_isolation` | Staff of tenant A cannot SELECT, INSERT, UPDATE or DELETE tenant B rows; `tenant_id` cannot change, even for privileged code |
 | `03_integrity_constraints` | Composite foreign keys block cross-tenant references even when RLS is bypassed; one primary contact and one signer per event; access revocation is one-way; value validation |
-| `04_membership_and_privileges` | Staff cannot escalate; owners manage staff only in their own tenant; lifecycle and access columns are not directly writable |
+| `04_membership_and_privileges` | Staff cannot escalate; nobody writes memberships directly (only audited functions); lifecycle and access columns are not directly writable |
+| `46_platform_active_membership` | The workspace list's membership flag and the self-suspension guard count active owners and staff, never removed members; administrators of other businesses and existing suspension permissions unchanged; the removed row is kept |
+| `45_staff_invitations` | Owner-only invitations, resends, cancellations, removals and team overview (staff, other businesses, anon refused); no direct table access. Request-id replays, one open invitation per address, members not invited, hashed tokens only, emails for the business claimed only by the staff worker. Masked address for other accounts, unverified sign-ins learn nothing, the business named only to the verified invited address. Acceptance once (replays), restored memberships after removal, owners unremovable even by privileged code, removed members lose access at once but keep client events. Cancelled, expired and resent links. Suspended workspaces can't invite, remove or accept |
 | `05_client_access` | A verified client sees only their linked events, including at two different DJs; unverified, revoked or email-only matches grant nothing; clients cannot alter staff data |
 | `06_anonymous_access` | Anon has no table or function access |
 | `07_catalog_isolation` | Every catalog and template table is visible and writable only by staff of the owning tenant; clients and anon get nothing |
@@ -1622,6 +1636,8 @@ undelivered contract emails visibly.
   booking), Planning (`#planning` deadline, and the default planning template
   per event type, set on each template), and Access (your role and the
   number of owners and staff). Every form and action is unchanged.
+- **Access.** Your role and the number of active owners and staff; owners
+  get **Manage team** (see "Staff team and invitations").
 - **Owner-only settings.** The owner manages `/staff/{tenant}/settings`:
   - legal business name (`tenants.business_name`)
   - business address
@@ -2317,6 +2333,82 @@ existing changes), and apps before it never call it, so apply it to the
 hosted database first (`db push --linked --dry-run`, then `db push
 --linked`), then deploy the app. An app deployed before the migration can't
 load the dashboard; every other page works.
+
+### Staff team and invitations
+
+Migration `20261030000100_staff_invitations.sql`. Separate from DJ (platform)
+invitations, which create a business: a staff invitation only grants a staff
+membership in an existing one. `/staff/{tenant}/team` (linked from Settings →
+Access; it highlights **Settings**, no new menu item).
+
+**Owner only.** Members (email, role, active or removed), pending and recent
+invitations, **Send invitation** (email; the role is always Staff),
+**Resend**, **Cancel invitation** and **Remove**, each confirmed first. Every
+function checks the owner role again in the database
+(`private.require_owner_of`): staff get a permission error, other businesses
+and removed members "not found", a suspended workspace `workspace_suspended`.
+Staff see their own role on Team and in Settings → Access. Owners can't be
+removed or invite another owner; there is no ownership transfer.
+
+**Memberships.** Removal is soft (`tenant_memberships.removed_at`,
+`removed_by`): business records point at memberships for attribution (who
+created a proposal, approved it, generated or published a contract, recorded
+a payment), several of those columns are immutable, so a deleted membership
+would either fail or lose that history. Removed rows grant nothing:
+`member_tenant_ids`, `require_staff_of`, `my_workspaces` and
+`tenant_write_guard` ignore them, so access ends on the next request, whatever
+the browser session. The Auth account, other businesses and client events are
+untouched. A check constraint keeps owner rows unremovable. Signed-in users
+can no longer insert, update or delete memberships directly (the app never
+did; the old owner policies allowed adding any known user id unaudited);
+memberships change only through these functions and DJ onboarding.
+
+**Lifecycle** (`public.staff_invitations`, audited in `audit_events`):
+
+1. *Invite* (`create_staff_invitation`). The invitation's id is the form's
+   request id, so a retried submission returns the same invitation and sends
+   nothing more. One open invitation per business and address (unique index);
+   active members get "already has access"; 30 new invitations per business
+   a day. Expires after 7 days. Token: `HMAC(PROPOSAL_LINK_SECRET,
+   "flux:staff-invite:v1:" + link id)`, only its SHA-256 stored, in the
+   `/join/team#token` fragment.
+2. *Resend* (`resend_staff_invitation`, also when expired): a new link id
+   (the resend form's request id, so a retry is a replay), a new 7-day
+   expiry, queued emails for the old link cancelled. One per 2 minutes, 10 a
+   day.
+3. *Cancel* (`cancel_staff_invitation`): under the invitation's row lock,
+   which acceptance also takes, so a racing acceptance either finished first
+   or is refused. Queued emails are cancelled.
+4. *Verify.* `/join/team` sends nothing until **Continue**. Someone signed in
+   with the verified invited address goes straight to acceptance
+   (`staff_invitation_for_token`); anyone else gets "Confirm your email to
+   join …" sent to the invited address (`request_staff_sign_in`, service
+   role; 10 per IP per 15 minutes as `staff_sign_in`, 3 per invitation). At
+   delivery the worker asks Supabase Auth for an `invite` link (new person)
+   or a magic link (existing account; no duplicate identities), returning to
+   `/join/team/{invitation}` through `/auth/confirm`.
+5. *Accept* (`accept_staff_invitation`, explicit POST): under the row lock,
+   rechecks expiry, cancellation, the verified email and that the business
+   is neither suspended nor archived, then creates a staff membership,
+   restores a removed one, or keeps an existing one unchanged. Repeats
+   replay; nobody else can use an accepted invitation. The business is named
+   only to the verified invited address; wrong accounts see a masked address.
+
+**Emails.** `staff_invitation` and `staff_sign_in` rows in `email_outbox`
+carry the business's `tenant_id` (suspension cancels them, archived and
+suspended businesses send nothing, they show on Emails), but only
+`claim_staff_email_outbox` claims them: `claim_email_outbox` now skips them,
+so a worker deployed before this migration never renders them as something
+else. Sent as "{business} via Flux DJ" with its reply-to; the link is rebuilt
+from the link id on every attempt (provider idempotency key).
+
+**Platform administration.** `20261031000100_platform_active_membership.sql`
+makes the "your own workspace" suspension guard and the workspace list's
+membership flag count only active memberships, like every other check.
+
+**Deploying.** Apply both migrations first, then deploy the app. The previous
+app keeps working: it never wrote memberships, its worker skips staff emails
+(they wait for the new one), and the gates it relies on only got stricter.
 
 ### Setup guide
 

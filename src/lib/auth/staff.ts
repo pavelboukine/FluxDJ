@@ -34,7 +34,7 @@ export const requireStaff = cache(async (tenantSlug: string) => {
     // Supabase session per browser). Explain instead of a bare 404. This
     // depends only on the user's own memberships, never on the slug, so it
     // reveals nothing about other tenants; staff of other tenants still get 404.
-    const { count } = await supabase.from("tenant_memberships").select("id", { count: "exact", head: true }).eq("user_id", user.id);
+    const { count } = await supabase.from("tenant_memberships").select("id", { count: "exact", head: true }).eq("user_id", user.id).is("removed_at", null);
     if (!count) redirect("/login?notice=no-staff-access");
     notFound();
   }
@@ -43,6 +43,7 @@ export const requireStaff = cache(async (tenantSlug: string) => {
     .select("id, role")
     .eq("tenant_id", tenant.id)
     .eq("user_id", user.id)
+    .is("removed_at", null)
     .maybeSingle();
   if (!membership) notFound();
   return { supabase, user, tenant, membership };

@@ -21,7 +21,7 @@ export default async function Home() {
   let hasEvents = false;
   if (user) {
     const [{ count }, { data: events }] = await Promise.all([
-      supabase.from("tenant_memberships").select("id", { count: "exact", head: true }).eq("user_id", user.id),
+      supabase.from("tenant_memberships").select("id", { count: "exact", head: true }).eq("user_id", user.id).is("removed_at", null),
       supabase.rpc("my_events"),
     ]);
     isStaff = (count ?? 0) > 0;

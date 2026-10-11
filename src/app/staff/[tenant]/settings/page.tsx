@@ -69,7 +69,7 @@ export default async function BusinessSettings({ params, searchParams }: PagePro
       ? supabase.from("tenant_logos").select("storage_path, needs_dark_background, width, height").eq("tenant_id", tenant.id).eq("storage_path", settings.logo_storage_path).maybeSingle()
       : Promise.resolve({ data: null }),
     supabase.from("planning_templates").select("id, name, default_event_type").eq("tenant_id", tenant.id).is("archived_at", null).not("default_event_type", "is", null),
-    supabase.from("tenant_memberships").select("role").eq("tenant_id", tenant.id),
+    supabase.from("tenant_memberships").select("role").eq("tenant_id", tenant.id).is("removed_at", null),
     categoryUsage(supabase, tenant.id),
   ]);
   const currentLogo = await logoUrl(activeLogo);
@@ -446,11 +446,17 @@ export default async function BusinessSettings({ params, searchParams }: PagePro
                   {owners === 1 ? "1 owner" : `${owners} owners`} and {staff === 1 ? "1 staff member" : `${staff} staff members`}.
                 </p>
                 <ul className="grid list-disc gap-1 pl-5 text-muted-foreground">
-                  <li>Owners change these settings, branding and taxes, and publish contract templates for client use.</li>
+                  <li>Owners change these settings, branding and taxes, and publish contract templates for client use, and manage the team.</li>
                   <li>Staff see these settings read-only and work with events, clients, the catalog and templates.</li>
                   <li>Clients only ever see their own events, proposals, contracts and plans.</li>
                 </ul>
-                <p className="text-xs text-muted-foreground">Adding or removing team members isn&apos;t available in Settings.</p>
+                {isOwner ? (
+                  <div>
+                    <Link className={buttonVariants({ variant: "outline", size: "sm" })} href={`/staff/${slug}/team`}>Manage team</Link>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Only the owner can invite or remove team members.</p>
+                )}
               </CardContent>
             </Card>
           </Section>
