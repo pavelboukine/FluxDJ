@@ -7,7 +7,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { DEMO_TEMPLATE_TEXT, DEMO_TEMPLATE_TITLE } from "../../src/lib/contracts/demo-template";
+import { DEMO_TEMPLATE_SECTIONS, DEMO_TEMPLATE_TITLE } from "../../src/lib/contracts/demo-template";
 import { admin, signInStaff } from "./support";
 import { archiveTestTenant, createTestTenant, sendProposalFromEventPage, submitAsClient, type TestTenant } from "./tenant";
 
@@ -54,20 +54,29 @@ test.describe.serial("contract templates and contract drafts", () => {
     await staff.goto(`/staff/${tenant.slug}`);
     await staff.getByRole("navigation", { name: "Staff" }).getByRole("link", { name: "Contract templates" }).click();
     await expect(staff.getByRole("heading", { name: "Contract templates" })).toBeVisible();
+    await expect(staff.getByTestId("contract-templates-empty")).toBeVisible();
+    await staff.getByRole("link", { name: "Create template" }).click();
+    await staff.getByRole("link", { name: "Start from the DEMO sample text" }).click();
     await staff.getByLabel("Template name").fill(templateName);
-    await expect(staff.getByLabel("Sections")).toHaveValue(DEMO_TEMPLATE_TEXT);
-    await staff.getByRole("button", { name: "Create template draft" }).click();
-    await staff.waitForURL(/\/contract-templates\/[0-9a-f-]{36}$/);
-    await expect(staff.getByText("Draft version 1")).toBeVisible();
-    await expect(staff.getByText("{{payment.balance_due_date}}", { exact: true })).toBeVisible();
+    await expect(staff.getByLabel("Document title")).toHaveValue(DEMO_TEMPLATE_TITLE);
+    await expect(staff.getByTestId("section-card")).toHaveCount(DEMO_TEMPLATE_SECTIONS.length);
+    await staff.getByRole("button", { name: "Create draft" }).click();
+    await staff.waitForURL(/\/contract-templates\/[0-9a-f-]{36}\?created=1$/);
+    await expect(staff.getByRole("heading", { name: /^Draft version 1/ })).toBeVisible();
+    const { data: created } = await admin.from("contract_template_versions").select("title, sections").eq("tenant_id", tenant.id).single();
+    expect(created).toEqual({ title: DEMO_TEMPLATE_TITLE, sections: DEMO_TEMPLATE_SECTIONS });
 
-    const sections = staff.getByLabel("Sections");
-    await sections.fill(`${DEMO_TEMPLATE_TEXT}\n\n## Extra\nDear {{client.nickname}}`);
+    // An unknown field is pointed out in the preview and refused when saving.
+    await staff.getByRole("button", { name: "Add section", exact: true }).click();
+    await staff.getByLabel(`Heading of section ${DEMO_TEMPLATE_SECTIONS.length + 1}`).fill("Extra");
+    await staff.getByLabel(`Text of section ${DEMO_TEMPLATE_SECTIONS.length + 1}`).fill("Dear {{client.nickname}}");
+    await expect(staff.getByText(/Not a field: \{\{client\.nickname\}\}/)).toBeVisible();
     await staff.getByRole("button", { name: "Save draft" }).click();
     await expect(staff.getByRole("alert").filter({ hasText: "can't be used" })).toHaveText("This template can't be used: unknown placeholder {{client.nickname}}.");
 
     // Back to the saved text: nothing is unsaved. A real edit blocks publishing until saved.
-    await sections.fill(DEMO_TEMPLATE_TEXT);
+    staff.once("dialog", (d) => void d.accept());
+    await staff.getByRole("button", { name: "Remove Extra" }).click();
     await expect(staff.getByRole("button", { name: "Publish…" })).toBeEnabled();
     await staff.getByLabel("Document title").fill(`${DEMO_TEMPLATE_TITLE} (v1)`);
     await expect(staff.getByText("Save your changes before publishing.")).toBeVisible();
@@ -83,7 +92,10 @@ test.describe.serial("contract templates and contract drafts", () => {
     await dialog.getByRole("button", { name: "Publish version 1 as DEMO" }).click();
     await expect(staff.getByRole("button", { name: "Start draft version 2" })).toBeVisible();
     await expect(staff.getByText(/Version 1 · published/)).toBeVisible();
-    await expect(staff.getByLabel("Sections")).toHaveCount(0);
+    await expect(staff.getByLabel("Text of section 1")).toHaveCount(0);
+    await staff.goto(`/staff/${tenant.slug}/contract-templates`);
+    await expect(staff.getByTestId("contract-template-row")).toContainText("Version 1 published");
+    await expect(staff.getByTestId("contract-template-row")).toContainText("DEMO");
   });
 
   test("staff approve a real submission; missing details block generation with clear guidance", async () => {

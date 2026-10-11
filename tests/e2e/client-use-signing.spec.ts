@@ -17,7 +17,10 @@ const clientEmail = `e2e-real-${run}@example.test`;
 const eventTitle = `E2E Real Wedding ${run}`;
 const templateName = `Our agreement ${run}`;
 const BASE = "http://127.0.0.1:3000";
-const AGREEMENT = "## Parties\n{{business.legal_name}} and {{client.name}}.\n\n## Payment\nTotal {{pricing.total}}. Deposit: {{payment.deposit}}.";
+const AGREEMENT = [
+  { heading: "Parties", body: "{{business.legal_name}} and {{client.name}}." },
+  { heading: "Payment", body: "Total {{pricing.total}}. Deposit: {{payment.deposit}}." },
+];
 const CLIENT_V1 =
   "I have read the entire agreement shown above, including its payment terms. I agree to sign it electronically. I agree that my typed name " +
   "and drawn signature are my signature on this agreement and that they bind me to it as a handwritten signature would. I can download a " +
@@ -68,11 +71,16 @@ test.describe.serial("client-use agreements", () => {
   test("the owner publishes their own agreement for client use only after confirming responsibility", async () => {
     await staff.goto(`/staff/${tenant.slug}/contract-templates`);
     await expect(staff.getByText(/Flux DJ does not review it/)).toBeVisible();
+    await staff.goto(`/staff/${tenant.slug}/contract-templates/new?start=write`);
     await staff.getByLabel("Template name").fill(templateName);
     await staff.getByLabel("Document title").fill("Services agreement for {{event.title}}");
-    await staff.getByLabel("Sections").fill(AGREEMENT);
-    await staff.getByRole("button", { name: "Create template draft" }).click();
-    await staff.waitForURL(/\/contract-templates\/[0-9a-f-]{36}$/);
+    for (const [i, section] of AGREEMENT.entries()) {
+      if (i > 0) await staff.getByRole("button", { name: "Add section", exact: true }).click();
+      await staff.getByLabel(`Heading of section ${i + 1}`).fill(section.heading);
+      await staff.getByLabel(`Text of section ${i + 1}`).fill(section.body);
+    }
+    await staff.getByRole("button", { name: "Create draft" }).click();
+    await staff.waitForURL(/\/contract-templates\/[0-9a-f-]{36}\?created=1$/);
 
     await staff.getByRole("button", { name: "Publish…" }).click();
     const dialog = staff.getByRole("dialog", { name: "Confirm publishing" });

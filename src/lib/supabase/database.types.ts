@@ -1326,6 +1326,9 @@ isOneToOne: false
 "create_contract_template":
 { Args: { "p_name": string,"p_sections": Json,"p_tenant_id": string,"p_title": string }; Returns: string
                            },
+"create_contract_template_once":
+{ Args: { "p_name": string,"p_sections": Json,"p_template_id": string,"p_tenant_id": string,"p_title": string }; Returns: Json
+                           },
 "create_package":
 { Args: { "p_base_price_cents": number,"p_description": string,"p_items": Json,"p_key": string,"p_name": string,"p_package_id": string,"p_sort_order": number,"p_tax_category": string,"p_tenant_id": string }; Returns: Json
                            },

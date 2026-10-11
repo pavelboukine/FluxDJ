@@ -1,10 +1,11 @@
 /**
- * The contract template editor uses one plain-text field. Each section starts
- * with a line "## Heading"; everything up to the next such line is the
- * section's text. This file converts between that text and the structured
- * sections stored in the database. Nothing here interprets markup: bodies are
- * stored and shown exactly as typed. Placeholder validation happens in the
- * database, against the single placeholder registry.
+ * Contract template sections: a heading and a plain-text body each. The
+ * section editor posts them as repeated "heading" and "body" fields
+ * (readSections). The older one-field text form, where each section starts
+ * with a line "## Heading", is still converted here (parseTemplateText,
+ * sectionsToText) for the DEMO starting text. Nothing here interprets markup:
+ * bodies are stored and shown exactly as typed. Placeholder validation happens
+ * in the database, against the single placeholder registry.
  */
 
 export type TemplateSection = { heading: string; body: string };
@@ -49,4 +50,39 @@ export function parseTemplateText(text: string): ParseResult {
 
 export function sectionsToText(sections: readonly TemplateSection[]): string {
   return sections.map((s) => `## ${s.heading}\n${s.body}`).join("\n\n");
+}
+
+/** Limits of private.contract_template_problem, mirrored for messages next to the fields (the database stays authoritative). */
+export const LIMITS = { title: 300, heading: 200, body: 20000, sections: MAX_SECTIONS } as const;
+
+/** What the database would refuse in one section, in plain words, or null. */
+export function sectionProblem(section: TemplateSection): string | null {
+  if (!section.heading.trim()) return "Add a heading.";
+  if (/[\r\n]/.test(section.heading)) return "Keep the heading on one line.";
+  if (section.heading.trim().length > LIMITS.heading) return `Shorten the heading to ${LIMITS.heading} characters.`;
+  if (!section.body.trim()) return "Add the section's text.";
+  if (section.body.trim().length > LIMITS.body) return `This section is longer than ${LIMITS.body.toLocaleString("en-CA")} characters. Split it into two sections.`;
+  if (/(^|\n)## /.test(section.body)) return 'A line can\'t start with "## ".';
+  return null;
+}
+
+/**
+ * The sections a section editor posted: repeated "heading" and "body" fields
+ * in document order. Bodies are kept as typed, minus trailing spaces and blank
+ * lines around them (as parseTemplateText does).
+ */
+export function readSections(form: FormData): ParseResult {
+  const headings = form.getAll("heading").map((v) => (typeof v === "string" ? v.trim() : ""));
+  const bodies = form.getAll("body").map((v) => (typeof v === "string" ? v : ""));
+  if (headings.length === 0 || headings.length !== bodies.length) return { ok: false, error: "Add at least one section." };
+  if (headings.length > MAX_SECTIONS) return { ok: false, error: `A template can have at most ${MAX_SECTIONS} sections.` };
+  const sections = headings.map((heading, i) => ({
+    heading,
+    body: bodies[i].replace(/\r\n?/g, "\n").split("\n").map((l) => l.replace(/\s+$/, "")).join("\n").replace(/^\n+|\n+$/g, ""),
+  }));
+  for (const [i, s] of sections.entries()) {
+    const problem = sectionProblem(s);
+    if (problem) return { ok: false, error: `Section ${i + 1}${s.heading ? ` (${s.heading})` : ""}: ${problem}` };
+  }
+  return { ok: true, sections };
 }

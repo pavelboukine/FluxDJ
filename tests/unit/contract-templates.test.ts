@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DEMO_TEMPLATE_SECTIONS, DEMO_TEMPLATE_TEXT, DEMO_TEMPLATE_TITLE } from "@/lib/contracts/demo-template";
-import { parseTemplateText, sectionsToText } from "@/lib/contracts/template-text";
+import { EXAMPLE_VALUES, fillExamples, groupFields, MULTILINE_FIELDS, scanPlaceholders } from "@/lib/contracts/fields";
+import { LIMITS, parseTemplateText, readSections, sectionProblem, sectionsToText } from "@/lib/contracts/template-text";
 import { describeDbError } from "@/lib/db-errors";
 
 describe("contract template text format", () => {
@@ -142,5 +143,64 @@ describe("contract withdrawn notice", () => {
     expect(email.text).not.toMatch(/cancel/i);
     expect(email.html).not.toContain("<a ");
     expect(email.html).toContain("&lt;b&gt;Robin&lt;/b&gt;");
+  });
+});
+
+describe("section editor content", () => {
+  const form = (pairs: [string, string][]) => {
+    const f = new FormData();
+    for (const [k, v] of pairs) f.append(k, v);
+    return f;
+  };
+
+  it("reads repeated heading/body fields in order, keeping the text as typed", () => {
+    expect(readSections(form([["heading", " Parties "], ["body", "A and B.\r\n  indented\n\n"], ["heading", "Payment"], ["body", "Total {{pricing.total}}  "]]))).toEqual({
+      ok: true,
+      sections: [
+        { heading: "Parties", body: "A and B.\n  indented" },
+        { heading: "Payment", body: "Total {{pricing.total}}" },
+      ],
+    });
+  });
+
+  it("explains what the database would refuse, section by section", () => {
+    expect(readSections(form([]))).toEqual({ ok: false, error: "Add at least one section." });
+    expect(readSections(form([["heading", ""], ["body", "Text"]]))).toEqual({ ok: false, error: "Section 1: Add a heading." });
+    expect(readSections(form([["heading", "Payment"], ["body", "  "]]))).toEqual({ ok: false, error: "Section 1 (Payment): Add the section's text." });
+    expect(readSections(form([["heading", "Notes"], ["body", "ok\n## not allowed"]]))).toEqual({ ok: false, error: 'Section 1 (Notes): A line can\'t start with "## ".' });
+    expect(sectionProblem({ heading: "A", body: "x".repeat(LIMITS.body + 1) })).toMatch(/longer than 20,000 characters/);
+  });
+});
+
+describe("contract fields", () => {
+  const known = new Set(["client.name", "pricing.total", "package.included"]);
+
+  it("fills known fields with example values and leaves everything else as typed", () => {
+    expect(fillExamples("Dear {{client.name}}, total {{ pricing.total }}. {{client.nickname}} {{Odd}}", known)).toBe(
+      `Dear ${EXAMPLE_VALUES["client.name"]}, total ${EXAMPLE_VALUES["pricing.total"]}. {{client.nickname}} {{Odd}}`,
+    );
+  });
+
+  it("finds known, unknown and malformed fields as the database would", () => {
+    expect(scanPlaceholders("{{client.name}} {{client.name}} {{client.nickname}} {{Client Name}} {{ unclosed", known)).toEqual({
+      known: ["client.name"],
+      unknown: ["client.nickname"],
+      malformed: ["{{Client Name}}", "{{"],
+    });
+  });
+
+  it("groups the catalog for the Insert field menu", () => {
+    const groups = groupFields([
+      { key: "payment.deposit", label: "Deposit", description: "" },
+      { key: "client.name", label: "Client name", description: "" },
+      { key: "venue.name", label: "Venue name", description: "" },
+      { key: "event.date", label: "Event date", description: "" },
+    ]);
+    expect(groups.map((g) => [g.label, g.fields.map((f) => f.key)])).toEqual([
+      ["Client", ["client.name"]],
+      ["Event and venue", ["venue.name", "event.date"]],
+      ["Payment", ["payment.deposit"]],
+    ]);
+    expect(MULTILINE_FIELDS.has("package.included")).toBe(true);
   });
 });
