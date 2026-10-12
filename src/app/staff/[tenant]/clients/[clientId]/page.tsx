@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Mail, Phone } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Mail, Phone, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { PageHeader } from "@/components/app/fields";
@@ -8,9 +8,12 @@ import { EventRow } from "@/components/app/event-row";
 import { InlineEditor } from "@/components/app/inline-editor";
 import { EmptyList, ListRows } from "@/components/app/list";
 import { requireStaff } from "@/lib/auth/staff";
+import { contractsUseClientPhone, emailChangeImpact, hasEmailImpact } from "@/lib/clients.server";
 import { dateIn, shortDate } from "@/lib/dates";
+import { eventDisplayStatus } from "@/lib/events/status";
 import { UUID_RE } from "@/lib/forms";
 import { contactRoleLabel, isUpcomingEvent, utcDateFrom } from "@/lib/lists";
+import { telHref } from "@/lib/phone";
 import { updateClientRecord } from "../actions";
 import { ClientFields } from "../client-fields";
 import { ClientArchivePanel } from "./client-archive-panel";
@@ -20,7 +23,7 @@ const UPCOMING_LIMIT = 50;
 const HISTORY_PAGE = 10;
 
 const EVENT_COLUMNS =
-  "id, title, event_date, timezone, venue_name, lifecycle_status, archived_at, event_clients!inner(client_id, is_primary, can_sign), contracts(status)";
+  "id, title, event_date, timezone, venue_name, lifecycle_status, archived_at, active_proposal_id, event_clients!inner(client_id, is_primary, can_sign), contracts(status), proposals!proposals_event_fk(id, status, expires_at)";
 
 /**
  * One client: a readable overview with Edit details, their events (upcoming
@@ -34,7 +37,7 @@ export default async function ClientPage({ params, searchParams }: PageProps<"/s
   const { supabase, tenant } = await requireStaff(slug);
   const { data: client } = await supabase
     .from("clients")
-    .select("id, name, email, phone, archived_at, created_at")
+    .select("id, name, email, phone, archived_at, created_at, updated_at")
     .eq("id", clientId)
     .eq("tenant_id", tenant.id)
     .maybeSingle();
@@ -49,8 +52,7 @@ export default async function ClientPage({ params, searchParams }: PageProps<"/s
       .select(EVENT_COLUMNS)
       .eq("tenant_id", tenant.id)
       .eq("event_clients.client_id", client.id)
-      .eq("contracts.status", "signed")
-      .limit(1, { referencedTable: "contracts" });
+      .in("contracts.status", ["signed", "sent", "draft"]);
   const upcomingRes = await events().is("archived_at", null).gte("event_date", utcDateFrom(now, -1)).order("event_date").order("title").limit(UPCOMING_LIMIT);
   if (upcomingRes.error) throw new Error("This client's events couldn't be loaded.");
   const upcoming = shape(upcomingRes.data, now).filter((e) => e.upcoming);
@@ -60,13 +62,15 @@ export default async function ClientPage({ params, searchParams }: PageProps<"/s
   const historyFrom = (historyPage - 1) * HISTORY_PAGE;
   let historyQuery = events().or(`archived_at.not.is.null,event_date.lte.${utcDateFrom(now, 1)}`);
   if (boundary.length > 0) historyQuery = historyQuery.not("id", "in", `(${boundary.join(",")})`);
-  const [historyRes, linkCount] = await Promise.all([
+  const [historyRes, linkCount, contractsNeedPhone, impact] = await Promise.all([
     historyQuery
       .order("event_date", { ascending: false })
       .order("title")
       .order("id")
       .range(historyFrom, historyFrom + HISTORY_PAGE), // one extra row tells whether there are older events
     supabase.from("event_clients").select("id", { count: "exact", head: true }).eq("tenant_id", tenant.id).eq("client_id", client.id),
+    contractsUseClientPhone(supabase, tenant.id),
+    emailChangeImpact(supabase, tenant.id, client.id),
   ]);
   if (historyRes.error) throw new Error("This client's events couldn't be loaded.");
   const olderExists = historyRes.data.length > HISTORY_PAGE;
@@ -86,7 +90,16 @@ export default async function ClientPage({ params, searchParams }: PageProps<"/s
             Back to clients
           </Link>
         }
-        actions={archived ? <Badge variant="secondary">Archived</Badge> : <Badge variant="outline">Active</Badge>}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            {archived ? <Badge variant="secondary">Archived</Badge> : <Badge variant="outline">Active</Badge>}
+            {archived ? null : (
+              <Link className={buttonVariants({ size: "sm" })} href={`/staff/${slug}/events/new?client=${client.id}`} data-testid="new-event-for-client">
+                <Plus aria-hidden /> New event
+              </Link>
+            )}
+          </div>
+        }
       />
       {archived ? (
         <p role="status" className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
@@ -99,12 +112,18 @@ export default async function ClientPage({ params, searchParams }: PageProps<"/s
         id="details"
         title="Contact details"
         editLabel="Edit details"
-        view={<ClientOverview email={client.email} phone={client.phone} added={shortDate(dateIn(tenant.timezone, new Date(client.created_at)))} />}
+        view={<ClientOverview email={client.email} phone={client.phone} added={shortDate(dateIn(tenant.timezone, new Date(client.created_at)))} phoneNeeded={contractsNeedPhone} />}
         action={updateClientRecord.bind(null, slug, client.id)}
         submitLabel="Save details"
         discardMessage="Discard the changes you made to this client's details?"
       >
-        <ClientFields client={client} />
+        <ClientFields client={client} contractsNeedPhone={contractsNeedPhone} />
+        {hasEmailImpact(impact) ? (
+          <p className="text-xs text-muted-foreground" data-testid="email-change-note">
+            This email is already used for sign-ins or documents sent to this client. Changing it doesn&apos;t move that access to the new
+            address; you&apos;ll be asked to confirm what stays with the old one.
+          </p>
+        ) : null}
       </InlineEditor>
 
       <section aria-labelledby="upcoming-heading" className="grid gap-3">
@@ -125,6 +144,7 @@ export default async function ClientPage({ params, searchParams }: PageProps<"/s
                   details={<EventDetails role={e.role} venue={e.venue_name} />}
                   status={e.lifecycle_status}
                   contractSigned={e.signed}
+                  statusLabel={e.statusLabel}
                   archived={e.archived}
                 />
               ))}
@@ -135,7 +155,12 @@ export default async function ClientPage({ params, searchParams }: PageProps<"/s
           </>
         ) : (
           <EmptyList testId="client-upcoming-empty">
-            <p>{totalEvents === 0 ? "No events yet. Choose this client when you create an event, or add them under an event's Contacts." : "No upcoming events."}</p>
+            <p>{totalEvents === 0 ? "No events yet. Create one for this client, or add them under an event's Contacts." : "No upcoming events."}</p>
+            {archived ? null : (
+              <Link className={buttonVariants({ variant: "outline", size: "sm" })} href={`/staff/${slug}/events/new?client=${client.id}`}>
+                New event for {client.name}
+              </Link>
+            )}
           </EmptyList>
         )}
       </section>
@@ -158,6 +183,7 @@ export default async function ClientPage({ params, searchParams }: PageProps<"/s
                   details={<EventDetails role={e.role} venue={e.venue_name} />}
                   status={e.lifecycle_status}
                   contractSigned={e.signed}
+                  statusLabel={e.statusLabel}
                   archived={e.archived}
                 />
               ))}
@@ -197,8 +223,10 @@ type EventRowData = {
   venue_name: string | null;
   lifecycle_status: string;
   archived_at: string | null;
+  active_proposal_id: string | null;
   event_clients: { is_primary: boolean; can_sign: boolean }[];
-  contracts: unknown[];
+  contracts: { status: string }[];
+  proposals: { id: string; status: string; expires_at: string | null }[];
 };
 
 /** Places each event by its own time zone's today and names this client's role on it. */
@@ -206,13 +234,18 @@ function shape(rows: EventRowData[], now: Date) {
   return rows.map((e) => {
     const today = dateIn(e.timezone, now);
     const archived = e.archived_at !== null;
+    const statuses = new Set(e.contracts.map((c) => c.status));
+    const contractStatus = statuses.has("signed") ? "signed" : statuses.has("sent") ? "sent" : statuses.has("draft") ? "draft" : null;
+    const active = e.proposals.find((p) => p.id === e.active_proposal_id);
+    const proposalStatus = active ? (active.status === "sent" && active.expires_at && new Date(active.expires_at) <= now ? "expired" : active.status) : null;
     return {
       ...e,
       today,
       archived,
       upcoming: isUpcomingEvent({ event_date: e.event_date, archived }, today),
       role: contactRoleLabel(e.event_clients[0] ?? { is_primary: false, can_sign: false }),
-      signed: e.contracts.length > 0,
+      signed: contractStatus === "signed",
+      statusLabel: eventDisplayStatus({ lifecycle: e.lifecycle_status, proposalStatus, proposalDraft: e.proposals.some((p) => p.status === "draft"), contractStatus }),
     };
   });
 }
@@ -230,8 +263,8 @@ function EventDetails({ role, venue }: { role: string; venue: string | null }) {
   );
 }
 
-function ClientOverview({ email, phone, added }: { email: string; phone: string | null; added: string }) {
-  const tel = phone?.replace(/[^\d+]/g, "");
+function ClientOverview({ email, phone, added, phoneNeeded }: { email: string; phone: string | null; added: string; phoneNeeded: boolean }) {
+  const tel = telHref(phone);
   const link = "inline-flex min-w-0 items-center gap-1.5 break-all underline-offset-4 hover:underline";
   return (
     <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
@@ -248,14 +281,21 @@ function ClientOverview({ email, phone, added }: { email: string; phone: string 
         <dt className="text-xs font-medium text-muted-foreground">Phone</dt>
         <dd>
           {phone && tel ? (
-            <a className={link} href={`tel:${tel}`}>
+            <a className={link} href={tel}>
               <Phone aria-hidden className="size-4 shrink-0 text-muted-foreground" />
               {phone}
             </a>
           ) : phone ? (
             phone
           ) : (
-            <span className="text-muted-foreground italic">No phone number</span>
+            <span className="grid gap-0.5">
+              <span className="text-muted-foreground italic">No phone number</span>
+              {phoneNeeded ? (
+                <span className="flex gap-1 text-xs text-amber-800 dark:text-amber-300" data-testid="phone-needed">
+                  <AlertTriangle aria-hidden className="mt-px size-3.5 shrink-0" /> Needed before generating a contract (your template includes it).
+                </span>
+              ) : null}
+            </span>
           )}
         </dd>
       </div>

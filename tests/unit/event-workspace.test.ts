@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contractSummary, nextAction, paymentOverview, planningLine, proposalSummary, type ContractRecord, type WorkspaceFacts } from "@/lib/events/workspace";
+import { contractChanges, contractSummary, nextAction, paymentOverview, planningLine, proposalSummary, type ContractRecord, type WorkspaceFacts } from "@/lib/events/workspace";
 import type { PaymentSummary } from "@/lib/payments";
 
 const NOW = new Date("2026-10-07T16:00:00Z");
@@ -191,5 +191,52 @@ describe("summaries", () => {
     expect(planningLine({ exists: true, progress, editing: { ...editing("closed"), closed_at: "2026-10-02T15:00:00+00:00" } }))
       .toBe("Client editing closed by staff since Oct 2, 2026, 11:00 a.m. EDT (America/Toronto). Staff can still edit.");
     expect(planningLine({ exists: false, progress: null, editing: null })).toBeNull();
+  });
+});
+
+describe("client phone needed by the contract template", () => {
+  const phone = { clientId: "cl", name: "Noam" };
+
+  it("blocks preparing the contract and says how to fix it in place", () => {
+    const a = nextAction(facts({ lifecycle: "awaiting_signature", approvalId: "ap", signerPhoneMissing: phone }));
+    expect(a.key).toBe("prepare_contract");
+    expect(a.primary).toBeNull();
+    expect(a.blockers).toEqual([{ text: "Noam, the signer, has no phone number, and your contract template includes the client's phone.", link: { label: "Add phone number", href: "#contract" } }]);
+  });
+
+  it("never blocks the proposal steps: a proposal doesn't need a phone", () => {
+    for (const f of [facts({ signerPhoneMissing: phone }), facts({ lifecycle: "lead", proposals: [{ id: "p1", revision: 1, status: "draft", expires_at: null }], signerPhoneMissing: phone })]) {
+      expect(nextAction(f).blockers).toEqual([]);
+      expect(nextAction(f).primary).not.toBeNull();
+    }
+  });
+
+  it("the contract summary says it's needed before the step, and stays quiet once a contract exists", () => {
+    expect(contractSummary(facts({ signerPhoneMissing: phone }), (s) => s)).toMatchObject({ status: "Not yet", detail: expect.stringMatching(/phone number needed/i), link: { href: "#contacts" } });
+    expect(contractSummary(facts({ approvalId: "ap", signerPhoneMissing: phone }), (s) => s)).toMatchObject({ status: "Phone number needed", attention: true, link: { href: "#contract" } });
+    expect(contractSummary(facts({ approvalId: "ap", signerPhoneMissing: null }), (s) => s).status).toBe("Ready to prepare");
+    expect(contractSummary(facts({ archived: true, signerPhoneMissing: phone }), (s) => s).status).toBe("Not yet");
+  });
+});
+
+describe("details edited after a contract froze them", () => {
+  const frozen = { title: "Noam & Justin", date: "2027-06-12", venueName: "Le Windsor", venueAddress: "1170 Peel", clientPhone: null };
+  const now = { title: "Noam & Justin", date: "2027-06-12", venueName: "Le Windsor", venueAddress: "1170 Peel", signerPhone: null };
+
+  it("names what changed", () => {
+    expect(contractChanges(frozen, now)).toEqual([]);
+    expect(contractChanges(frozen, { ...now, date: "2027-06-19", venueName: "Château" })).toEqual(["event date", "venue"]);
+    expect(contractChanges(frozen, { ...now, signerPhone: "514 555-0100" })).toEqual(["signer's phone number"]);
+    expect(contractChanges(null, { ...now, title: "Other" })).toEqual([]);
+  });
+
+  it("a stale draft asks for regeneration instead of sending; a sent one explains it keeps the earlier details", () => {
+    const draft = nextAction(facts({ lifecycle: "awaiting_signature", approvalId: "ap", contracts: [contract("c1", "draft")], contractChanges: ["event date"] }));
+    expect(draft).toMatchObject({ key: "contract_outdated", primary: { href: "#contract" }, secondary: { href: "/staff/dj/contracts/c1" } });
+    expect(draft.detail).toMatch(/event date changed after this draft was generated/);
+    const sent = nextAction(facts({ lifecycle: "awaiting_signature", approvalId: "ap", contracts: [contract("c1", "sent")], contractChanges: ["venue"] }));
+    expect(sent).toMatchObject({ key: "awaiting_signature", waiting: true });
+    expect(sent.detail).toMatch(/venue changed after the contract was sent; the contract keeps the earlier details/);
+    expect(nextAction(facts({ lifecycle: "awaiting_signature", approvalId: "ap", contracts: [contract("c1", "draft")] })).key).toBe("review_contract");
   });
 });

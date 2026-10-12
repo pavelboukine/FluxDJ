@@ -35,6 +35,14 @@ export type WorkspaceFacts = {
   identitySaved: boolean;
   /** Published template versions a contract can be generated from (client use or DEMO). */
   usableContractVersions: number;
+  /**
+   * The signer has no phone number although the contract template that
+   * would be used prints {{client.phone}} (generation refuses it then).
+   * Null when nothing is missing.
+   */
+  signerPhoneMissing?: { clientId: string; name: string } | null;
+  /** Event or signer details edited since the current draft or sent contract froze them, e.g. ["event date", "venue"]. */
+  contractChanges?: string[];
 };
 
 export type Link = { label: string; href: string };
@@ -137,7 +145,9 @@ export function nextAction(f: WorkspaceFacts): NextAction {
       ...blank,
       key: "awaiting_signature",
       title: "Waiting for the client to sign",
-      detail: "The contract was sent. Resending, voiding and its document are on the contract page.",
+      detail: f.contractChanges?.length
+        ? `The ${listOf(f.contractChanges)} changed after the contract was sent; the contract keeps the earlier details. To change the contract, void it on its page and generate a replacement.`
+        : "The contract was sent. Resending, voiding and its document are on the contract page.",
       primary: null,
       secondary: { label: "View contract", href: `${base}/contracts/${sent.id}` },
       waiting: true,
@@ -152,12 +162,27 @@ export function nextAction(f: WorkspaceFacts): NextAction {
           detail: "The current draft came from a template version that can't be signed online. Generate a new draft from a version published for client use.",
           primary: { label: "Prepare contract", href: "#contract" },
         }
-      : { ...blank, key: "review_contract", title: "Review and send the contract", detail: "A contract draft is ready. Nothing has been sent to the client.", primary: { label: "Review contract", href: `${base}/contracts/${contractDraft.id}` } };
+      : f.contractChanges?.length
+        ? {
+            ...blank,
+            key: "contract_outdated",
+            title: "Regenerate the contract",
+            detail: `The ${listOf(f.contractChanges)} changed after this draft was generated, and a draft keeps the details it was generated with. Regenerate it to use the current details. Nothing has been sent to the client.`,
+            primary: { label: "Regenerate draft", href: "#contract" },
+            secondary: { label: "Review draft", href: `${base}/contracts/${contractDraft.id}` },
+          }
+        : { ...blank, key: "review_contract", title: "Review and send the contract", detail: "A contract draft is ready. Nothing has been sent to the client.", primary: { label: "Review contract", href: `${base}/contracts/${contractDraft.id}` } };
   }
   if (f.approvalId) {
     const blockers: Blocker[] = [];
     if (!f.identitySaved) blockers.push({ text: "Your legal name, address and contact email aren't saved yet.", link: { label: "Business settings", href: `${base}/settings` } });
     if (f.usableContractVersions === 0) blockers.push({ text: "No contract template version is published yet.", link: { label: "Contract templates", href: `${base}/contract-templates` } });
+    if (f.signerPhoneMissing) {
+      blockers.push({
+        text: `${f.signerPhoneMissing.name}, the signer, has no phone number, and your contract template includes the client's phone.`,
+        link: { label: "Add phone number", href: "#contract" },
+      });
+    }
     return {
       ...blank,
       key: "prepare_contract",
@@ -249,6 +274,14 @@ export function contractSummary(f: WorkspaceFacts, fmt: (iso: string) => string)
   const { signed, sent, draft } = currentContracts(f.contracts);
   const current = signed ?? sent ?? draft;
   if (!current) {
+    if (f.signerPhoneMissing && !f.archived) {
+      return {
+        status: f.approvalId ? "Phone number needed" : "Not yet",
+        detail: "Client phone number needed before generating the contract (your template includes it).",
+        link: { label: f.approvalId ? "Add phone" : "Contacts", href: f.approvalId ? "#contract" : "#contacts" },
+        attention: Boolean(f.approvalId),
+      };
+    }
     return { status: f.approvalId ? "Ready to prepare" : "Not yet", detail: f.approvalId ? "The selection is approved." : "Generated once the proposal is approved.", link: { label: "Details", href: "#contract" } };
   }
   const status = current.status === "signed" ? `Signed ${current.signed_at ? fmt(current.signed_at) : ""}`.trim() : current.status === "sent" ? "Sent, waiting for signature" : "Draft, not sent";
@@ -317,4 +350,27 @@ export function planningSummary(f: WorkspaceFacts): Summary {
     detail: f.planning.editing ? (f.planning.editing.state === "open" ? "Client editing open" : f.planning.editing.state === "reopened" ? "Reopened for the client" : "Read-only for the client") : null,
     link: { label: "Open", href: `${event}/planning` },
   };
+}
+
+/** "venue", "event date and venue", "event title, event date and venue". */
+function listOf(items: string[]): string {
+  return items.length <= 1 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+type Frozen = { title: string | null; date: string | null; venueName: string | null; venueAddress: string | null; clientPhone: string | null };
+
+/**
+ * What changed on the event (or the signer's phone) since a contract froze
+ * its details. Signer name and email changes are already refused by the
+ * send check (signer_changed), so they aren't repeated here.
+ */
+export function contractChanges(frozen: Frozen | null, now: { title: string; date: string; venueName: string | null; venueAddress: string | null; signerPhone: string | null }): string[] {
+  if (!frozen) return [];
+  const same = (a: string | null, b: string | null) => (a ?? "").trim() === (b ?? "").trim();
+  const changes: string[] = [];
+  if (!same(frozen.title, now.title)) changes.push("event title");
+  if (!same(frozen.date, now.date)) changes.push("event date");
+  if (!same(frozen.venueName, now.venueName) || !same(frozen.venueAddress, now.venueAddress)) changes.push("venue");
+  if (!same(frozen.clientPhone, now.signerPhone)) changes.push("signer's phone number");
+  return changes;
 }

@@ -10,6 +10,16 @@ const fmt = (iso: string) => new Intl.DateTimeFormat("en-CA", { dateStyle: "medi
 /** Ends a sentence after a formatted time without doubling the period of "p.m.". */
 const sentence = (text: string) => (text.endsWith(".") ? text : `${text}.`);
 
+/** The event and signer details a contract froze when it was generated (party_snapshot), for spotting later edits. */
+export type FrozenDetails = { title: string | null; date: string | null; venueName: string | null; venueAddress: string | null; clientPhone: string | null };
+
+function frozenDetails(snapshot: unknown): FrozenDetails | null {
+  const s = snapshot as { event?: Record<string, unknown>; client?: Record<string, unknown> } | null;
+  if (!s?.event) return null;
+  const str = (v: unknown) => (typeof v === "string" ? v : null);
+  return { title: str(s.event.title), date: str(s.event.date), venueName: str(s.event.venue_name), venueAddress: str(s.event.venue_address), clientPhone: str(s.client?.phone) };
+}
+
 /** The event's contracts and the template versions a draft can be generated from, read once by the event page. */
 export async function loadContracts(staff: StaffContext, eventId: string) {
   const { supabase, tenant } = staff;
@@ -22,7 +32,7 @@ export async function loadContracts(staff: StaffContext, eventId: string) {
       .order("version_number", { ascending: false }),
     supabase
       .from("contracts")
-      .select("id, status, created_at, signed_at, signing_mode, template_version_id, contract_template_versions!contracts_template_version_fk(version_number, contract_templates!contract_template_versions_template_fk(name))")
+      .select("id, status, created_at, signed_at, signing_mode, template_version_id, party_snapshot, contract_template_versions!contracts_template_version_fk(version_number, contract_templates!contract_template_versions_template_fk(name))")
       .eq("tenant_id", tenant.id)
       .eq("event_id", eventId)
       .order("created_at", { ascending: false }),
@@ -38,6 +48,7 @@ export async function loadContracts(staff: StaffContext, eventId: string) {
       id: v.id,
       label: `${v.contract_templates!.name} · version ${v.version_number} · ${USAGE_LABELS[v.usage as TemplateUsage]}${v.id === latest?.id ? " (latest published)" : ""}`,
       needsBalanceDueDate: v.placeholders.includes("payment.balance_due_date"),
+      needsClientPhone: v.placeholders.includes("client.phone"),
     }));
   const rows = (contracts ?? []).map((c) => ({
     id: c.id,
@@ -46,6 +57,7 @@ export async function loadContracts(staff: StaffContext, eventId: string) {
     created_at: c.created_at,
     signed_at: c.signed_at,
     label: `${c.contract_template_versions?.contract_templates?.name ?? "Contract"} v${c.contract_template_versions?.version_number ?? "?"}, generated ${fmt(c.created_at)}`,
+    frozen: c.status === "draft" || c.status === "sent" ? frozenDetails(c.party_snapshot) : null,
   }));
   return { contracts: rows, options, defaultVersionId: latest?.id ?? null, legacyHidden: activeAll.length - active.length };
 }
@@ -56,7 +68,21 @@ export async function loadContracts(staff: StaffContext, eventId: string) {
  * older drafts, replaced, superseded and void contracts in a history
  * disclosure. Staff only.
  */
-export function ContractCard({ slug, approvalId, data }: { slug: string; approvalId: string | null; data: Awaited<ReturnType<typeof loadContracts>> }) {
+export function ContractCard({
+  slug,
+  approvalId,
+  data,
+  signer = null,
+  changes = [],
+}: {
+  slug: string;
+  approvalId: string | null;
+  data: Awaited<ReturnType<typeof loadContracts>>;
+  /** The event's active signer, for adding a missing phone number in place. */
+  signer?: { clientId: string; name: string; phone: string | null } | null;
+  /** Event or signer details edited since the current draft or sent contract froze them. */
+  changes?: string[];
+}) {
   const { contracts, options, defaultVersionId, legacyHidden } = data;
   const draft = contracts.find((c) => c.status === "draft");
   const sent = contracts.find((c) => c.status === "sent");
@@ -81,6 +107,11 @@ export function ContractCard({ slug, approvalId, data }: { slug: string; approva
           <p role="status">
             <Link className="font-medium underline" href={href(sent.id)}>{sent.label}</Link> was sent and is waiting for the client&apos;s signature.
             To change it, void it on its page, then generate a replacement here.
+            {changes.length > 0 ? (
+              <span className="mt-1 block text-amber-800 dark:text-amber-300" data-testid="contract-changes">
+                Changed since it was sent: {changes.join(", ")}. The sent contract keeps the earlier details.
+              </span>
+            ) : null}
           </p>
         ) : approvalId ? (
           <GenerateContractPanel
@@ -90,6 +121,8 @@ export function ContractCard({ slug, approvalId, data }: { slug: string; approva
             defaultVersionId={defaultVersionId}
             currentDraft={draft ? { id: draft.id, label: draft.label, signable: draft.signing_mode !== "none" } : null}
             legacyHidden={legacyHidden}
+            signer={signer}
+            changes={draft ? changes : []}
           />
         ) : draft ? (
           <p>
@@ -118,5 +151,10 @@ export function ContractCard({ slug, approvalId, data }: { slug: string; approva
 
 /** The contract card with its own read, for pages that show it alone (the approved proposal). */
 export async function LoadedContractCard({ staff, slug, eventId, approvalId }: { staff: StaffContext; slug: string; eventId: string; approvalId: string | null }) {
-  return <ContractCard slug={slug} approvalId={approvalId} data={await loadContracts(staff, eventId)} />;
+  const [data, { data: link }] = await Promise.all([
+    loadContracts(staff, eventId),
+    staff.supabase.from("event_clients").select("clients(id, name, phone, archived_at)").eq("tenant_id", staff.tenant.id).eq("event_id", eventId).eq("can_sign", true).maybeSingle(),
+  ]);
+  const c = link?.clients && !link.clients.archived_at ? link.clients : null;
+  return <ContractCard slug={slug} approvalId={approvalId} data={data} signer={c ? { clientId: c.id, name: c.name, phone: c.phone } : null} />;
 }

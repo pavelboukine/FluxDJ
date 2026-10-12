@@ -1,12 +1,6 @@
 import { optionalText, text } from "@/lib/forms";
 
-export const EVENT_TYPES = [
-  ["wedding", "Wedding"],
-  ["corporate", "Corporate"],
-  ["private_party", "Private party"],
-  ["school", "School"],
-  ["other", "Other"],
-] as const;
+export { EVENT_TYPES } from "@/lib/events/types";
 
 export function readEventForm(form: FormData) {
   const title = text(form, "title");
@@ -29,4 +23,12 @@ export function readEventForm(form: FormData) {
       internal_notes: optionalText(form, "internal_notes"),
     },
   } as const;
+}
+
+/** The columns the event details form edits. */
+export const EVENT_DETAIL_COLUMNS = ["title", "event_type", "event_date", "timezone", "venue_name", "venue_address", "internal_notes"] as const;
+
+/** A stable fingerprint of the details a form was opened with, to detect a save made elsewhere meanwhile. */
+export function eventDetailsKey(e: Record<string, unknown>): string {
+  return JSON.stringify(EVENT_DETAIL_COLUMNS.map((c) => e[c] ?? null));
 }

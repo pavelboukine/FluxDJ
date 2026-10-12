@@ -25,6 +25,30 @@ export function FilterSelect({ label, name, value, options }: { label: string; n
   );
 }
 
+export function FilterDate({ label, name, value }: { label: string; name: string; value: string | null }) {
+  return (
+    <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+      {label}
+      <input key={value ?? ""} type="date" name={name} defaultValue={value ?? ""} className={cn(fieldClass, "min-w-36 text-foreground")} />
+    </label>
+  );
+}
+
+/**
+ * Filters most visits don't need, folded away (native details: keyboard
+ * friendly, no JavaScript) and open whenever one of them is in use.
+ */
+export function MoreFilters({ open, children }: { open: boolean; children: ReactNode }) {
+  return (
+    <details open={open} className="group basis-full">
+      <summary className="inline-flex min-h-9 cursor-pointer items-center rounded-lg px-1 text-sm font-medium text-muted-foreground hover:text-foreground">
+        More filters
+      </summary>
+      <div className="flex flex-wrap items-end gap-2 pt-2">{children}</div>
+    </details>
+  );
+}
+
 export function FilterCheckbox({ label, name, checked }: { label: string; name: string; checked: boolean }) {
   return (
     <label className="flex h-9 items-center gap-2 rounded-lg px-1 text-sm">

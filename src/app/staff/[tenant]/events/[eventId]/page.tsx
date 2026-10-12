@@ -6,11 +6,13 @@ import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ActionForm } from "@/components/app/action-form";
 import { Disclosure } from "@/components/app/disclosure";
+import { ClientPicker } from "@/components/app/client-picker";
 import { CheckboxField, SelectField } from "@/components/app/fields";
 import { requireStaff } from "@/lib/auth/staff";
-import { shortDate } from "@/lib/dates";
-import { eventStatusLabel } from "@/lib/events/status";
+import { dateIn, shortDate } from "@/lib/dates";
+import { eventDisplayStatus } from "@/lib/events/status";
 import {
+  contractChanges,
   contractSummary,
   currentProposals,
   nextAction,
@@ -23,7 +25,9 @@ import {
   type WorkspaceFacts,
 } from "@/lib/events/workspace";
 import { UUID_RE } from "@/lib/forms";
+import { telHref } from "@/lib/phone";
 import { cn } from "@/lib/utils";
+import { searchClients } from "../../clients/actions";
 import { ContractCard, loadContracts } from "../../contracts/contract-card";
 import { addEventContact, openProposalDraft, removeEventContact, updateEvent } from "../actions";
 import { EventFields } from "../event-fields";
@@ -59,14 +63,13 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
   if (!UUID_RE.test(eventId)) notFound();
   const staff = await requireStaff(slug);
   const { supabase, tenant } = staff;
-  const [{ data: event }, { data: clients }, { data: templates }, { data: identity }, contracts, payments, planning] = await Promise.all([
+  const [{ data: event }, { data: templates }, { data: identity }, contracts, payments, planning] = await Promise.all([
     supabase
       .from("events")
-      .select("id, title, event_type, event_date, timezone, venue_name, venue_address, internal_notes, lifecycle_status, active_proposal_id, archived_at, event_clients(id, is_primary, can_sign, clients(id, name, email, archived_at)), proposals!proposals_event_fk(id, revision, status, offer_frozen_at, updated_at, expires_at)")
+      .select("id, title, event_type, event_date, timezone, venue_name, venue_address, internal_notes, lifecycle_status, active_proposal_id, archived_at, event_clients(id, is_primary, can_sign, clients(id, name, email, phone, archived_at)), proposals!proposals_event_fk(id, revision, status, offer_frozen_at, updated_at, expires_at)")
       .eq("id", eventId)
       .eq("tenant_id", tenant.id)
       .maybeSingle(),
-    supabase.from("clients").select("id, name, email").eq("tenant_id", tenant.id).is("archived_at", null).order("name"),
     supabase.from("proposal_templates").select("id, name").eq("tenant_id", tenant.id).eq("active", true).order("name"),
     supabase.from("tenants").select("business_address, contact_email").eq("id", tenant.id).single(),
     loadContracts(staff, eventId),
@@ -85,6 +88,15 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
   const hasSignedContract = contracts.contracts.some((c) => c.status === "signed");
   const primary = event.event_clients.find((c) => c.is_primary) ?? null;
   const signer = event.event_clients.find((c) => c.can_sign) ?? null;
+  // The template version generation would use by default prints the client's phone, and the signer has none.
+  const defaultVersion = contracts.options.find((o) => o.id === contracts.defaultVersionId) ?? contracts.options[0] ?? null;
+  const signerClient = signer?.clients && !signer.clients.archived_at ? signer.clients : null;
+  const signerPhoneMissing = signerClient && !signerClient.phone && defaultVersion?.needsClientPhone ? { clientId: signerClient.id, name: signerClient.name } : null;
+  const anyVersionNeedsPhone = contracts.options.some((o) => o.needsClientPhone);
+  const currentContract = contracts.contracts.find((c) => c.status === "sent") ?? contracts.contracts.find((c) => c.status === "draft") ?? null;
+  const changes = currentContract
+    ? contractChanges(currentContract.frozen, { title: event.title, date: event.event_date, venueName: event.venue_name, venueAddress: event.venue_address, signerPhone: signer?.clients?.phone ?? null })
+    : [];
   const facts: WorkspaceFacts = {
     slug,
     eventId: event.id,
@@ -104,13 +116,23 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
     primaryContact: primary?.clients ? { name: primary.clients.name, archived: Boolean(primary.clients.archived_at) } : null,
     identitySaved: Boolean(identity?.business_address && identity?.contact_email),
     usableContractVersions: contracts.options.length,
+    signerPhoneMissing,
+    contractChanges: changes,
   };
   const action = nextAction(facts);
   const pay = paymentOverview(payments.summary);
   const { draft, active } = currentProposals({ proposals: event.proposals, activeProposalId: event.active_proposal_id });
   const olderProposals = [...event.proposals].filter((p) => p.id !== draft?.id && p.id !== active?.id).sort((a, b) => b.revision - a.revision);
-  const onEvent = new Set(event.event_clients.map((c) => c.clients?.id));
-  const status = eventStatusLabel(event.lifecycle_status, hasSignedContract);
+  const onEvent = event.event_clients.flatMap((c) => (c.clients ? [c.clients.id] : []));
+  const contractStatuses = new Set(contracts.contracts.map((c) => c.status));
+  const status = eventDisplayStatus({
+    lifecycle: event.lifecycle_status,
+    proposalStatus: active ? (active.status === "sent" && active.expires_at && new Date(active.expires_at) <= facts.now ? "expired" : active.status) : null,
+    proposalDraft: Boolean(draft),
+    contractStatus: contractStatuses.has("signed") ? "signed" : contractStatuses.has("sent") ? "sent" : contractStatuses.has("draft") ? "draft" : null,
+  });
+  const when = archived ? null : daysAway(event.event_date, dateIn(event.timezone, facts.now));
+  const frozenDocs = Boolean(active) || contracts.contracts.some((c) => ["draft", "sent", "signed"].includes(c.status));
 
   return (
     <>
@@ -124,10 +146,11 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
             <p className="text-sm text-muted-foreground" data-testid="event-meta">
               {shortDate(event.event_date)} · {event.venue_name ?? "Venue not set"} · {TYPE_LABEL[event.event_type] ?? event.event_type}
             </p>
+            {when ? <p className={cn("text-sm font-medium", when.soon ? "text-amber-800 dark:text-amber-300" : "text-foreground/80")} data-testid="event-when">{when.label}</p> : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {archived ? <Badge variant="secondary">Archived</Badge> : null}
-            <Badge variant="outline" className={cn("h-auto whitespace-normal", event.lifecycle_status === "booked" ? "border-emerald-600/40 bg-emerald-600/10 text-emerald-800 dark:text-emerald-300" : null)}>
+            <Badge variant="outline" data-testid="event-header-status" className={cn("h-auto whitespace-normal", event.lifecycle_status === "booked" ? "border-emerald-600/40 bg-emerald-600/10 text-emerald-800 dark:text-emerald-300" : null)}>
               {status}
             </Badge>
             <a className={buttonVariants({ variant: "outline", size: "sm" })} href="#edit-details">Edit details</a>
@@ -232,7 +255,13 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
           </CardContent>
         </Card>
 
-        <ContractCard slug={slug} approvalId={approval?.id ?? null} data={contracts} />
+        <ContractCard
+          slug={slug}
+          approvalId={approval?.id ?? null}
+          data={contracts}
+          signer={signerClient ? { clientId: signerClient.id, name: signerClient.name, phone: signerClient.phone } : null}
+          changes={changes}
+        />
 
         <PaymentsCard staff={staff} slug={slug} eventId={event.id} archived={archived} data={payments} recordOpen={action.key === "record_payment"} />
 
@@ -257,7 +286,27 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
                         {ec.can_sign ? <Badge variant="secondary">Signer</Badge> : null}
                         {ec.clients?.archived_at ? <Badge variant="outline">Archived client</Badge> : null}
                       </span>
-                      <span className="break-all text-muted-foreground">{ec.clients?.email}</span>
+                      <span className="break-all text-muted-foreground">
+                        {ec.clients?.email}
+                        {ec.clients?.phone ? (
+                          <>
+                            {" · "}
+                            {telHref(ec.clients.phone) ? <a className="underline-offset-4 hover:underline" href={telHref(ec.clients.phone)!}>{ec.clients.phone}</a> : ec.clients.phone}
+                          </>
+                        ) : null}
+                      </span>
+                      {ec.can_sign && ec.clients && !ec.clients.phone && anyVersionNeedsPhone && !hasSignedContract ? (
+                        <span className="flex gap-1 text-xs text-amber-800 dark:text-amber-300" data-testid="signer-phone-needed">
+                          <AlertTriangle aria-hidden className="mt-px size-3.5 shrink-0" />
+                          <span>
+                            No phone number yet. Your contract template includes the client&apos;s phone, so it&apos;s needed before you generate the
+                            contract. <Link className="font-medium underline" href={`/staff/${slug}/clients/${ec.clients.id}#details`}>Add phone</Link>
+                          </span>
+                        </span>
+                      ) : null}
+                      {ec.clients ? (
+                        <Link className="w-fit text-xs underline-offset-4 hover:underline" href={`/staff/${slug}/clients/${ec.clients.id}`}>Client page</Link>
+                      ) : null}
                     </span>
                     <RemoveContact action={removeEventContact.bind(null, slug, event.id, ec.id)} />
                   </li>
@@ -266,8 +315,11 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
               </ul>
               {signer && primary && signer.id !== primary.id ? <p className="text-xs text-muted-foreground">The signer is not the primary contact.</p> : null}
               <Disclosure id="add-contact" summary="Add a contact">
-                <ActionForm action={addEventContact.bind(null, slug, event.id)} submitLabel="Add contact" resetOnSuccess trackUnsaved>
-                  <SelectField label="Client" name="client_id" options={(clients ?? []).filter((c) => !onEvent.has(c.id)).map((c) => ({ value: c.id, label: `${c.name} (${c.email})` }))} placeholder="— choose —" />
+                <ActionForm action={addEventContact.bind(null, slug, event.id)} submitLabel="Add contact" resetOnSuccess>
+                  <ClientPicker search={searchClients.bind(null, slug)} name="client_id" label="Client" exclude={onEvent} />
+                  <p className="text-xs text-muted-foreground">
+                    Not a client yet? <Link className="underline" href={`/staff/${slug}/clients#add-client`}>Add them on the Clients page</Link> first.
+                  </p>
                   <CheckboxField
                     label="Make primary contact and signer"
                     name="is_primary"
@@ -294,6 +346,12 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
                 </Detail>
               </dl>
               <Disclosure id="edit-details" summary="Edit details">
+                {frozenDocs ? (
+                  <p className="mb-3 rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm" data-testid="edit-effect">
+                    Saving changes the event record only. Sent proposals, the approved selection and contracts keep the details they were created
+                    with{hasSignedContract ? ", and the signed contract never changes" : ""}. {hasSignedContract ? "" : "An unsent contract draft can be regenerated to use the new details."}
+                  </p>
+                ) : null}
                 <ActionForm action={updateEvent.bind(null, slug, event.id)} submitLabel="Save event" trackUnsaved>
                   <EventFields event={event} defaultTimezone={tenant.timezone} />
                 </ActionForm>
@@ -314,6 +372,14 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
       </div>
     </>
   );
+}
+
+/** "Today", "Tomorrow", "In 12 days" for an upcoming event (in its own time zone); null once it has passed or when far off. */
+function daysAway(eventDate: string, today: string): { label: string; soon: boolean } | null {
+  const day = (d: string) => Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10)) / 86_400_000;
+  const diff = day(eventDate) - day(today);
+  if (diff < 0 || diff > 60) return null;
+  return { label: diff === 0 ? "Today" : diff === 1 ? "Tomorrow" : `In ${diff} days`, soon: diff <= 14 };
 }
 
 function NextStep({ action, archived }: { action: NextAction; archived: boolean }) {

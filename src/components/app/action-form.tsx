@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
+import Link from "next/link";
 import { unstable_rethrow, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useDraftEditorState, useSharedDraftVersion } from "@/components/app/draft-version";
@@ -153,6 +154,12 @@ export function ActionForm({
       className={cn(inline ? "flex flex-wrap items-center gap-2" : "grid gap-4", className)}
     >
       {children}
+      {state.status === "error" && state.confirm ? (
+        <label key={state.confirm.name} className="flex items-start gap-2 rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
+          <input type="checkbox" name={state.confirm.name} className="mt-0.5 size-4 shrink-0 accent-primary" />
+          <span>{state.confirm.label}</span>
+        </label>
+      ) : null}
       <div className="flex flex-wrap items-center gap-3">
         <Button type="submit" disabled={pending} variant={variant}>
           {pending ? (pendingLabel ?? "Saving…") : submitLabel}
@@ -171,12 +178,19 @@ export function ActionForm({
 
 export function FormMessage({ state }: { state: ActionState }) {
   if (state.status === "idle") return null;
+  const link = state.status === "error" ? state.link : undefined;
   return (
     <p
       role={state.status === "error" ? "alert" : "status"}
-      className={cn("text-sm", state.status === "error" ? "text-destructive" : "text-emerald-700 dark:text-emerald-400")}
+      className={cn("text-sm", state.status === "error" ? (state.confirm ? "text-amber-800 dark:text-amber-300" : "text-destructive") : "text-emerald-700 dark:text-emerald-400")}
     >
       {state.message}
+      {link ? (
+        <>
+          {" "}
+          <Link className="font-medium underline underline-offset-4" href={link.href}>{link.label}</Link>
+        </>
+      ) : null}
     </p>
   );
 }

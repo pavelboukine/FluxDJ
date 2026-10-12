@@ -6,11 +6,11 @@ import { eventStatusLabel } from "@/lib/events/status";
 import { nearDay } from "@/lib/lists";
 import { cn } from "@/lib/utils";
 
-/** The lifecycle badge of the event lists, with "Booked" in green. */
-export function EventStatusBadge({ status, contractSigned }: { status: string; contractSigned: boolean }) {
+/** The lifecycle badge of the event lists, with "Booked" in green. `label` is a status already derived from the event's records. */
+export function EventStatusBadge({ status, contractSigned, label }: { status: string; contractSigned: boolean; label?: string }) {
   return (
-    <Badge variant="outline" className={cn("h-auto whitespace-normal", status === "booked" ? "border-emerald-600/40 bg-emerald-600/10 text-emerald-800 dark:text-emerald-300" : null)}>
-      {eventStatusLabel(status, contractSigned)}
+    <Badge variant="outline" data-testid="event-status" className={cn("h-auto whitespace-normal", status === "booked" ? "border-emerald-600/40 bg-emerald-600/10 text-emerald-800 dark:text-emerald-300" : null)}>
+      {label ?? eventStatusLabel(status, contractSigned)}
     </Badge>
   );
 }
@@ -28,6 +28,7 @@ export function EventRow({
   details,
   status,
   contractSigned,
+  statusLabel,
   archived,
 }: {
   href: string;
@@ -38,6 +39,8 @@ export function EventRow({
   details: ReactNode;
   status: string;
   contractSigned: boolean;
+  /** The status derived from the event's records (eventDisplayStatus); the lifecycle label otherwise. */
+  statusLabel?: string;
   archived: boolean;
 }) {
   const near = nearDay(eventDate, today);
@@ -49,12 +52,12 @@ export function EventRow({
           {near ? <span className="text-xs text-muted-foreground">{near}</span> : null}
         </span>
         <span className="grid min-w-0">
-          <Link className="truncate font-medium underline-offset-4 hover:underline" href={href}>{title}</Link>
+          <Link className="truncate py-0.5 font-medium underline-offset-4 hover:underline" href={href}>{title}</Link>
           <span className="truncate text-muted-foreground">{details}</span>
         </span>
         <span className="flex flex-wrap gap-1 sm:justify-end">
           {archived ? <Badge variant="secondary">Archived</Badge> : null}
-          <EventStatusBadge status={status} contractSigned={contractSigned} />
+          <EventStatusBadge status={status} contractSigned={contractSigned} label={statusLabel} />
         </span>
       </div>
     </li>

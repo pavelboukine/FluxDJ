@@ -1,17 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { clientListHref, contactRoleLabel, includedGearSummary, packageListHref, parsePackageListParams, containsFilter, eventListHref, gearListHref, isDefaultEventList, isDefaultGearList, isUpcomingEvent, parseGearListParams, utcDateFrom, nearDay, nextEventLabel, parseClientListParams, parseEventListParams, rangeText } from "@/lib/lists";
+import { clientListHref, hasMoreEventFilters, isDefaultClientList, contactRoleLabel, includedGearSummary, packageListHref, parsePackageListParams, containsFilter, eventListHref, gearListHref, isDefaultEventList, isDefaultGearList, isUpcomingEvent, parseGearListParams, utcDateFrom, nearDay, nextEventLabel, parseClientListParams, parseEventListParams, rangeText } from "@/lib/lists";
 
 describe("events list parameters", () => {
   it("defaults to upcoming, any status, archived excluded", () => {
     const p = parseEventListParams({});
-    expect(p).toEqual({ q: "", view: "upcoming", status: null, archived: false, page: 1 });
+    expect(p).toEqual({ q: "", view: "upcoming", status: null, type: null, from: null, to: null, sort: "date", archived: false, page: 1 });
     expect(isDefaultEventList(p)).toBe(true);
+    expect(hasMoreEventFilters(p)).toBe(false);
   });
   it("reads valid values and ignores anything else", () => {
     expect(parseEventListParams({ q: "  Garcia ", view: "past", status: "booked", archived: "1", page: "3" })).toEqual({
-      q: "Garcia", view: "past", status: "booked", archived: true, page: 3,
+      q: "Garcia", view: "past", status: "booked", type: null, from: null, to: null, sort: "date", archived: true, page: 3,
     });
-    expect(parseEventListParams({ view: "soon", status: "paid", archived: "yes", page: "-2" })).toEqual({ q: "", view: "upcoming", status: null, archived: false, page: 1 });
+    expect(parseEventListParams({ view: "soon", status: "paid", archived: "yes", page: "-2" })).toEqual({
+      q: "", view: "upcoming", status: null, type: null, from: null, to: null, sort: "date", archived: false, page: 1,
+    });
     expect(parseEventListParams({ q: "x".repeat(300) }).q).toHaveLength(100);
     expect(parseEventListParams({ view: ["past", "all"] }).view).toBe("past");
   });
@@ -27,8 +30,37 @@ describe("events list parameters", () => {
 
 describe("clients list parameters", () => {
   it("defaults to active clients", () => {
-    expect(parseClientListParams({})).toEqual({ q: "", archived: false, page: 1 });
+    expect(parseClientListParams({})).toEqual({ q: "", archived: false, sort: "name", page: 1 });
     expect(clientListHref("/c", { q: "ana", archived: true, page: 1 })).toBe("/c?q=ana&archived=1");
+  });
+  it("sorts by name unless recently added is chosen; anything else falls back", () => {
+    expect(parseClientListParams({ sort: "recent" }).sort).toBe("recent");
+    expect(parseClientListParams({ sort: "email" }).sort).toBe("name");
+    expect(isDefaultClientList(parseClientListParams({ sort: "recent" }))).toBe(false);
+    expect(clientListHref("/c", { sort: "recent" })).toBe("/c?sort=recent");
+    expect(clientListHref("/c", { sort: "name" })).toBe("/c");
+  });
+});
+
+describe("event type, date range and order", () => {
+  it("reads known types and orders only", () => {
+    expect(parseEventListParams({ type: "corporate", sort: "updated" })).toMatchObject({ type: "corporate", sort: "updated" });
+    expect(parseEventListParams({ type: "gala", sort: "price" })).toMatchObject({ type: null, sort: "date" });
+  });
+  it("accepts real calendar dates only and swaps a backwards range", () => {
+    expect(parseEventListParams({ from: "2027-06-01", to: "2027-06-30" })).toMatchObject({ from: "2027-06-01", to: "2027-06-30" });
+    expect(parseEventListParams({ from: "2027-02-30", to: "June" })).toMatchObject({ from: null, to: null });
+    expect(parseEventListParams({ from: "2027-07-01", to: "2027-06-01" })).toMatchObject({ from: "2027-06-01", to: "2027-07-01" });
+  });
+  it("keeps the extra filters open and out of the default when used", () => {
+    const p = parseEventListParams({ type: "wedding" });
+    expect(hasMoreEventFilters(p)).toBe(true);
+    expect(isDefaultEventList(p)).toBe(false);
+    expect(hasMoreEventFilters(parseEventListParams({ sort: "created" }))).toBe(true);
+  });
+  it("links carry only the non-default values", () => {
+    expect(eventListHref("/e", parseEventListParams({ type: "school", from: "2027-01-01", sort: "date" }))).toBe("/e?type=school&from=2027-01-01");
+    expect(eventListHref("/e", { sort: "created", to: "2027-12-31" })).toBe("/e?to=2027-12-31&sort=created");
   });
 });
 

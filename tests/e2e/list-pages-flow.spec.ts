@@ -188,7 +188,9 @@ test.describe.serial("events and clients lists", () => {
     await expect(page.locator("#contacts")).toContainText("Ana Garcia");
     await expect(page.locator("#contacts")).toContainText("Archived client");
     await page.goto(`/staff/${tenant.slug}/events/new`);
-    await expect(page.locator("select").filter({ hasText: "Ben Okafor" }).locator("option", { hasText: "Ana Garcia" })).toHaveCount(0);
+    // The client search offers active clients only.
+    await page.getByTestId("client-picker").getByLabel("Client", { exact: true }).fill("Garcia");
+    await expect(page.getByTestId("client-picker")).toContainText("No active client matches");
 
     await page.goto(`/staff/${tenant.slug}/clients/${ids.ana}`);
     await page.getByRole("button", { name: "Restore client" }).click();

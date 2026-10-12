@@ -57,7 +57,7 @@ function Editor({ id, title, editLabel, view, children, action, submitLabel, dis
     setSaved(null);
     setRound((n) => n + 1);
     setEditing(true);
-    window.requestAnimationFrame(() => formBox.current?.querySelector<HTMLElement>("input:not([disabled]), textarea, select")?.focus());
+    window.requestAnimationFrame(() => formBox.current?.querySelector<HTMLElement>("input:not([disabled]):not([type=hidden]), textarea, select")?.focus());
   }
 
   function close() {

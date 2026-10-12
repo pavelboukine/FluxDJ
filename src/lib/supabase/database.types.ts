@@ -1592,13 +1592,13 @@ isOneToOne: false
 { Args: { "p_client_ip": string,"p_client_ip_source": string,"p_consent_accepted": boolean,"p_consent_version": string,"p_content_sha256": string,"p_contract_id": string,"p_signature_bytes": number,"p_signature_height": number,"p_signature_path": string,"p_signature_sha256": string,"p_signature_width": number,"p_tenant_slug": string,"p_typed_name": string,"p_user_agent": string,"p_user_id": string }; Returns: Json
                            },
 "staff_client_list":
-{ Args: { "p_include_archived"?: boolean,"p_limit"?: number,"p_offset"?: number,"p_query"?: string,"p_tenant_id": string }; Returns: Json
+{ Args: { "p_include_archived"?: boolean,"p_limit"?: number,"p_offset"?: number,"p_query"?: string,"p_sort"?: string,"p_tenant_id": string }; Returns: Json
                            },
 "staff_dashboard":
 { Args: { "p_tenant_id": string,"p_upcoming_limit"?: number }; Returns: Json
                            },
 "staff_event_list":
-{ Args: { "p_include_archived"?: boolean,"p_limit"?: number,"p_offset"?: number,"p_query"?: string,"p_status"?: string,"p_tenant_id": string,"p_view"?: string }; Returns: Json
+{ Args: { "p_date_from"?: string,"p_date_to"?: string,"p_event_type"?: string,"p_include_archived"?: boolean,"p_limit"?: number,"p_offset"?: number,"p_query"?: string,"p_sort"?: string,"p_status"?: string,"p_tenant_id": string,"p_view"?: string }; Returns: Json
                            },
 "staff_invitation_for_token":
 { Args: { "p_token_hash": string }; Returns: string

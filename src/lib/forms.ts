@@ -1,13 +1,23 @@
 /** Shared shape for Server Action results consumed by useActionState. */
 export type ActionState =
   | { status: "idle" }
-  | { status: "error"; message: string }
+  | {
+      status: "error";
+      message: string;
+      /** A related page, e.g. an existing record the message refers to. */
+      link?: { href: string; label: string };
+      /**
+       * The save needs an explicit acknowledgement: the form shows this
+       * checkbox (submitted as `name=on`) and the action checks it again.
+       */
+      confirm?: { name: string; label: string };
+    }
   | { status: "success"; message: string; version?: number };
 
 export const idleState: ActionState = { status: "idle" };
 
-export function fail(message: string): ActionState {
-  return { status: "error", message };
+export function fail(message: string, extra?: { link?: { href: string; label: string }; confirm?: { name: string; label: string } }): ActionState {
+  return extra ? { status: "error", message, ...extra } : { status: "error", message };
 }
 export function ok(message: string, version?: number): ActionState {
   return version === undefined ? { status: "success", message } : { status: "success", message, version };

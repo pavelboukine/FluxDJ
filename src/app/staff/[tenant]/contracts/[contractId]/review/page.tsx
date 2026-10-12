@@ -7,6 +7,7 @@ import { ContractDocument } from "@/components/contract/contract-document";
 import { requireStaff } from "@/lib/auth/staff";
 import { renderedContentSchema } from "@/lib/contracts/content";
 import { describeDbError } from "@/lib/db-errors";
+import { contractChanges } from "@/lib/events/workspace";
 import { UUID_RE } from "@/lib/forms";
 import { formatCents } from "@/lib/money";
 import { SendPanel } from "./send-panel";
@@ -40,7 +41,7 @@ export default async function ReviewContract({ params }: PageProps<"/staff/[tena
   const { supabase, tenant } = await requireStaff(slug);
   const { data: contract } = await supabase
     .from("contracts")
-    .select("id, event_id, rendered_content, events!contracts_event_fk(title)")
+    .select("id, event_id, rendered_content, party_snapshot, events!contracts_event_fk(title, event_date, venue_name, venue_address)")
     .eq("id", contractId)
     .eq("tenant_id", tenant.id)
     .maybeSingle();
@@ -50,6 +51,16 @@ export default async function ReviewContract({ params }: PageProps<"/staff/[tena
     return <p role="alert" className="text-sm text-destructive">{describeDbError(error)}</p>;
   }
   const review = data as unknown as Review;
+  // Details edited after generation aren't in this draft (it keeps what it froze); say so before sending.
+  const { data: signerLink } = await supabase.from("event_clients").select("clients(phone)").eq("tenant_id", tenant.id).eq("event_id", contract.event_id).eq("can_sign", true).maybeSingle();
+  const snapshot = contract.party_snapshot as { event?: Record<string, string | null>; client?: { phone?: string | null } } | null;
+  const changes =
+    review.status === "draft" && contract.events && snapshot?.event
+      ? contractChanges(
+          { title: snapshot.event.title ?? null, date: snapshot.event.date ?? null, venueName: snapshot.event.venue_name ?? null, venueAddress: snapshot.event.venue_address ?? null, clientPhone: snapshot.client?.phone ?? null },
+          { title: contract.events.title, date: contract.events.event_date, venueName: contract.events.venue_name, venueAddress: contract.events.venue_address, signerPhone: signerLink?.clients?.phone ?? null },
+        )
+      : [];
   const content = renderedContentSchema.parse(contract.rendered_content);
   const money = (cents: number) => formatCents(cents, review.currency);
   const business = review.business;
@@ -61,6 +72,13 @@ export default async function ReviewContract({ params }: PageProps<"/staff/[tena
         description={<><Link className="underline" href={`/staff/${slug}/contracts/${contract.id}`}>Back to the contract</Link> · {contract.events?.title}</>}
         actions={review.status === "sent" ? <Badge variant="secondary">Sent</Badge> : review.eligible ? <Badge variant="secondary">Ready to send</Badge> : <Badge variant="outline">Not ready</Badge>}
       />
+
+      {changes.length > 0 ? (
+        <p role="status" className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm" data-testid="contract-changes">
+          Changed on the event since this draft was generated: {changes.join(", ")}. This draft still shows the earlier details.{" "}
+          <Link className="font-medium underline" href={`/staff/${slug}/events/${contract.event_id}#contract`}>Regenerate it from the event</Link> to use the current ones.
+        </p>
+      ) : null}
 
       {review.problems.length > 0 ? (
         <div role="alert" className="grid gap-1 rounded-lg border border-destructive/50 bg-destructive/5 p-3 text-sm">

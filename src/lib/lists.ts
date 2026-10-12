@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { shortDate } from "@/lib/dates";
+import { EVENT_TYPES } from "@/lib/events/types";
 
 /**
  * The staff Events and Clients lists keep their search, filters and page in
@@ -31,6 +32,20 @@ export const EVENT_STATUSES = [
 ] as const;
 export type EventStatus = (typeof EVENT_STATUSES)[number][0];
 
+/** Event orders; "date" follows the date view (upcoming: nearest first; otherwise latest first). */
+export const EVENT_SORTS = [
+  ["date", "Event date"],
+  ["updated", "Recently updated"],
+  ["created", "Newest"],
+] as const;
+export type EventSort = (typeof EVENT_SORTS)[number][0];
+
+export const CLIENT_SORTS = [
+  ["name", "Alphabetical"],
+  ["recent", "Recently added"],
+] as const;
+export type ClientSort = (typeof CLIENT_SORTS)[number][0];
+
 type Params = Record<string, string | string[] | undefined>;
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
@@ -42,21 +57,49 @@ function page(v: string | string[] | undefined): number {
   return Number.isInteger(n) && n >= 1 && n <= 10_000 ? n : 1;
 }
 
-export type EventListParams = { q: string; view: EventView; status: EventStatus | null; archived: boolean; page: number };
+/** A real calendar date "YYYY-MM-DD", or null. */
+function calendarDate(v: string | string[] | undefined): string | null {
+  const d = one(v) ?? "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
+  const t = new Date(`${d}T00:00:00Z`);
+  return !Number.isNaN(t.getTime()) && t.toISOString().slice(0, 10) === d ? d : null;
+}
 
-/** Defaults: upcoming, any status, archived excluded. `?show=all` (the earlier "Include archived" link) still lists everything. */
+export type EventListParams = {
+  q: string;
+  view: EventView;
+  status: EventStatus | null;
+  type: string | null;
+  from: string | null;
+  to: string | null;
+  sort: EventSort;
+  archived: boolean;
+  page: number;
+};
+
+/**
+ * Defaults: upcoming, any status and type, no date range, ordered by date,
+ * archived excluded. `?show=all` (the earlier "Include archived" link) still
+ * lists everything. A range given backwards is swapped rather than refused.
+ */
 export function parseEventListParams(sp: Params): EventListParams {
   const legacyAll = one(sp.show) === "all";
   const view = EVENT_VIEWS.find(([v]) => v === one(sp.view))?.[0] ?? (legacyAll ? "all" : "upcoming");
   const status = EVENT_STATUSES.find(([s]) => s === one(sp.status))?.[0] ?? null;
-  return { q: search(sp.q), view, status, archived: one(sp.archived) === "1" || legacyAll, page: page(sp.page) };
+  const type = EVENT_TYPES.find(([t]) => t === one(sp.type))?.[0] ?? null;
+  const sort = EVENT_SORTS.find(([s]) => s === one(sp.sort))?.[0] ?? "date";
+  let from = calendarDate(sp.from);
+  let to = calendarDate(sp.to);
+  if (from && to && from > to) [from, to] = [to, from];
+  return { q: search(sp.q), view, status, type, from, to, sort, archived: one(sp.archived) === "1" || legacyAll, page: page(sp.page) };
 }
 
-export type ClientListParams = { q: string; archived: boolean; page: number };
+export type ClientListParams = { q: string; archived: boolean; sort: ClientSort; page: number };
 
-/** Defaults: active clients only. */
+/** Defaults: active clients only, by name. */
 export function parseClientListParams(sp: Params): ClientListParams {
-  return { q: search(sp.q), archived: one(sp.archived) === "1", page: page(sp.page) };
+  const sort = CLIENT_SORTS.find(([s]) => s === one(sp.sort))?.[0] ?? "name";
+  return { q: search(sp.q), archived: one(sp.archived) === "1", sort, page: page(sp.page) };
 }
 
 /** A list URL with only non-default parameters, so links stay short and stable. */
@@ -65,6 +108,10 @@ export function eventListHref(base: string, p: Partial<EventListParams>): string
   if (p.q) s.set("q", p.q);
   if (p.view && p.view !== "upcoming") s.set("view", p.view);
   if (p.status) s.set("status", p.status);
+  if (p.type) s.set("type", p.type);
+  if (p.from) s.set("from", p.from);
+  if (p.to) s.set("to", p.to);
+  if (p.sort && p.sort !== "date") s.set("sort", p.sort);
   if (p.archived) s.set("archived", "1");
   if (p.page && p.page > 1) s.set("page", String(p.page));
   const qs = s.toString();
@@ -75,13 +122,16 @@ export function clientListHref(base: string, p: Partial<ClientListParams>): stri
   const s = new URLSearchParams();
   if (p.q) s.set("q", p.q);
   if (p.archived) s.set("archived", "1");
+  if (p.sort && p.sort !== "name") s.set("sort", p.sort);
   if (p.page && p.page > 1) s.set("page", String(p.page));
   const qs = s.toString();
   return qs ? `${base}?${qs}` : base;
 }
 
-export const isDefaultEventList = (p: EventListParams) => !p.q && p.view === "upcoming" && !p.status && !p.archived;
-export const isDefaultClientList = (p: ClientListParams) => !p.q && !p.archived;
+/** The less-used event filters (type, date range, order), kept behind "More filters" unless one is set. */
+export const hasMoreEventFilters = (p: EventListParams) => Boolean(p.type || p.from || p.to || p.sort !== "date");
+export const isDefaultEventList = (p: EventListParams) => !p.q && p.view === "upcoming" && !p.status && !p.archived && !hasMoreEventFilters(p);
+export const isDefaultClientList = (p: ClientListParams) => !p.q && !p.archived && p.sort === "name";
 
 const counts = { total: z.number().int(), archived_excluded: z.number().int() };
 
@@ -100,6 +150,10 @@ export const eventListSchema = z.object({
       client_name: z.string().nullable(),
       today: z.string(),
       contract_signed: z.boolean(),
+      event_type: z.string(),
+      proposal_status: z.string().nullable(),
+      proposal_draft: z.boolean(),
+      contract_status: z.enum(["signed", "sent", "draft"]).nullable(),
     }),
   ),
 });
@@ -115,6 +169,7 @@ export const clientListSchema = z.object({
       email: z.string(),
       phone: z.string().nullable(),
       archived: z.boolean(),
+      created_at: z.string(),
       events: z.number().int(),
       next_event: z.object({ id: z.string(), title: z.string(), event_date: z.string(), today: z.string() }).nullable(),
     }),

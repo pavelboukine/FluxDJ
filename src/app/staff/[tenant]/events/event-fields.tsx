@@ -1,11 +1,12 @@
 import { SelectField, TextAreaField, TextField } from "@/components/app/fields";
-import { EVENT_TYPES } from "./event-form";
+import { EVENT_TYPES, eventDetailsKey } from "./event-form";
 
 type Ev = { title: string; event_type: string; event_date: string; timezone: string; venue_name: string | null; venue_address: string | null; internal_notes: string | null };
 
 export function EventFields({ event, defaultTimezone }: { event?: Ev; defaultTimezone: string }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
+      {event ? <input type="hidden" name="event_original" value={eventDetailsKey(event)} /> : null}
       <TextField label="Title" name="title" required maxLength={200} defaultValue={event?.title} placeholder="Alex & Sam wedding" />
       <SelectField label="Type" name="event_type" defaultValue={event?.event_type ?? "wedding"} options={EVENT_TYPES.map(([value, label]) => ({ value, label }))} />
       <TextField label="Date" name="event_date" type="date" required defaultValue={event?.event_date} />

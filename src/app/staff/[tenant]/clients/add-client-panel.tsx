@@ -11,6 +11,8 @@ type Props = {
   action: (state: ActionState, form: FormData) => Promise<ActionState>;
   /** Shown at once (a business with no clients yet). */
   initiallyOpen: boolean;
+  /** The business's contract template prints the client's phone. */
+  contractsNeedPhone?: boolean;
 };
 
 /**
@@ -27,7 +29,7 @@ export function AddClientPanel(props: Props) {
   );
 }
 
-function Panel({ action, initiallyOpen }: Props) {
+function Panel({ action, initiallyOpen, contractsNeedPhone }: Props) {
   const [open, setOpen] = useState(initiallyOpen);
   const unsaved = useDraftEditorState()?.unsaved ?? false;
   const section = useRef<HTMLElement>(null);
@@ -84,7 +86,7 @@ function Panel({ action, initiallyOpen }: Props) {
       </div>
       <div ref={form}>
         <ActionForm action={action} submitLabel="Add client" resetOnSuccess trackUnsaved>
-          <ClientFields />
+          <ClientFields contractsNeedPhone={contractsNeedPhone} />
         </ActionForm>
       </div>
     </section>

@@ -2,14 +2,25 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireStaff } from "@/lib/auth/staff";
+import { requireStaff, type StaffContext } from "@/lib/auth/staff";
+import { findClientWithEmail } from "@/lib/clients.server";
 import { describeDbError } from "@/lib/db-errors";
 import { checkbox, fail, ok, text, UUID_RE, type ActionState } from "@/lib/forms";
 import { readClientForm } from "../clients/client-form";
-import { readEventForm } from "./event-form";
+import { EVENT_DETAIL_COLUMNS, eventDetailsKey, readEventForm } from "./event-form";
+
+/** An active client of this business that can be put on an event, or why not. */
+async function usableClient(staff: StaffContext, clientId: string): Promise<string | null> {
+  if (!UUID_RE.test(clientId)) return "Choose a client.";
+  const { data } = await staff.supabase.from("clients").select("archived_at").eq("id", clientId).eq("tenant_id", staff.tenant.id).maybeSingle();
+  if (!data) return "That client wasn't found. Search again and choose them from the list.";
+  if (data.archived_at) return "That client is archived. Restore them on their client page, or choose another client.";
+  return null;
+}
 
 export async function createEvent(slug: string, _state: ActionState, form: FormData): Promise<ActionState> {
-  const { supabase, tenant } = await requireStaff(slug);
+  const staff = await requireStaff(slug);
+  const { supabase, tenant } = staff;
   const parsed = readEventForm(form);
   if (!parsed.ok) return fail(parsed.error);
 
@@ -18,11 +29,22 @@ export async function createEvent(slug: string, _state: ActionState, form: FormD
   if (clientId === "new") {
     const client = readClientForm(form);
     if (!client.ok) return fail(client.error);
+    // The email is already on file: suggest choosing that client instead; never merged or reused silently.
+    const existing = await findClientWithEmail(supabase, tenant.id, client.values.email);
+    if (existing && !checkbox(form, "confirm_duplicate")) {
+      return fail(
+        `${existing.name}${existing.archived_at ? " (archived)" : ""} already uses ${client.values.email}. Choose them under “Existing client”, or confirm this is a different person.`,
+        { confirm: { name: "confirm_duplicate", label: `Create a separate client with ${client.values.email} (nothing is merged).` } },
+      );
+    }
     const { data, error } = await supabase.from("clients").insert({ ...client.values, tenant_id: tenant.id }).select("id").single();
     if (error) return fail(describeDbError(error));
     clientId = data.id;
-  } else if (!UUID_RE.test(clientId)) {
-    return fail("Choose the primary contact or add a new client.");
+  } else if (!clientId) {
+    return fail("Choose the primary contact, or switch to “New client” and enter their details.");
+  } else {
+    const problem = await usableClient(staff, clientId);
+    if (problem) return fail(problem);
   }
 
   const { data: event, error } = await supabase.from("events").insert({ ...parsed.values, tenant_id: tenant.id }).select("id").single();
@@ -38,21 +60,43 @@ export async function createEvent(slug: string, _state: ActionState, form: FormD
   redirect(`/staff/${slug}/events/${event.id}`);
 }
 
+/**
+ * Saves the event's details. The form carries the details it was opened
+ * with (event_original); if another save changed any of them since, nothing
+ * is written. Status, booking and planning changes made meanwhile don't
+ * count as conflicts. Proposals, approvals and contracts keep the details
+ * frozen into them; only new contract drafts use the new ones.
+ */
 export async function updateEvent(slug: string, eventId: string, _state: ActionState, form: FormData): Promise<ActionState> {
   const { supabase, tenant } = await requireStaff(slug);
+  if (!UUID_RE.test(eventId)) return fail("Event not found.");
   const parsed = readEventForm(form);
   if (!parsed.ok) return fail(parsed.error);
-  const { data, error } = await supabase.from("events").update(parsed.values).eq("id", eventId).eq("tenant_id", tenant.id).select("id");
+  const { data: current } = await supabase.from("events").select(`${EVENT_DETAIL_COLUMNS.join(", ")}, updated_at`).eq("id", eventId).eq("tenant_id", tenant.id).maybeSingle();
+  if (!current) return fail("Event not found.");
+  const original = text(form, "event_original");
+  if (original && original !== eventDetailsKey(current as unknown as Record<string, unknown>)) {
+    return fail("Someone else changed this event's details after you opened the form. Reload the page to see them, then make your change again.");
+  }
+  const { data, error } = await supabase
+    .from("events")
+    .update(parsed.values)
+    .eq("id", eventId)
+    .eq("tenant_id", tenant.id)
+    .eq("updated_at", (current as unknown as { updated_at: string }).updated_at)
+    .select("id");
   if (error) return fail(describeDbError(error));
-  if (!data?.length) return fail("Event not found.");
+  if (!data?.length) return fail("This event changed while you were saving. Reload the page, then try again.");
   revalidatePath(`/staff/${slug}/events/${eventId}`);
   return ok("Saved.");
 }
 
 export async function addEventContact(slug: string, eventId: string, _state: ActionState, form: FormData): Promise<ActionState> {
-  const { supabase, tenant } = await requireStaff(slug);
+  const staff = await requireStaff(slug);
+  const { supabase, tenant } = staff;
   const clientId = text(form, "client_id");
-  if (!UUID_RE.test(clientId)) return fail("Choose a client.");
+  const problem = await usableClient(staff, clientId);
+  if (problem) return fail(problem);
   const primary = checkbox(form, "is_primary");
   if (primary) {
     const { error } = await supabase.from("event_clients").update({ is_primary: false, can_sign: false }).eq("event_id", eventId).eq("tenant_id", tenant.id);

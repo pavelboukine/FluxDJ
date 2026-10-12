@@ -2590,17 +2590,66 @@ and 25 rows per page. Reads go through `public.staff_event_list` and
 `20261022000100_staff_lists_client_archiving.sql`): read-only, staff of the
 business only, searching every record server-side.
 
-- **Events:** search title, venue and primary contact; Upcoming (default,
-  nearest first), Past (most recent first) or All dates (latest first),
-  each judged by the event's own time zone; status; Include archived (off by
-  default). The earlier `?show=all` link still lists every date with
-  archived events.
-- **Clients:** active only by default; search name or email; Include
-  archived; each row shows email, phone, and "Next event: Sat, Jun 12, 2027"
-  (linked; "(Today)"/"(Tomorrow)" only when true in the event's time zone) or
-  the event count. The header's Add client button (and the dashboard's
-  `#add-client` link) reveals the form with its first field focused; Cancel
-  asks before discarding typed details.
+- **Events:** search title, venue and the primary contact's name or email;
+  Upcoming (default, nearest first), Past (most recent first) or All dates
+  (latest first), each judged by the event's own time zone; status; Include
+  archived (off by default). "More filters" (folded away unless one is in
+  use) adds the event type, an inclusive From/To date range (combined with
+  the date view) and the order: event date, recently updated or newest. The
+  earlier `?show=all` link still lists every date with archived events.
+- **Status badges** come from the event's own records
+  (`eventDisplayStatus` in `src/lib/events/status.ts`): the stored lifecycle
+  decides the stage, and the proposal and contract records only refine the
+  label within it ("Proposal sent", "Choices submitted · review", "Contract
+  draft", "Signed · awaiting deposit", "Booked"…). Nothing is stored and no
+  event moves forward because of a label; a signed contract still waiting
+  for its deposit is never shown as booked.
+- **Clients:** active only by default; search name, email or phone (digits
+  only, so "514 555" finds "(514) 555-0100" once the search holds three
+  digits); Alphabetical or Recently added; Include archived; each row shows
+  email, phone, the event count and "Next event: Sat, Jun 12, 2027"
+  (linked; "(Today)"/"(Tomorrow)" only when true in the event's time zone).
+  The header's Add client button (and the dashboard's `#add-client` link)
+  reveals the form with its first field focused; Cancel asks before
+  discarding typed details.
+- **Choosing a client** (new event, an event's Add a contact) is a search,
+  not a dropdown of every client: `searchClients` returns at most 8 active
+  clients of the business. A client's page has **New event**, which opens
+  the form with that client chosen (`/events/new?client=<id>`).
+
+**Client details.** Saving carries the record's `updated_at`; a save made
+elsewhere meanwhile is refused with "Someone else changed this client's
+details…" (the update only applies to the version the form was opened
+with). Event details work the same way, comparing only the fields the form
+edits, so status, booking and planning changes never count as conflicts.
+The same email as an existing client of the business (any case, archived
+included) asks for confirmation and links the existing client; nothing is
+merged, and other businesses are never searched. Changing an email that
+already has sign-ins, a sent contract or live proposal links asks for
+confirmation and explains that none of it moves: event access belongs to
+the person who signed in, a sent contract only accepts the address frozen
+into it (the send check then reports `signer_changed`), and proposal links
+keep working until they expire or are replaced. Every real email change is audited
+(`client_email_changed`, migration `20261104000100_client_email_audit.sql`):
+an AFTER UPDATE trigger records the business, client, acting staff user and
+membership in the same transaction, storing neither address; unchanged,
+stale, retried or refused saves record nothing (pgTAP `50_client_email_audit`).
+
+**Client phone numbers.** The phone is optional and nothing in the schema,
+proposals, sending or signing needs it. It is needed only when the
+business's contract template prints `{{client.phone}}` (the starter DEMO
+template does): `generate_contract_draft` refuses to generate while any
+placeholder the template uses has no value. The app says so where it
+matters: the phone hint on client forms (when a published template uses
+it), the signer's line under Contacts, the event's Contract tile, a blocker
+on "Prepare the contract", and an inline "Save phone number" form in the
+contract step (it only fills an empty number). Numbers are checked in the
+app (`src/lib/phone.ts`: 7 to 20 digits, a leading +, spaces, brackets,
+dots, dashes and an optional extension) and stored as typed; an unchanged
+older number is never re-checked. A contract draft keeps the details it
+was generated with: when the event's title, date, venue or the signer's
+phone change afterwards, the event page and the send review say so and
+suggest regenerating; sent and signed contracts never change.
 
 **Client archiving.** On the client page, Archive… asks for confirmation and
 calls `public.set_client_archived`: it sets `archived_at` once (a repeat
@@ -2617,6 +2666,13 @@ touches the archived state.
 check's wording, so apply them before the app
 (`db push --linked --dry-run`, then `db push --linked`); the previous app
 keeps working on the migrated database.
+
+`20261103000100_client_event_lists.sql` replaces `staff_event_list` and
+`staff_client_list` with versions that take extra optional parameters and
+return extra keys; every earlier parameter and key is unchanged, so apply it
+before the app as well (the previous app keeps working on it, and the new
+app needs it for the type, range, order and phone search). pgTAP:
+`49_client_event_lists`; browser: `client-event-management-flow.spec.ts`.
 
 ### Gear and packages
 

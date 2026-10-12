@@ -21,6 +21,7 @@ export function ListFilters({
   showClear,
   defaults = {},
   children,
+  more,
 }: {
   /** Accessible name of the filter form. */
   label: string;
@@ -32,6 +33,8 @@ export function ListFilters({
   defaults?: Record<string, string>;
   /** Extra filters (selects and checkboxes); they submit the form when changed. */
   children?: ReactNode;
+  /** Less-used filters, shown after the buttons (e.g. a MoreFilters disclosure). */
+  more?: ReactNode;
 }) {
   const form = useRef<HTMLFormElement>(null);
   const router = useRouter();
@@ -72,6 +75,7 @@ export function ListFilters({
           <Link className={cn(buttonVariants({ variant: "ghost" }), "h-9")} href={clearHref}>Clear filters</Link>
         ) : null}
       </div>
+      {more}
     </form>
   );
 }

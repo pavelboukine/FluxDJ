@@ -5,11 +5,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Field, selectClass } from "@/components/app/fields";
+import { ActionForm } from "@/components/app/action-form";
+import { Field, TextField, selectClass } from "@/components/app/fields";
 import type { MissingItem } from "@/lib/contracts/content";
+import { PHONE_HINT, PHONE_MAX } from "@/lib/phone";
+import { addClientPhone } from "../clients/actions";
 import { generateContract } from "./actions";
 
-type VersionOption = { id: string; label: string; needsBalanceDueDate: boolean };
+type VersionOption = { id: string; label: string; needsBalanceDueDate: boolean; needsClientPhone?: boolean };
 
 type Props = {
   slug: string;
@@ -19,6 +22,10 @@ type Props = {
   currentDraft: { id: string; label: string; signable: boolean } | null;
   /** Active versions published before usage modes, left out of the list. */
   legacyHidden: number;
+  /** The event's active signer: a missing phone a template needs can be added right here. */
+  signer?: { clientId: string; name: string; phone: string | null } | null;
+  /** Details edited since the current draft was generated (it keeps the old ones until regenerated). */
+  changes?: string[];
 };
 
 /**
@@ -26,15 +33,18 @@ type Props = {
  * existing draft always needs an explicit confirmation. The server makes
  * repeated clicks safe: an identical request returns the existing draft.
  */
-export function GenerateContractPanel({ slug, approvalId, versions, defaultVersionId, currentDraft, legacyHidden }: Props) {
+export function GenerateContractPanel({ slug, approvalId, versions, defaultVersionId, currentDraft, legacyHidden, signer = null, changes = [] }: Props) {
   const router = useRouter();
   const [versionId, setVersionId] = useState(defaultVersionId ?? versions[0]?.id ?? "");
   const [balanceDueDate, setBalanceDueDate] = useState("");
   const [confirmReplace, setConfirmReplace] = useState<string | null>(null);
   const [missing, setMissing] = useState<MissingItem[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [phoneSaved, setPhoneSaved] = useState(false);
   const [pending, start] = useTransition();
   const version = versions.find((v) => v.id === versionId);
+  // The chosen version prints the client's phone and the signer has none: say so before generating, with the fix here.
+  const phoneNeeded = Boolean(signer && !signer.phone && (version?.needsClientPhone || missing.some((m) => m.key === "client.phone")));
 
   function run(replaceContractId: string | null) {
     setError(null);
@@ -99,6 +109,11 @@ export function GenerateContractPanel({ slug, approvalId, versions, defaultVersi
       {currentDraft ? (
         <p>
           Current draft: <Link className="underline" href={`/staff/${slug}/contracts/${currentDraft.id}`}>{currentDraft.label}</Link>
+          {changes.length > 0 ? (
+            <span className="block text-amber-800 dark:text-amber-300" data-testid="contract-changes">
+              Changed since this draft was generated: {changes.join(", ")}. Regenerate it to use the current details.
+            </span>
+          ) : null}
           {!currentDraft.signable ? (
             <span className="block text-amber-700 dark:text-amber-400">
               It was generated from a version published before agreements could be approved for client use, so it can&apos;t be sent or
@@ -131,6 +146,28 @@ export function GenerateContractPanel({ slug, approvalId, versions, defaultVersi
         </Field>
       </div>
 
+      {phoneNeeded && signer ? (
+        <div className="grid gap-2 rounded-lg border border-amber-500/50 bg-amber-500/10 p-3" data-testid="contract-phone-needed">
+          <p>
+            <span className="font-medium">This template includes the client&apos;s phone.</span> {signer.name}, the signer, has no phone number yet.
+            Add it here; the draft is generated with it.
+          </p>
+          <ActionForm
+            action={addClientPhone.bind(null, slug, signer.clientId)}
+            submitLabel="Save phone number"
+            onSuccess={() => {
+              setMissing((m) => m.filter((x) => x.key !== "client.phone"));
+              setPhoneSaved(true);
+              router.refresh();
+            }}
+          >
+            <TextField label={`Phone number for ${signer.name}`} name="client_phone" type="tel" inputMode="tel" autoComplete="off" required maxLength={PHONE_MAX} placeholder="514 555-0100" hint={PHONE_HINT} />
+          </ActionForm>
+        </div>
+      ) : phoneSaved ? (
+        <p role="status" className="text-emerald-700 dark:text-emerald-400">Phone number saved. You can generate the draft now.</p>
+      ) : null}
+
       {confirmReplace ? (
         <div role="dialog" aria-label="Confirm replacing the draft" className="grid gap-2 rounded-xl border-2 border-primary/40 p-4">
           <p className="font-medium">Replace the current contract draft?</p>
@@ -159,7 +196,7 @@ export function GenerateContractPanel({ slug, approvalId, versions, defaultVersi
         <div role="alert" className="grid gap-1 rounded-lg border border-destructive/50 bg-destructive/5 p-3">
           <p className="font-medium">Complete this information first. Nothing was generated.</p>
           <ul className="list-disc pl-5">
-            {missing.map((m) => <li key={m.key}>{m.hint}</li>)}
+            {missing.map((m) => <li key={m.key}>{m.key === "client.phone" && signer && !signer.phone ? "Client phone: add it above." : m.hint}</li>)}
           </ul>
         </div>
       ) : null}
