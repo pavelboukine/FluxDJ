@@ -27,6 +27,11 @@ export const serverEnvSchema = z
     RESEND_API_KEY: z.string().min(1).optional(),
     // Bearer secret for the outbox worker endpoint (pnpm outbox:work, cron).
     OUTBOX_WORKER_SECRET: z.string().min(32).optional(),
+    // Signing secret of the Resend webhook ("whsec_..."): delivery, bounce and
+    // complaint events. The webhook endpoint answers 404 when it isn't set.
+    // Checked only by the webhook route (a malformed value refuses webhooks;
+    // it must never stop the rest of the app from starting).
+    RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
   })
   .refine((env) => env.EMAIL_TRANSPORT !== "resend" || env.RESEND_API_KEY, {
     message: "RESEND_API_KEY is required when EMAIL_TRANSPORT=resend",
@@ -46,6 +51,7 @@ export function serverEnv(): ServerEnv {
     MAILPIT_URL: process.env.MAILPIT_URL || undefined,
     RESEND_API_KEY: process.env.RESEND_API_KEY || undefined,
     OUTBOX_WORKER_SECRET: process.env.OUTBOX_WORKER_SECRET || undefined,
+    RESEND_WEBHOOK_SECRET: process.env.RESEND_WEBHOOK_SECRET || undefined,
   });
   return cachedServerEnv;
 }

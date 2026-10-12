@@ -292,13 +292,13 @@ isOneToOne: false
                   ]
                 },"email_outbox": {
                   Row: {
-                    "access_link_id": string | null,"attempts": number,"created_at": string,"dedup_key": string,"entity_id": string,"entity_type": string,"event_type": string,"id": string,"last_error": string | null,"locked_until": string | null,"max_attempts": number,"next_attempt_at": string,"payload": NonNullable<Json>,"provider_message_id": string | null,"recipient_email": string,"sender": Json | null,"sent_at": string | null,"status": string,"tenant_id": string | null,"updated_at": string
+                    "access_link_id": string | null,"attempts": number,"branding": Json | null,"created_at": string,"dedup_key": string,"entity_id": string,"entity_type": string,"event_type": string,"id": string,"last_error": string | null,"locked_until": string | null,"max_attempts": number,"next_attempt_at": string,"payload": NonNullable<Json>,"provider_detail": string | null,"provider_message_id": string | null,"provider_status": string | null,"provider_status_at": string | null,"recipient_email": string,"sender": Json | null,"sent_at": string | null,"status": string,"tenant_id": string | null,"updated_at": string
                   }
                   Insert: {
-                    "access_link_id"?: string | null,"attempts"?: number,"created_at"?: string,"dedup_key": string,"entity_id": string,"entity_type"?: string,"event_type": string,"id"?: string,"last_error"?: string | null,"locked_until"?: string | null,"max_attempts"?: number,"next_attempt_at"?: string,"payload"?: NonNullable<Json>,"provider_message_id"?: string | null,"recipient_email": string,"sender"?: Json | null,"sent_at"?: string | null,"status"?: string,"tenant_id"?: string | null,"updated_at"?: string
+                    "access_link_id"?: string | null,"attempts"?: number,"branding"?: Json | null,"created_at"?: string,"dedup_key": string,"entity_id": string,"entity_type"?: string,"event_type": string,"id"?: string,"last_error"?: string | null,"locked_until"?: string | null,"max_attempts"?: number,"next_attempt_at"?: string,"payload"?: NonNullable<Json>,"provider_detail"?: string | null,"provider_message_id"?: string | null,"provider_status"?: string | null,"provider_status_at"?: string | null,"recipient_email": string,"sender"?: Json | null,"sent_at"?: string | null,"status"?: string,"tenant_id"?: string | null,"updated_at"?: string
                   }
                   Update: {
-                    "access_link_id"?: string | null,"attempts"?: number,"created_at"?: string,"dedup_key"?: string,"entity_id"?: string,"entity_type"?: string,"event_type"?: string,"id"?: string,"last_error"?: string | null,"locked_until"?: string | null,"max_attempts"?: number,"next_attempt_at"?: string,"payload"?: NonNullable<Json>,"provider_message_id"?: string | null,"recipient_email"?: string,"sender"?: Json | null,"sent_at"?: string | null,"status"?: string,"tenant_id"?: string | null,"updated_at"?: string
+                    "access_link_id"?: string | null,"attempts"?: number,"branding"?: Json | null,"created_at"?: string,"dedup_key"?: string,"entity_id"?: string,"entity_type"?: string,"event_type"?: string,"id"?: string,"last_error"?: string | null,"locked_until"?: string | null,"max_attempts"?: number,"next_attempt_at"?: string,"payload"?: NonNullable<Json>,"provider_detail"?: string | null,"provider_message_id"?: string | null,"provider_status"?: string | null,"provider_status_at"?: string | null,"recipient_email"?: string,"sender"?: Json | null,"sent_at"?: string | null,"status"?: string,"tenant_id"?: string | null,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -1407,6 +1407,9 @@ isOneToOne: false
 "fail_email_outbox":
 { Args: { "p_error": string,"p_id": string,"p_permanent"?: boolean }; Returns: undefined
                            },
+"freeze_email_branding":
+{ Args: { "p_id": string }; Returns: Json
+                           },
 "freeze_email_sender":
 { Args: { "p_from_address": string,"p_id": string }; Returns: Json
                            },
@@ -1485,6 +1488,9 @@ isOneToOne: false
                            },
 "recalculate_plan_client_cutoff":
 { Args: { "p_confirm": boolean,"p_event_id": string,"p_expected_version": number,"p_reason": string }; Returns: Json
+                           },
+"record_email_provider_event":
+{ Args: { "p_detail": string,"p_occurred_at": string,"p_provider_message_id": string,"p_status": string }; Returns: boolean
                            },
 "record_event_payment":
 { Args: { "p_amount_cents": number,"p_confirm_duplicate"?: boolean,"p_event_id": string,"p_idempotency_key": string,"p_note": string,"p_paid_on": string,"p_reference": string }; Returns: Json
@@ -1632,6 +1638,9 @@ isOneToOne: false
                            },
 "update_proposal_draft":
 { Args: { "p_expected_version": number,"p_offer": Json,"p_proposal_id": string }; Returns: number
+                           },
+"update_reply_to_email":
+{ Args: { "p_reply_to": string,"p_tenant_id": string }; Returns: string
                            },
 "update_tax_settings":
 { Args: { "p_expected_version": number,"p_tax_categories": Json,"p_tax_config": Json,"p_tenant_id": string }; Returns: number

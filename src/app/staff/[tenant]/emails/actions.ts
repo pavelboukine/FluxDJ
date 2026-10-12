@@ -13,7 +13,8 @@ export async function retryEmail(slug: string, emailId: string): Promise<ActionS
   if (error) return fail(describeDbError(error));
   if (!data) return fail("Only failed emails can be retried.");
   await processOutbox({ tenantId: tenant.id, limit: 20 }).catch(() => undefined);
-  revalidatePath(`/staff/${slug}/emails`);
+  // The Emails page and every event's email history show it.
+  revalidatePath(`/staff/${slug}`, "layout");
   return ok("Queued for another attempt.");
 }
 

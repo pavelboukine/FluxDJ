@@ -1,7 +1,8 @@
 import "server-only";
 import { serverEnv } from "@/lib/env.server";
 
-export type EmailAttachment = { filename: string; contentType: string; content: Buffer };
+/** `contentId` makes it an inline image, referenced from the HTML as `cid:{contentId}` (the business logo). */
+export type EmailAttachment = { filename: string; contentType: string; content: Buffer; contentId?: string };
 
 export type EmailMessage = {
   fromName: string;
@@ -43,7 +44,12 @@ export class MailpitTransport implements EmailTransport {
         Subject: message.subject,
         Text: message.text,
         HTML: message.html,
-        Attachments: (message.attachments ?? []).map((a) => ({ Filename: a.filename, ContentType: a.contentType, Content: a.content.toString("base64") })),
+        Attachments: (message.attachments ?? []).map((a) => ({
+          Filename: a.filename,
+          ContentType: a.contentType,
+          Content: a.content.toString("base64"),
+          ...(a.contentId ? { ContentID: a.contentId } : {}),
+        })),
       }),
       cache: "no-store",
     });
@@ -74,7 +80,12 @@ export class ResendTransport implements EmailTransport {
         text: message.text,
         html: message.html,
         attachments: message.attachments?.length
-          ? message.attachments.map((a) => ({ filename: a.filename, content: a.content.toString("base64"), content_type: a.contentType }))
+          ? message.attachments.map((a) => ({
+              filename: a.filename,
+              content: a.content.toString("base64"),
+              content_type: a.contentType,
+              ...(a.contentId ? { content_id: a.contentId } : {}),
+            }))
           : undefined,
       }),
       cache: "no-store",

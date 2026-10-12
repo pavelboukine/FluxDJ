@@ -182,7 +182,7 @@ test.describe.serial("staff dashboard", () => {
     await expect(items.nth(1)).toContainText("Garcia wedding");
     await expect(items.nth(2)).toContainText("Planning closes in 2 days");
     await expect(items.nth(2)).toContainText("Okafor gala");
-    await expect(page.getByTestId("email-failures")).toContainText("1 email couldn't be delivered");
+    await expect(page.getByTestId("email-failures")).toContainText("1 email couldn't be sent");
     await shot(page, info, "busy-desktop");
 
     await page.getByRole("link", { name: "Show all 7" }).click();

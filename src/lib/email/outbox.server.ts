@@ -5,7 +5,8 @@ import { serverEnv } from "@/lib/env.server";
 import { contractInviteToken, platformInviteToken, proposalLinkToken, sha256Hex, staffInviteToken } from "@/lib/proposals/tokens.server";
 import { IntegrityError, readVerifiedDocument } from "@/lib/contracts/documents.server";
 import { formatSignedAt, signedPdfFileName } from "@/lib/contracts/pdf/data";
-import { configuredTransport, type EmailTransport } from "./transport.server";
+import { configuredTransport, type EmailAttachment, type EmailTransport } from "./transport.server";
+import { emailBranding, type LogoImage } from "./branding.server";
 import {
   renderContractEmail,
   renderContractSignInEmail,
@@ -68,10 +69,12 @@ export async function processOutbox(
   const appUrl = publicEnv().NEXT_PUBLIC_APP_URL;
   const fromAddress = serverEnv().EMAIL_FROM_ADDRESS;
   const result: OutboxRunResult = { claimed: 0, sent: 0, failed: 0, cancelled: 0 };
+  // Logos prepared once per run (keyed by storage path, so per business).
+  const logos: LogoCache = new Map();
 
   if (!options.tenantId) await deliverPlatformEmails(admin, transport, appUrl, fromAddress, result, options);
   if (options.platformInvitationId) return result;
-  await deliverStaffEmails(admin, transport, appUrl, fromAddress, result, options);
+  await deliverStaffEmails(admin, transport, appUrl, fromAddress, result, options, logos);
   if (options.staffInvitationId) return result;
 
   const { data: rows, error } = await admin.rpc("claim_email_outbox", {
@@ -87,17 +90,17 @@ export async function processOutbox(
     result.claimed += 1;
     try {
       if (row.event_type === "booking_confirmed") {
-        const outcome = await deliverBookingConfirmed(admin, transport, row, fromAddress);
+        const outcome = await deliverBookingConfirmed(admin, transport, row, fromAddress, logos);
         result[outcome] += 1;
         continue;
       }
       if (row.event_type === "contract_signed_copy") {
-        const outcome = await deliverSignedCopy(admin, transport, row, fromAddress);
+        const outcome = await deliverSignedCopy(admin, transport, row, fromAddress, logos);
         result[outcome] += 1;
         continue;
       }
       if (row.event_type === "contract_sent" || row.event_type === "contract_sign_in" || row.event_type === "contract_voided") {
-        const outcome = await deliverContractEmail(admin, transport, row, appUrl, fromAddress);
+        const outcome = await deliverContractEmail(admin, transport, row, appUrl, fromAddress, logos);
         result[outcome] += 1;
         continue;
       }
@@ -121,7 +124,11 @@ export async function processOutbox(
         proposalLink = `${appUrl}/${row.tenant_slug}/p#${token}`;
       }
 
+      const branding = await emailBranding(admin, row, row.tenant_display_name, logos);
+      const replyTo = branding.replyTo === undefined ? row.tenant_reply_to : branding.replyTo;
       const email = renderEmail({
+        brand: branding.brand,
+        canReply: Boolean(replyTo),
         eventType: row.event_type as OutboxEventType,
         tenantDisplayName: row.tenant_display_name,
         tenantSlug: row.tenant_slug,
@@ -138,8 +145,9 @@ export async function processOutbox(
         fromName: `${row.tenant_display_name} via Flux DJ`,
         fromAddress,
         to: row.recipient_email,
-        replyTo: row.tenant_reply_to,
+        replyTo,
         ...email,
+        attachments: inline(branding.attachments),
       });
       await admin.rpc("complete_email_outbox", { p_id: row.id, p_provider_message_id: sent.id });
       result.sent += 1;
@@ -153,8 +161,14 @@ export async function processOutbox(
   return result;
 }
 
+type LogoCache = Map<string, Promise<LogoImage | null>>;
+
+/** Inline images for a send, or none (the message stays exactly as before when there is no logo). */
+const inline = (attachments: EmailAttachment[]) => (attachments.length ? attachments : undefined);
+
 type ClaimedRow = {
   id: string;
+  tenant_id: string;
   event_type: string;
   recipient_email: string;
   payload: unknown;
@@ -191,7 +205,11 @@ async function deliverContractEmail(
   row: ClaimedRow,
   appUrl: string,
   fromAddress: string,
+  logos: LogoCache,
 ): Promise<"sent" | "cancelled" | "failed"> {
+  const branding = await emailBranding(admin, row, row.tenant_display_name, logos);
+  const replyTo = branding.replyTo === undefined ? row.tenant_reply_to : branding.replyTo;
+  const canReply = Boolean(replyTo);
   if (row.event_type === "contract_voided") {
     // Sent only while the contract is still void (always, once voided); no link, no reason.
     if (!row.contract_deliverable) {
@@ -200,6 +218,8 @@ async function deliverContractEmail(
     }
     const payload = (row.payload ?? {}) as Record<string, unknown>;
     const email = renderContractVoidedEmail({
+      brand: branding.brand,
+      canReply,
       tenantDisplayName: row.tenant_display_name,
       legalName: str(payload.legal_name) || row.tenant_display_name,
       contactEmail: str(payload.contact_email) || null,
@@ -207,7 +227,14 @@ async function deliverContractEmail(
       eventTitle: str(payload.event_title) || "your event",
     });
     if (!(await dispatchAllowed(admin, row.id))) return "cancelled";
-    const sent = await transport.send({ fromName: `${row.tenant_display_name} via Flux DJ`, fromAddress, to: row.recipient_email, replyTo: row.tenant_reply_to, ...email });
+    const sent = await transport.send({
+      fromName: `${row.tenant_display_name} via Flux DJ`,
+      fromAddress,
+      to: row.recipient_email,
+      replyTo,
+      ...email,
+      attachments: inline(branding.attachments),
+    });
     await admin.rpc("complete_email_outbox", { p_id: row.id, p_provider_message_id: sent.id });
     return "sent";
   }
@@ -231,6 +258,9 @@ async function deliverContractEmail(
       return "failed";
     }
     email = renderContractEmail({
+      brand: branding.brand,
+      canReply,
+      eventDate: str(payload.event_date) || null,
       tenantDisplayName: row.tenant_display_name,
       legalName: str(payload.legal_name) || row.tenant_display_name,
       contactEmail: str(payload.contact_email) || null,
@@ -245,6 +275,8 @@ async function deliverContractEmail(
   } else {
     const next = `/${row.tenant_slug}/invitations/${row.access_link_id}`;
     email = renderContractSignInEmail({
+      brand: branding.brand,
+      canReply,
       tenantDisplayName: row.tenant_display_name,
       clientName: str(payload.client_name) || "there",
       eventTitle: str(payload.event_title) || "your event",
@@ -256,8 +288,9 @@ async function deliverContractEmail(
     fromName: `${row.tenant_display_name} via Flux DJ`,
     fromAddress,
     to: row.recipient_email,
-    replyTo: row.tenant_reply_to,
+    replyTo,
     ...email,
+    attachments: inline(branding.attachments),
   });
   await admin.rpc("complete_email_outbox", { p_id: row.id, p_provider_message_id: sent.id });
   return "sent";
@@ -268,6 +301,7 @@ async function deliverSignedCopy(
   transport: EmailTransport,
   row: ClaimedRow,
   fromAddress: string,
+  logos: LogoCache,
 ): Promise<"sent" | "cancelled" | "failed"> {
   if (!row.contract_deliverable || !row.contract_id) {
     await admin.rpc("cancel_email_outbox", {
@@ -309,7 +343,10 @@ async function deliverSignedCopy(
   const payload = (row.payload ?? {}) as Record<string, unknown>;
   const eventTitle = str(payload.event_title) || "your event";
   const eventDate = str(payload.event_date);
+  const branding = await emailBranding(admin, row, sender.display_name, logos);
   const email = renderSignedCopyEmail({
+    brand: branding.brand,
+    canReply: typeof sender.reply_to === "string",
     recipientRole: payload.recipient_role === "business" ? "business" : "client",
     tenantDisplayName: sender.display_name,
     legalName: str(payload.legal_name) || sender.display_name,
@@ -327,7 +364,7 @@ async function deliverSignedCopy(
     to: row.recipient_email,
     replyTo: typeof sender.reply_to === "string" ? sender.reply_to : null,
     ...email,
-    attachments: [{ filename: signedPdfFileName(eventTitle, eventDate), contentType: "application/pdf", content: pdf }],
+    attachments: [{ filename: signedPdfFileName(eventTitle, eventDate), contentType: "application/pdf", content: pdf }, ...branding.attachments],
     idempotencyKey: `flux-signed-copy-${row.id}`,
   });
   await admin.rpc("complete_email_outbox", { p_id: row.id, p_provider_message_id: sent.id });
@@ -344,6 +381,7 @@ async function deliverBookingConfirmed(
   transport: EmailTransport,
   row: ClaimedRow,
   fromAddress: string,
+  logos: LogoCache,
 ): Promise<"sent" | "cancelled" | "failed"> {
   if (!row.contract_deliverable) {
     await admin.rpc("cancel_email_outbox", { p_id: row.id, p_reason: "The event is no longer booked, or it was archived." });
@@ -357,7 +395,10 @@ async function deliverBookingConfirmed(
   }
   const payload = (row.payload ?? {}) as Record<string, unknown>;
   const cents = (value: unknown) => (typeof value === "number" && Number.isSafeInteger(value) ? value : 0);
+  const branding = await emailBranding(admin, row, sender.display_name, logos);
   const email = renderBookingConfirmedEmail({
+    brand: branding.brand,
+    canReply: typeof sender.reply_to === "string",
     tenantDisplayName: sender.display_name,
     legalName: str(payload.legal_name) || sender.display_name,
     contactEmail: str(payload.contact_email) || null,
@@ -380,6 +421,7 @@ async function deliverBookingConfirmed(
     to: row.recipient_email,
     replyTo: typeof sender.reply_to === "string" ? sender.reply_to : null,
     ...email,
+    attachments: inline(branding.attachments),
     idempotencyKey: `flux-booking-${row.id}`,
   });
   await admin.rpc("complete_email_outbox", { p_id: row.id, p_provider_message_id: sent.id });
@@ -471,6 +513,7 @@ async function deliverStaffEmails(
   fromAddress: string,
   result: OutboxRunResult,
   options: { tenantId?: string; staffInvitationId?: string; limit?: number },
+  logos: LogoCache,
 ) {
   const { data: rows, error } = await admin.rpc("claim_staff_email_outbox", {
     p_limit: options.limit ?? 20,
@@ -494,6 +537,7 @@ async function deliverStaffEmails(
       }
       let email: RenderedEmail;
       let idempotencyKey: string | undefined;
+      const branding = await emailBranding(admin, row, row.tenant_display_name, logos);
       if (row.event_type === "staff_invitation") {
         const token = staffInviteToken(row.link_id);
         if (sha256Hex(token) !== row.token_hash) {
@@ -506,6 +550,7 @@ async function deliverStaffEmails(
           continue;
         }
         email = renderStaffInvitationEmail({
+          brand: branding.brand,
           tenantDisplayName: row.tenant_display_name,
           invitationLink: `${appUrl}/join/team#${token}`,
           expiresAt: row.expires_at,
@@ -513,6 +558,7 @@ async function deliverStaffEmails(
         idempotencyKey = `flux-staff-invite-${row.id}`;
       } else {
         email = renderStaffSignInEmail({
+          brand: branding.brand,
           tenantDisplayName: row.tenant_display_name,
           verificationLink: await verificationLink(admin, row.recipient_email, appUrl, `/join/team/${row.invitation_id}`),
         });
@@ -525,8 +571,9 @@ async function deliverStaffEmails(
         fromName: `${row.tenant_display_name} via Flux DJ`,
         fromAddress,
         to: row.recipient_email,
-        replyTo: row.tenant_reply_to,
+        replyTo: branding.replyTo === undefined ? row.tenant_reply_to : branding.replyTo,
         ...email,
+        attachments: inline(branding.attachments),
         idempotencyKey,
       });
       await admin.rpc("complete_email_outbox", { p_id: row.id, p_provider_message_id: sent.id });

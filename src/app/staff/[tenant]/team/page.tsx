@@ -28,7 +28,7 @@ type Invitation = {
 };
 
 const STATE_LABEL = { pending: "Pending", expired: "Expired", accepted: "Accepted", cancelled: "Cancelled" } as const;
-const DELIVERY_LABEL: Record<string, string> = { pending: "queued", sending: "sending", sent: "sent", failed: "delivery failed", cancelled: "not sent" };
+const DELIVERY_LABEL: Record<string, string> = { pending: "queued", sending: "sending", sent: "accepted by the email provider", failed: "delivery failed", cancelled: "not sent" };
 
 const date = (value: string | null) =>
   value ? new Intl.DateTimeFormat("en-CA", { dateStyle: "medium", timeZone: "America/Toronto" }).format(new Date(value)) : "";

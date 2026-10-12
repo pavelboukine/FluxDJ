@@ -1,5 +1,21 @@
-<h2>Sign in to Flux DJ</h2>
-<p>Use the link below to sign in. The link and the code expire in one hour and work once.</p>
-<p><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=email&amp;redirect_to={{ .RedirectTo }}">Continue to sign in</a></p>
-<p>Or type this code in Flux DJ (for example in the app on your home screen): <strong>{{ .Token }}</strong></p>
-<p>If you did not request this, you can ignore this email.</p>
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>Sign in to Flux DJ</title></head>
+<body style="margin:0;padding:0;background:#f4f4f5;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;">Your Flux DJ sign-in link and code.</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f4f5;"><tr><td align="center" style="padding:28px 12px;">
+<table role="presentation" width="560" align="center" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;width:100%;">
+<tr><td style="padding:0 4px 18px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:19px;font-weight:700;color:#18181b;">Flux DJ</td></tr>
+<tr><td style="background:#ffffff;border:1px solid #e4e4e7;border-top:4px solid #111827;border-radius:12px;padding:28px 28px 26px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#18181b;">
+<h1 style="margin:0 0 16px;font-size:22px;line-height:1.3;font-weight:700;">Sign in to Flux DJ</h1>
+<p style="margin:0 0 14px;font-size:15px;line-height:1.6;">Use the button below to sign in. The link and the code expire in one hour and work once.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:22px 0 18px;"><tr><td bgcolor="#111827" style="border-radius:8px;background:#111827;"><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&amp;type=email&amp;redirect_to={{ .RedirectTo }}" style="display:inline-block;padding:13px 24px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:8px;">Continue to sign in</a></td></tr></table>
+<p style="margin:0 0 6px;font-size:15px;line-height:1.6;">Or type this code in Flux DJ (for example in the app on your home screen):</p>
+<p style="margin:0 0 18px;font-size:26px;line-height:1.3;font-weight:700;letter-spacing:4px;">{{ .Token }}</p>
+<p style="margin:0;font-size:13px;line-height:1.55;color:#71717a;">If you did not request this, you can ignore this email.</p>
+</td></tr>
+<tr><td style="padding:18px 8px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:1.6;color:#71717a;">Flux DJ · Proposals, contracts and event planning for DJs and their clients.</td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>

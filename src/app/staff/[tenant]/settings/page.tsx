@@ -12,7 +12,7 @@ import { BrandLogo } from "@/components/app/brand-logo";
 import { brandTheme, normalizeHex } from "@/lib/branding/colors";
 import { logoUrl } from "@/lib/branding/logo.server";
 import { EVENT_TYPES } from "../events/event-form";
-import { saveBookingPolicy, saveBranding, saveBusinessSettings, savePlanningCutoff, saveTaxSettings } from "./actions";
+import { saveBookingPolicy, saveBranding, saveBusinessSettings, savePlanningCutoff, saveReplyTo, saveTaxSettings } from "./actions";
 import { BrandingForm } from "./branding-form";
 import { TaxSettingsForm } from "./tax-settings-form";
 
@@ -124,23 +124,41 @@ export default async function BusinessSettings({ params, searchParams }: PagePro
             <Card>
               <CardHeader>
                 <CardTitle>Workspace</CardTitle>
-                <CardDescription>Set when your workspace was created. They can&apos;t be changed in Settings.</CardDescription>
+                <CardDescription>Your display name, time zone and currency were set when your workspace was created and can&apos;t be changed here.</CardDescription>
               </CardHeader>
               <CardContent>
                 <dl className="grid gap-4 text-sm sm:grid-cols-2">
                   <Fact label="Display name" value={settings?.display_name} hint="Shown to clients on proposals, contracts and planning, and in your workspace header when there is no logo." />
                   <Fact label="Time zone" value={settings?.timezone} hint="New events start in this time zone; each event keeps its own." />
                   <Fact label="Currency" value={settings?.currency} hint="Your prices, proposals and payments use it." />
-                  <Fact
-                    label="Replies and notifications"
-                    value={settings?.reply_to_email ?? "No reply-to address"}
-                    hint={
-                      settings?.reply_to_email
-                        ? "Clients' replies to your emails and staff notifications go here."
-                        : "Staff notifications go to the owner's sign-in email."
-                    }
-                  />
+                  {isOwner ? null : (
+                    <Fact
+                      label="Replies and notifications"
+                      value={settings?.reply_to_email ?? "No reply-to address"}
+                      hint={
+                        settings?.reply_to_email
+                          ? "Clients' replies to your emails and staff notifications go here."
+                          : "Staff notifications go to the owner's sign-in email."
+                      }
+                    />
+                  )}
                 </dl>
+                {isOwner ? (
+                  <div id="reply-to" className="mt-5 scroll-mt-20 border-t pt-4">
+                    <ActionForm action={saveReplyTo.bind(null, slug)} submitLabel="Save reply-to" trackUnsaved>
+                      <TextField
+                        label="Reply-to email"
+                        name="reply_to_email"
+                        type="email"
+                        maxLength={320}
+                        autoComplete="email"
+                        defaultValue={settings?.reply_to_email ?? ""}
+                        className="max-w-md"
+                        hint="When clients reply to an email from your business, the reply goes here. Staff notifications (a proposal was submitted, a contract was signed) go here too. Leave it empty to use the owner's sign-in email for notifications; client emails then have no reply-to."
+                      />
+                    </ActionForm>
+                  </div>
+                ) : null}
               </CardContent>
             </Card>
 

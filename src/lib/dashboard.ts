@@ -218,3 +218,30 @@ export function attentionItems(facts: DashboardFacts, slug: string): AttentionIt
         a.title.localeCompare(b.title),
     );
 }
+
+// ---------------------------------------------------------------------------
+// Provider-reported delivery problems
+// ---------------------------------------------------------------------------
+
+/** How far back the dashboard looks for provider-reported problems. */
+export const DELIVERY_PROBLEM_DAYS = 30;
+
+export type ProviderProblemRow = { id: string; provider_status: string | null; provider_detail: string | null };
+
+/**
+ * Emails the provider reported as not delivered: hard bounces (Resend's
+ * "bounced" is a permanent rejection; a "Transient" category is left out),
+ * provider failures and suppressions, and spam complaints. Each email counts
+ * once, under its latest status; acceptance alone is never a problem.
+ */
+export function deliveryProblems(rows: ProviderProblemRow[]): { undelivered: number; complaints: number } {
+  const latest = new Map(rows.map((r) => [r.id, r]));
+  let undelivered = 0;
+  let complaints = 0;
+  for (const r of latest.values()) {
+    if (r.provider_status === "complained") complaints += 1;
+    else if (r.provider_status === "failed" || r.provider_status === "suppressed") undelivered += 1;
+    else if (r.provider_status === "bounced" && !/^transient/i.test(r.provider_detail ?? "")) undelivered += 1;
+  }
+  return { undelivered, complaints };
+}

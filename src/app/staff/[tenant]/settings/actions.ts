@@ -151,3 +151,23 @@ export async function saveBranding(slug: string, _state: ActionState, form: Form
   revalidatePath(`/staff/${slug}`, "layout");
   return ok("Branding saved. Proposals already sent keep the branding they were sent with.", newVersion ?? undefined);
 }
+
+/**
+ * Sets or clears the reply-to address: the Reply-To of client emails and
+ * where staff notifications go. Owner only (checked again in the database).
+ * Emails already attempted keep the address they were first sent with.
+ */
+export async function saveReplyTo(slug: string, _state: ActionState, form: FormData): Promise<ActionState> {
+  const { supabase, tenant, membership } = await requireStaff(slug);
+  if (membership.role !== "owner") return fail("Only the owner can change the reply-to address.");
+  const address = text(form, "reply_to_email").toLowerCase();
+  if (address && (!EMAIL_RE.test(address) || address.length > 320)) return fail("Enter a valid email address, or leave it empty.");
+  const { error } = await supabase.rpc("update_reply_to_email", { p_tenant_id: tenant.id, p_reply_to: address || (null as unknown as string) });
+  if (error) return fail(describeDbError(error));
+  revalidatePath(`/staff/${slug}`, "layout");
+  return ok(
+    address
+      ? `Saved. Clients' replies and staff notifications now go to ${address}. Emails already sent keep their earlier address.`
+      : "Cleared. Staff notifications go to the owner's sign-in email, and client emails have no reply-to address.",
+  );
+}

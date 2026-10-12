@@ -959,6 +959,8 @@ in every relevant relationship.
 | `03_integrity_constraints` | Composite foreign keys block cross-tenant references even when RLS is bypassed; one primary contact and one signer per event; access revocation is one-way; value validation |
 | `04_membership_and_privileges` | Staff cannot escalate; nobody writes memberships directly (only audited functions); lifecycle and access columns are not directly writable |
 | `46_platform_active_membership` | The workspace list's membership flag and the self-suspension guard count active owners and staff, never removed members; administrators of other businesses and existing suspension permissions unchanged; the removed row is kept |
+| `48_reply_to_settings` | Owner-only reply-to (staff, other businesses, clients refused; no direct writes), validation, normalization, audit without the address, notifications follow it, frozen per email at the first attempt, explicit "no reply-to", suspended workspaces refused |
+| `47_email_branding_delivery` | Branding frozen at the first attempt only (proposal emails keep the proposal's frozen branding after the logo changes), never changed afterwards, never another business's logo, none for platform emails. Provider events: service role only, forward-only by rank, duplicates and late events ignored, unknown ids ignored, no change to status or retries. Staff of the business read and retry (failed only, once); other businesses, clients, anon and removed staff see and retry nothing; platform emails stay invisible |
 | `45_staff_invitations` | Owner-only invitations, resends, cancellations, removals and team overview (staff, other businesses, anon refused); no direct table access. Request-id replays, one open invitation per address, members not invited, hashed tokens only, emails for the business claimed only by the staff worker. Masked address for other accounts, unverified sign-ins learn nothing, the business named only to the verified invited address. Acceptance once (replays), restored memberships after removal, owners unremovable even by privileged code, removed members lose access at once but keep client events. Cancelled, expired and resent links. Suspended workspaces can't invite, remove or accept |
 | `05_client_access` | A verified client sees only their linked events, including at two different DJs; unverified, revoked or email-only matches grant nothing; clients cannot alter staff data |
 | `06_anonymous_access` | Anon has no table or function access |
@@ -2334,6 +2336,91 @@ hosted database first (`db push --linked --dry-run`, then `db push
 --linked`), then deploy the app. An app deployed before the migration can't
 load the dashboard; every other page works.
 
+### Email design, delivery history and provider feedback
+
+Migration `20261101000100_email_branding_delivery_status.sql`.
+
+**Design.** Every email (`src/lib/email/templates.ts`) uses one layout
+(`layout.ts`): the business's logo (or its name with a brand-colour mark) at
+the top, one heading, short paragraphs, a details box (event, date, amounts
+the email already carries), one button in the brand colour (text colour
+chosen for contrast, `brandTheme`), short notes, and a footer ("Sent by
+{business} with Flux DJ"; "Reply to this email…" only when the business has
+a reply-to). Table layout with inline styles for Gmail, Outlook and Apple
+Mail; no remote images, no tracking pixels. The same content renders the
+plain-text alternative, so both always carry the same information and link.
+Subjects are unchanged. DJ (platform) invitations are Flux-branded.
+
+**Logos.** Never a URL: the worker (`branding.server.ts`) reads the logo from
+private Storage, only from the row's own business folder, fits it into
+440 x 112 pixels (no stretching, cropping or enlarging; PNG, at most 120 KB)
+and attaches it inline (`cid:business-logo`; Resend `content_id`, Mailpit
+`ContentID`). Any failure leaves the logo out and the email still goes, with
+the business name.
+
+**Which branding.** Frozen per outbox row at its first attempt
+(`freeze_email_branding`, service role; a trigger keeps it unchanged):
+proposal emails use the branding frozen into the proposal's offer when it
+was sent; all other business emails use the business's branding at the first
+attempt. Retries therefore render the identical email (provider idempotency
+keys stay valid), and changing the logo never alters an email already
+attempted.
+
+**History.** Each event page has an **Emails** section (`#communications`):
+every email queued for the event's proposals and contracts, newest first, with
+its purpose, recipient (or "To your team"), time and status, expandable for
+details, a link to the proposal or contract, and **Retry this email** for
+failed ones. The Emails page uses the same statuses
+(`src/lib/email/history.ts`): Waiting to send, Retrying, Sending, Couldn't be
+sent, Not sent (Flux's own cancellation reason), Accepted by email provider,
+and, only when the provider reported it, Delivered, Delivery delayed,
+Bounced, Marked as spam, Not delivered (suppressed) or Provider couldn't
+deliver. "Accepted by email provider" never claims inbox delivery; opens and
+clicks are never shown. Provider error text is never displayed (an HTTP status
+at most). Retry is `retry_email_outbox`: staff of the business only, failed
+rows only, atomically, then the normal worker sends it. Team invitations stay
+on Team; platform emails are never visible to businesses.
+
+**Provider feedback.** `POST /api/webhooks/resend` (404 unless
+`RESEND_WEBHOOK_SECRET` is set) verifies the Svix signature (`svix-id`,
+`svix-timestamp`, `svix-signature`, five-minute tolerance), keeps delivered,
+delivery_delayed, bounced, complained, failed and suppressed events, and
+records them with `record_email_provider_event` (service role) on the row
+with that provider message id. The status only moves forward (delayed <
+delivered < failed, bounced, suppressed < complained), so duplicates and
+out-of-order events change nothing, and the outbox status, attempts and
+schedule are never touched: nothing is retried after a bounce. Only a short
+category is stored (for example "Permanent · General"), never addresses or
+content.
+
+**Reply-to.** Owners set it in **Settings → Business profile** (`#reply-to`),
+through `update_reply_to_email` (migration `20261102000100_reply_to_settings.sql`:
+owner only, validated, audited without the address; the direct column grant
+is revoked). It is the Reply-To of client emails and where staff
+notifications go; empty means no Reply-To and notifications to the owner's
+sign-in email. Each email freezes the reply-to at its first attempt with its
+branding, so a retry keeps it.
+
+**Dashboard.** The email notice also counts, for the last 30 days, emails the
+provider reported as not delivered (hard bounces, provider failures,
+suppressions) and spam complaints, once per email. Acceptance alone never
+counts.
+
+**Sign-in template.** `supabase/templates/magic_link.html` uses the same look
+and keeps the exact link (`{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&redirect_to={{ .RedirectTo }}`)
+and code (`{{ .Token }}`). Supabase renders templates with Go's
+`html/template`, which strips HTML comments, so the template uses a
+`width="560"` attribute (not `<!--[if mso]>` comments) for Outlook. Locally,
+after editing it, restart both `supabase_kong_flux-dj` and
+`supabase_auth_flux-dj` (the Auth server caches the template). The hosted
+template is pasted in the Supabase dashboard (Authentication → Email
+Templates → Magic Link).
+
+**Previews.** With `pnpm dev`, open http://127.0.0.1:3000/api/dev/email-preview
+(`?variant=logo|dark|none|long`): every template with invented businesses, at
+desktop and phone width, with its plain text. It answers 404 outside
+development and reads nothing from the database.
+
 ### Staff team and invitations
 
 Migration `20261030000100_staff_invitations.sql`. Separate from DJ (platform)
@@ -2774,6 +2861,7 @@ See `.env.example`. Only `NEXT_PUBLIC_*` values reach the browser.
 | `MAILPIT_URL` | Local Mailpit, http://127.0.0.1:54324 |
 | `RESEND_API_KEY` | Required only with `EMAIL_TRANSPORT=resend` |
 | `OUTBOX_WORKER_SECRET` | Bearer secret for `/api/internal/outbox`. The endpoint returns 404 when it isn't set. |
+| `RESEND_WEBHOOK_SECRET` | Optional. The Resend webhook signing secret (`whsec_…`) for `/api/webhooks/resend` (delivery, bounce and complaint events). The endpoint returns 404 when it isn't set. |
 
 Hosted configuration, still to review before real clients:
 - Set every variable above as a server-side environment variable.
@@ -2844,6 +2932,14 @@ before real clients.
      the deployment fails.
    - Vercel can occasionally skip or repeat a run, which the outbox tolerates:
      claims skip locked rows, and every email has a dedup key.
+9. **Delivery feedback (optional).** In Resend → Webhooks, add
+   `https://<domain>/api/webhooks/resend` with the events `email.delivered`,
+   `email.delivery_delayed`, `email.bounced`, `email.complained`,
+   `email.failed` and `email.suppressed`, then set its signing secret as
+   `RESEND_WEBHOOK_SECRET` (Production, Sensitive) and redeploy. Without it,
+   sent emails show "Accepted by email provider" only. Check: an unsigned
+   `POST` to the endpoint answers 401 when the secret is set, 404 when it is
+   missing, 503 when it isn't a `whsec_…` value.
 
 Locally verified with the new key formats: service-role RPCs, Auth admin
 (`generateLink`), Storage, anon denial, magic-link verification, RLS reads,

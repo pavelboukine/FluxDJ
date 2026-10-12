@@ -29,6 +29,7 @@ import { addEventContact, openProposalDraft, removeEventContact, updateEvent } f
 import { EventFields } from "../event-fields";
 import { EVENT_TYPES } from "../event-form";
 import { ArchivePanel } from "./archive-panel";
+import { CommunicationsCard, loadCommunications } from "./communications-card";
 import { PaymentsCard, loadPayments } from "./payments-card";
 import { PlanningCard, loadPlanning } from "./planning-card";
 import { RemoveContact } from "./remove-contact";
@@ -73,6 +74,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
     loadPlanning(staff, eventId),
   ]);
   if (!event) notFound();
+  const communications = await loadCommunications(staff, event.proposals.map((p) => p.id), contracts.contracts.map((c) => c.id));
   // The current approval, if the active proposal is approved; contracts are generated from it.
   const activeApproved = event.proposals.find((p) => p.id === event.active_proposal_id && p.status === "approved");
   const { data: approval } = activeApproved
@@ -175,6 +177,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
           ["#proposal", "Proposal & contract"],
           ["#payments", "Payments"],
           ["#planning", "Planning"],
+          ["#communications", "Emails"],
           ["#contacts", "Contacts & details"],
         ].map(([href, label]) => (
           <a key={href} className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline" href={href}>{label}</a>
@@ -234,6 +237,8 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
         <PaymentsCard staff={staff} slug={slug} eventId={event.id} archived={archived} data={payments} recordOpen={action.key === "record_payment"} />
 
         <PlanningCard slug={slug} eventId={event.id} view={planning} archived={archived} />
+
+        <CommunicationsCard slug={slug} rows={communications} />
 
         <div className="grid gap-6 lg:grid-cols-2">
           <Card id="contacts" className="scroll-mt-20">

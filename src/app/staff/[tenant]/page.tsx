@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { PageHeader } from "@/components/app/fields";
 import { InstallHelp } from "@/components/app/pwa";
 import { requireStaff } from "@/lib/auth/staff";
-import { ATTENTION_SHOWN, UPCOMING_SHOWN, attentionItems, dashboardSchema, shortDate, upcomingRows } from "@/lib/dashboard";
+import { ATTENTION_SHOWN, DELIVERY_PROBLEM_DAYS, UPCOMING_SHOWN, attentionItems, dashboardSchema, deliveryProblems, shortDate, upcomingRows } from "@/lib/dashboard";
 import { offerablePackages, requiredSetup } from "@/lib/setup";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +23,14 @@ export default async function Dashboard({ params, searchParams }: PageProps<"/st
     throw new Error("The dashboard couldn't be loaded.");
   }
   const facts = parsed.data;
+  // Provider-confirmed delivery problems (webhook events) of the last 30 days, under the staff RLS policy.
+  const { data: problemRows } = await supabase
+    .from("email_outbox")
+    .select("id, provider_status, provider_detail")
+    .eq("tenant_id", tenant.id)
+    .in("provider_status", ["bounced", "failed", "suppressed", "complained"])
+    .gte("provider_status_at", new Date(new Date(facts.now).getTime() - DELIVERY_PROBLEM_DAYS * 86_400_000).toISOString());
+  const problems = deliveryProblems(problemRows ?? []);
   const isOwner = membership.role === "owner";
   const upcoming = upcomingRows(facts, slug);
   const tasks = attentionItems(facts, slug);
@@ -56,13 +64,23 @@ export default async function Dashboard({ params, searchParams }: PageProps<"/st
       />
       <InstallHelp compact />
 
-      {facts.failed_emails > 0 ? (
+      {facts.failed_emails > 0 || problems.undelivered > 0 || problems.complaints > 0 ? (
         <p role="status" data-testid="email-failures" className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm">
           <MailWarning aria-hidden className="size-4 shrink-0 text-amber-700 dark:text-amber-400" />
-          <span>
-            {facts.failed_emails === 1 ? "1 email couldn't be delivered" : `${facts.failed_emails} emails couldn't be delivered`} after
-            several tries.
-          </span>
+          {facts.failed_emails > 0 ? (
+            <span data-testid="email-send-failures">
+              {facts.failed_emails === 1 ? "1 email couldn't be sent" : `${facts.failed_emails} emails couldn't be sent`} after several tries.
+            </span>
+          ) : null}
+          {problems.undelivered > 0 ? (
+            <span data-testid="email-undelivered">
+              {problems.undelivered === 1 ? "1 email was rejected by the recipient's mail server" : `${problems.undelivered} emails were rejected by recipients' mail servers`} or
+              not delivered.
+            </span>
+          ) : null}
+          {problems.complaints > 0 ? (
+            <span data-testid="email-complaints">{problems.complaints === 1 ? "1 recipient marked an email as spam." : `${problems.complaints} recipients marked emails as spam.`}</span>
+          ) : null}
           <Link className="font-medium underline" href={`/staff/${slug}/emails`}>Review emails</Link>
         </p>
       ) : null}

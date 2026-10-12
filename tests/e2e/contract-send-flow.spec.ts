@@ -79,7 +79,7 @@ test.describe.serial("contract sending and verified client access", () => {
   test("the invitation alone shows nothing private and grants nothing", async () => {
     const email = await waitForEmail(clientEmail, { after: sentAt, subject: /sent your contract/ });
     const invite = new RegExp(`(${BASE}/${tenant.slug}/invite#[A-Za-z0-9_-]{43})`).exec(email.text)![1];
-    expect(email.text).toContain("you will confirm your email address before you can open it.");
+    expect(email.text).toContain("you'll confirm your email address before you can open it.");
 
     const deviceA = await browser.newContext();
     const a = await deviceA.newPage();
