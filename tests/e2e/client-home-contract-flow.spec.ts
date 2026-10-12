@@ -20,6 +20,8 @@ import { archiveTestTenant, createTestTenant, publishContractTemplate, submitAsC
 
 const REVIEW_DIR = "review-samples/client-home-contract";
 const run = randomUUID().slice(0, 6);
+/** Contracts whose signed-PDF job the specs keep pending on purpose; retired after the run. */
+const keptPdfJobs: string[] = [];
 const signerEmail = `e2e-home-signer-${run}@example.test`;
 const viewerEmail = `e2e-home-viewer-${run}@example.test`;
 const emptyEmail = `e2e-home-empty-${run}@example.test`;
@@ -80,7 +82,8 @@ async function contractFor(f: Fixture, eventId: string, signerUserId: string, st
     p_user_agent: "E2E", p_client_ip: null, p_client_ip_source: "unavailable",
   }));
   expect((signed as { status: string }).status).toBe("signed");
-  if (!opts.keepPdfJob) {
+  if (opts.keepPdfJob) keptPdfJobs.push(contractId);
+  else {
     // Not needed here; retired so other signing specs never wait behind it.
     const { data: jobs } = await must(admin.rpc("claim_document_jobs", { p_limit: 5, p_lease_seconds: 30, p_contract_id: contractId }));
     for (const j of (jobs ?? []) as { job_id: string; lease_token: string }[]) {
@@ -165,6 +168,13 @@ test.describe.serial("client home and contract", () => {
 
   test.afterAll(async () => {
     await signerContext?.close();
+    // Contracts whose PDF job was kept for the "being prepared" checks: retire their own jobs (never anyone else's).
+    for (const contractId of keptPdfJobs) {
+      const { data: jobs } = await admin.rpc("claim_document_jobs", { p_limit: 5, p_lease_seconds: 30, p_contract_id: contractId });
+      for (const j of (jobs ?? []) as { job_id: string; lease_token: string }[]) {
+        await admin.rpc("fail_document_job", { p_job_id: j.job_id, p_lease_token: j.lease_token, p_error: "client home e2e: cleanup after the run", p_permanent: true });
+      }
+    }
     await archiveTestTenant(a?.tenant);
     await archiveTestTenant(b?.tenant);
   });

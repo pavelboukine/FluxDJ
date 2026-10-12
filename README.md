@@ -2667,6 +2667,22 @@ check's wording, so apply them before the app
 (`db push --linked --dry-run`, then `db push --linked`); the previous app
 keeps working on the migrated database.
 
+**Event contacts.** Adding a contact goes through `public.add_event_contact`
+(migration `20261105000100_event_contacts_dashboard_status.sql`): one
+transaction under the event's row lock moves the primary and/or signer role
+and inserts the contact together, so a failure (a duplicate from a stale tab,
+an archived or foreign client) leaves the previous primary and signer as they
+were. The form names the primary it showed; if it changed meanwhile the save
+is refused (PT409). `public.remove_event_contact` only removes a contact of the
+named event. Both are staff-only, audited and refused for removed staff or a
+suspended workspace; contacts stay editable on archived events (adding one
+grants no access) and generated contracts keep their frozen signer. The same
+migration adds the proposal and contract records to `staff_dashboard`'s
+upcoming events so the dashboard shows the shared derived status. Apply it
+before the app; the direct `event_clients` grants stay for the previous app
+(revoking them is deferred). pgTAP: `51_event_contacts`; integration:
+`event-contacts.test.ts`.
+
 `20261103000100_client_event_lists.sql` replaces `staff_event_list` and
 `staff_client_list` with versions that take extra optional parameters and
 return extra keys; every earlier parameter and key is unchanged, so apply it

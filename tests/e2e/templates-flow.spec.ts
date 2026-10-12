@@ -301,14 +301,28 @@ test.describe.serial("proposal templates", () => {
     expect(after.questions).toEqual([ids.ceremony]);
     await expect(page.getByTestId("template-package").nth(2)).toContainText("Recommended");
 
+    // The details editor starts from a settled page, never while the contents save is still refreshing it.
+    const expiryDays = async () => (await must(admin.from("proposal_templates").select("expiry_days").eq("id", createdId).single())).data!.expiry_days;
+    const before = await expiryDays();
+    await page.reload();
     await page.getByRole("button", { name: "Edit details" }).click();
-    await page.getByLabel("Proposal expiry (days)").fill("400");
-    await page.getByLabel("Proposal expiry (days)").evaluate((el: HTMLInputElement) => el.removeAttribute("max"));
+    // The editor is open and interactive once it has moved focus to its first field (its documented behaviour).
+    await expect(page.getByLabel("Name", { exact: true })).toBeFocused();
+    const expiry = page.getByLabel("Proposal expiry (days)");
+    await expiry.fill("400");
+    await expiry.evaluate((el: HTMLInputElement) => el.removeAttribute("max"));
+    // What is submitted: 400, with the browser's own limit removed so the server's check is the one exercised.
+    await expect(expiry).toHaveValue("400");
+    await expect(expiry).not.toHaveAttribute("max");
+    const refused = page.waitForResponse((r) => r.request().method() === "POST" && r.request().headers()["next-action"] !== undefined);
     await page.getByRole("button", { name: "Save details" }).click();
+    await refused;
     await expect(page.locator("#details").getByRole("alert")).toContainText("Proposals must expire after 1 to 365 days.");
-    await page.getByLabel("Proposal expiry (days)").fill("30");
+    expect(await expiryDays()).toBe(before);
+    await expiry.fill("30");
     await page.getByRole("button", { name: "Save details" }).click();
     await expect(page.locator("#details").getByRole("status").filter({ hasText: "Details saved." })).toBeVisible();
+    expect(await expiryDays()).toBe(30);
     expect((await composition(createdId)).active).toBe(true);
     await page.context().close();
   });

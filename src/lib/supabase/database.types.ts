@@ -1265,6 +1265,9 @@ isOneToOne: false
 "accept_staff_invitation":
 { Args: { "p_invitation_id": string }; Returns: Json
                            },
+"add_event_contact":
+{ Args: { "p_client_id": string,"p_event_id": string,"p_expected_primary_client_id"?: string,"p_make_primary"?: boolean,"p_make_signer"?: boolean }; Returns: Json
+                           },
 "add_event_plan_item":
 { Args: { "p_event_id": string,"p_expected_version": number,"p_key": string,"p_parent_key": string }; Returns: number
                            },
@@ -1497,6 +1500,9 @@ isOneToOne: false
                            },
 "register_tenant_logo":
 { Args: { "p_byte_size": number,"p_height": number,"p_needs_dark_background": boolean,"p_sha256": string,"p_storage_path": string,"p_tenant_id": string,"p_user_id": string,"p_width": number }; Returns: string
+                           },
+"remove_event_contact":
+{ Args: { "p_event_client_id": string,"p_event_id": string }; Returns: Json
                            },
 "remove_planning_template_item":
 { Args: { "p_expected_version": number,"p_item_id": string }; Returns: number

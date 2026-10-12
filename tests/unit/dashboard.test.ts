@@ -62,6 +62,38 @@ describe("upcoming events", () => {
   });
 });
 
+describe("upcoming events: the shared event status", () => {
+  it("describes each event as the events list does, from its records; a signed contract with the deposit due is not booked", () => {
+    const row = (id: string, lifecycle_status: string, extra: { proposal_status?: string | null; proposal_draft?: boolean; contract_status?: "signed" | "sent" | "draft" | null }) => ({
+      id, title: id, event_date: "2026-12-01", timezone: "America/Toronto", venue_name: null, lifecycle_status, client_name: null,
+      contract_signed: extra.contract_status === "signed", proposal_status: null, proposal_draft: false, contract_status: null, ...extra,
+    });
+    const rows = upcomingRows(
+      facts({
+        upcoming: [
+          row("sent", "lead", { proposal_status: "sent" }),
+          row("submitted", "pending_approval", { proposal_status: "submitted" }),
+          row("approved", "awaiting_signature", { proposal_status: "approved" }),
+          row("draft", "awaiting_signature", { proposal_status: "approved", contract_status: "draft" }),
+          row("csent", "awaiting_signature", { proposal_status: "approved", contract_status: "sent" }),
+          row("deposit", "awaiting_deposit", { proposal_status: "approved", contract_status: "signed" }),
+          row("booked", "booked", { proposal_status: "approved", contract_status: "signed" }),
+        ],
+      }),
+      "dj",
+    );
+    expect(rows.map((r) => [r.id, r.status, r.booked])).toEqual([
+      ["sent", "Proposal sent", false],
+      ["submitted", "Choices submitted · review", false],
+      ["approved", "Approved · contract to prepare", false],
+      ["draft", "Contract draft", false],
+      ["csent", "Contract sent", false],
+      ["deposit", "Signed · awaiting deposit", false],
+      ["booked", "Booked", true],
+    ]);
+  });
+});
+
 describe("needs attention", () => {
   const busy = facts({
     submitted: [ev("p", "2026-12-01", { proposal_id: "prop-1", revision: 2, submitted_at: NOW })],

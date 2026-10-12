@@ -316,6 +316,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
               {signer && primary && signer.id !== primary.id ? <p className="text-xs text-muted-foreground">The signer is not the primary contact.</p> : null}
               <Disclosure id="add-contact" summary="Add a contact">
                 <ActionForm action={addEventContact.bind(null, slug, event.id)} submitLabel="Add contact" resetOnSuccess>
+                  <input type="hidden" name="expected_primary_client_id" value={primary?.clients?.id ?? ""} />
                   <ClientPicker search={searchClients.bind(null, slug)} name="client_id" label="Client" exclude={onEvent} />
                   <p className="text-xs text-muted-foreground">
                     Not a client yet? <Link className="underline" href={`/staff/${slug}/clients#add-client`}>Add them on the Clients page</Link> first.

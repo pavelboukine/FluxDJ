@@ -15,7 +15,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import { bookEvent, must, sessionFor } from "./booking";
-import { admin, signInStaff, signInWithLink } from "./support";
+import { admin, openPlanSection, signInStaff, signInWithLink } from "./support";
 import { archiveTestTenant, createTestTenant, type TestTenant } from "./tenant";
 
 let tenant: TestTenant;
@@ -275,7 +275,8 @@ test.describe.serial("installable app shell", () => {
     await page.getByRole("link", { name: `Plan your event for E2E PWA Wedding ${run}` }).click();
     await expect(page.getByTestId("editing-notice")).toBeVisible();
     expect(await noSideways(page)).toBeLessThanOrEqual(0);
-    // Typing scrolls the field into view and saves as before.
+    // Typing scrolls the field into view and saves as before (Basics opens from the section navigation).
+    await openPlanSection(page, "basics");
     const guests = page.getByLabel("Guest count (needed)");
     await guests.fill("140");
     await expect(guests).toBeInViewport();
@@ -285,7 +286,8 @@ test.describe.serial("installable app shell", () => {
     const res = await page.goto(page.url());
     expect(res!.headers()["cache-control"]).toMatch(/no-store|no-cache/);
     expect(res!.headers()["cache-control"]).not.toContain("public");
-    await page.getByRole("link", { name: "Your events and contracts" }).click();
+    // The client header's way back (renamed "Your events" in the client home redesign).
+    await page.getByRole("link", { name: "Your events", exact: true }).click();
     await expect(page).toHaveURL(/\/my$/);
     await page.getByRole("link", { name: `View signed contract for E2E PWA Wedding ${run}` }).click();
     await expect(page).toHaveURL(/\/contracts\//);

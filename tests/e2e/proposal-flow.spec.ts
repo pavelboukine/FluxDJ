@@ -73,7 +73,7 @@ test.describe.serial("send, open, edit, submit, approve", () => {
     sentAt = Date.now();
     await dialog.getByRole("button", { name: "Send proposal now" }).click();
     await expect(staff.getByText("Sent", { exact: true })).toBeVisible();
-    await expect(staff.getByText(/Event status: lead \(not booked\)/)).toBeVisible();
+    await expect(staff.getByText("Event status: Proposal sent (not booked).")).toBeVisible();
 
     const { data: proposals } = await admin.from("proposals").select("status, offer_snapshot").eq("event_id", eventId);
     expect(proposals).toHaveLength(1);
@@ -198,7 +198,7 @@ test.describe.serial("send, open, edit, submit, approve", () => {
     await staff.getByRole("button", { name: "Approve…" }).click();
     await staff.getByRole("dialog", { name: "Confirm approval" }).getByRole("button", { name: "Approve selection" }).click();
     await expect(staff.getByText(/Next: generate the contract draft\. The event is not booked\./)).toBeVisible();
-    await expect(staff.getByText(/Event status: awaiting signature \(not booked\)/)).toBeVisible();
+    await expect(staff.getByText("Event status: Approved · contract to prepare (not booked).")).toBeVisible();
 
     const ack = await waitForEmail(clientEmail, { after: before, subject: /approved your selection/ });
     expect(ack.text).toContain("Your contract will follow");

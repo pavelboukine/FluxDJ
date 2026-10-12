@@ -53,7 +53,7 @@ export default async function QuestionPage({ params, searchParams }: PageProps<"
     ruleGearIds.length
       ? supabase
           .from("package_items")
-          .select("gear_item_id, quantity, packages!package_items_package_fk(id, name, active)")
+          .select("gear_item_id, quantity, packages!package_items_package_fk(id, name, active, sort_order)")
           .eq("tenant_id", tenant.id)
           .in("gear_item_id", ruleGearIds)
       : Promise.resolve({ data: [] as never[], error: null }),
@@ -66,7 +66,11 @@ export default async function QuestionPage({ params, searchParams }: PageProps<"
   const usedBy = (templates.data ?? []).flatMap((t) => (t.proposal_templates ? [t.proposal_templates] : []));
   const activeTemplates = usedBy.filter((t) => t.active).length;
   const includedIn = (gearId: string) =>
-    (inclusions.data ?? []).filter((i) => i.gear_item_id === gearId && i.packages?.active).map((i) => `${i.packages!.name} (${i.quantity})`);
+    (inclusions.data ?? [])
+      .filter((i) => i.gear_item_id === gearId && i.packages?.active)
+      // The packages' own order (as on the Packages page), then name: the same on every load.
+      .sort((a, b) => a.packages!.sort_order - b.packages!.sort_order || a.packages!.name.localeCompare(b.packages!.name))
+      .map((i) => `${i.packages!.name} (${i.quantity})`);
   const inUse: Record<string, number> = {};
   for (const r of rules) for (const v of conditionValues(r.condition)) inUse[v] = (inUse[v] ?? 0) + 1;
   const ruled = canHaveRules(q.answer_type);

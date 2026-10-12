@@ -167,7 +167,8 @@ test.describe.serial("staff dashboard", () => {
     await expect(rows.nth(0)).toContainText("Booked");
     await expect(rows.filter({ hasText: "Patel sangeet" })).toContainText("Riya Patel · Venue not set");
     await expect(rows.filter({ hasText: "Patel sangeet" })).toContainText("Signed · awaiting deposit");
-    await expect(rows.filter({ hasText: "Chen anniversary" })).toContainText("pending approval");
+    // The same derived wording as the events list.
+    await expect(rows.filter({ hasText: "Chen anniversary" })).toContainText("Choices submitted · review");
     await expect(page.getByTestId("upcoming-list")).not.toContainText("Last week's party");
     await expect(page.getByTestId("upcoming-list")).not.toContainText("Archived tasting");
     await expect(page.getByTestId("upcoming-list")).not.toContainText("Dubois wedding"); // the ninth: beyond the list

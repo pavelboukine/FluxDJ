@@ -37,6 +37,8 @@ export function describeDbError(error: { code?: string; message?: string } | nul
   if (workspace) return `${workspace[1].charAt(0).toUpperCase()}${workspace[1].slice(1)}.`;
   const invitation = /(?:invitation_(?:invalid|limit|not_resendable|not_revocable|not_cancellable|resend_too_soon)|member_owner_protected|workspace_archived): (.*)$/.exec(message);
   if (invitation) return `${invitation[1].charAt(0).toUpperCase()}${invitation[1].slice(1)}${/[.!?]$/.test(invitation[1]) ? "" : "."}`;
+  const contact = /contact_(?:invalid|conflict): (.*)$/.exec(message);
+  if (contact) return `${contact[1].charAt(0).toUpperCase()}${contact[1].slice(1)}.`;
   const contract = /contract_(?:stale_approval|not_allowed|input_invalid): (.*)$/.exec(message);
   if (contract) return `A contract can't be generated: ${contract[1]}.`;
   switch (error.code) {

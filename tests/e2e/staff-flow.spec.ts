@@ -170,8 +170,10 @@ test.describe.serial("staff interface", () => {
     // The emailed message carries both the link (with its explicit Sign in step) and the code.
     const html = await latestEmailHtml(email, started);
     expect(html).toMatch(/\/auth\/confirm\?token_hash=/);
-    const code = /<strong>(\d{6})<\/strong>/.exec(html)?.[1];
-    expect(code).toBeTruthy();
+    // The code is the email's only six-digit text, whatever element styles it.
+    const codes = [...html.matchAll(/>\s*(\d{6})\s*</g)].map((m) => m[1]);
+    expect(codes).toHaveLength(1);
+    const code = codes[0];
 
     await form.getByLabel("Code from the email").fill(code === "000000" ? "111111" : "000000");
     await form.getByRole("button", { name: "Sign in with code" }).click();

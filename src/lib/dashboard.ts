@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { eventStatusLabel } from "@/lib/events/status";
+import { eventDisplayStatus, eventStatusLabel } from "@/lib/events/status";
 import { dateIn, shortDate } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
 
@@ -21,6 +21,10 @@ const upcomingSchema = z.object({
   lifecycle_status: z.string(),
   client_name: z.string().nullable(),
   contract_signed: z.boolean(),
+  // The records the shared event status reads (20261105000100); absent from an older database.
+  proposal_status: z.string().nullable().optional(),
+  proposal_draft: z.boolean().optional(),
+  contract_status: z.enum(["signed", "sent", "draft"]).nullable().optional(),
 });
 
 const eventRef = { event_id: z.string(), title: z.string(), event_date: z.string() };
@@ -93,8 +97,16 @@ export function upcomingRows(facts: DashboardFacts, slug: string): UpcomingRow[]
     href: `/staff/${slug}/events/${e.id}`,
     date: shortDate(e.event_date),
     relative: relativeDay(e.event_date, e.timezone, now),
-    // The existing staff label (booked, awaiting deposit, check booking, lead…).
-    status: eventStatusLabel(e.lifecycle_status, e.contract_signed),
+    // The same derived status as the events list and event page; the lifecycle label on an older database.
+    status:
+      e.proposal_draft === undefined
+        ? eventStatusLabel(e.lifecycle_status, e.contract_signed)
+        : eventDisplayStatus({
+            lifecycle: e.lifecycle_status,
+            proposalStatus: e.proposal_status ?? null,
+            proposalDraft: e.proposal_draft,
+            contractStatus: e.contract_status ?? (e.contract_signed ? "signed" : null),
+          }),
     booked: e.lifecycle_status === "booked",
     venue: e.venue_name ?? "Venue not set",
   }));

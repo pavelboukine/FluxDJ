@@ -307,9 +307,16 @@ test.describe.serial("gear catalog", () => {
     expect(after).toEqual(before);
     // The sent proposal still shows the archived photo.
     await page.goto(proposalUrl);
-    await expect(page.getByRole("img", { name: "Four uplights glowing teal" }).first()).toBeVisible();
-    await expect(page.getByRole("img", { name: "Four uplights glowing teal" }).first()).toHaveJSProperty("complete", true);
-    expect(await page.getByRole("img", { name: "Four uplights glowing teal" }).first().evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+    // The thumbnail is decorative inside its "View photo of …" button (named with the frozen gear name);
+    // it must load, and opening it shows the frozen photo with its description.
+    const thumb = page.getByRole("button", { name: "View photo of Uplights (pack of 4)" }).first();
+    await expect(thumb).toBeVisible();
+    await expect.poll(() => thumb.locator("img").evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true);
+    await thumb.click();
+    const gallery = page.getByRole("dialog", { name: "Uplights (pack of 4): photos and videos" });
+    const photo = gallery.getByRole("img", { name: "Four uplights glowing teal" }).first();
+    await expect(photo).toBeVisible();
+    await expect.poll(() => photo.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true);
     await page.context().close();
   });
 

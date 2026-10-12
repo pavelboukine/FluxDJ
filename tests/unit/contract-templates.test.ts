@@ -94,9 +94,12 @@ describe("contract emails", () => {
     const { renderContractEmail } = await import("@/lib/email/templates");
     const email = renderContractEmail(input);
     expect(email.subject).toBe("BOUPROD sent your contract for Wedding");
-    expect(email.text).toContain("A deposit of $758.84 (30% of the total) will be due on signing.");
+    // The redesigned email (76bb6c5): who sent it, for which event, the deposit, verification first, the link and its expiry.
+    expect(email.text).toContain("BOUPROD has prepared your agreement for Wedding.");
+    expect(email.text).toContain("Event: Wedding");
+    expect(email.text).toContain("Deposit due on signing: $758.84 (30% of the total)");
     expect(email.text).toContain("Contact BOUPROD Legal Inc. at legal@bouprod.test.");
-    expect(email.text).toContain("you will confirm your email address before you can open it.");
+    expect(email.text).toContain("you'll confirm your email address before you can open it.");
     expect(email.text).toContain("This invitation link works until January 15, 2027.");
     expect(email.text).toContain("Read your contract: http://127.0.0.1:3000/bouprod/invite#TOKEN");
   });

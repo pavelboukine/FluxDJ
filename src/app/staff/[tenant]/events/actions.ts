@@ -91,29 +91,42 @@ export async function updateEvent(slug: string, eventId: string, _state: ActionS
   return ok("Saved.");
 }
 
+/**
+ * Adds a contact through add_event_contact: one transaction under the event's
+ * lock, so making someone primary contact and signer either fully happens or
+ * leaves the previous primary and signer untouched. The form names the
+ * primary contact the page showed; if it changed meanwhile, nothing is saved.
+ */
 export async function addEventContact(slug: string, eventId: string, _state: ActionState, form: FormData): Promise<ActionState> {
   const staff = await requireStaff(slug);
-  const { supabase, tenant } = staff;
+  if (!UUID_RE.test(eventId)) return fail("Event not found.");
   const clientId = text(form, "client_id");
   const problem = await usableClient(staff, clientId);
   if (problem) return fail(problem);
   const primary = checkbox(form, "is_primary");
-  if (primary) {
-    const { error } = await supabase.from("event_clients").update({ is_primary: false, can_sign: false }).eq("event_id", eventId).eq("tenant_id", tenant.id);
-    if (error) return fail(describeDbError(error));
-  }
-  const { error } = await supabase
-    .from("event_clients")
-    .insert({ tenant_id: tenant.id, event_id: eventId, client_id: clientId, is_primary: primary, can_sign: primary });
+  const expected = text(form, "expected_primary_client_id");
+  const { error } = await staff.supabase.rpc("add_event_contact", {
+    p_event_id: eventId,
+    p_client_id: clientId,
+    p_make_primary: primary,
+    p_make_signer: primary,
+    p_expected_primary_client_id: UUID_RE.test(expected) ? expected : undefined,
+  });
   if (error) return fail(describeDbError(error));
   revalidatePath(`/staff/${slug}/events/${eventId}`);
   return ok("Contact added.");
 }
 
+/** Removes one contact of this event (remove_event_contact checks the row belongs to it). */
 export async function removeEventContact(slug: string, eventId: string, eventClientId: string): Promise<ActionState> {
-  const { supabase, tenant } = await requireStaff(slug);
-  const { error } = await supabase.from("event_clients").delete().eq("id", eventClientId).eq("tenant_id", tenant.id);
-  if (error) return fail(error.code === "23503" ? "This contact has client access history and cannot be removed." : describeDbError(error));
+  const { supabase } = await requireStaff(slug);
+  if (!UUID_RE.test(eventId) || !UUID_RE.test(eventClientId)) return fail("Contact not found.");
+  const { error } = await supabase.rpc("remove_event_contact", { p_event_id: eventId, p_event_client_id: eventClientId });
+  if (error) {
+    if (error.code === "23503") return fail("This contact has client access history and cannot be removed.");
+    if (error.code === "P0002") return fail("This contact isn't on this event anymore. Reload the page.");
+    return fail(describeDbError(error));
+  }
   revalidatePath(`/staff/${slug}/events/${eventId}`);
   return ok("Contact removed.");
 }
