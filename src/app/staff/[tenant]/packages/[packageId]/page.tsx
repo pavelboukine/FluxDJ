@@ -12,6 +12,7 @@ import { loadGearChoices, type GearChoice } from "@/lib/catalog/gear-choices.ser
 import { GearThumb } from "@/components/app/gear-thumb";
 import { IncludedGearEditor } from "../included-gear-editor";
 import { PackageFields } from "../package-fields";
+import { PackagePhotoEditor } from "../package-photo";
 import { PackageArchivePanel } from "./package-archive-panel";
 
 /** At most this many templates in "Used in". */
@@ -25,7 +26,7 @@ const USES_LIMIT = 20;
 export default async function PackagePage({ params, searchParams }: PageProps<"/staff/[tenant]/packages/[packageId]">) {
   const { tenant: slug, packageId } = await params;
   if (!UUID_RE.test(packageId)) notFound();
-  const created = (await searchParams).created;
+  const { created, photo } = await searchParams;
   const staff = await requireStaff(slug);
   const { supabase, tenant } = staff;
   const { data: pkg } = await supabase
@@ -36,7 +37,7 @@ export default async function PackagePage({ params, searchParams }: PageProps<"/
     .maybeSingle();
   if (!pkg) notFound();
 
-  const [{ choices, capped }, { data: templates }] = await Promise.all([
+  const [{ choices, capped }, { data: templates }, { data: currentPhoto }] = await Promise.all([
     loadGearChoices(staff, pkg.package_items.map((i) => i.gear_item_id)),
     supabase
       .from("proposal_template_packages")
@@ -44,7 +45,10 @@ export default async function PackagePage({ params, searchParams }: PageProps<"/
       .eq("tenant_id", tenant.id)
       .eq("package_id", pkg.id)
       .limit(USES_LIMIT),
+    supabase.from("package_media").select("storage_path, alt_text").eq("tenant_id", tenant.id).eq("package_id", pkg.id).eq("active", true).maybeSingle(),
   ]);
+  // A short-lived signed URL, issued to this staff user only (Storage RLS applies).
+  const { data: signedPhoto } = currentPhoto ? await supabase.storage.from("gear-media").createSignedUrl(currentPhoto.storage_path, 600) : { data: null };
   const byId = new Map(choices.map((c) => [c.id, c]));
   const included = pkg.package_items
     .map((i) => ({ quantity: i.quantity, gear: byId.get(i.gear_item_id) ?? null, id: i.gear_item_id }))
@@ -73,6 +77,11 @@ export default async function PackagePage({ params, searchParams }: PageProps<"/
           This package was already saved: an earlier attempt went through, but its reply didn&apos;t arrive. Check its details and included gear below.
         </p>
       ) : null}
+      {photo === "failed" ? (
+        <p role="alert" className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm" data-testid="package-photo-failed">
+          The package was saved, but its photo wasn&apos;t added. <a className="font-medium underline" href="#photo">Add it under Package photo</a>.
+        </p>
+      ) : null}
       {!pkg.active ? (
         <p role="status" className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
           This package is archived. It can&apos;t be chosen for templates or proposal drafts, and proposals that still offer it can&apos;t be previewed or sent
@@ -81,8 +90,21 @@ export default async function PackagePage({ params, searchParams }: PageProps<"/
       ) : null}
       <p className="flex items-start gap-2 text-sm text-muted-foreground">
         <Info aria-hidden className="mt-0.5 size-4 shrink-0" />
-        Changes here apply to proposals prepared from now on. Proposals already sent keep the package, price and gear they were sent with.
+        Changes here apply to proposals prepared from now on. Proposals already sent keep the package, price, gear and photo they were sent with.
       </p>
+
+      <section id="photo" aria-labelledby="photo-heading" className="scroll-mt-20 grid gap-4 rounded-xl border bg-card p-4 sm:p-5">
+        <div className="grid gap-1">
+          <h2 id="photo-heading" className="text-base font-semibold">Package photo</h2>
+          <p className="text-sm text-muted-foreground">Choose a photo that represents this package. It will appear on client proposals.</p>
+        </div>
+        <PackagePhotoEditor
+          slug={slug}
+          packageId={pkg.id}
+          packageName={pkg.name}
+          current={currentPhoto ? { url: signedPhoto?.signedUrl ?? null, alt: currentPhoto.alt_text } : null}
+        />
+      </section>
 
       <InlineEditor
         id="details"

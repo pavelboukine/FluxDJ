@@ -10,6 +10,9 @@ import { KEY_PATTERN, type OfferSnapshot } from "@/lib/pricing";
  *   client: /{slug}/proposals/{proposalId}/media   (proposal session cookie)
  *   staff:  /staff/{slug}/proposals/{proposalId}/media   (staff sign-in)
  *
+ * A package's own photo is addressed by its package key on the sibling
+ * route, `{proposal}/package-media/{packageKey}` (packageMediaPath).
+ *
  * The route re-authorizes every request, then resolves the storage path from
  * the frozen offer, so a URL can never name an arbitrary file, and an open
  * page keeps working for as long as its access does (no expiring links).
@@ -40,6 +43,33 @@ export function parseMediaRequest(gearKey: string, index: string, width: string 
   return { gearKey, index: Number(index), width: w as ImageWidth };
 }
 
+/**
+ * A package's own photo. Same proposal, sibling route: the media base's last
+ * segment "media" becomes "package-media" (separate, so package keys never
+ * collide with gear keys).
+ */
+export function packageMediaPath(base: string, packageKey: string, width?: ImageWidth): string {
+  return `${base.replace(/\/media$/, "/package-media")}/${packageKey}${width ? `?w=${width}` : ""}`;
+}
+
+export function packageMediaSrcSet(base: string, packageKey: string): string {
+  return IMAGE_WIDTHS.map((w) => `${packageMediaPath(base, packageKey, w)} ${w}w`).join(", ");
+}
+
+/** Validates package photo route parameters. Returns null for anything malformed. */
+export function parsePackageMediaRequest(packageKey: string, width: string | null): { packageKey: string; width: ImageWidth } | null {
+  if (!KEY_PATTERN.test(packageKey)) return null;
+  const w = width === null ? 800 : Number(width);
+  if (!(IMAGE_WIDTHS as readonly number[]).includes(w)) return null;
+  return { packageKey, width: w as ImageWidth };
+}
+
+/** The frozen photo of a package of the offer, if it was frozen with one. */
+export function offerPackageMedia(offer: OfferSnapshot, packageKey: string): MediaItem | null {
+  const image = offer.packages.find((p) => p.key === packageKey)?.image;
+  return image ? { kind: "image", storage_path: image.storage_path, content_type: image.content_type, alt_text: image.alt_text } : null;
+}
+
 /** The offer's media item at a position, if the offer has one there. */
 export function offerMedia(offer: OfferSnapshot, gearKey: string, index: number): MediaItem | null {
   if (!Object.hasOwn(offer.gear, gearKey)) return null;
@@ -57,10 +87,10 @@ export function leadMediaIndex(media: readonly MediaItem[]): number {
 }
 
 /**
- * Lead photo for a package: the first photo of the first included gear item
- * that has a photo, in the frozen offer's included order (the snapshot
- * stores included gear ordered by gear key). Packages have no photos of
- * their own, so this never invents one; null when none qualifies.
+ * Fallback photo for a package frozen without a photo of its own: the first
+ * photo of the first included gear item that has a photo, in the frozen
+ * offer's included order (the snapshot stores included gear ordered by gear
+ * key). Never invents one; null when none qualifies.
  */
 export function packageLeadMedia(offer: OfferSnapshot, packageKey: string): { gearKey: string; index: number } | null {
   const pkg = offer.packages.find((p) => p.key === packageKey);

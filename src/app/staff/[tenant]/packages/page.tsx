@@ -9,6 +9,7 @@ import { requireStaff } from "@/lib/auth/staff";
 import { PAGE_SIZE, containsFilter, includedGearSummary, isDefaultPackageList, packageListHref, parsePackageListParams, rangeText } from "@/lib/lists";
 import { formatCents } from "@/lib/money";
 import { SetupReturn } from "@/components/app/setup-return";
+import { GearThumb } from "@/components/app/gear-thumb";
 
 const SEARCHED = ["name", "description"] as const;
 
@@ -23,10 +24,21 @@ export default async function PackageList({ params, searchParams }: PageProps<"/
 
   // One page of matches (with the total), how many archived packages the
   // filter left out, and whether the business has any packages at all.
+  // Each row's photo: its own active photo, else (as on proposals) the first
+  // active photo of its included gear, by gear key.
   let rowsQuery = supabase
     .from("packages")
-    .select("id, name, description, base_price_cents, active, package_items(quantity, gear_items!package_items_gear_item_fk(name, active))", { count: "exact" })
-    .eq("tenant_id", tenant.id);
+    .select(
+      "id, name, description, base_price_cents, active, photo:package_media(storage_path), package_items(quantity, gear_items!package_items_gear_item_fk(key, name, active, thumb:gear_media(storage_path)))",
+      { count: "exact" },
+    )
+    .eq("tenant_id", tenant.id)
+    .eq("photo.active", true)
+    .eq("package_items.gear_items.thumb.active", true)
+    .eq("package_items.gear_items.thumb.kind", "image")
+    .order("sort_order", { referencedTable: "package_items.gear_items.thumb" })
+    .order("storage_path", { referencedTable: "package_items.gear_items.thumb" })
+    .limit(1, { referencedTable: "package_items.gear_items.thumb" });
   let archivedQuery = supabase.from("packages").select("id", { count: "exact", head: true }).eq("tenant_id", tenant.id).eq("active", false);
   if (p.q) {
     rowsQuery = rowsQuery.or(containsFilter(SEARCHED, p.q));
@@ -41,6 +53,18 @@ export default async function PackageList({ params, searchParams }: PageProps<"/
   if (rows.error || archived.error || any.error) throw new Error("The packages list couldn't be loaded.");
   const packages = rows.data;
   const total = rows.count ?? 0;
+  const photoOf = new Map(
+    packages.map((pk) => {
+      const fallback = pk.package_items
+        .flatMap((i) => (i.gear_items?.thumb[0] ? [{ key: i.gear_items.key, path: i.gear_items.thumb[0].storage_path }] : []))
+        .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))[0];
+      return [pk.id, pk.photo[0]?.storage_path ?? fallback?.path ?? null];
+    }),
+  );
+  // Short-lived signed thumbnails, issued to this staff user (Storage RLS applies).
+  const paths = [...new Set([...photoOf.values()].filter((path) => path !== null))];
+  const { data: signed } = paths.length ? await supabase.storage.from("gear-media").createSignedUrls(paths, 600) : { data: [] as { path: string | null; signedUrl: string }[] };
+  const urlFor = new Map((signed ?? []).map((u) => [u.path, u.signedUrl]));
   const archivedExcluded = archived.count ?? 0;
 
   return (
@@ -78,7 +102,8 @@ export default async function PackageList({ params, searchParams }: PageProps<"/
               const archivedGear = items.filter((i) => !i.active).length;
               return (
                 <li key={pk.id} data-testid="package-row">
-                  <div className="grid gap-x-4 gap-y-1 px-4 py-3 text-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                  <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 px-4 py-3 text-sm sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center sm:gap-x-4">
+                    <GearThumb url={urlFor.get(photoOf.get(pk.id) ?? "") ?? null} className="size-12 row-span-2 sm:row-span-1" />
                     <span className="grid min-w-0">
                       <span className="flex min-w-0 items-center gap-2">
                         <Link className="truncate font-medium underline-offset-4 hover:underline" href={`${base}/${pk.id}`}>{pk.name}</Link>
@@ -90,7 +115,7 @@ export default async function PackageList({ params, searchParams }: PageProps<"/
                         {archivedGear > 0 ? <span className="text-amber-800 dark:text-amber-300"> · {archivedGear} archived gear item{archivedGear === 1 ? "" : "s"}</span> : null}
                       </span>
                     </span>
-                    <span className="grid sm:justify-items-end sm:text-right" data-testid="package-price">
+                    <span className="col-start-2 grid sm:col-start-auto sm:justify-items-end sm:text-right" data-testid="package-price">
                       <span className="font-medium">{formatCents(pk.base_price_cents, tenant.currency)}</span>
                       <span className="text-xs text-muted-foreground">base price, before tax</span>
                     </span>

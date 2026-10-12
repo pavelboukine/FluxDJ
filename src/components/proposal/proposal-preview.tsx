@@ -10,7 +10,7 @@ import { shortDate } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
 import { leadMediaIndex, packageLeadMedia } from "@/lib/proposals/media";
 import { cn } from "@/lib/utils";
-import { GearPhoto, ProposalMediaProvider, useOpenGallery } from "./gear-media";
+import { GearPhoto, PackagePhoto, ProposalMediaProvider, useOpenGallery } from "./gear-media";
 import { PriceSummaryCard } from "./price-summary";
 
 export type { ProposalSelectionState } from "@/lib/pricing";
@@ -176,7 +176,8 @@ function PackageCard({ offer, packageKey, selected, disabled, onSelect, headingT
   const [expanded, setExpanded] = useState(false);
   const openGallery = useOpenGallery();
   const p = offer.packages.find((x) => x.key === packageKey)!;
-  const lead = packageLeadMedia(offer, p.key);
+  // The package's own photo; otherwise the first photo of its included gear.
+  const lead = p.image ? null : packageLeadMedia(offer, p.key);
   const items = expanded ? p.included : p.included.slice(0, VISIBLE_INCLUDED);
   const hidden = p.included.length - VISIBLE_INCLUDED;
   return (
@@ -191,7 +192,9 @@ function PackageCard({ offer, packageKey, selected, disabled, onSelect, headingT
         </span>
       ) : null}
       <div className="p-1.5 pb-0 @4xl/proposal:p-3 @4xl/proposal:pb-0">
-        {lead ? (
+        {p.image ? (
+          <PackagePhoto packageKey={p.key} sizes="(min-width: 1024px) 360px, 34vw" className="rounded-lg @4xl/proposal:rounded-xl" />
+        ) : lead ? (
           <GearPhoto gearKey={lead.gearKey} sizes="(min-width: 1024px) 360px, 34vw" className="rounded-lg @4xl/proposal:rounded-xl" />
         ) : (
           <div className="flex aspect-[4/3] items-center justify-center rounded-lg bg-muted p-1 text-center text-xs text-muted-foreground @4xl/proposal:rounded-xl">No photos</div>

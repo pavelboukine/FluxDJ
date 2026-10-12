@@ -1,6 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { IMAGE_WIDTHS, leadMediaIndex, mediaPath, mediaSrcSet, offerMedia, packageLeadMedia, parseMediaRequest, type MediaItem } from "@/lib/proposals/media";
-import type { OfferSnapshot } from "@/lib/pricing";
+import {
+  IMAGE_WIDTHS,
+  leadMediaIndex,
+  mediaPath,
+  mediaSrcSet,
+  offerMedia,
+  offerPackageMedia,
+  packageLeadMedia,
+  packageMediaPath,
+  packageMediaSrcSet,
+  parseMediaRequest,
+  parsePackageMediaRequest,
+  type MediaItem,
+} from "@/lib/proposals/media";
+import { parseOfferSnapshot, type OfferSnapshot } from "@/lib/pricing";
 import { demoOffer } from "./fixtures/offer";
 
 const image = (n: number): MediaItem => ({ storage_path: `t/gear-items/g/${n}.jpg`, kind: "image", content_type: "image/jpeg", alt_text: `Photo ${n}` });
@@ -68,5 +81,44 @@ describe("lead photos", () => {
     const firstHasPhoto = withMedia({ [first]: [image(4)], [second]: [image(5)] });
     expect(packageLeadMedia(firstHasPhoto, pkg.key)).toEqual({ gearKey: first, index: 0 });
     expect(packageLeadMedia(demoOffer(), pkg.key)).toBeNull();
+  });
+});
+
+describe("package photos", () => {
+  const photo = { storage_path: "t/packages/p/1.webp", content_type: "image/webp" as const, alt_text: "Full setup" };
+  function withPackagePhoto(): { offer: OfferSnapshot; key: string } {
+    const offer = demoOffer();
+    offer.packages[1] = { ...offer.packages[1], image: photo };
+    return { offer, key: offer.packages[1].key };
+  }
+
+  it("parses snapshots with and without a package photo, and rejects malformed ones", () => {
+    const { offer, key } = withPackagePhoto();
+    expect(parseOfferSnapshot(JSON.parse(JSON.stringify(offer))).packages.find((p) => p.key === key)?.image).toEqual(photo);
+    expect(parseOfferSnapshot(JSON.parse(JSON.stringify(demoOffer()))).packages.every((p) => p.image === undefined)).toBe(true);
+    const video = JSON.parse(JSON.stringify(offer));
+    video.packages[1].image.content_type = "video/mp4";
+    expect(() => parseOfferSnapshot(video)).toThrow();
+    const extra = JSON.parse(JSON.stringify(offer));
+    extra.packages[1].image.kind = "image";
+    expect(() => parseOfferSnapshot(extra)).toThrow();
+  });
+
+  it("resolves a package's frozen photo by key only", () => {
+    const { offer, key } = withPackagePhoto();
+    expect(offerPackageMedia(offer, key)).toEqual({ kind: "image", ...photo });
+    expect(offerPackageMedia(offer, offer.packages[0].key)).toBeNull();
+    expect(offerPackageMedia(offer, "not_in_offer")).toBeNull();
+    expect(offerPackageMedia(demoOffer(), key)).toBeNull();
+  });
+
+  it("is addressed on the sibling package-media route, with fixed widths", () => {
+    expect(packageMediaPath("/dj/proposals/p/media", "signature", 400)).toBe("/dj/proposals/p/package-media/signature?w=400");
+    expect(packageMediaPath("/staff/dj/proposals/p/media", "signature")).toBe("/staff/dj/proposals/p/package-media/signature");
+    expect(packageMediaSrcSet("/b/media", "k")).toBe("/b/package-media/k?w=400 400w, /b/package-media/k?w=800 800w, /b/package-media/k?w=1200 1200w, /b/package-media/k?w=1600 1600w");
+    expect(parsePackageMediaRequest("signature", null)).toEqual({ packageKey: "signature", width: 800 });
+    for (const [key, w] of [["../x", null], ["Signature", null], ["signature", "799"], ["signature", ""], ["", null]] as const) {
+      expect(parsePackageMediaRequest(key, w)).toBeNull();
+    }
   });
 });

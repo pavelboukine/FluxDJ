@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight, Expand, ImageOff, Images, Play, RotateCw, X } from "lucide-react";
 import type { OfferSnapshot } from "@/lib/pricing";
-import { leadMediaIndex, mediaPath, mediaSrcSet, type MediaItem } from "@/lib/proposals/media";
+import { leadMediaIndex, mediaPath, mediaSrcSet, packageMediaPath, packageMediaSrcSet, type ImageWidth, type MediaItem } from "@/lib/proposals/media";
 import { cn } from "@/lib/utils";
 
 /**
@@ -79,12 +79,29 @@ export function GearPhoto({ gearKey, sizes, className, label }: { gearKey: strin
       aria-label={count > 1 ? `View ${count} photos and videos of ${name}` : `View ${item.kind === "video" ? "video" : "photo"} of ${name}`}
       className={cn(frame, "group/photo cursor-zoom-in outline-none focus-visible:ring-3 focus-visible:ring-ring/60")}
     >
-      {item.kind === "image" ? <MediaImage gearKey={gearKey} index={index} item={item} sizes={sizes} className="size-full object-contain" /> : <VideoPlaceholder />}
+      {item.kind === "image" ? <MediaImage at={{ gearKey, index }} item={item} sizes={sizes} className="size-full object-contain" /> : <VideoPlaceholder />}
       <span className="pointer-events-none absolute right-1 bottom-1 inline-flex items-center gap-1 rounded-full bg-black/65 p-1 text-xs font-medium text-white @[9rem]/photo:right-2 @[9rem]/photo:bottom-2 @[9rem]/photo:px-2">
         {count > 1 ? <Images aria-hidden className="size-3.5" /> : <Expand aria-hidden className="size-3.5" />}
         <span className={count > 1 ? undefined : "hidden @[9rem]/photo:inline"}>{count > 1 ? count : "View"}</span>
       </span>
     </button>
+  );
+}
+
+/**
+ * A package's own photo (frozen with the offer) in the same 4:3 frame as gear
+ * photos, letterboxed, never cropped. Not a gallery: the package card's
+ * equipment list opens the gear photos.
+ */
+export function PackagePhoto({ packageKey, sizes, className }: { packageKey: string; sizes: string; className?: string }) {
+  const { offer } = useMedia();
+  const image = offer.packages.find((p) => p.key === packageKey)?.image;
+  if (!image) return null;
+  const item: MediaItem = { kind: "image", ...image };
+  return (
+    <div data-testid="package-photo" className={cn("relative flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-xl bg-muted", className)}>
+      <MediaImage at={{ packageKey }} item={item} sizes={sizes} decorative={false} retryable className="size-full object-contain" />
+    </div>
   );
 }
 
@@ -104,19 +121,23 @@ function VideoPlaceholder() {
  * inside labelled buttons; only the gallery's main photo (not inside another
  * control) offers its own "Try again".
  */
-function MediaImage({ gearKey, index, item, sizes, className, eager, decorative = true, retryable = false }: { gearKey: string; index: number; item: MediaItem; sizes: string; className?: string; eager?: boolean; decorative?: boolean; retryable?: boolean }) {
+type MediaAt = { gearKey: string; index: number } | { packageKey: string };
+
+function MediaImage({ at, item, sizes, className, eager, decorative = true, retryable = false }: { at: MediaAt; item: MediaItem; sizes: string; className?: string; eager?: boolean; decorative?: boolean; retryable?: boolean }) {
   const { base, onAccessLost } = useMedia();
   const [state, setState] = useState<PhotoState>("loading");
   const [attempt, setAttempt] = useState(0);
   const probed = useRef(-1);
-  const src = mediaPath(base, gearKey, index, 800) + (attempt ? `&retry=${attempt}` : "");
+  const pathFor = (width: ImageWidth) => ("packageKey" in at ? packageMediaPath(base, at.packageKey, width) : mediaPath(base, at.gearKey, at.index, width));
+  const srcSet = "packageKey" in at ? packageMediaSrcSet(base, at.packageKey) : mediaSrcSet(base, at.gearKey, at.index);
+  const src = pathFor(800) + (attempt ? `&retry=${attempt}` : "");
 
   async function onError() {
     if (probed.current === attempt) return; // One probe per attempt.
     probed.current = attempt;
     let status = 0;
     try {
-      status = (await fetch(mediaPath(base, gearKey, index, 400), { method: "HEAD", cache: "no-store", credentials: "same-origin" })).status;
+      status = (await fetch(pathFor(400), { method: "HEAD", cache: "no-store", credentials: "same-origin" })).status;
     } catch {
       status = 0;
     }
@@ -161,7 +182,7 @@ function MediaImage({ gearKey, index, item, sizes, className, eager, decorative 
         }
       }}
       src={src}
-      srcSet={mediaSrcSet(base, gearKey, index).replaceAll(/w=(\d+)/g, attempt ? `w=$1&retry=${attempt}` : "w=$1")}
+      srcSet={srcSet.replaceAll(/w=(\d+)/g, attempt ? `w=$1&retry=${attempt}` : "w=$1")}
       sizes={sizes}
       alt={decorative ? "" : item.alt_text}
       loading={eager ? "eager" : "lazy"}
@@ -262,7 +283,7 @@ function GearGallery({ gearKey, startIndex, onClose }: { gearKey: string; startI
                     aria-label={`${m.kind === "video" ? "Video" : "Photo"} ${i + 1}: ${m.alt_text}`}
                     className={cn("flex h-12 w-16 items-center justify-center overflow-hidden rounded-md border-2 bg-white/10 outline-none focus-visible:ring-3 focus-visible:ring-white/70", i === index ? "border-white" : "border-transparent")}
                   >
-                    {m.kind === "image" ? <MediaImage gearKey={gearKey} index={i} item={m} sizes="64px" className="size-full object-contain" /> : <Play aria-hidden className="size-4" />}
+                    {m.kind === "image" ? <MediaImage at={{ gearKey, index: i }} item={m} sizes="64px" className="size-full object-contain" /> : <Play aria-hidden className="size-4" />}
                   </button>
                 </li>
               ))}
@@ -278,7 +299,7 @@ function GalleryStage({ gearKey, index, item }: { gearKey: string; index: number
   const { base } = useMedia();
   const [videoFailed, setVideoFailed] = useState(0);
   if (item.kind === "image") {
-    return <MediaImage gearKey={gearKey} index={index} item={item} sizes="(min-width: 1024px) 80vw, 100vw" eager decorative={false} retryable className="max-h-full max-w-full object-contain" />;
+    return <MediaImage at={{ gearKey, index }} item={item} sizes="(min-width: 1024px) 80vw, 100vw" eager decorative={false} retryable className="max-h-full max-w-full object-contain" />;
   }
   if (videoFailed > 1) {
     return (

@@ -6,8 +6,9 @@ import { centsToInputValue } from "@/lib/money";
 type Pkg = { key: string; name: string; description: string | null; base_price_cents: number; tax_category: string; sort_order: number };
 
 /**
- * The package form: name and description, pricing and tax, then (when
- * creating) the included gear, then the less-used settings and key.
+ * The package form: name and description, (when creating) the photo,
+ * pricing and tax, (when creating) the included gear, then the less-used
+ * settings and key.
  */
 export function PackageFields({
   pkg,
@@ -16,6 +17,7 @@ export function PackageFields({
   slug,
   isNew,
   includedGear,
+  photo,
 }: {
   pkg?: Pkg;
   /** Categories configured in Settings. */
@@ -25,6 +27,8 @@ export function PackageFields({
   isNew?: boolean;
   /** The included-gear editor, when it's part of this form. */
   includedGear?: ReactNode;
+  /** The photo picker, when it's part of this form (creating; the package page manages it on its own). */
+  photo?: ReactNode;
 }) {
   return (
     <div className="grid gap-6">
@@ -41,6 +45,11 @@ export function PackageFields({
           hint="Shown to clients on proposals."
         />
       </Group>
+      {photo ? (
+        <Group legend="Package photo" hint="Choose a photo that represents this package. It will appear on client proposals.">
+          {photo}
+        </Group>
+      ) : null}
       <Group legend="Pricing and tax" hint="The client pays this one price for the package. Its included gear is part of it and never charged separately.">
         <TextField
           label={`Base price (${currency})`}

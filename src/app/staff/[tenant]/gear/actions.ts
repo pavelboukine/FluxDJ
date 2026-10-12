@@ -4,13 +4,11 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/auth/staff";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { describeDbError } from "@/lib/db-errors";
 import { fail, KEY_RE, keyFromName, ok, optionalText, text, UUID_RE, type ActionState } from "@/lib/forms";
 import { parseMoneyToCents } from "@/lib/money";
-import { GEAR_MEDIA_TYPES, isGearMediaType, SNIFF_BYTES, sniffMediaType, type GearMediaType } from "@/lib/media/sniff";
-
-const BUCKET = "gear-media";
+import { GEAR_MEDIA_TYPES, isGearMediaType } from "@/lib/media/sniff";
+import { checkUploadedMedia, declaredTypeOf, discardUpload } from "@/lib/media/verify-upload.server";
 /** More media than this on one item is not reordered (sort_order allows 0–10000). */
 const MAX_MEDIA_ORDER = 200;
 
@@ -136,30 +134,18 @@ export async function finalizeGearMediaUpload(
   if (!UUID_RE.test(gearId) || !pathPattern.test(input.path)) return fail("Invalid upload.");
   const altText = input.altText.trim();
 
-  const extension = input.path.split(".").pop();
-  const declared = (Object.keys(GEAR_MEDIA_TYPES) as GearMediaType[]).find((t) => GEAR_MEDIA_TYPES[t].extension === extension)!;
+  const declared = declaredTypeOf(input.path)!;
 
   const reject = async (message: string) => {
-    await createAdminClient().storage.from(BUCKET).remove([input.path]);
+    await discardUpload(input.path);
     return fail(message);
   };
 
   if (altText.length < 1 || altText.length > 300) return reject("Describe the photo or video (alt text, up to 300 characters).");
 
-  // Read only the first bytes and the total size, through a short-lived signed
-  // URL issued to the staff user (so Storage RLS still applies).
-  const { data: signed, error: signError } = await supabase.storage.from(BUCKET).createSignedUrl(input.path, 60);
-  if (signError || !signed) return fail("Upload not found. Try again.");
-  const response = await fetch(signed.signedUrl, { headers: { Range: `bytes=0-${SNIFF_BYTES - 1}` }, cache: "no-store" });
-  if (!response.ok) return reject("The upload could not be read. Try again.");
-  const head = new Uint8Array(await response.arrayBuffer()).subarray(0, SNIFF_BYTES);
-  const totalFromRange = /\/(\d+)$/.exec(response.headers.get("content-range") ?? "")?.[1];
-  const size = Number(totalFromRange ?? response.headers.get("content-length") ?? NaN);
-
-  const detected = sniffMediaType(head);
-  if (detected === null) return reject("That file's contents are not a supported image or video.");
-  if (detected !== declared) return reject("The file's contents don't match its type. Re-export it and try again.");
-  if (!Number.isFinite(size) || size > GEAR_MEDIA_TYPES[detected].maxBytes) return reject("That file is too large.");
+  const checked = await checkUploadedMedia(supabase, input.path, declared);
+  if (!checked.ok) return checked.discard ? reject(checked.message) : fail(checked.message);
+  const detected = checked.type;
 
   const { count } = await supabase.from("gear_media").select("id", { count: "exact", head: true }).eq("gear_item_id", gearId);
   const { error } = await supabase.from("gear_media").insert({

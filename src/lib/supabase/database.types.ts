@@ -725,6 +725,31 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"package_media": {
+                  Row: {
+                    "active": boolean,"alt_text": string,"content_type": string,"created_at": string,"id": string,"package_id": string,"storage_path": string,"tenant_id": string,"updated_at": string
+                  }
+                  Insert: {
+                    "active"?: boolean,"alt_text": string,"content_type": string,"created_at"?: string,"id"?: string,"package_id": string,"storage_path": string,"tenant_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "active"?: boolean,"alt_text"?: string,"content_type"?: string,"created_at"?: string,"id"?: string,"package_id"?: string,"storage_path"?: string,"tenant_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "package_media_package_fk"
+      columns: ["tenant_id","package_id"]
+isOneToOne: false
+      referencedRelation: "packages"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "package_media_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"packages": {
                   Row: {
                     "active": boolean,"base_price_cents": number,"created_at": string,"description": string | null,"id": string,"is_popular": boolean,"key": string,"name": string,"sort_order": number,"tax_category": string,"tenant_id": string,"updated_at": string
@@ -1581,6 +1606,9 @@ isOneToOne: false
                            },
 "set_package_items":
 { Args: { "p_items": Json,"p_package_id": string }; Returns: undefined
+                           },
+"set_package_photo":
+{ Args: { "p_alt_text"?: string,"p_content_type"?: string,"p_package_id": string,"p_storage_path": string }; Returns: Json
                            },
 "set_plan_client_cutoff":
 { Args: { "p_days": number,"p_event_id": string,"p_expected_version": number,"p_reason": string }; Returns: Json

@@ -63,6 +63,14 @@ const packageSchema = z.strictObject({
   tax_category: key,
   is_popular: z.boolean(),
   included: z.array(z.strictObject({ gear_key: key, quantity: z.number().int().min(1).max(100) })),
+  // The package's own photo, frozen only when it had one (absent in older offers).
+  image: z
+    .strictObject({
+      storage_path: z.string().min(1),
+      content_type: z.enum(["image/jpeg", "image/png", "image/webp", "image/avif"]),
+      alt_text: z.string().min(1),
+    })
+    .optional(),
 });
 
 const taxRateSchema = z.strictObject({

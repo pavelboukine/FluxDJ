@@ -1,16 +1,16 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { ActionForm } from "@/components/app/action-form";
 import { PageHeader } from "@/components/app/fields";
 import { RequestIdField } from "@/components/app/request-id-field";
-import { GuardedCancel, UnsavedGuard } from "@/components/app/unsaved-guard";
+import { UnsavedGuard } from "@/components/app/unsaved-guard";
 import { requireStaff } from "@/lib/auth/staff";
-import { createPackage } from "../actions";
 import { loadGearChoices } from "@/lib/catalog/gear-choices.server";
 import { IncludedGearEditor } from "../included-gear-editor";
 import { PackageFields } from "../package-fields";
+import { PackagePhotoPicker } from "../package-photo";
+import { NewPackageForm } from "./new-package-form";
 
-/** Add a package, with its included gear in the same form. */
+/** Add a package, with its photo and included gear in the same form. */
 export default async function NewPackage({ params }: PageProps<"/staff/[tenant]/packages/new">) {
   const { tenant: slug } = await params;
   const staff = await requireStaff(slug);
@@ -29,22 +29,17 @@ export default async function NewPackage({ params }: PageProps<"/staff/[tenant]/
       />
       <section aria-label="New package" className="grid gap-6 rounded-xl border bg-card p-4 sm:p-5">
         <UnsavedGuard>
-          <ActionForm
-            action={createPackage.bind(null, slug)}
-            submitLabel="Save package"
-            pendingLabel="Saving…"
-            trackUnsaved
-            secondary={<GuardedCancel cancelHref={`/staff/${slug}/packages`} message="Discard this new package?" />}
-          >
+          <NewPackageForm slug={slug}>
             <RequestIdField />
             <PackageFields
               taxCategories={Object.keys((tenant.tax_categories ?? {}) as object)}
               currency={tenant.currency}
               slug={slug}
               isNew
+              photo={<PackagePhotoPicker />}
               includedGear={<IncludedGearEditor choices={choices} initial={[]} capped={capped} />}
             />
-          </ActionForm>
+          </NewPackageForm>
         </UnsavedGuard>
       </section>
     </>

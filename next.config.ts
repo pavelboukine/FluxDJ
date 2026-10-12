@@ -42,6 +42,7 @@ const nextConfig: NextConfig = {
       // Proposal photos: private like the page, but the media route sets its own
       // Cache-Control (private, one hour, then revalidated with an access check).
       { source: "/:tenant/proposals/:proposalId/media/:path*", headers: privatePageHeaders.filter((h) => h.key !== "Cache-Control") },
+      { source: "/:tenant/proposals/:proposalId/package-media/:path*", headers: privatePageHeaders.filter((h) => h.key !== "Cache-Control") },
       { source: "/:tenant/invite", headers: clientFormPageHeaders },
       { source: "/:tenant/invitations/:path*", headers: clientFormPageHeaders },
       { source: "/:tenant/contracts/:path*", headers: clientFormPageHeaders },

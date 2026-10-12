@@ -1,11 +1,14 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/auth/staff";
 import { describeDbError } from "@/lib/db-errors";
 import { fail, int, KEY_RE, keyFromName, ok, optionalText, text, UUID_RE, type ActionState } from "@/lib/forms";
 import { parseMoneyToCents } from "@/lib/money";
+import { GEAR_MEDIA_TYPES, isGearMediaType } from "@/lib/media/sniff";
+import { checkUploadedMedia, declaredTypeOf, discardUpload } from "@/lib/media/verify-upload.server";
 
 function readPackageForm(form: FormData, categories: string[]) {
   const name = text(form, "name");
@@ -79,6 +82,8 @@ export async function createPackage(slug: string, _state: ActionState, form: For
   if (error) return fail(`Nothing was saved. ${describeDbError(error)}`);
   const result = data as { id: string; replayed: boolean };
   revalidatePath(`/staff/${slug}/packages`);
+  // The form uploads a chosen photo next, then opens the package itself.
+  if (text(form, "photo_pending") === "1") return ok("Package created.");
   redirect(`/staff/${slug}/packages/${result.id}?created=${result.replayed ? "replayed" : "1"}`);
 }
 
@@ -124,4 +129,75 @@ export async function setPackageArchived(slug: string, packageId: string, archiv
   const result = data as { replayed?: boolean };
   if (result.replayed) return ok(archived ? "This package was already archived." : "This package was already active.");
   return ok(archived ? "Package archived." : "Package restored.");
+}
+
+// ---------------------------------------------------------------------------
+// Package photo
+//
+// The gear media upload flow (see gear/actions.ts), for one image per
+// package: the server picks the path ({tenant}/packages/{package}/uuid.ext),
+// the browser uploads to Storage (RLS: own business, existing package only),
+// then the content is verified before set_package_photo points the package
+// at it. Replacing or removing archives the previous photo's record and keeps
+// its file, so proposals already sent still show it.
+// ---------------------------------------------------------------------------
+
+export type PreparePhotoResult = { ok: true; path: string } | { ok: false; message: string };
+
+const PHOTO_TYPES = "Upload a JPEG, PNG, WebP or AVIF photo.";
+
+export async function preparePackagePhotoUpload(slug: string, packageId: string, file: { contentType: string; size: number }): Promise<PreparePhotoResult> {
+  const { supabase, tenant } = await requireStaff(slug);
+  if (!UUID_RE.test(packageId)) return { ok: false, message: "Package not found." };
+  if (!isGearMediaType(file.contentType) || GEAR_MEDIA_TYPES[file.contentType].kind !== "image") return { ok: false, message: PHOTO_TYPES };
+  const spec = GEAR_MEDIA_TYPES[file.contentType];
+  if (!Number.isInteger(file.size) || file.size <= 0 || file.size > spec.maxBytes) {
+    return { ok: false, message: `That file is too large. Photos can be up to ${spec.maxBytes / 1024 / 1024} MB.` };
+  }
+  const { data: pkg } = await supabase.from("packages").select("id").eq("id", packageId).eq("tenant_id", tenant.id).maybeSingle();
+  if (!pkg) return { ok: false, message: "Package not found." };
+  return { ok: true, path: `${tenant.id}/packages/${packageId}/${randomUUID()}.${spec.extension}` };
+}
+
+/** Verifies an uploaded photo and makes it the package's photo (the previous one is archived, not deleted). */
+export async function finalizePackagePhotoUpload(slug: string, packageId: string, input: { path: string; altText: string }): Promise<ActionState> {
+  const { supabase, tenant } = await requireStaff(slug);
+  const pathPattern = new RegExp(`^${tenant.id}/packages/${packageId}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.(jpg|png|webp|avif)$`);
+  if (!UUID_RE.test(packageId) || !pathPattern.test(input.path)) return fail("Invalid upload.");
+  const declared = declaredTypeOf(input.path)!;
+  const reject = async (message: string) => {
+    await discardUpload(input.path);
+    return fail(message);
+  };
+
+  const { data: pkg } = await supabase.from("packages").select("name").eq("id", packageId).eq("tenant_id", tenant.id).maybeSingle();
+  if (!pkg) return reject("Package not found.");
+  // A description is optional here: the package name describes the photo well enough.
+  const altText = input.altText.trim() || pkg.name;
+  if (altText.length > 300) return reject("The description can be up to 300 characters.");
+
+  const checked = await checkUploadedMedia(supabase, input.path, declared);
+  if (!checked.ok) return checked.discard ? reject(checked.message) : fail(checked.message);
+  if (GEAR_MEDIA_TYPES[checked.type].kind !== "image") return reject(PHOTO_TYPES);
+
+  const { error } = await supabase.rpc("set_package_photo", {
+    p_package_id: packageId,
+    p_storage_path: input.path,
+    p_content_type: checked.type,
+    p_alt_text: altText,
+  });
+  if (error) return reject(describeDbError(error));
+  revalidatePath(`/staff/${slug}/packages`, "layout");
+  return ok("Photo saved. It appears on new proposals.");
+}
+
+/** Removes the package's photo from new proposals. The file is kept for proposals already sent. */
+export async function removePackagePhoto(slug: string, packageId: string): Promise<ActionState> {
+  const { supabase } = await requireStaff(slug);
+  if (!UUID_RE.test(packageId)) return fail("Package not found.");
+  // Null removes; the generated type doesn't say it's nullable.
+  const { data, error } = await supabase.rpc("set_package_photo", { p_package_id: packageId, p_storage_path: null as unknown as string });
+  if (error) return fail(describeDbError(error));
+  revalidatePath(`/staff/${slug}/packages`, "layout");
+  return ok((data as { replayed?: boolean }).replayed ? "This package has no photo." : "Photo removed from new proposals. Proposals already sent keep it.");
 }
