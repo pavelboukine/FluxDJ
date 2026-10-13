@@ -11,6 +11,7 @@ import { ceremonyDetails, generalEditor, knownPeople, momentEditor, savedIntrodu
 import { MusicListsProvider } from "@/components/planning/music-editor";
 import { AlreadyProvided } from "@/components/planning/plan-overview";
 import {
+  NavLink,
   PanelHeading,
   PlanMoment,
   PlanNavigation,
@@ -31,7 +32,7 @@ import { UUID_RE } from "@/lib/forms";
 import { savedListsFrom } from "@/lib/planning/music";
 import { CLIENT_EDITING_SECTION, PROVIDED_SECTION, STRUCTURE_SECTION, WORKSPACE_ID, headingId, planSections } from "@/lib/planning/navigation";
 import type { StageEditor } from "@/lib/planning/stages";
-import { formatEventDate, staffPlanningViewSchema } from "@/lib/planning/view";
+import { formatEventDate, planAwaitingSetup, staffPlanningViewSchema } from "@/lib/planning/view";
 import { EVENT_TYPES } from "../../event-form";
 import { addPlanItem, applyPlanningTemplate, planItemAction, saveStaffItemAction, setUpPlanning } from "./actions";
 import { ClientEditingCard } from "./client-editing-card";
@@ -69,6 +70,7 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
   const archived = Boolean(event.archived_at);
   const lockedReason = archived ? "Unarchive the event to edit planning." : undefined;
   const booked = Boolean(event.booking_confirmed_at) && (event.lifecycle_status === "booked" || event.lifecycle_status === "completed");
+  const awaitingSetup = planAwaitingSetup(view);
   const base = `/staff/${slug}/events/${event.id}`;
   const clients = (event.event_clients ?? [])
     .flatMap((ec) => (ec.clients && !ec.clients.archived_at ? [{ ...ec.clients, primary: ec.is_primary }] : []))
@@ -145,7 +147,7 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
                 { key: STRUCTURE_SECTION, label: "Structure and template" },
               ]}
             >
-              {view.editing ? <EditingControl slug={slug} eventId={event.id} editing={view.editing} archived={archived} booked={booked} /> : null}
+              {awaitingSetup ? setupCard() : view.editing ? <EditingControl slug={slug} eventId={event.id} editing={view.editing} archived={archived} booked={booked} /> : null}
               {workspace()}
             </PlanNavigation>
           </SaveRegistryProvider>
@@ -153,6 +155,57 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
       )}
     </>
   );
+
+  /**
+   * Booking set planning up with Event basics only: choose the template here
+   * (applying it keeps Event basics answers). Clients see "setting up" until then.
+   */
+  function setupCard() {
+    if (view.plan === null) return null;
+    return (
+      <section
+        aria-labelledby="planning-setup-title"
+        data-testid="planning-setup"
+        className="grid gap-3 rounded-xl border border-amber-500/50 bg-amber-500/10 p-4 text-sm"
+      >
+        <div className="grid gap-1">
+          <h2 id="planning-setup-title" className="text-base font-semibold">Set up planning</h2>
+          <p>
+            The event was booked with Event basics only, because no planning template was the default for {typeLabel} events. Choose a
+            template to add its stages, moments and questions. Until then the client sees that you&apos;re setting up their planning and
+            can&apos;t edit it.
+          </p>
+        </div>
+        {archived ? (
+          <p className="text-muted-foreground">Unarchive the event to set up planning.</p>
+        ) : templateOptions.length > 0 ? (
+          <DraftVersionProvider version={view.plan.structure_version}>
+            <ActionForm
+              action={applyPlanningTemplate.bind(null, slug, event!.id)}
+              submitLabel="Apply template"
+              pendingLabel="Applying…"
+              version={view.plan.structure_version}
+            >
+              {/* Nothing to replace yet: Event basics answers are kept and nothing is removed. */}
+              <input type="hidden" name="confirm" value="on" />
+              <SelectField label="Template" name="template_id" defaultValue={defaultTemplate?.id ?? ""} options={templateOptions} placeholder="— choose —" required className="max-w-sm" />
+              <p className="text-xs text-muted-foreground">
+                Event basics answers are kept. Afterwards you can adjust this event&apos;s stages in{" "}
+                <NavLink view={STRUCTURE_SECTION} className="underline underline-offset-4">Structure and template</NavLink>.
+              </p>
+            </ActionForm>
+          </DraftVersionProvider>
+        ) : (
+          <p data-testid="planning-setup-empty">
+            No planning templates are available yet.{" "}
+            <Link className="font-medium underline underline-offset-4" href={`/staff/${slug}/planning-templates`}>Add or manage planning templates</Link>,
+            then come back to choose one. You can also add stages one by one in{" "}
+            <NavLink view={STRUCTURE_SECTION} className="underline underline-offset-4">Structure and template</NavLink>.
+          </p>
+        )}
+      </section>
+    );
+  }
 
   function workspace() {
     if (view.plan === null) return null;
@@ -202,7 +255,9 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
                   {booked
                     ? archived
                       ? "The event is booked, but archived: client planning is closed."
-                      : "The event is booked: the client (with verified access to this event) can open planning from their contract page and /my."
+                      : awaitingSetup
+                        ? "The event is booked. Until you set planning up, the client sees that you're setting it up and can't edit it."
+                        : "The event is booked: the client (with verified access to this event) can open planning from their contract page and /my."
                     : "The client can open planning once the event is booked. Until then, only staff see it."}
                 </p>
                 <p className="text-muted-foreground">
@@ -221,10 +276,11 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
                   )}{" "}
                   {plan.initialized_via === "booking" ? "Set up when the event was booked." : plan.initialized_via === "backfill" ? "Set up for an event booked before planning existed." : "Set up by staff."}
                 </p>
-                {plan.origin === "fallback" ? (
-                  <p role="status" className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3">
-                    Choose a template below to add this event&apos;s stages and moments, or add them one by one in Structure. Event basics
-                    answers are kept either way.
+                {plan.origin === "fallback" && !awaitingSetup ? (
+                  <p className="text-muted-foreground">
+                    To add a template&apos;s stages and moments, apply one in{" "}
+                    <NavLink view={STRUCTURE_SECTION} className="underline underline-offset-4">Structure and template</NavLink>. Event basics
+                    answers are kept.
                   </p>
                 ) : null}
               </section>
@@ -322,7 +378,7 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
 
             {view.editing ? (
               <PlanPanel view={CLIENT_EDITING_SECTION} testId="staff-client-editing">
-                <ClientEditingCard slug={slug} eventId={ev.id} editing={view.editing} archived={archived} booked={booked} />
+                <ClientEditingCard slug={slug} eventId={ev.id} editing={view.editing} archived={archived} booked={booked} notSetUp={awaitingSetup} />
                 <SectionPager view={CLIENT_EDITING_SECTION} />
               </PlanPanel>
             ) : null}

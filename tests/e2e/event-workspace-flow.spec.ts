@@ -41,8 +41,12 @@ test.describe.serial("event workspace", () => {
   let otherVersionId = "";
   const ev: Record<string, { id: string; contractId?: string; proposalId?: string }> = {};
 
-  /** Creates an event with a primary contact and takes it to `upTo` through the app's database functions. */
-  async function stage(key: string, title: string, upTo: Stage, opts: { venue?: string; legacy?: boolean; regenerate?: boolean } = {}) {
+  /**
+   * Creates an event with a primary contact and takes it to `upTo` through the app's database functions.
+   * `planned`: staff set planning up (Event basics only) before the booking; otherwise booking does, and
+   * without a default template it waits for staff to choose one.
+   */
+  async function stage(key: string, title: string, upTo: Stage, opts: { venue?: string; legacy?: boolean; regenerate?: boolean; planned?: boolean } = {}) {
     const id = randomUUID();
     const clientId = randomUUID();
     const clientEmail = `e2e-ws-${key}-${run}@example.test`;
@@ -95,6 +99,7 @@ test.describe.serial("event workspace", () => {
       await admin.rpc("fail_document_job", { p_job_id: j.job_id, p_lease_token: j.lease_token, p_error: "workspace e2e: PDF not needed", p_permanent: true });
     }
     if (!reached(upTo, "booked")) return;
+    if (opts.planned) await must(staffDb.rpc("setup_event_plan", { p_event_id: id, p_template_id: null as unknown as string }));
     await must(staffDb.rpc("record_event_payment", {
       p_event_id: id, p_amount_cents: c!.deposit_cents, p_paid_on: "2026-10-01", p_reference: "E2E-WS", p_note: "", p_idempotency_key: randomUUID(), p_confirm_duplicate: false,
     }));
@@ -119,7 +124,7 @@ test.describe.serial("event workspace", () => {
     await stage("cdraft", "Contract draft wedding", "contract_draft", { venue: "Le Windsor", regenerate: true });
     await stage("csent", "Contract sent wedding", "contract_sent", { venue: "Le Windsor" });
     await stage("deposit", "Noam & Justin Wedding", "signed", { venue: "Château Example" });
-    await stage("booked", "Booked wedding", "booked", { venue: "Château Example" });
+    await stage("booked", "Booked wedding", "booked", { venue: "Château Example", planned: true });
     await stage("legacy", "Legacy wedding", "signed", { venue: "Château Example", legacy: true });
     await stage("corrected", "Corrected wedding", "booked", { venue: "Château Example" });
     const { data: pay } = await must(admin.from("event_payments").select("id").eq("event_id", ev.corrected.id).single());
@@ -148,7 +153,8 @@ test.describe.serial("event workspace", () => {
       ["deposit", "record_payment", "#record-payment", null],
       ["booked", "review_planning", `${base}/events/${ev.booked.id}/planning`, `${base}/events/${ev.booked.id}/run-sheet`],
       ["legacy", "check_booking", "#payments", null],
-      ["corrected", "review_planning", `${base}/events/${ev.corrected.id}/planning`, `${base}/events/${ev.corrected.id}/run-sheet`],
+      // Booked with Event basics only (no default template): staff choose the template first.
+      ["corrected", "set_up_planning", `${base}/events/${ev.corrected.id}/planning`, null],
       ["archived", "archived", null, "#manage"],
     ];
     for (const [key, action, primary, secondary] of expected) {
@@ -216,6 +222,8 @@ test.describe.serial("event workspace", () => {
     await expect(page.locator("#planning").getByRole("link", { name: "Edit planning" })).toHaveAttribute("href", `${base}/events/${ev.booked.id}/planning`);
     await page.goto(`${base}/events/${ev.corrected.id}`);
     await expect(page.getByTestId("next-action")).toContainText("The booking stands, but valid payments no longer cover the deposit");
+    await expect(page.getByTestId("overview-planning")).toContainText("Not set up");
+    await expect(page.locator("#planning").getByRole("link", { name: "Set up planning" })).toHaveAttribute("href", `${base}/events/${ev.corrected.id}/planning`);
     await expect(page.getByLabel("Booking").getByRole("alert")).toContainText("The booking stands, but valid payments no longer cover the required deposit");
     await expect(page.getByTestId("overview-payments")).toContainText("Valid payments no longer cover the deposit; the booking stands.");
 

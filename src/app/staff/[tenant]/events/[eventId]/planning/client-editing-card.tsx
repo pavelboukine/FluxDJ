@@ -55,23 +55,27 @@ function change(entry: CutoffHistoryEntry, timeZone: string): string {
  * active reopening, and the history. Opening and closing now are in
  * EditingControl. Staff editing is never affected.
  */
-export function ClientEditingCard({ slug, eventId, editing, archived, booked }: {
+export function ClientEditingCard({ slug, eventId, editing, archived, booked, notSetUp = false }: {
   slug: string;
   eventId: string;
   editing: StaffEditing;
   archived: boolean;
   booked: boolean;
+  /** Planning awaits setup: the client can't open or edit it, whatever the deadline says. */
+  notSetUp?: boolean;
 }) {
   const tz = editing.timezone;
   const deadline = formatInstant(editing.deadline, tz);
   const now = Date.parse(editing.now);
-  const { title, detail } = staffEditingText(editing);
+  const { title, detail } = notSetUp
+    ? { title: "Not set up", detail: "Planning isn't set up yet: the client can't open or edit it until you choose a template. This deadline applies once it's set up." }
+    : staffEditingText(editing);
 
   return (
     <Card id="client-editing" className="scroll-mt-4" data-testid="client-editing">
       <CardHeader>
         <CardTitle className="flex flex-wrap items-center gap-2">
-          Deadline and history <Badge variant={editing.state === "closed" ? "secondary" : "outline"} data-testid="client-editing-state">{title}</Badge>
+          Deadline and history <Badge variant={notSetUp || editing.state === "closed" ? "secondary" : "outline"} data-testid="client-editing-state">{title}</Badge>
         </CardTitle>
         <CardDescription>
           When the client&apos;s planning closes by itself. You and your staff can edit after the deadline; nothing here changes answers,

@@ -4,8 +4,9 @@
  * deposit) is set up through the same database functions the app calls
  * (their screens are covered by the proposal, contract and payment specs);
  * everything about planning goes through the UI:
- *   - booking without a chosen template gives a Basics-only plan and staff
- *     are prompted to configure it;
+ *   - staff set planning up with Event basics only before the booking (the
+ *     booking-without-a-template case is planning-setup-flow.spec.ts) and can
+ *     still apply a template later;
  *   - starter templates are added explicitly and idempotently; templates are
  *     renamed, reordered, trimmed and duplicated with stable keys;
  *   - the client (phone-sized) opens planning from /my, sees imported answers
@@ -76,6 +77,7 @@ test.describe.serial("planning", () => {
     staffContext = await browser.newContext();
     staff = await staffContext.newPage();
     await signInStaff(staff, tenant.ownerEmail);
+    await must((await sessionFor(tenant.ownerEmail)).rpc("setup_event_plan", { p_event_id: eventId, p_template_id: null as unknown as string }));
     contractId = await bookEvent(tenant, eventId, clientEmail);
     contractual = await contractualState(eventId);
     planningUrl = `/${tenant.slug}/planning/${eventId}`;
@@ -86,14 +88,15 @@ test.describe.serial("planning", () => {
     await archiveTestTenant(tenant);
   });
 
-  test("booking without a template creates Event basics only, and staff are prompted to configure it", async () => {
+  test("staff chose Event basics only before the booking: the plan is ready, and a template can still be applied", async () => {
     await staff.goto(`/staff/${tenant.slug}/events/${eventId}`);
     const card = staff.locator("[data-slot=card]").filter({ has: staff.getByText("Planning", { exact: true }) });
-    await expect(card).toContainText("Event basics only: choose a template to add the event's stages.");
+    await expect(card).toContainText("No template: this event's sections were chosen on the event.");
     await card.getByRole("link", { name: "Edit planning" }).click();
     await staff.waitForURL(`**${staffPlanningUrl}`);
-    await expect(staff.getByText("Created with Event basics only, because no template was chosen. Set up when the event was booked.")).toBeVisible();
-    await expect(staff.getByText("Choose a template below to add this event's stages and moments")).toBeVisible();
+    await expect(staff.getByText("Created with Event basics only, because no template was chosen. Set up by staff.")).toBeVisible();
+    await expect(staff.getByText("To add a template's stages and moments, apply one in")).toBeVisible();
+    await expect(staff.getByTestId("planning-setup")).toHaveCount(0);
     await expect(staff.getByTestId("client-access")).toContainText("The event is booked: the client");
     // Frozen proposal answers, separate from planning fields.
     const frozen = staff.locator("[data-slot=card]").filter({ has: staff.getByText("From the signed contract (frozen)") });

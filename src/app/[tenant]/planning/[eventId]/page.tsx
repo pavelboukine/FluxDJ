@@ -81,6 +81,16 @@ export default async function ClientPlanningPage({ params }: PageProps<"/[tenant
   const { data } = await supabase.rpc("client_planning_view", { p_event_id: eventId, p_tenant_slug: slug });
   const parsed = clientPlanningViewSchema.safeParse(data);
   const view = parsed.success ? parsed.data : { state: "unavailable" as const };
+  if (view.state === "setting_up") {
+    return (
+      <Notice title="Your DJ is setting up your event planning" email={email}>
+        <p data-testid="planning-setting-up">
+          Check back soon. {view.brand.display_name} is preparing the planning for {view.event.title} ({formatEventDate(view.event.event_date)}).
+          You&apos;ll be able to fill it in once it&apos;s ready. See <Link className="underline" href="/my">your events</Link>.
+        </p>
+      </Notice>
+    );
+  }
   if (view.state !== "available") {
     return (
       <Notice title="Planning isn't available" email={email}>

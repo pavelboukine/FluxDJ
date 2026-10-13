@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contractChanges, contractSummary, nextAction, paymentOverview, planningLine, proposalSummary, type ContractRecord, type WorkspaceFacts } from "@/lib/events/workspace";
+import { contractChanges, contractSummary, nextAction, paymentOverview, planningLine, planningSummary, proposalSummary, type ContractRecord, type WorkspaceFacts } from "@/lib/events/workspace";
 import type { PaymentSummary } from "@/lib/payments";
 
 const NOW = new Date("2026-10-07T16:00:00Z");
@@ -130,6 +130,21 @@ describe("next action", () => {
     const corrected = nextAction(facts({ ...booked, payments: summary({ deposit_outstanding_cents: 10_000, booking: { lifecycle_status: "booked", deposit_no_longer_met: true } }) }));
     expect(corrected.key).toBe("set_up_planning");
     expect(corrected.warning).toContain("The booking stands, but valid payments no longer cover the deposit ($100.00 short)");
+  });
+
+  it("booked with Event basics only and no template chosen: set up planning, not review", () => {
+    const booked = { lifecycle: "booked", contracts: [contract("c1", "signed")], payments: summary({ booking: { lifecycle_status: "booked", booking_confirmed_at: "2026-10-05T03:53:00Z" } }) };
+    const awaiting = nextAction(facts({ ...booked, planning: { exists: true, awaitingSetup: true, progress, editing: editing("open") } }));
+    expect(awaiting).toMatchObject({ key: "set_up_planning", title: "Set up planning", primary: { label: "Set up planning", href: "/staff/dj/events/ev/planning" }, secondary: null });
+    expect(awaiting.detail).not.toContain("Client editing open");
+    expect(planningSummary(facts({ ...booked, planning: { exists: true, awaitingSetup: true, progress, editing: editing("open") } }))).toMatchObject({
+      status: "Not set up", detail: "Event basics only: choose a planning template.",
+    });
+    // Before the booking, the deposit gate still decides (planning setup never jumps ahead of it).
+    const deposit = nextAction(facts({ lifecycle: "awaiting_deposit", contracts: [contract("c1", "signed")], payments: summary(), planning: { exists: true, awaitingSetup: true, progress, editing: null } }));
+    expect(deposit.key).toBe("record_payment");
+    // Once set up, the usual review.
+    expect(pick(facts({ ...booked, planning: { exists: true, awaitingSetup: false, progress, editing: editing("open") } })).key).toBe("review_planning");
   });
 
   it("archived, cancelled and completed events suggest no blocked action", () => {

@@ -25,6 +25,7 @@ import {
   type WorkspaceFacts,
 } from "@/lib/events/workspace";
 import { UUID_RE } from "@/lib/forms";
+import { planAwaitingSetup } from "@/lib/planning/view";
 import { telHref } from "@/lib/phone";
 import { cn } from "@/lib/utils";
 import { searchClients } from "../../clients/actions";
@@ -110,6 +111,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
     payments: payments.summary,
     planning: {
       exists: Boolean(planning && planning.plan !== null),
+      awaitingSetup: planning ? planAwaitingSetup(planning) : false,
       progress: planning && planning.plan !== null ? planning.progress : null,
       editing: planning && planning.plan !== null ? (planning.editing ?? null) : null,
     },

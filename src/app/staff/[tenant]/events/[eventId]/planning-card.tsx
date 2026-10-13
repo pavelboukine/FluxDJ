@@ -3,7 +3,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { StaffContext } from "@/lib/auth/staff";
 import { formatInstant } from "@/lib/planning/cutoff";
-import { progressHeadline, staffPlanningViewSchema } from "@/lib/planning/view";
+import { planAwaitingSetup, progressHeadline, staffPlanningViewSchema } from "@/lib/planning/view";
 
 /** The event's planning view (read only: rendering never sets up a plan). */
 export async function loadPlanning(staff: StaffContext, eventId: string) {
@@ -16,6 +16,7 @@ export async function loadPlanning(staff: StaffContext, eventId: string) {
 export function PlanningCard({ slug, eventId, view, archived }: { slug: string; eventId: string; view: Awaited<ReturnType<typeof loadPlanning>>; archived: boolean }) {
   if (!view) return null;
   const base = `/staff/${slug}/events/${eventId}`;
+  const awaitingSetup = planAwaitingSetup(view);
   return (
     <Card id="planning" className="scroll-mt-20">
       <CardHeader>
@@ -23,9 +24,11 @@ export function PlanningCard({ slug, eventId, view, archived }: { slug: string; 
         <CardDescription>
           {view.plan === null
             ? "Not set up yet. Booking sets it up automatically; you can also set it up now and choose a template."
-            : view.plan.origin === "template"
-              ? `From the template "${view.plan.source_template_name}".`
-              : "Event basics only: choose a template to add the event's stages."}
+            : awaitingSetup
+              ? "Not set up: booked with Event basics only. Choose a planning template; the client can't edit planning until you do."
+              : view.plan.origin === "template"
+                ? `From the template "${view.plan.source_template_name}".`
+                : "No template: this event's sections were chosen on the event."}
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-3 text-sm">
@@ -34,7 +37,7 @@ export function PlanningCard({ slug, eventId, view, archived }: { slug: string; 
             {progressHeadline(view.progress)} <span className="text-muted-foreground">(available sections only)</span>
           </p>
         ) : null}
-        {view.plan !== null && view.editing ? (
+        {view.plan !== null && view.editing && !awaitingSetup ? (
           <p data-testid="planning-card-editing">
             {view.editing.state === "open"
               ? `Client editing open until ${formatInstant(view.editing.deadline, view.editing.timezone)}.`
@@ -50,7 +53,7 @@ export function PlanningCard({ slug, eventId, view, archived }: { slug: string; 
         <div className="flex flex-wrap gap-2">
           {view.plan === null && archived ? null : (
             <Link className={buttonVariants({ variant: "outline", size: "sm" })} href={`${base}/planning`}>
-              {view.plan === null ? "Set up planning" : "Edit planning"}
+              {view.plan === null || awaitingSetup ? "Set up planning" : "Edit planning"}
             </Link>
           )}
           {view.plan !== null ? (

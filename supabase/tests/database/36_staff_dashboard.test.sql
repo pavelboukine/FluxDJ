@@ -244,8 +244,13 @@ select is(tests.planning('Plan archived'), null, 'archived events are not listed
 select is(tests.planning('Plan not booked'), null, 'events without a booking (and so no client planning) are not listed');
 select is((select count(*)::int from public.event_plans where event_id = tests.id('Plan not booked')), 0, 'and reading sets up no plan');
 
--- A plan whose available sections are all answered is not listed.
-select tests.ev('Plan done', 57, 'America/Toronto', 'Château Montebello'); select tests.book('Plan done');
+-- A plan whose available sections are all answered is not listed (staff set
+-- it up with Event basics only, so the client can fill it).
+select tests.ev('Plan done', 57, 'America/Toronto', 'Château Montebello');
+select tests.login_as(tests.id('staff_a'));
+select public.setup_event_plan(tests.id('Plan done'), null);
+select tests.su();
+select tests.book('Plan done');
 select private.set_plan_cutoff_columns(tests.id('Plan done'), now() + interval '2 days', null);
 update public.event_plan_items set disabled_at = now()
   where plan_id = (select id from public.event_plans where event_id = tests.id('Plan done')) and key <> 'basics';

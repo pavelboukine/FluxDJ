@@ -29,7 +29,8 @@ export type WorkspaceFacts = {
   contracts: ContractRecord[];
   /** private.event_payment_summary, or null if it could not be read. */
   payments: PaymentSummary | null;
-  planning: { exists: boolean; progress: PlanProgress | null; editing: StaffEditing | null };
+  /** awaitingSetup: booked with Event basics only and no template chosen yet (see planAwaitingSetup). */
+  planning: { exists: boolean; awaitingSetup?: boolean; progress: PlanProgress | null; editing: StaffEditing | null };
   primaryContact: { name: string; archived: boolean } | null;
   /** Legal name, address and contact email saved (contracts need them). */
   identitySaved: boolean;
@@ -114,6 +115,16 @@ export function nextAction(f: WorkspaceFacts): NextAction {
       const warning = booking?.deposit_no_longer_met
         ? `The booking stands, but valid payments no longer cover the deposit${f.payments?.deposit_outstanding_cents ? ` (${money(f.payments.deposit_outstanding_cents)} short)` : ""}. Check the payments.`
         : null;
+      if (f.planning.exists && f.planning.awaitingSetup) {
+        return {
+          ...blank,
+          key: "set_up_planning",
+          title: "Set up planning",
+          detail: "The event is booked with Event basics only. Choose a planning template; the client can't edit planning until you do.",
+          primary: { label: "Set up planning", href: planningHref },
+          warning,
+        };
+      }
       return f.planning.exists
         ? { ...blank, key: "review_planning", title: "Review planning", detail: planningLine(f.planning) ?? "The event is booked.", primary: { label: "Review planning", href: planningHref }, secondary: runSheet, warning }
         : { ...blank, key: "set_up_planning", title: "Set up planning", detail: "The event is booked but has no plan yet. You choose a template when you set it up.", primary: { label: "Set up planning", href: planningHref }, warning };
@@ -344,6 +355,9 @@ export function planningSummary(f: WorkspaceFacts): Summary {
   const event = `/staff/${f.slug}/events/${f.eventId}`;
   if (!f.planning.exists) {
     return { status: "Not set up", detail: f.lifecycle === "booked" ? "Set it up from the planning page." : "Set up automatically when the event is booked.", link: { label: "Details", href: "#planning" } };
+  }
+  if (f.planning.awaitingSetup) {
+    return { status: "Not set up", detail: "Event basics only: choose a planning template.", link: { label: "Set up", href: `${event}/planning` } };
   }
   return {
     status: f.planning.progress ? progressHeadline(f.planning.progress) : "Set up",

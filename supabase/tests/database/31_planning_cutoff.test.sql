@@ -22,12 +22,17 @@ begin
   perform set_config('request.jwt.claims', '', true);
 end $$;
 -- A booked event (and so a plan) for client Y in tenant A, `days_ahead` days from today.
+-- Staff set planning up first with Event basics only (a configured plan the
+-- client can fill; booking keeps it).
 create function tests.booked(name text, days_ahead int, tz text default 'America/Toronto') returns uuid language plpgsql as $$
 begin
   insert into public.events (id, tenant_id, title, event_type, event_date, timezone, internal_notes)
   values (tests.id(name), tests.id('tenant_a'), name, 'wedding', current_date + days_ahead, tz, 'CUTOFF SECRET NOTE');
   insert into public.event_clients (tenant_id, event_id, client_id, is_primary, can_sign) values (tests.id('tenant_a'), tests.id(name), tests.id('a_client_y'), true, true);
   insert into public.event_access (tenant_id, event_id, client_id, user_id) values (tests.id('tenant_a'), tests.id(name), tests.id('a_client_y'), tests.id('client_y'));
+  perform tests.login_as(tests.id('staff_a'));
+  perform public.setup_event_plan(tests.id(name), null);
+  perform tests.su();
   perform set_config('flux.booking_event', tests.id(name)::text, true);
   update public.events set lifecycle_status = 'booked', booking_confirmed_at = now() where id = tests.id(name);
   perform set_config('flux.booking_event', '', true);

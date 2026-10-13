@@ -136,6 +136,12 @@ const eventSchema = z.object({
 
 export const clientPlanningViewSchema = z.discriminatedUnion("state", [
   z.object({ state: z.literal("unavailable") }),
+  /** Booked, but staff haven't set planning up yet (Event basics only from booking): nothing to fill in. */
+  z.object({
+    state: z.literal("setting_up"),
+    brand: z.object({ display_name: z.string(), brand_colors: z.record(z.string(), z.string()) }),
+    event: eventSchema,
+  }),
   z.object({
     state: z.literal("available"),
     brand: z.object({ display_name: z.string(), brand_colors: z.record(z.string(), z.string()) }),
@@ -186,6 +192,22 @@ export const staffPlanningViewSchema = z.union([
   }),
 ]);
 export type StaffPlanningView = z.infer<typeof staffPlanningViewSchema>;
+
+/**
+ * Booking set the plan up with Event basics only (no template was the
+ * default) and staff haven't configured it: no template applied and nothing
+ * enabled besides Event basics. Clients can't open or save it until staff set
+ * it up (private.plan_awaiting_setup enforces the same rule).
+ */
+export function planAwaitingSetup(view: StaffPlanningView): boolean {
+  if (view.plan === null) return false;
+  if (view.plan.origin !== "fallback" || view.plan.initialized_via === "staff") return false;
+  const { general, stages } = view.structure;
+  return (
+    general.every((g) => g.key === "basics" || g.disabled) &&
+    stages.every((s) => s.disabled && s.moments.every((m) => m.disabled))
+  );
+}
 
 /** Result of saving a plan item (Event basics or stage details), from the client or staff action. */
 export type SaveItemResult =
