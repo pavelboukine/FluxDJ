@@ -3,10 +3,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Disclosure } from "@/components/app/disclosure";
 import type { StaffContext } from "@/lib/auth/staff";
 import { CONTRACT_STATUS_LABEL } from "@/lib/contracts/content";
+import { dateIn, shortInstant } from "@/lib/dates";
 import { SIGNING_MODE_LABELS, USAGE_LABELS, type SigningMode, type TemplateUsage } from "@/lib/contracts/usage";
 import { GenerateContractPanel } from "./generate-panel";
 
-const fmt = (iso: string) => new Intl.DateTimeFormat("en-CA", { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso));
 /** Ends a sentence after a formatted time without doubling the period of "p.m.". */
 const sentence = (text: string) => (text.endsWith(".") ? text : `${text}.`);
 
@@ -20,10 +20,14 @@ function frozenDetails(snapshot: unknown): FrozenDetails | null {
   return { title: str(s.event.title), date: str(s.event.date), venueName: str(s.event.venue_name), venueAddress: str(s.event.venue_address), clientPhone: str(s.client?.phone) };
 }
 
-/** The event's contracts and the template versions a draft can be generated from, read once by the event page. */
+/**
+ * The event's contracts and the template versions a draft can be generated
+ * from, read once by the event page. Times are shown in the event's time
+ * zone (the server's own zone is UTC in production).
+ */
 export async function loadContracts(staff: StaffContext, eventId: string) {
   const { supabase, tenant } = staff;
-  const [{ data: versions }, { data: contracts }] = await Promise.all([
+  const [{ data: versions }, { data: contracts }, { data: event }] = await Promise.all([
     supabase
       .from("contract_template_versions")
       .select("id, version_number, placeholders, published_at, usage, contract_templates!contract_template_versions_template_fk(name, active)")
@@ -32,11 +36,17 @@ export async function loadContracts(staff: StaffContext, eventId: string) {
       .order("version_number", { ascending: false }),
     supabase
       .from("contracts")
-      .select("id, status, created_at, signed_at, signing_mode, template_version_id, party_snapshot, contract_template_versions!contracts_template_version_fk(version_number, contract_templates!contract_template_versions_template_fk(name))")
+      .select("id, status, created_at, signed_at, signing_mode, template_version_id, balance_due_date, party_snapshot, contract_template_versions!contracts_template_version_fk(version_number, contract_templates!contract_template_versions_template_fk(name))")
       .eq("tenant_id", tenant.id)
       .eq("event_id", eventId)
       .order("created_at", { ascending: false }),
+    supabase.from("events").select("event_date, timezone").eq("tenant_id", tenant.id).eq("id", eventId).maybeSingle(),
   ]);
+  const timeZone = event?.timezone ?? tenant.timezone;
+  const fmt = (iso: string) => shortInstant(iso, timeZone);
+  // The remaining balance is usually due on the event day: the default for a new draft, unless that day has passed
+  // (the database refuses a past date). A calendar date, compared in the event's own zone, so never shifted.
+  const suggestedBalanceDueDate = event && event.event_date >= dateIn(timeZone, new Date()) ? event.event_date : null;
   const activeAll = (versions ?? []).filter((v) => v.contract_templates?.active);
   // Versions published before usage modes can't be used (the database refuses them too).
   const active = activeAll.filter((v) => v.usage !== "legacy");
@@ -56,10 +66,11 @@ export async function loadContracts(staff: StaffContext, eventId: string) {
     signing_mode: c.signing_mode,
     created_at: c.created_at,
     signed_at: c.signed_at,
+    balance_due_date: c.balance_due_date,
     label: `${c.contract_template_versions?.contract_templates?.name ?? "Contract"} v${c.contract_template_versions?.version_number ?? "?"}, generated ${fmt(c.created_at)}`,
     frozen: c.status === "draft" || c.status === "sent" ? frozenDetails(c.party_snapshot) : null,
   }));
-  return { contracts: rows, options, defaultVersionId: latest?.id ?? null, legacyHidden: activeAll.length - active.length };
+  return { contracts: rows, options, defaultVersionId: latest?.id ?? null, legacyHidden: activeAll.length - active.length, suggestedBalanceDueDate, fmt };
 }
 
 /**
@@ -83,7 +94,7 @@ export function ContractCard({
   /** Event or signer details edited since the current draft or sent contract froze them. */
   changes?: string[];
 }) {
-  const { contracts, options, defaultVersionId, legacyHidden } = data;
+  const { contracts, options, defaultVersionId, legacyHidden, suggestedBalanceDueDate, fmt } = data;
   const draft = contracts.find((c) => c.status === "draft");
   const sent = contracts.find((c) => c.status === "sent");
   const signed = contracts.find((c) => c.status === "signed");
@@ -119,7 +130,8 @@ export function ContractCard({
             approvalId={approvalId}
             versions={options}
             defaultVersionId={defaultVersionId}
-            currentDraft={draft ? { id: draft.id, label: draft.label, signable: draft.signing_mode !== "none" } : null}
+            currentDraft={draft ? { id: draft.id, label: draft.label, signable: draft.signing_mode !== "none", balanceDueDate: draft.balance_due_date } : null}
+            suggestedBalanceDueDate={suggestedBalanceDueDate}
             legacyHidden={legacyHidden}
             signer={signer}
             changes={draft ? changes : []}

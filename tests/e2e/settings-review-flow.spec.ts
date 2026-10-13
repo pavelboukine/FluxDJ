@@ -114,7 +114,8 @@ test.describe.serial("business settings, contract generation and review", () => 
     const select = owner.getByLabel("Template version");
     await expect(select.locator("option:checked")).toHaveText("Agreement B (newer) · version 1 · DEMO (latest published)");
     await select.selectOption({ label: "Agreement A (older) · version 1 · DEMO" });
-    await expect(owner.getByLabel("Balance due date")).toBeDisabled();
+    await expect(owner.getByLabel("Remaining balance due")).toBeDisabled();
+    await expect(owner.getByLabel("Remaining balance due")).toHaveValue(""); // this template has no balance due date
     await owner.getByRole("button", { name: "Generate contract draft" }).click();
     await owner.waitForURL(/\/contracts\/[0-9a-f-]{36}$/);
     const { data: first } = await admin.from("contracts").select("id, template_version_id, deposit_percent").eq("event_id", eventId).single();
@@ -124,7 +125,7 @@ test.describe.serial("business settings, contract generation and review", () => 
     // Regenerate with the default (latest) version and an explicit deadline.
     await owner.goto(proposalUrl);
     await expect(owner.getByLabel("Template version").locator("option:checked")).toHaveText(/latest published/);
-    await owner.getByLabel("Balance due date").fill("2027-08-01");
+    await owner.getByLabel("Remaining balance due").fill("2027-08-01");
     await owner.getByRole("button", { name: "Regenerate draft…" }).click();
     await owner.getByRole("dialog", { name: "Confirm replacing the draft" }).getByRole("button", { name: "Replace draft" }).click();
     await owner.waitForURL((url) => url.pathname.includes("/contracts/") && !url.pathname.endsWith(first!.id));

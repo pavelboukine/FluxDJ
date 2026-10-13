@@ -137,6 +137,12 @@ describe("delivery status shown to staff", () => {
     }
     expect(deliveryState(row({ provider_status: "bounced", provider_status_at: "x", provider_detail: "Permanent · General" })).explanation).toContain("(Permanent · General)");
   });
+  it("a soft (transient) bounce is shown honestly but isn't an attention item, as on the dashboard", () => {
+    const soft = deliveryState(row({ provider_status: "bounced", provider_status_at: "x", provider_detail: "Transient · MailboxFull" }));
+    expect(soft).toMatchObject({ label: "Temporarily refused", tone: "pending", attention: false, retryable: false });
+    expect(soft.explanation).toContain("(Transient · MailboxFull)");
+    expect(deliveryState(row({ provider_status: "bounced", provider_status_at: "x", provider_detail: null }))).toMatchObject({ label: "Bounced", attention: true });
+  });
   it("tells queued, retrying and cancelled emails apart", () => {
     expect(deliveryState(row({ status: "pending", attempts: 0, sent_at: null })).label).toBe("Waiting to send");
     expect(deliveryState(row({ status: "pending", attempts: 2, sent_at: null, last_error: "Resend responded 503" })).label).toBe("Retrying");

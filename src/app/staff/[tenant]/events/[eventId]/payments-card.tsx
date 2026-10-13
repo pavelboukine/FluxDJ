@@ -4,14 +4,13 @@ import { Disclosure } from "@/components/app/disclosure";
 import { TextField } from "@/components/app/fields";
 import { InvoiceLink, PaymentFigures } from "@/components/payments/payment-summary";
 import type { StaffContext } from "@/lib/auth/staff";
+import { shortDate, shortInstant } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
 import { linkHost, todayIn, type PaymentSummary } from "@/lib/payments";
 import { recordPayment, saveInvoiceUrl } from "../payment-actions";
 import { CheckBooking } from "./check-booking";
 import { InvalidatePayment } from "./invalidate-payment";
 import { RecordPaymentForm } from "./record-payment-form";
-
-const fmt = (iso: string) => new Intl.DateTimeFormat("en-CA", { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso));
 
 export type PaymentRow = {
   id: string;
@@ -57,6 +56,7 @@ export function PaymentsCard({
   archived,
   data,
   recordOpen,
+  timeZone,
 }: {
   staff: StaffContext;
   slug: string;
@@ -65,9 +65,12 @@ export function PaymentsCard({
   data: Awaited<ReturnType<typeof loadPayments>>;
   /** Open the record form at once (the event is waiting for its deposit). */
   recordOpen: boolean;
+  /** The event's time zone: when payments were recorded and the booking confirmed. */
+  timeZone: string;
 }) {
   const { tenant } = staff;
   const { summary: s, payments, billing } = data;
+  const fmt = (iso: string) => shortInstant(iso, timeZone);
   if (!s) return null;
 
   return (
@@ -77,7 +80,7 @@ export function PaymentsCard({
         <CardDescription>Received elsewhere (Wave, e-transfer, cash…) and recorded here by hand. Flux DJ doesn&apos;t process payments.</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-5">
-        <BookingState slug={slug} eventId={eventId} s={s} archived={archived} />
+        <BookingState slug={slug} eventId={eventId} s={s} archived={archived} fmt={fmt} />
         <section aria-label="Payment summary" className="grid gap-2">
           <PaymentFigures
             audience="staff"
@@ -171,7 +174,7 @@ export function PaymentsCard({
 const POLICY_TEXT = { on_deposit: "when signed and the deposit is received", on_signature: "when signed" } as const;
 
 /** The booking state, decided in the database from the signed contract's frozen policy and valid payments. */
-function BookingState({ slug, eventId, s, archived }: { slug: string; eventId: string; s: PaymentSummary; archived: boolean }) {
+function BookingState({ slug, eventId, s, archived, fmt }: { slug: string; eventId: string; s: PaymentSummary; archived: boolean; fmt: (iso: string) => string }) {
   const b = s.booking;
   const money = (cents: number) => formatCents(cents, s.currency);
   if (b.lifecycle_status === "booked") {
@@ -180,7 +183,9 @@ function BookingState({ slug, eventId, s, archived }: { slug: string; eventId: s
         <p className="font-medium">Booked · confirmed {b.booking_confirmed_at ? fmt(b.booking_confirmed_at) : ""}</p>
         <p className="text-muted-foreground">
           {b.policy ? `This contract confirms the booking ${POLICY_TEXT[b.policy]}.` : "Confirmed by a booking check (signed and deposit received)."}{" "}
-          {s.remaining_balance_cents ? `${money(s.remaining_balance_cents)} is still to be paid.` : null}
+          {s.remaining_balance_cents
+            ? `${money(s.remaining_balance_cents)} is still to be paid${s.terms?.balance_due_date ? `, due ${shortDate(s.terms.balance_due_date)}` : ""}.`
+            : null}
         </p>
         {b.deposit_no_longer_met ? (
           <p role="alert" className="font-medium text-amber-700 dark:text-amber-400">

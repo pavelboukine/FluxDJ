@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { eventDisplayStatus, eventStatusLabel } from "@/lib/events/status";
 import { dateIn, shortDate } from "@/lib/dates";
+import { isTransientBounce } from "@/lib/email/history";
 import { formatCents } from "@/lib/money";
 
 export { dateIn, shortDate };
@@ -253,7 +254,7 @@ export function deliveryProblems(rows: ProviderProblemRow[]): { undelivered: num
   for (const r of latest.values()) {
     if (r.provider_status === "complained") complaints += 1;
     else if (r.provider_status === "failed" || r.provider_status === "suppressed") undelivered += 1;
-    else if (r.provider_status === "bounced" && !/^transient/i.test(r.provider_detail ?? "")) undelivered += 1;
+    else if (r.provider_status === "bounced" && !isTransientBounce(r.provider_detail)) undelivered += 1;
   }
   return { undelivered, complaints };
 }

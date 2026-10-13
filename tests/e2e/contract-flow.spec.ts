@@ -109,6 +109,19 @@ test.describe.serial("contract templates and contract drafts", () => {
     await expect(staff.getByText(/Next: generate the contract draft\. The event is not booked\./)).toBeVisible();
 
     await staff.getByLabel("Template version").selectOption({ label: `${templateName} · version 1 · DEMO (latest published)` });
+    // The remaining balance defaults to the event date (the deposit is separate: due on signing).
+    const due = staff.getByLabel("Remaining balance due");
+    await expect(due).toHaveValue("2027-09-18");
+    await expect(staff.getByText("Defaults to the event date. You can change it before generating the contract.")).toBeVisible();
+    // The same calendar day in a browser far ahead of the event's zone (UTC+14): never shifted.
+    const farAhead = await browser.newContext({ timezoneId: "Pacific/Kiritimati" });
+    const ahead = await farAhead.newPage();
+    await signInStaff(ahead, tenant.ownerEmail);
+    await ahead.goto(proposalUrl);
+    await expect(ahead.getByLabel("Remaining balance due")).toHaveValue("2027-09-18");
+    await farAhead.close();
+    // Left empty, nothing is assumed: generation asks for it.
+    await due.fill("");
     await staff.getByRole("button", { name: "Generate contract draft" }).click();
     const missing = staff.getByRole("alert").filter({ hasText: "Nothing was generated" });
     await expect(missing).toContainText("Venue address: add it to the event.");
@@ -120,7 +133,7 @@ test.describe.serial("contract templates and contract drafts", () => {
 
   test("a generated draft shows the exact agreement, safely and readably on a phone", async () => {
     await admin.from("events").update({ venue_address: "77 Rue E2E, Montréal" }).eq("id", eventId);
-    await staff.getByLabel("Balance due date").fill("2027-08-18");
+    await staff.getByLabel("Remaining balance due").fill("2027-08-18"); // the DJ's own choice, not the event date
     await staff.getByRole("button", { name: "Generate contract draft" }).dblclick();
     await staff.waitForURL(new RegExp(`/staff/${tenant.slug}/contracts/[0-9a-f-]{36}$`));
     contractUrl = staff.url();
@@ -157,7 +170,10 @@ test.describe.serial("contract templates and contract drafts", () => {
   test("regenerating needs confirmation and keeps the replaced draft as history", async () => {
     await staff.goto(proposalUrl);
     await staff.getByLabel("Template version").selectOption({ label: `${templateName} · version 1 · DEMO (latest published)` });
-    await staff.getByLabel("Balance due date").fill("2027-08-25");
+    // Regenerating starts from the draft's own date, never silently from the event date.
+    await expect(staff.getByLabel("Remaining balance due")).toHaveValue("2027-08-18");
+    await expect(staff.getByText("The current draft's date. You can change it before regenerating.")).toBeVisible();
+    await staff.getByLabel("Remaining balance due").fill("2027-08-25");
     await staff.getByRole("button", { name: "Regenerate draft…" }).click();
     const dialog = staff.getByRole("dialog", { name: "Confirm replacing the draft" });
     await dialog.getByRole("button", { name: "Cancel" }).click();

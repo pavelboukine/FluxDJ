@@ -34,12 +34,11 @@ import { addEventContact, openProposalDraft, removeEventContact, updateEvent } f
 import { EventFields } from "../event-fields";
 import { EVENT_TYPES } from "../event-form";
 import { ArchivePanel } from "./archive-panel";
-import { CommunicationsCard, loadCommunications } from "./communications-card";
+import { CommunicationsCard, emailProblems, loadCommunications } from "./communications-card";
 import { PaymentsCard, loadPayments } from "./payments-card";
 import { PlanningCard, loadPlanning } from "./planning-card";
 import { RemoveContact } from "./remove-contact";
 
-const fmt = (iso: string) => new Intl.DateTimeFormat("en-CA", { dateStyle: "medium" }).format(new Date(iso));
 const TYPE_LABEL = Object.fromEntries(EVENT_TYPES) as Record<string, string>;
 const PROPOSAL_STATUS: Record<string, string> = {
   draft: "draft",
@@ -120,6 +119,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
     usableContractVersions: contracts.options.length,
     signerPhoneMissing,
     contractChanges: changes,
+    emailProblems: emailProblems(communications.rows),
   };
   const action = nextAction(facts);
   const pay = paymentOverview(payments.summary);
@@ -166,7 +166,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
 
       <section aria-label="Overview" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Tile title="Proposal" summary={proposalSummary(facts)} testId="overview-proposal" />
-        <Tile title="Contract" summary={contractSummary(facts, fmt)} testId="overview-contract" />
+        <Tile title="Contract" summary={contractSummary(facts, (iso) => shortDate(dateIn(event.timezone, new Date(iso))))} testId="overview-contract" />
         <div className="grid content-start gap-1.5 rounded-xl border bg-card p-3.5 text-sm" data-testid="overview-payments">
           <div className="flex items-baseline justify-between gap-2">
             <h2 className="text-xs font-medium tracking-wider text-muted-foreground uppercase">Payments</h2>
@@ -265,11 +265,11 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
           changes={changes}
         />
 
-        <PaymentsCard staff={staff} slug={slug} eventId={event.id} archived={archived} data={payments} recordOpen={action.key === "record_payment"} />
+        <PaymentsCard staff={staff} slug={slug} eventId={event.id} archived={archived} data={payments} recordOpen={action.key === "record_payment"} timeZone={event.timezone} />
 
         <PlanningCard slug={slug} eventId={event.id} view={planning} archived={archived} />
 
-        <CommunicationsCard slug={slug} rows={communications} />
+        <CommunicationsCard slug={slug} data={communications} timeZone={event.timezone} />
 
         <div className="grid gap-6 lg:grid-cols-2">
           <Card id="contacts" className="scroll-mt-20">
@@ -423,7 +423,7 @@ function NextStep({ action, archived }: { action: NextAction; archived: boolean 
         <p role="status" className="flex gap-1.5 rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm">
           <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400" />
           <span>
-            {action.warning} <a className="font-medium underline" href="#payments">Payments</a>
+            {action.warning.text} <a className="font-medium underline" href={action.warning.link.href}>{action.warning.link.label}</a>
           </span>
         </p>
       ) : null}

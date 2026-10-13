@@ -1,6 +1,6 @@
 import type { PaymentSummary } from "@/lib/payments";
 import { formatCents } from "@/lib/money";
-import { shortInstant } from "@/lib/dates";
+import { shortDate, shortInstant } from "@/lib/dates";
 import type { StaffEditing } from "@/lib/planning/cutoff";
 import { progressHeadline, type PlanProgress } from "@/lib/planning/view";
 
@@ -44,7 +44,15 @@ export type WorkspaceFacts = {
   signerPhoneMissing?: { clientId: string; name: string } | null;
   /** Event or signer details edited since the current draft or sent contract froze them, e.g. ["event date", "venue"]. */
   contractChanges?: string[];
+  /**
+   * This event's emails that need attention (lib/email/history: couldn't be
+   * sent, bounced, marked as spam, not delivered), with the proposal or
+   * contract they belong to.
+   */
+  emailProblems?: EmailProblem[];
 };
+
+export type EmailProblem = { entityId: string; eventType: string; label: string; state: string };
 
 export type Link = { label: string; href: string };
 export type Blocker = { text: string; link: Link };
@@ -59,8 +67,8 @@ export type NextAction = {
   /** Waiting on the client: nothing for staff to do except look. */
   waiting: boolean;
   blockers: Blocker[];
-  /** Something staff should know even while the next step is elsewhere (never colour alone). */
-  warning: string | null;
+  /** Something staff should know even while the next step is elsewhere (never colour alone), with where to look. */
+  warning: Blocker | null;
 };
 
 const currentContracts = (contracts: ContractRecord[]) => ({
@@ -88,6 +96,11 @@ export function nextAction(f: WorkspaceFacts): NextAction {
   const { draft, active } = currentProposals(f);
   const booking = f.payments?.booking ?? null;
   const money = (cents: number) => formatCents(cents, f.payments?.currency ?? "CAD");
+  // While waiting on the client: the email they need may not have reached them.
+  const undelivered = (entityId: string, types: string[]): Blocker | null => {
+    const p = (f.emailProblems ?? []).find((e) => e.entityId === entityId && types.includes(e.eventType));
+    return p ? { text: `The “${p.label}” email: ${p.state.toLowerCase()}. The client may not have received it.`, link: { label: "Emails", href: "#communications" } } : null;
+  };
 
   if (f.archived) {
     return {
@@ -112,8 +125,11 @@ export function nextAction(f: WorkspaceFacts): NextAction {
 
   if (signed) {
     if (f.lifecycle === "booked") {
-      const warning = booking?.deposit_no_longer_met
-        ? `The booking stands, but valid payments no longer cover the deposit${f.payments?.deposit_outstanding_cents ? ` (${money(f.payments.deposit_outstanding_cents)} short)` : ""}. Check the payments.`
+      const warning: Blocker | null = booking?.deposit_no_longer_met
+        ? {
+            text: `The booking stands, but valid payments no longer cover the deposit${f.payments?.deposit_outstanding_cents ? ` (${money(f.payments.deposit_outstanding_cents)} short)` : ""}. Check the payments.`,
+            link: { label: "Payments", href: "#payments" },
+          }
         : null;
       if (f.planning.exists && f.planning.awaitingSetup) {
         return {
@@ -162,6 +178,7 @@ export function nextAction(f: WorkspaceFacts): NextAction {
       primary: null,
       secondary: { label: "View contract", href: `${base}/contracts/${sent.id}` },
       waiting: true,
+      warning: undelivered(sent.id, ["contract_sent", "contract_sign_in"]),
     };
   }
   if (contractDraft) {
@@ -229,6 +246,7 @@ export function nextAction(f: WorkspaceFacts): NextAction {
       primary: null,
       secondary: { label: "View proposal", href: `${base}/proposals/${active.id}` },
       waiting: true,
+      warning: undelivered(active.id, ["proposal_sent"]),
     };
   }
   if (active && (isExpired(active, f.now) || active.status === "declined")) {
@@ -318,9 +336,11 @@ export function paymentOverview(s: PaymentSummary | null): PaymentOverview | nul
   if (t) {
     if (t.deposit_cents > 0) {
       rows.push({ label: "Deposit", value: money(t.deposit_cents) });
-      rows.push(s.deposit_outstanding_cents ? { label: "Deposit due", value: money(s.deposit_outstanding_cents) } : { label: "Deposit due", value: "Received" });
+      // An amount still owed toward the deposit (due on signing), not a date.
+      rows.push({ label: "Deposit outstanding", value: s.deposit_outstanding_cents ? money(s.deposit_outstanding_cents) : "Received" });
     }
     rows.push({ label: "Balance", value: s.remaining_balance_cents ? money(s.remaining_balance_cents) : "Paid in full" });
+    if (s.remaining_balance_cents && t.balance_due_date) rows.push({ label: "Balance due", value: shortDate(t.balance_due_date) });
     if (s.credit_cents) rows.push({ label: "Credit", value: money(s.credit_cents) });
   }
   const b = s.booking;

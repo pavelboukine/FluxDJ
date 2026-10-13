@@ -19,7 +19,10 @@ type Props = {
   approvalId: string;
   versions: VersionOption[];
   defaultVersionId: string | null;
-  currentDraft: { id: string; label: string; signable: boolean } | null;
+  /** `balanceDueDate`: the date the current draft was generated with (kept when regenerating unless changed). */
+  currentDraft: { id: string; label: string; signable: boolean; balanceDueDate?: string | null } | null;
+  /** The event date, unless it has passed: the default remaining-balance due date for a new draft. */
+  suggestedBalanceDueDate?: string | null;
   /** Active versions published before usage modes, left out of the list. */
   legacyHidden: number;
   /** The event's active signer: a missing phone a template needs can be added right here. */
@@ -32,11 +35,17 @@ type Props = {
  * Generates the contract draft for an approved proposal. Replacing an
  * existing draft always needs an explicit confirmation. The server makes
  * repeated clicks safe: an identical request returns the existing draft.
+ *
+ * The remaining-balance due date starts as the current draft's own date
+ * (so regenerating never silently changes it), else the event date; staff
+ * can change it, and the server validates it. The deposit is separate: it is
+ * due on signing, as the business's settings say.
  */
-export function GenerateContractPanel({ slug, approvalId, versions, defaultVersionId, currentDraft, legacyHidden, signer = null, changes = [] }: Props) {
+export function GenerateContractPanel({ slug, approvalId, versions, defaultVersionId, currentDraft, suggestedBalanceDueDate = null, legacyHidden, signer = null, changes = [] }: Props) {
   const router = useRouter();
   const [versionId, setVersionId] = useState(defaultVersionId ?? versions[0]?.id ?? "");
-  const [balanceDueDate, setBalanceDueDate] = useState("");
+  const draftDueDate = currentDraft?.balanceDueDate ?? null;
+  const [balanceDueDate, setBalanceDueDate] = useState(draftDueDate ?? suggestedBalanceDueDate ?? "");
   const [confirmReplace, setConfirmReplace] = useState<string | null>(null);
   const [missing, setMissing] = useState<MissingItem[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -132,14 +141,23 @@ export function GenerateContractPanel({ slug, approvalId, versions, defaultVersi
           </select>
         </Field>
         <Field
-          label="Balance due date"
+          label="Remaining balance due"
           htmlFor="balance_due_date"
-          hint={version?.needsBalanceDueDate ? "Required by this template. Nothing is assumed." : "This template doesn't use a balance due date."}
+          hint={
+            !version?.needsBalanceDueDate
+              ? "This template doesn't use a balance due date."
+              : draftDueDate
+                ? "The current draft's date. You can change it before regenerating."
+                : suggestedBalanceDueDate
+                  ? "Defaults to the event date. You can change it before generating the contract."
+                  : "Required by this template: the date the remaining balance is due."
+          }
         >
           <Input
             id="balance_due_date"
             type="date"
-            value={balanceDueDate}
+            // A template without the date shows none (nothing is sent for it).
+            value={version?.needsBalanceDueDate ? balanceDueDate : ""}
             onChange={(e) => setBalanceDueDate(e.target.value)}
             disabled={pending || !version?.needsBalanceDueDate}
           />

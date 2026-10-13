@@ -5,8 +5,9 @@
  * logo inline; the event's Emails section lists it as accepted by the
  * provider (never "Delivered" without the provider saying so); a failed email
  * is flagged and retried through the outbox (one email, not two); a provider
- * delivery event shows as Delivered; the Emails page agrees; another business
- * can't open the event; 320 px and keyboard.
+ * delivery event shows as Delivered; the Emails page agrees; a long history
+ * shows the latest three with the rest in place and older problems kept in
+ * view; another business can't open the event; 320 px and keyboard.
  * The rules behind each step are in pgTAP 47 and the integration tests.
  */
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -152,6 +153,91 @@ test.describe.serial("event email history and branded emails", () => {
     await owner.reload();
     await expect(owner.getByTestId("email-undelivered")).toHaveText("1 email was rejected by the recipient's mail server or not delivered.");
     await expect(owner.getByTestId("email-failures").getByRole("link", { name: "Review emails" })).toHaveAttribute("href", `/staff/${tenant.slug}/emails`);
+  });
+
+  test("a long history: the latest three, then all in place; older problems stay visible; newest first; keyboard; the next step warns", async () => {
+    const history = owner.getByTestId("communications");
+    const toggle = owner.getByRole("button", { name: /^Show (all emails|fewer)/ });
+    // A team notice (cancelled: it never goes out), at a chosen time.
+    const notice = (at: Date, key: string, extra: Record<string, unknown> = {}) => ({
+      tenant_id: tenant.id, event_type: "proposal_link_opened", recipient_email: `team-${run}@example.test`, entity_type: "proposal", entity_id: proposalId,
+      payload: { event_title: `E2E Comms Wedding ${run}`, opened_at: at.toISOString() }, dedup_key: `e2e-comms-${key}-${run}`,
+      status: "cancelled", last_error: "Cancelled: e2e fixture", created_at: at.toISOString(), ...extra,
+    });
+
+    // Two emails (the proposal and the bounced approval): all shown, nothing to fold.
+    await owner.goto(`/staff/${tenant.slug}/events/${eventId}#communications`);
+    await expect(history.getByTestId("communication")).toHaveCount(2);
+    await expect(toggle).toHaveCount(0);
+    // A third: still all shown.
+    const base = Date.now() + 60_000;
+    const { data: first } = await admin.from("email_outbox").insert(notice(new Date(base), "n1")).select("id, dedup_key").single();
+    await owner.reload();
+    await expect(history.getByTestId("communication")).toHaveCount(3);
+    await expect(toggle).toHaveCount(0);
+
+    // Four more, newer (two at the very same time), and one older that couldn't be sent.
+    const tie = new Date(base + 3000);
+    const { data: added, error: addError } = await admin
+      .from("email_outbox")
+      .insert([
+        notice(new Date(base + 1000), "n2"),
+        notice(new Date(base + 2000), "n3"),
+        notice(tie, "n4"),
+        notice(tie, "n5"),
+        notice(new Date(Date.now() - 86_400_000), "old-failed", { status: "failed", attempts: 5, max_attempts: 5, last_error: "Resend responded 503" }),
+      ], { defaultToNull: false }) // rows without "attempts" keep the column default
+      .select("id, dedup_key");
+    if (addError) throw addError;
+    const id = (key: string) => [first!, ...added!].find((r) => r.dedup_key === `e2e-comms-${key}-${run}`)!.id;
+    const tied = [id("n4"), id("n5")].sort().reverse();
+    await owner.reload();
+    await expect(history.getByTestId("communication")).toHaveCount(3);
+    await expect(toggle).toHaveText("Show all emails (8)");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    // Newest first; the two with the same time in a fixed order.
+    expect(await history.getByTestId("communication").evaluateAll((els) => els.map((e) => e.getAttribute("data-id")))).toEqual([...tied, id("n3")]);
+
+    // The older problems aren't folded away: the bounce and the failure (with its retry) stay listed.
+    await expect(owner.getByTestId("communications-attention")).toHaveText("2 emails need your attention.");
+    const older = owner.getByTestId("communications-older-attention");
+    await expect(older.getByRole("heading", { name: "Older emails that need your attention" })).toBeVisible();
+    await expect(older.getByTestId("communication")).toHaveCount(2);
+    await expect(older.locator('[data-type="proposal_approved"]').getByTestId("communication-status")).toHaveText("Bounced");
+    const oldFailed = older.locator(`[data-id="${id("old-failed")}"]`);
+    await oldFailed.locator("summary").click();
+    await expect(oldFailed.getByRole("button", { name: "Retry this email" })).toBeVisible();
+
+    // Show all in place, then fold again, from the keyboard; focus stays on the button.
+    await toggle.focus();
+    await owner.keyboard.press("Enter");
+    await expect(toggle).toHaveText("Show fewer");
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(history.getByTestId("communication")).toHaveCount(8);
+    await expect(older).toHaveCount(0);
+    const order = await history.getByTestId("communication").evaluateAll((els) => els.map((e) => e.getAttribute("data-id")));
+    expect(order.slice(0, 5)).toEqual([...tied, id("n3"), id("n2"), id("n1")]);
+    expect(order.at(-1)).toBe(id("old-failed"));
+    await owner.keyboard.press("Enter");
+    await expect(toggle).toBeFocused();
+    await expect(history.getByTestId("communication")).toHaveCount(3);
+
+    // The proposal the client is deciding on bounced: the next step says so, and points here.
+    const { data: row } = await admin.from("email_outbox").select("provider_message_id").eq("tenant_id", tenant.id).eq("event_type", "proposal_sent").single();
+    await admin.rpc("record_email_provider_event", { p_provider_message_id: row!.provider_message_id!, p_status: "bounced", p_occurred_at: new Date().toISOString(), p_detail: "Permanent · General" });
+    await owner.reload();
+    const next = owner.getByTestId("next-action");
+    await expect(next).toHaveAttribute("data-key", "awaiting_selection");
+    await expect(next).toContainText("The “Proposal” email: bounced. The client may not have received it.");
+    await expect(next.getByRole("link", { name: "Emails" })).toHaveAttribute("href", "#communications");
+    await expect(owner.getByTestId("communications-attention")).toHaveText("3 emails need your attention.");
+
+    // An event without emails: the empty state, nothing to expand.
+    const quiet = randomUUID();
+    await admin.from("events").insert({ id: quiet, tenant_id: tenant.id, title: `E2E Quiet ${run}`, event_type: "wedding", event_date: "2027-10-02" });
+    await owner.goto(`/staff/${tenant.slug}/events/${quiet}#communications`);
+    await expect(owner.getByTestId("communications-empty")).toBeVisible();
+    await expect(toggle).toHaveCount(0);
   });
 
   test("another business can't open the event or its emails", async () => {

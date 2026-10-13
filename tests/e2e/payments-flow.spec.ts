@@ -35,7 +35,7 @@ test.describe.serial("manual payments", () => {
     await admin.from("events").insert({ id: eventId, tenant_id: tenant.id, title: `E2E Pay Wedding ${run}`, event_type: "wedding", event_date: "2027-11-06" });
     await admin.from("event_clients").insert({ tenant_id: tenant.id, event_id: eventId, client_id: clientId, is_primary: true, can_sign: true });
     await publishContractTemplate(tenant, "Agreement (DEMO)", "DEMO, NOT FOR CLIENT USE: Agreement for {{event.title}}", [
-      { heading: "Payment", body: "Total {{pricing.total}}. Deposit ({{payment.deposit_percent}}): {{payment.deposit}}." },
+      { heading: "Payment", body: "Total {{pricing.total}}. Deposit ({{payment.deposit_percent}}): {{payment.deposit}}. Balance {{payment.balance}}, due {{payment.balance_due_date}}." },
     ]);
     staffContext = await browser.newContext();
     staff = await staffContext.newPage();
@@ -110,6 +110,8 @@ test.describe.serial("manual payments", () => {
     await staff.reload();
     await staff.getByRole("button", { name: "Approve…" }).click();
     await staff.getByRole("dialog", { name: "Confirm approval" }).getByRole("button", { name: "Approve selection" }).click();
+    // Generated with the default remaining-balance date: the event day.
+    await expect(staff.getByLabel("Remaining balance due")).toHaveValue("2027-11-06");
     await staff.getByRole("button", { name: "Generate contract draft" }).click();
     await staff.waitForURL(/\/contracts\/[0-9a-f-]{36}$/);
     contractId = staff.url().split("/").pop()!;
@@ -128,6 +130,9 @@ test.describe.serial("manual payments", () => {
     const money = (cents: number) => new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" }).format(cents / 100);
     await expect(summary).toContainText(`Deposit still outstanding${money(c!.deposit_cents - 25000)}`);
     await expect(summary).toContainText(`Remaining balance${money(c!.total_cents - 25000)}`);
+    // The chosen date, as a date (not "2027-11-06"), from the sent contract's terms.
+    await expect(summary).toContainText("Remaining balance dueSat, Nov 6, 2027");
+    expect((await admin.from("contracts").select("balance_due_date").eq("id", contractId).single()).data!.balance_due_date).toBe("2027-11-06");
   });
 
   test("the verified client sees a read-only summary without staff-only details", async () => {
@@ -183,7 +188,7 @@ test.describe.serial("manual payments", () => {
     await expect(staff.getByText("Payment recorded. The deposit is covered, so the booking is confirmed and the client is emailed.")).toBeVisible();
     await staff.reload();
     await expect(staff.getByText("Booked", { exact: true })).toBeVisible();
-    await expect(staff.getByLabel("Booking")).toContainText("is still to be paid.");
+    await expect(staff.getByLabel("Booking")).toContainText("is still to be paid, due Sat, Nov 6, 2027.");
     const { data: event } = await admin.from("events").select("lifecycle_status, booking_confirmed_at").eq("id", eventId).single();
     expect(event!.lifecycle_status).toBe("booked");
     expect(event!.booking_confirmed_at).not.toBeNull();

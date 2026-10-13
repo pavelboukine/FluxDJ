@@ -133,6 +133,16 @@ export function deliveryState(row: OutboxRow, now = new Date()): DeliveryState {
   }
 }
 
+/**
+ * A soft bounce: Resend reports "bounced" with a "Transient" category for a
+ * temporary refusal (a full mailbox, a server busy for a while). Only a
+ * permanent bounce means the address doesn't work. The dashboard's delivery
+ * problems and the event's email list use this same rule.
+ */
+export function isTransientBounce(detail: string | null | undefined): boolean {
+  return /^transient/i.test(detail ?? "");
+}
+
 function sentState(row: OutboxRow): DeliveryState {
   const at = row.provider_status_at ?? row.sent_at;
   const detail = row.provider_detail ? ` (${row.provider_detail})` : "";
@@ -142,6 +152,16 @@ function sentState(row: OutboxRow): DeliveryState {
     case "delayed":
       return { label: "Delivery delayed", tone: "pending", explanation: "The recipient's mail server hasn't accepted it yet; the provider keeps trying.", attention: false, retryable: false, at };
     case "bounced":
+      if (isTransientBounce(row.provider_detail)) {
+        return {
+          label: "Temporarily refused",
+          tone: "pending",
+          explanation: `The recipient's mail server refused it for now${detail}, for example because the mailbox is full. It may not have arrived; if the client says it didn't, ask them to check their mailbox.`,
+          attention: false,
+          retryable: false,
+          at,
+        };
+      }
       return { label: "Bounced", tone: "attention", explanation: `The recipient's mail server rejected it${detail}. Check the address with the client.`, attention: true, retryable: false, at };
     case "complained":
       return { label: "Marked as spam", tone: "attention", explanation: "The recipient reported it as spam. Contact them another way.", attention: true, retryable: false, at };

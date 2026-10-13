@@ -195,12 +195,14 @@ test.describe.serial("event workspace", () => {
     await expect(pay).toContainText("Signed contract terms");
     await expect(pay).toContainText(`Total${money(c!.total_cents)}`);
     await expect(pay).toContainText(`Deposit${money(c!.deposit_cents)}`);
-    await expect(pay).toContainText(`Deposit due${money(c!.deposit_cents)}`);
+    await expect(pay).toContainText(`Deposit outstanding${money(c!.deposit_cents)}`);
     await expect(page.getByTestId("next-action")).toContainText(`${money(c!.deposit_cents)} is still due toward the deposit`);
     await expect(page.locator("#record-payment")).toHaveAttribute("open", "");
     await expect(page.getByLabel(/Amount received/)).toBeVisible();
     await expect(page.getByText("A contract has been signed for this event, so its terms can't be revised.")).toBeVisible();
     await expect(page.getByText(/was signed .*A signed contract can't be voided, replaced or revised/)).toBeVisible();
+    // Times in the event's own zone, with its abbreviation (the server's zone is UTC in production).
+    await expect(page.getByText(/was signed \w{3} \d{1,2}, \d{4}, \d{1,2}:\d{2} [ap]\.m\. E[DS]T\./)).toBeVisible();
 
     // A sent contract's terms are labelled as not signed.
     await page.goto(`${base}/events/${ev.csent.id}`);

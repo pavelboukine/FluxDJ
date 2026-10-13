@@ -248,10 +248,10 @@ preview at `/staff/bouprod/proposals/{id}/preview`.
    statement and click **Publish version N for client use** (owner only).
 4. Approve a proposal as described in the previous section. The approved
    proposal page, and the event page, now show a **Contract** card.
-5. Choose the template version and click **Generate contract draft**. With
-   the seeded event this works once you enter a **Balance due date**, because
-   the DEMO text uses one. To see the missing-information message, clear the
-   event's venue address or the client's phone first.
+5. Choose the template version and click **Generate contract draft**. The
+   DEMO text uses a balance due date: **Remaining balance due** starts as the
+   event date and can be changed. To see the missing-information message,
+   clear that date, the event's venue address or the client's phone first.
 6. The draft opens at `/staff/bouprod/contracts/{id}`. Check the totals,
    the 50% deposit and the balance, then narrow the window to phone width.
 7. Back on the proposal, **Regenerate draft…** asks for confirmation and
@@ -2013,9 +2013,14 @@ undelivered contract emails visibly.
 - **Missing values.** Every placeholder a template uses must have a
   non-blank value, and the event needs a signer. Otherwise nothing is stored
   and staff get a list of what to complete.
-- **Balance due date.** It is entered by staff when the template uses
-  `{{payment.balance_due_date}}`, and refused when it doesn't. Nothing is
-  assumed.
+- **Balance due date.** Staff confirm it when the template uses
+  `{{payment.balance_due_date}}` (refused when it doesn't, or when it's in the
+  past). The field starts as the current draft's own date when regenerating
+  (never silently replaced), otherwise as the event date (a calendar date,
+  never shifted by time zones) unless that day has passed; left empty,
+  generation asks for it. It is only a default: nothing changes the
+  business's settings or existing contracts. The deposit is separate (due on
+  signing).
 - **Deposit.** It is 50% of the approved total including taxes, rounded half
   up to the cent (`private.contract_deposit_cents`). The balance is the total
   minus the deposit, and a CHECK constraint enforces that they add up.
@@ -2376,7 +2381,15 @@ keys stay valid), and changing the logo never alters an email already
 attempted.
 
 **History.** Each event page has an **Emails** section (`#communications`):
-every email queued for the event's proposals and contracts, newest first, with
+every email queued for the event's proposals and contracts (up to the latest
+100, with the true total), newest first (ties in a fixed order). The latest
+three show at first, with **Show all emails (n)** and **Show fewer** in
+place; an older email that needs attention stays listed below them while
+folded. Times are in the event's time zone. A soft bounce (the provider's
+"Transient" category) shows as "Temporarily refused" and isn't an attention
+item, matching the dashboard. If the email the client needs for the current
+step (the sent proposal, or the contract invitation and its sign-in link)
+needs attention, the event's next step says so and links here. Each entry has
 its purpose, recipient (or "To your team"), time and status, expandable for
 details, a link to the proposal or contract, and **Retry this email** for
 failed ones. The Emails page uses the same statuses

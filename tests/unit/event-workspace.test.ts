@@ -105,6 +105,21 @@ describe("next action", () => {
   it("a sent contract: waiting for the signature, with the contract page for resend, void and documents", () => {
     const f = facts({ lifecycle: "awaiting_signature", approvalId: "a1", contracts: [contract("c1", "sent")], payments: summary({ booking: { lifecycle_status: "awaiting_signature", policy: null } }) });
     expect(pick(f)).toEqual({ key: "awaiting_signature", primary: null, secondary: "/staff/dj/contracts/c1", waiting: true });
+    expect(nextAction(f).warning).toBeNull();
+  });
+
+  it("waiting on the client, but the email they need didn't reach them: a warning pointing at Emails", () => {
+    const problem = (entityId: string, eventType: string, label: string, state: string) => ({ entityId, eventType, label, state });
+    const sent = facts({ lifecycle: "awaiting_signature", approvalId: "a1", contracts: [contract("c1", "sent")], emailProblems: [problem("c1", "contract_sent", "Contract ready to sign", "Bounced")] });
+    expect(nextAction(sent)).toMatchObject({
+      key: "awaiting_signature",
+      waiting: true,
+      warning: { text: "The “Contract ready to sign” email: bounced. The client may not have received it.", link: { label: "Emails", href: "#communications" } },
+    });
+    // A problem with another contract (a voided one), or a team notice, isn't about this step.
+    expect(nextAction(facts({ ...sent, emailProblems: [problem("c0", "contract_sent", "Contract ready to sign", "Bounced"), problem("c1", "contract_signed_copy", "Signed contract copy", "Bounced")] })).warning).toBeNull();
+    const offer = facts({ lifecycle: "lead", proposals: [{ id: "p1", revision: 2, status: "sent", expires_at: null }], activeProposalId: "p1", emailProblems: [problem("p1", "proposal_sent", "Revised proposal (revision 2)", "Couldn't be sent")] });
+    expect(nextAction(offer)).toMatchObject({ key: "awaiting_selection", warning: { text: "The “Revised proposal (revision 2)” email: couldn't be sent. The client may not have received it." } });
   });
 
   it("signed and awaiting the deposit: record a payment, with the outstanding amount from the summary", () => {
@@ -129,7 +144,8 @@ describe("next action", () => {
     expect(pick(facts(booked))).toMatchObject({ key: "set_up_planning", primary: "/staff/dj/events/ev/planning", secondary: null });
     const corrected = nextAction(facts({ ...booked, payments: summary({ deposit_outstanding_cents: 10_000, booking: { lifecycle_status: "booked", deposit_no_longer_met: true } }) }));
     expect(corrected.key).toBe("set_up_planning");
-    expect(corrected.warning).toContain("The booking stands, but valid payments no longer cover the deposit ($100.00 short)");
+    expect(corrected.warning).toMatchObject({ link: { href: "#payments" } });
+    expect(corrected.warning?.text).toContain("The booking stands, but valid payments no longer cover the deposit ($100.00 short)");
   });
 
   it("booked with Event basics only and no template chosen: set up planning, not review", () => {
@@ -174,9 +190,12 @@ describe("summaries", () => {
       { label: "Total", value: "$3,242.29" },
       { label: "Received", value: "$1,000.00" },
       { label: "Deposit", value: "$1,621.15" },
-      { label: "Deposit due", value: "$621.15" },
+      { label: "Deposit outstanding", value: "$621.15" },
       { label: "Balance", value: "$2,242.29" },
     ]);
+    // The remaining balance's due date, as a calendar date (never shifted by time zones).
+    const dated = paymentOverview(summary({ terms: { ...summary().terms!, balance_due_date: "2027-08-21" } }))!;
+    expect(dated.rows.at(-1)).toEqual({ label: "Balance due", value: "Sat, Aug 21, 2027" });
     const sent = paymentOverview(summary({ terms: { ...summary().terms!, status: "sent" }, booking: { lifecycle_status: "awaiting_signature", policy: null } }))!;
     expect(sent.basis).toBe("Sent contract terms (not signed yet)");
     expect(sent.booking).toBe("Not booked");
@@ -186,7 +205,8 @@ describe("summaries", () => {
     const over = paymentOverview(summary({ received_cents: 400_000, deposit_outstanding_cents: 0, remaining_balance_cents: 0, credit_cents: 75_771, booking: { lifecycle_status: "booked" } }))!;
     expect(over.rows).toContainEqual({ label: "Balance", value: "Paid in full" });
     expect(over.rows).toContainEqual({ label: "Credit", value: "$757.71" });
-    expect(over.rows).toContainEqual({ label: "Deposit due", value: "Received" });
+    expect(over.rows).toContainEqual({ label: "Deposit outstanding", value: "Received" });
+    expect(over.rows.map((r) => r.label)).not.toContain("Balance due"); // paid in full: no due date to chase
     expect(over.booking).toBe("Booking confirmed");
     const none = paymentOverview(summary({ terms: null, received_cents: 25_000, deposit_outstanding_cents: null, remaining_balance_cents: null, credit_cents: null, booking: { lifecycle_status: "lead", policy: null } }))!;
     expect(none.rows).toEqual([{ label: "Received", value: "$250.00" }]);

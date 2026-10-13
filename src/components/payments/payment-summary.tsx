@@ -1,3 +1,4 @@
+import { shortDate } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
 import { linkHost } from "@/lib/payments";
 
@@ -64,7 +65,7 @@ export function PaymentFigures({ s, audience }: { s: SummaryFigures; audience: "
             ) : null}
             <Row label="Remaining balance" strong>{s.remainingBalanceCents ? money(s.remainingBalanceCents) : "Paid in full"}</Row>
             {s.creditCents ? <Row label="Received above the total (credit)">{money(s.creditCents)}</Row> : null}
-            <Row label="Balance due">{s.balanceDueDate ?? "Not specified in the contract"}</Row>
+            <Row label="Remaining balance due">{s.balanceDueDate ? shortDate(s.balanceDueDate) : "Not specified in the contract"}</Row>
           </>
         ) : null}
       </dl>
