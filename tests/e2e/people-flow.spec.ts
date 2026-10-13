@@ -314,7 +314,7 @@ test.describe.serial("people in planning", () => {
     await leo.getByLabel("At an exact time").check();
     await leo.getByLabel("Time", { exact: true }).fill("00:30");
     await expect(card.getByText("Saving…")).toBeVisible();
-    await leo.getByRole("checkbox", { name: /Next day/ }).check();
+    await leo.getByRole("checkbox", { name: "Time: next day (Sun, Aug 15)" }).check();
     release();
     await expect(card.getByText("All changes saved")).toBeVisible();
     await client.unroute(`**${planningUrl}*`);

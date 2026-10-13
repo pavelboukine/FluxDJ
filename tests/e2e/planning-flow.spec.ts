@@ -229,7 +229,9 @@ test.describe.serial("planning", () => {
     await expect(client.getByRole("link", { name: "Your events" })).toHaveAttribute("href", "/my");
     await expect(client.getByTestId("editing-chip")).toHaveText("Planning open");
     await expect(client.getByTestId("editing-notice")).toContainText("(America/Toronto)");
+    await expect(client.getByTestId("progress-percent")).toHaveText("20% complete");
     await expect(client.getByTestId("progress-headline")).toHaveText("1 of 5 required answers");
+    await expect(client.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "20");
     await expect(client.getByText("Progress covers the 1 section you can fill in now (Event basics).")).toBeVisible();
     await expect(client.getByText("it doesn't mean", { exact: false })).toContainText("reviewed or approved your plan");
     // A plan without stages is small: no stage list at all.
@@ -254,7 +256,8 @@ test.describe.serial("planning", () => {
     await expect(client.getByText("Ends after midnight, the next day.")).toBeVisible();
     await client.getByLabel("No special instructions").check();
     await expect(client.getByText("All changes saved")).toBeVisible();
-    await expect(client.getByTestId("progress-headline")).toHaveText("Available sections done");
+    await expect(client.getByTestId("progress-percent")).toHaveText("100% complete");
+    await expect(client.getByTestId("progress-headline")).toHaveText("5 of 5 required answers");
     await expect(client.getByText("Event basics is complete.")).toBeVisible();
     expect((await basicsRow(eventId))!.answers).toEqual({ guest_count: 150, start_time: "18:00", end_time: "01:00", access_notes_none: true });
 
@@ -265,6 +268,21 @@ test.describe.serial("planning", () => {
     // Every available answer is in: the overview offers a review, not "continue".
     await openPlanSection(client, null);
     await expect(client.getByTestId("plan-primary")).toHaveText("Review your plan");
+    // Overview is a navigation item like the sections (progress line, current state), and Back/Forward follow it.
+    expect(sectionParam(client)).toBeNull();
+    const picker = client.getByTestId("section-picker");
+    await picker.locator("summary").first().click();
+    await expect(picker.getByTestId("nav-overview")).toHaveAttribute("aria-current", "page");
+    await expect(picker.getByTestId("nav-overview")).toHaveText(/Overview\s*100% complete/);
+    await expect(picker.getByTestId("nav-basics")).not.toHaveAttribute("aria-current", "page");
+    await picker.locator("summary").first().click();
+    await client.goBack();
+    await expect(client.locator("#plan-panel-basics")).toBeVisible();
+    expect(sectionParam(client)).toBe("basics");
+    await client.goForward();
+    await expect(client.locator("#plan-panel-overview")).toBeVisible();
+    expect(sectionParam(client)).toBeNull();
+    await expect(client.getByLabel("Guest count (needed)")).toHaveValue("150");
     await openPlanSection(client, "basics");
     await expect(client.locator("body")).not.toContainText(/E2E INTERNAL NOTE|E2E-PAYMENT-REF-SECRET|E2E staff payment note|Planning complete/);
     expect(await noSideways(client)).toBeLessThanOrEqual(0);
@@ -335,6 +353,7 @@ test.describe.serial("planning", () => {
     const attention = staff.getByTestId("plan-attention");
     await expect(attention.getByRole("link").first()).toContainText("Contacts and vendors");
     await expect(staff.getByTestId("progress-headline")).toHaveText("5 of 48 required answers");
+    await expect(staff.getByTestId("progress-percent")).toHaveText("10% complete");
     await attention.getByRole("link", { name: /Ceremony/ }).click();
     await expect(staff.locator("#plan-panel-ceremony")).toBeVisible();
     expect(new URL(staff.url()).searchParams.get("section")).toBe("ceremony");
@@ -353,6 +372,7 @@ test.describe.serial("planning", () => {
     // introductions and speeches, contacts (2), preferences (4), music styles (2), and the activities and dedications this
     // trimmed template kept (2), none answered yet.
     await expect(client.getByTestId("progress-headline")).toHaveText("5 of 48 required answers");
+    await expect(client.getByTestId("progress-percent")).toHaveText("10% complete");
     expect(await noSideways(client)).toBeLessThanOrEqual(0);
     // Continue planning opens the first section, in plan order, with answers still needed.
     await openPlanSection(client, null);
@@ -399,13 +419,26 @@ test.describe.serial("planning", () => {
     const details = party.getByTestId("details-party");
     await details.getByLabel(/Same as the event venue/).check();
     await details.getByLabel("Party start (needed)").fill("22:00");
+    // An evening time is just a time: "Next day" appears only where it can matter.
+    await expect(details.getByRole("checkbox", { name: /next day/ })).toHaveCount(0);
     await details.getByLabel("Party end (optional)").fill("01:00");
     await expect(details.getByText('The end must be after the start. If it ends after midnight, check "Next day".')).toBeVisible();
+    await expect(details.getByRole("checkbox", { name: /Party start: next day/ })).toHaveCount(0);
     await expect(details.getByRole("alert")).toContainText("Fix the highlighted answer to save.");
     expect(await stageRow(eventId, "party")).toBeNull();
     await details.getByLabel("Party end: next day (Sun, Aug 15)").check();
     await expect(details.getByText("All changes saved")).toBeVisible();
     expect((await stageRow(eventId, "party"))!.answers).toMatchObject({ start_time: "22:00", end_time: "01:00", end_next_day: true });
+    // A saved next-day time keeps its mark on screen, and editing the time keeps it.
+    await client.reload();
+    const again = (await openPlanSection(client, "party")).getByTestId("details-party");
+    await expect(again.getByLabel("Party end: next day (Sun, Aug 15)")).toBeChecked();
+    // Retried: an edit made before the reloaded page hydrates is reset to the saved answer.
+    await expect(async () => {
+      await again.getByLabel("Party end (optional)").fill("01:30");
+      await expect.poll(async () => (await stageRow(eventId, "party"))!.answers, { timeout: 3_000 }).toMatchObject({ start_time: "22:00", end_time: "01:30", end_next_day: true });
+    }).toPass();
+    await expect(again.getByText("All changes saved")).toBeVisible();
 
     const ceremony = client.getByTestId("details-ceremony");
     await openPlanSection(client, "ceremony");

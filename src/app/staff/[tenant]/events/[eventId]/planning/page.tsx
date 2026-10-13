@@ -30,7 +30,7 @@ import { StructureEditor } from "@/components/planning/structure-editor";
 import { requireStaff } from "@/lib/auth/staff";
 import { UUID_RE } from "@/lib/forms";
 import { savedListsFrom } from "@/lib/planning/music";
-import { CLIENT_EDITING_SECTION, PROVIDED_SECTION, STRUCTURE_SECTION, WORKSPACE_ID, headingId, planSections } from "@/lib/planning/navigation";
+import { CLIENT_EDITING_SECTION, PROVIDED_SECTION, STRUCTURE_SECTION, WORKSPACE_ID, headingId, languageAskedInPreferences, planSections } from "@/lib/planning/navigation";
 import type { StageEditor } from "@/lib/planning/stages";
 import { formatEventDate, planAwaitingSetup, staffPlanningViewSchema } from "@/lib/planning/view";
 import { EVENT_TYPES } from "../../event-form";
@@ -299,6 +299,7 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
                       djName={dj}
                       audience="staff"
                       save={save(view.basics.item_id)}
+                      languageInPreferences={languageAskedInPreferences(view.structure)}
                       disabledReason={lockedReason}
                     />
                   ) : (

@@ -30,7 +30,7 @@ import {
 } from "@/lib/planning/music";
 import type { SaveItemResult } from "@/lib/planning/view";
 import { linksBySong } from "@/lib/planning/participants";
-import { FieldBox } from "./basics-editor";
+import { FieldBox, describedBy } from "./basics-editor";
 import { ItemChecklist, useEditingClosed } from "./progress";
 import { SaveStatus, useAutosave } from "./use-autosave";
 
@@ -334,20 +334,25 @@ function SongFields({ idPrefix, song, cue, notesLabel, errorFor, onChange }: {
   errorFor: (field: string) => string | null;
   onChange: (changes: Partial<SongForm>) => void;
 }) {
-  const field = (name: keyof SongForm, label: string, opts: { hint?: string; rows?: number; inputMode?: "url" } = {}) => (
-    <FieldBox id={`${idPrefix}-${name}`} label={label} error={errorFor(name)} hint={opts.hint} className={opts.rows ? "sm:col-span-2" : undefined}>
-      {opts.rows ? (
-        <Textarea id={`${idPrefix}-${name}`} rows={opts.rows} value={song[name]} onChange={(e) => onChange({ [name]: e.target.value })} aria-invalid={Boolean(errorFor(name))} />
-      ) : (
-        <Input id={`${idPrefix}-${name}`} inputMode={opts.inputMode} value={song[name]} onChange={(e) => onChange({ [name]: e.target.value })} aria-invalid={Boolean(errorFor(name))} />
-      )}
-    </FieldBox>
-  );
+  const field = (name: keyof SongForm, label: string, opts: { hint?: string; rows?: number; wide?: boolean; inputMode?: "url" } = {}) => {
+    const fieldId = `${idPrefix}-${name}`;
+    const describe = describedBy(fieldId, errorFor(name), opts.hint);
+    return (
+      <FieldBox id={fieldId} label={label} error={errorFor(name)} hint={opts.hint} className={opts.rows || opts.wide ? "col-span-full" : undefined}>
+        {opts.rows ? (
+          <Textarea id={fieldId} rows={opts.rows} value={song[name]} onChange={(e) => onChange({ [name]: e.target.value })} aria-invalid={Boolean(errorFor(name))} aria-describedby={describe} />
+        ) : (
+          <Input id={fieldId} inputMode={opts.inputMode} value={song[name]} onChange={(e) => onChange({ [name]: e.target.value })} aria-invalid={Boolean(errorFor(name))} aria-describedby={describe} />
+        )}
+      </FieldBox>
+    );
+  };
   return (
     <div className="grid gap-3 sm:grid-cols-2">
-      {cue ? field("cue", "Cue (optional)", { hint: 'For example "Partner entrance" or "Dance with grandmother".' }) : null}
+      {/* Title and artist side by side, then what it's for: the cue never splits them. */}
       {field("title", "Title")}
       {field("artist", "Artist")}
+      {cue ? field("cue", "Cue (optional)", { hint: 'For example "Partner entrance" or "Dance with grandmother".', wide: true }) : null}
       {field("version", "Version (optional)", { hint: "For example acoustic, clean, live or a particular recording." })}
       {field("link", "Link (optional)", { hint: "An https:// link to help the DJ find it. It's never opened automatically.", inputMode: "url" })}
       {field("notes", `${notesLabel} (optional)`, { rows: 2, hint: cue ? "For example: start at 0:45, fade after the chorus, play fully." : undefined })}

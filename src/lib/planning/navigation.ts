@@ -51,6 +51,15 @@ export type PlanSection = {
   itemIds: string[];
 };
 
+/**
+ * Whether the announcement language is asked in DJ expectations (when that
+ * section is shown) rather than in Event basics. Either way it is one answer,
+ * stored with Event basics, where the run sheet and progress read it.
+ */
+export function languageAskedInPreferences(structure: PlanStructure): boolean {
+  return structure.general.some((g) => !g.disabled && g.editor === "preferences");
+}
+
 export function planSections(structure: PlanStructure): PlanSection[] {
   const general: PlanSection[] = structure.general
     .filter((g) => !g.disabled && g.editor !== null && GENERAL_EDITORS.includes(g.editor))

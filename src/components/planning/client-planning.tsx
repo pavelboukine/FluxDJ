@@ -2,9 +2,9 @@
 
 import { ChevronRight, Lock } from "lucide-react";
 import { PROVIDED_SECTION, firstIncompleteSection, headingId, isIncomplete, sectionStatus } from "@/lib/planning/navigation";
-import { progressHeadline, progressScopeNote } from "@/lib/planning/view";
+import { progressScopeNote } from "@/lib/planning/view";
 import { cn } from "@/lib/utils";
-import { usePlanProgress } from "./progress";
+import { ProgressMeter, usePlanProgress } from "./progress";
 import { Flags, NavLink, PanelHeading, StatusIcon, focusFor, useNav } from "./plan-navigation";
 
 /** The client's planning overview and editing chip (navigation itself is shared: plan-navigation). */
@@ -47,22 +47,10 @@ export function PlanOverview({ djName, providedCount }: { djName: string; provid
   return (
     <div className="grid gap-4">
       <section aria-labelledby={headingId(null)} className="grid gap-4 rounded-2xl border bg-card p-4 shadow-sm sm:p-6">
-        <div className="grid gap-1">
+        <div className="grid gap-2">
           <PanelHeading view={null}>Planning progress</PanelHeading>
-          <p className="text-lg font-medium" data-testid="progress-headline">{progressHeadline(p)}</p>
+          <ProgressMeter progress={p} bar="bg-[var(--brand)]" />
         </div>
-        {p.requirements_total > 0 ? (
-          <div
-            role="progressbar"
-            aria-label="Required answers in available sections"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={p.percent ?? 0}
-            className="h-2 overflow-hidden rounded-full bg-muted"
-          >
-            <div className="h-full bg-[var(--brand)]" style={{ width: `${p.percent ?? 0}%` }} />
-          </div>
-        ) : null}
         <div className="grid gap-1 text-sm text-muted-foreground">
           <p>
             {p.complete_sections} of {p.available_sections} {p.available_sections === 1 ? "section" : "sections"} complete. {progressScopeNote(p)}

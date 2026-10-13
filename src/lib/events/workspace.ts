@@ -2,7 +2,7 @@ import type { PaymentSummary } from "@/lib/payments";
 import { formatCents } from "@/lib/money";
 import { shortDate, shortInstant } from "@/lib/dates";
 import type { StaffEditing } from "@/lib/planning/cutoff";
-import { progressHeadline, type PlanProgress } from "@/lib/planning/view";
+import { progressSummaryLine, type PlanProgress } from "@/lib/planning/view";
 
 /**
  * The staff event workspace: what to do next and one-line summaries, decided
@@ -380,7 +380,7 @@ export function planningSummary(f: WorkspaceFacts): Summary {
     return { status: "Not set up", detail: "Event basics only: choose a planning template.", link: { label: "Set up", href: `${event}/planning` } };
   }
   return {
-    status: f.planning.progress ? progressHeadline(f.planning.progress) : "Set up",
+    status: f.planning.progress ? progressSummaryLine(f.planning.progress) : "Set up",
     detail: f.planning.editing ? (f.planning.editing.state === "open" ? "Client editing open" : f.planning.editing.state === "reopened" ? "Reopened for the client" : "Read-only for the client") : null,
     link: { label: "Open", href: `${event}/planning` },
   };

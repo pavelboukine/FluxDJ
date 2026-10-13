@@ -1,11 +1,13 @@
 "use client";
 
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { BASICS_REQUIREMENT_LABELS, type BasicsAnswers } from "@/lib/planning/basics";
 import { clientEditingText, formatInstant, type ClientEditing } from "@/lib/planning/cutoff";
 import { REQUIREMENT_NOTES, STAGE_REQUIREMENT_LABELS } from "@/lib/planning/stages";
-import { itemProgress, progressHeadline, progressScopeNote, type PlanProgress, type Requirement, type TimelineWarning } from "@/lib/planning/view";
+import { cn } from "@/lib/utils";
+import { itemProgress, progressHeadline, progressPercent, progressPercentText, progressScopeNote, type PlanProgress, type Requirement, type TimelineWarning } from "@/lib/planning/view";
+import type { SaveState } from "./use-autosave";
 
 /**
  * Planning state computed by the database: progress, chronology warnings,
@@ -32,6 +34,32 @@ type PlanState = {
 
 const PlanContext = createContext<PlanState | null>(null);
 
+/**
+ * The announcement language as Event basics' editor holds it, for DJ
+ * expectations to ask it there. The answer stays in Event basics (one
+ * answer, one revision, one autosave), so the two sections never save it
+ * separately or disagree.
+ */
+export type LanguageBinding = {
+  value: string;
+  set: (value: string) => void;
+  error: string | null;
+  saveState: SaveState;
+  message: string | null;
+  retry: () => void;
+};
+type LanguageSlot = { binding: LanguageBinding | null; publish: (binding: LanguageBinding | null) => void };
+const LanguageContext = createContext<LanguageSlot | null>(null);
+
+/** Event basics' language, once its editor is ready; null until then or when Event basics asks it itself. */
+export function useLanguageBinding(): LanguageBinding | null {
+  return useContext(LanguageContext)?.binding ?? null;
+}
+
+export function usePublishLanguage(): LanguageSlot["publish"] | null {
+  return useContext(LanguageContext)?.publish ?? null;
+}
+
 export function PlanProgressProvider({ initial, warnings, basics, editing = null, children }: {
   initial: PlanProgress;
   warnings: TimelineWarning[];
@@ -55,7 +83,13 @@ export function PlanProgressProvider({ initial, warnings, basics, editing = null
     setBasics: (b) => setState((s) => ({ ...s, basics: b })),
     applyLocked: (e) => setState((s) => ({ ...s, editing: e })),
   };
-  return <PlanContext.Provider value={value}>{children}</PlanContext.Provider>;
+  const [language, publishLanguage] = useState<LanguageBinding | null>(null);
+  const slot = useMemo(() => ({ binding: language, publish: publishLanguage }), [language]);
+  return (
+    <PlanContext.Provider value={value}>
+      <LanguageContext.Provider value={slot}>{children}</LanguageContext.Provider>
+    </PlanContext.Provider>
+  );
 }
 
 export function usePlanProgress() {
@@ -93,28 +127,51 @@ export function EditingNotice({ djName }: { djName: string }) {
   );
 }
 
-export function ProgressSummary() {
-  const ctx = usePlanProgress();
-  if (!ctx) return null;
-  const p = ctx.progress;
-  const percent = p.percent ?? 0;
-  const discuss = p.items.flatMap((i) => i.requirements).filter((r) => r.discuss).length;
+/**
+ * "43% complete", the count behind it ("18 of 42 required answers") and the
+ * bar: the same numbers on the client's and staff pages (see progressPercent).
+ */
+export function ProgressMeter({ progress, bar, compact = false }: { progress: PlanProgress; bar: string; compact?: boolean }) {
+  const percent = progressPercent(progress);
+  const headline = progressHeadline(progress);
   return (
-    <section aria-labelledby="progress-heading" className="grid gap-2 rounded-xl border p-4">
-      <h2 id="progress-heading" className="text-sm font-semibold">Progress</h2>
-      <p className="text-lg font-medium" data-testid="progress-headline">{progressHeadline(p)}</p>
-      {p.requirements_total > 0 ? (
+    <div className="grid gap-2">
+      {percent === null ? (
+        <p className={compact ? "text-sm font-medium" : "text-lg font-medium"} data-testid="progress-headline">{headline}</p>
+      ) : (
+        <p className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+          <span className={compact ? "text-lg font-semibold tabular-nums" : "text-2xl font-semibold tracking-tight tabular-nums"} data-testid="progress-percent">
+            {progressPercentText(progress)}
+          </span>
+          <span className="text-sm text-muted-foreground" data-testid="progress-headline">{headline}</span>
+        </p>
+      )}
+      {percent !== null ? (
         <div
           role="progressbar"
           aria-label="Required answers in available sections"
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={percent}
+          aria-valuetext={`${progressPercentText(progress)}, ${headline}`}
           className="h-2 overflow-hidden rounded-full bg-muted"
         >
-          <div className="h-full bg-[var(--brand,#059669)]" style={{ width: `${percent}%` }} />
+          <div className={cn("h-full", bar)} style={{ width: `${percent}%` }} />
         </div>
       ) : null}
+    </div>
+  );
+}
+
+export function ProgressSummary() {
+  const ctx = usePlanProgress();
+  if (!ctx) return null;
+  const p = ctx.progress;
+  const discuss = p.items.flatMap((i) => i.requirements).filter((r) => r.discuss).length;
+  return (
+    <section aria-labelledby="progress-heading" className="grid gap-2 rounded-xl border p-4">
+      <h2 id="progress-heading" className="text-sm font-semibold">Progress</h2>
+      <ProgressMeter progress={p} bar="bg-[var(--brand,#059669)]" />
       <p className="text-sm text-muted-foreground">{progressScopeNote(p)}</p>
       {discuss > 0 ? <p className="text-sm">{discuss === 1 ? "1 detail is" : `${discuss} details are`} marked &quot;discuss with DJ&quot; and still open.</p> : null}
       {ctx.warnings.length > 0 ? (
@@ -128,7 +185,8 @@ export function ProgressSummary() {
 
 function stateText(r: Requirement, dj: string, audience: "client" | "staff"): string {
   if (r.discuss) return audience === "client" ? `Discuss with ${dj} (still open)` : "Discuss with DJ (still open)";
-  if (r.state === "unanswered") return r.note ? REQUIREMENT_NOTES[r.note] ?? "Not answered yet" : "Not answered yet";
+  // The language is answered in DJ expectations, though it's stored with Event basics ("basics_missing").
+  if (r.state === "unanswered") return r.note && r.key !== "language" ? REQUIREMENT_NOTES[r.note] ?? "Not answered yet" : "Not answered yet";
   if (r.state === "answered") return "Answered";
   if (r.state === "imported") return audience === "client" ? `Provided by ${dj}` : "From the event details";
   return audience === "client" ? "Not needed (you said so)" : "Marked not needed";

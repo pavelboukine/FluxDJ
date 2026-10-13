@@ -2,9 +2,8 @@
 
 import type { ReactNode } from "react";
 import { Input } from "@/components/ui/input";
-import { endsAfterMidnight } from "@/lib/planning/basics";
 import type { ListChoice } from "@/lib/planning/participants";
-import { nextDayLabel } from "@/lib/planning/stages";
+import { minutesOf, nextDayLabel } from "@/lib/planning/stages";
 import {
   ACTIVITY_SUGGESTIONS,
   TIMED_RULES,
@@ -27,6 +26,7 @@ import {
 } from "@/lib/planning/timed";
 import { isHttpsUrl, linkHost } from "@/lib/payments";
 import { FieldBox } from "./basics-editor";
+import { TimeField } from "./time-field";
 import { Choices, EntryList, Frame, PRONUNCIATION_HINT, text, type Common } from "./participants-editor";
 import { useEditingClosed, usePlanProgress } from "./progress";
 import { SaveStatus, useAutosave } from "./use-autosave";
@@ -34,23 +34,11 @@ import { SaveStatus, useAutosave } from "./use-autosave";
 type EventInfo = { date: string; timezone: string; venueName: string | null; venueAddress: string | null };
 const djText = (props: { audience: "client" | "staff"; djName: string }) => (props.audience === "client" ? props.djName : "the DJ");
 
-/** A local time with its explicit "Next day" mark, as in stage details. */
-function TimeField({ id, label, time, nextDay, onChange, error, eventDate, hint }: {
-  id: string; label: string; time: string; nextDay: boolean; onChange: (c: { time?: string; nextDay?: boolean }) => void; error: string | null; eventDate: string; hint?: string;
-}) {
-  const next = nextDayLabel(eventDate);
-  return (
-    <FieldBox id={id} label={label} error={error} hint={hint} className="sm:col-span-2">
-      <div className="flex flex-wrap items-center gap-3">
-        <Input id={id} type="time" className="w-36" value={time} onChange={(e) => onChange({ time: e.target.value })} aria-invalid={Boolean(error)} />
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" className="size-4 accent-primary" checked={nextDay} disabled={time === ""} onChange={(e) => onChange({ nextDay: e.target.checked })}
-            aria-label={`${label.replace(/ \((needed|optional)\)$/, "")}: next day (${next})`} />
-          Next day ({next})
-        </label>
-      </div>
-    </FieldBox>
-  );
+/** An end at or before its start: offer "Next day" for it (never assumed). */
+function endNotAfterStart(form: { start_time: string; start_next_day: boolean; end_time: string; end_next_day: boolean }): boolean {
+  const start = minutesOf(form, "start");
+  const end = minutesOf(form, "end");
+  return start !== null && end !== null && end <= start;
 }
 
 // ---------------------------------------------------------------------------
@@ -90,12 +78,12 @@ export function ArrivalEditor(props: Common<ArrivalAnswers> & { event: EventInfo
     >
       <fieldset disabled={readOnly} className="grid gap-4 sm:grid-cols-2">
         <legend className="sr-only">Arrival details</legend>
-        <label className="flex items-center gap-2 text-sm sm:col-span-2">
+        <label className="flex items-center gap-2 text-sm col-span-full">
           <input type="checkbox" className="size-4 accent-primary" checked={none} onChange={(e) => update({ arrival_none: e.target.checked }, ["arrival_none"])} />
           No separate arrival arrangements
         </label>
-        {errorFor("arrival_none") ? <p className="text-xs text-destructive sm:col-span-2">{errorFor("arrival_none")}</p> : null}
-        <fieldset className="grid gap-1.5 sm:col-span-2">
+        {errorFor("arrival_none") ? <p className="text-xs text-destructive col-span-full">{errorFor("arrival_none")}</p> : null}
+        <fieldset className="grid gap-1.5 col-span-full">
           <legend className="mb-1 text-sm font-medium">Where do guests arrive? (needed)</legend>
           {radio("location_source", "event_venue", `Same as the event venue${venue ? ` (${venue})` : " (not entered yet)"}`)}
           {radio("location_source", "ceremony", `Same as the ceremony${ceremonyPlace ? ` (${ceremonyPlace})` : " (not in the Ceremony details yet)"}`)}
@@ -103,18 +91,20 @@ export function ArrivalEditor(props: Common<ArrivalAnswers> & { event: EventInfo
           {form.location_source === "other" ? text(id("location_other"), "Place and address", form.location_other, (v) => update({ location_other: v }, ["location_other"]), errorFor("location_other"), { rows: 2 }) : null}
           {text(id("location_area"), "Room or outdoor area (optional)", form.location_area, (v) => update({ location_area: v }, ["location_area"]), errorFor("location_area"))}
         </fieldset>
-        <fieldset className="grid gap-1.5 sm:col-span-2">
+        <fieldset className="grid gap-1.5 col-span-full">
           <legend className="mb-1 text-sm font-medium">When do guests arrive? (needed)</legend>
           {radio("time_source", "ceremony", `Same as the ceremony's guest arrival${ceremonyArrival ? ` (${ceremonyArrival})` : " (not in the Ceremony details yet)"}`)}
           {radio("time_source", "time", "At a specific time")}
           {form.time_source === "time" ? (
             <>
-              <TimeField id={id("start_time")} label="Arrival starts (needed)" time={form.start_time} nextDay={form.start_next_day} eventDate={props.event.date}
-                onChange={(ch) => update({ ...(ch.time !== undefined ? { start_time: ch.time } : {}), ...(ch.nextDay !== undefined ? { start_next_day: ch.nextDay } : {}) }, ["start_time", "end_time"])}
-                error={errorFor("start_time")} />
-              <TimeField id={id("end_time")} label="Arrival ends (optional)" time={form.end_time} nextDay={form.end_next_day} eventDate={props.event.date}
-                onChange={(ch) => update({ ...(ch.time !== undefined ? { end_time: ch.time } : {}), ...(ch.nextDay !== undefined ? { end_next_day: ch.nextDay } : {}) }, ["end_time"])}
-                error={errorFor("end_time")} />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <TimeField id={id("start_time")} label="Arrival starts (needed)" time={form.start_time} nextDay={form.start_next_day} eventDate={props.event.date}
+                  onTime={(t) => update({ start_time: t }, ["start_time", "end_time"])} onNextDay={(n) => update({ start_next_day: n }, ["start_time", "end_time"])}
+                  error={errorFor("start_time")} />
+                <TimeField id={id("end_time")} label="Arrival ends (optional)" time={form.end_time} nextDay={form.end_next_day} eventDate={props.event.date}
+                  onTime={(t) => update({ end_time: t }, ["end_time"])} onNextDay={(n) => update({ end_next_day: n }, ["end_time"])}
+                  error={errorFor("end_time")} suggestNextDay={endNotAfterStart(form)} />
+              </div>
             </>
           ) : null}
         </fieldset>
@@ -226,7 +216,7 @@ function TimedList(props: {
         }}
         fields={(e, onChange, errorFor, prefix) => (
           <>
-            <FieldBox id={`${prefix}-${rules.name}`} label={w.name} error={errorFor(rules.name)} hint={w.nameHint} className="sm:col-span-2">
+            <FieldBox id={`${prefix}-${rules.name}`} label={w.name} error={errorFor(rules.name)} hint={w.nameHint} className="col-span-full">
               <Input id={`${prefix}-${rules.name}`} list={editor === "activities" ? `${props.base}-suggestions` : undefined} value={String(e[nameField])}
                 onChange={(ev) => onChange({ [rules.name]: ev.target.value } as Partial<TimedEntryForm>)} aria-invalid={Boolean(errorFor(rules.name))} />
             </FieldBox>
@@ -235,7 +225,7 @@ function TimedList(props: {
             {editor === "activities" ? text(`${prefix}-participants`, "Participants (optional)", e.participants, (v) => onChange({ participants: v }), errorFor("participants")) : null}
             {editor === "dedications" ? text(`${prefix}-relationship`, "Relationship (optional)", e.relationship, (v) => onChange({ relationship: v }), errorFor("relationship")) : null}
             {text(`${prefix}-pronunciation`, "Pronunciation guide (optional)", e.pronunciation, (v) => onChange({ pronunciation: v }), errorFor("pronunciation"), { hint: PRONUNCIATION_HINT })}
-            <fieldset className="grid gap-1 sm:col-span-2">
+            <fieldset className="grid gap-1 col-span-full">
               <legend className="mb-1 text-sm font-medium">When (needed to complete)</legend>
               {rules.timings.map((t) => (
                 <label key={t} className="flex min-h-9 items-center gap-2 text-sm">
@@ -247,7 +237,7 @@ function TimedList(props: {
             </fieldset>
             {e.timing === "time" ? (
               <TimeField id={`${prefix}-time`} label="Time" time={e.time} nextDay={e.next_day} eventDate={props.eventDate}
-                onChange={(ch) => onChange({ ...(ch.time !== undefined ? { time: ch.time } : {}), ...(ch.nextDay !== undefined ? { next_day: ch.nextDay } : {}) })} error={errorFor("time")} />
+                onTime={(t) => onChange({ time: t })} onNextDay={(n) => onChange({ next_day: n })} error={errorFor("time")} />
             ) : null}
             {e.timing === "cue" ? text(`${prefix}-cue`, "Moment", e.cue, (v) => onChange({ cue: v }), errorFor("cue"), { hint: 'For example "After dessert" or "Right after the first dance".', wide: true }) : null}
             {rules.duration ? (
@@ -257,7 +247,7 @@ function TimedList(props: {
             ) : null}
             {editor === "dedications" ? text(`${prefix}-message`, "Announcement message (optional)", e.message, (v) => onChange({ message: v }), errorFor("message"), { rows: 2 }) : null}
             {rules.song ? (
-              <fieldset className="grid gap-3 sm:col-span-2 sm:grid-cols-2">
+              <fieldset className="grid gap-3 col-span-full sm:grid-cols-2">
                 <legend className="mb-1 text-sm font-medium">{rules.requiresSong ? "Song (needed to complete)" : "Song (optional)"}</legend>
                 {text(`${prefix}-song_title`, "Song title", e.song_title, (v) => onChange({ song_title: v }), errorFor("song_title"))}
                 {text(`${prefix}-song_artist`, "Song artist", e.song_artist, (v) => onChange({ song_artist: v }), errorFor("song_artist"))}
@@ -305,16 +295,15 @@ export function ProgramEditor(props: Common<TimedAnswers> & { event: EventInfo }
   });
   const errorFor = (f: string) => (fieldError?.field === f ? fieldError.message : null);
   const id = (f: string) => `${props.momentKey}-${f}`;
-  const overnight = form.start_time && form.end_time && !form.end_next_day && endsAfterMidnight(form.start_time, form.end_time);
   const head: ReactNode = (
     <fieldset disabled={readOnly} className="grid gap-3 sm:grid-cols-2">
       <legend className="mb-1 text-sm font-medium">The program overall (optional)</legend>
       <TimeField id={id("start_time")} label="Program starts (optional)" time={form.start_time} nextDay={form.start_next_day} eventDate={props.event.date}
-        onChange={(ch) => update({ ...(ch.time !== undefined ? { start_time: ch.time } : {}), ...(ch.nextDay !== undefined ? { start_next_day: ch.nextDay } : {}) }, ["start_time", "end_time"])}
+        onTime={(t) => update({ start_time: t }, ["start_time", "end_time"])} onNextDay={(n) => update({ start_next_day: n }, ["start_time", "end_time"])}
         error={errorFor("start_time")} />
       <TimeField id={id("end_time")} label="Program ends (optional)" time={form.end_time} nextDay={form.end_next_day} eventDate={props.event.date}
-        onChange={(ch) => update({ ...(ch.time !== undefined ? { end_time: ch.time } : {}), ...(ch.nextDay !== undefined ? { end_next_day: ch.nextDay } : {}) }, ["end_time"])}
-        error={errorFor("end_time")} hint={overnight ? 'Ends after midnight? Check "Next day".' : undefined} />
+        onTime={(t) => update({ end_time: t }, ["end_time"])} onNextDay={(n) => update({ end_next_day: n }, ["end_time"])}
+        error={errorFor("end_time")} suggestNextDay={endNotAfterStart(form)} hint={endNotAfterStart(form) ? 'Ends after midnight? Check "Next day".' : undefined} />
       {text(id("host"), "Host (optional)", form.host, (v) => update({ host: v }, ["host"]), errorFor("host"))}
       {text(id("host_pronunciation"), "Host pronunciation guide (optional)", form.host_pronunciation, (v) => update({ host_pronunciation: v }, ["host_pronunciation"]), errorFor("host_pronunciation"), { hint: PRONUNCIATION_HINT })}
       {text(id("notes"), "Instructions (optional)", form.notes, (v) => update({ notes: v }, ["notes"]), errorFor("notes"), { rows: 2 })}

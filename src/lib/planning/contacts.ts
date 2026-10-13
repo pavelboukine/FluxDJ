@@ -21,6 +21,7 @@ export function isEmail(value: string): boolean {
 }
 const PHONE_MESSAGE = "Enter a phone number with 7 to 20 digits, such as 514 555-0100.";
 const EMAIL_MESSAGE = "Enter an email address such as name@example.com.";
+export const VENDOR_REACH_MESSAGE = "Enter a phone number or an email address for this vendor.";
 
 // ---------------------------------------------------------------------------
 // Contacts and vendors
@@ -50,6 +51,8 @@ export type ContactsAnswers = {
 export type ContactsForm = {
   day_of_source: DayOfSource | ""; day_of_client_id: string; day_of_name: string; day_of_phone: string; day_of_role: string;
   vendors: VendorForm[]; vendors_choice: "" | "none";
+  /** Vendors saved before a phone or email was needed, without either: kept as they are until someone adds one. */
+  unreachable: string[];
 };
 /** An event contact planning may show and point at (client-safe: name and phone). */
 export type EventContact = { id: string; name: string; phone: string | null; primary: boolean };
@@ -64,15 +67,29 @@ export function contactsForm(a: ContactsAnswers): ContactsForm {
     day_of_phone: a.day_of_phone ?? "", day_of_role: a.day_of_role ?? "",
     vendors: (a.vendors ?? []).map((v) => ({ ...emptyVendor(v.id), ...v })),
     vendors_choice: a.vendors_choice ?? "",
+    unreachable: savedWithoutReach(a),
   };
 }
 
-/** What a vendor entry still needs before it can be added, or null. */
-export function vendorProblem(v: VendorForm): { field: string; message: string } | null {
+/** Saved vendors with neither a phone nor an email. */
+export function savedWithoutReach(a: ContactsAnswers): string[] {
+  return (a.vendors ?? []).filter((v) => !v.phone && !v.email).map((v) => v.id);
+}
+
+export const vendorReachable = (v: Pick<VendorForm, "phone" | "email">) => Boolean(v.phone.trim() || v.email.trim());
+
+/**
+ * What a vendor entry still needs, or null. A phone or an email is needed so
+ * the DJ can reach them; a vendor saved without either before that rule
+ * (`unreachable`) can stay that way. Mirrors normalize_plan_contacts and
+ * check_plan_vendor_reach.
+ */
+export function vendorProblem(v: VendorForm, unreachable = false): { field: string; message: string } | null {
   if (!VENDOR_ROLES.some(([r]) => r === v.role)) return { field: "role", message: "Choose a role." };
   if (!v.name.trim() && !v.business.trim()) return { field: "name", message: "Enter a person's name or a business name." };
   if (v.phone.trim() && !isPhone(v.phone.trim())) return { field: "phone", message: PHONE_MESSAGE };
   if (v.email.trim() && !isEmail(v.email.trim())) return { field: "email", message: EMAIL_MESSAGE };
+  if (!unreachable && !vendorReachable(v)) return { field: "phone", message: VENDOR_REACH_MESSAGE };
   return null;
 }
 
@@ -103,7 +120,7 @@ export function contactsAnswersFromForm(form: ContactsForm): Parsed<ContactsAnsw
     for (const field of ["name", "business", "phone", "email", "notes"] as const) {
       if (v[field].trim().length > VENDOR_LIMITS[field]) return { ok: false, field: entryField(v.id, field), message: `Keep this under ${VENDOR_LIMITS[field]} characters.` };
     }
-    const problem = vendorProblem(v);
+    const problem = vendorProblem(v, form.unreachable.includes(v.id));
     if (problem) return { ok: false, field: entryField(v.id, problem.field), message: problem.message };
     const o: Vendor = { id: v.id, role: v.role as VendorRole };
     for (const field of ["name", "business", "phone", "email", "notes"] as const) if (v[field].trim()) o[field] = v[field].trim();
@@ -118,7 +135,7 @@ export function contactsAnswersFromForm(form: ContactsForm): Parsed<ContactsAnsw
 }
 
 // ---------------------------------------------------------------------------
-// DJ expectations and overall preferences (language comes from Event basics)
+// DJ expectations and overall preferences (the language they ask is stored with Event basics)
 // ---------------------------------------------------------------------------
 
 export const INTERACTION = [

@@ -42,14 +42,40 @@ describe("contacts (mirror of private.normalize_plan_contacts)", () => {
     expect(vendorProblem({ ...emptyVendor(V1), role: "photographer" })).toMatchObject({ field: "name" });
     expect(vendorProblem({ ...emptyVendor(V1), role: "photographer", business: "Lumière", phone: "12" })).toMatchObject({ field: "phone" });
     expect(vendorProblem({ ...emptyVendor(V1), role: "photographer", business: "Lumière", email: "jo@" })).toMatchObject({ field: "email" });
-    expect(vendorProblem({ ...emptyVendor(V1), role: "photographer", business: "Lumière" })).toBeNull();
+    expect(vendorProblem({ ...emptyVendor(V1), role: "photographer", business: "Lumière", email: "photos@lumiere.test" })).toBeNull();
     expect(contactsAnswersFromForm({ ...blank, vendors: [{ ...emptyVendor(V1), role: "venue" }] })).toMatchObject({ ok: false, field: `entry:${V1}:name` });
   });
 
+  it("needs a phone or an email for a vendor; either one is enough (mirror of check_plan_vendor_reach)", () => {
+    const vendor = { ...emptyVendor(V1), role: "videographer" as const, name: "Remy" };
+    expect(vendorProblem(vendor)).toEqual({ field: "phone", message: "Enter a phone number or an email address for this vendor." });
+    expect(vendorProblem({ ...vendor, phone: "   ", email: " " })).toMatchObject({ field: "phone" });
+    expect(vendorProblem({ ...vendor, phone: "514 555-0100" })).toBeNull();
+    expect(vendorProblem({ ...vendor, email: "remy@films.test" })).toBeNull();
+    expect(contactsAnswersFromForm({ ...blank, vendors: [vendor] })).toMatchObject({ ok: false, field: `entry:${V1}:phone` });
+    // Business name stays optional.
+    expect(contactsAnswersFromForm({ ...blank, vendors: [{ ...vendor, email: " remy@films.test " }] }))
+      .toEqual({ ok: true, answers: { vendors: [{ id: V1, role: "videographer", name: "Remy", email: "remy@films.test" }] } });
+  });
+
+  it("keeps vendors saved without a phone or email before that rule, and never blocks the other answers for them", () => {
+    const saved = { day_of_source: "undecided" as const, vendors: [{ id: V1, role: "venue" as const, name: "Pat" }] };
+    const form = contactsForm(saved);
+    expect(form.unreachable).toEqual([V1]);
+    // The day-of contact changes; the older vendor is saved as it was, and can be renamed.
+    const renamed = { ...form, day_of_source: "other" as const, day_of_name: "Morgan", day_of_phone: "514 555-0142", vendors: [{ ...form.vendors[0], name: "Pat Venue" }] };
+    expect(contactsAnswersFromForm(renamed)).toEqual({ ok: true, answers: {
+      day_of_source: "other", day_of_name: "Morgan", day_of_phone: "514 555-0142", vendors: [{ id: V1, role: "venue", name: "Pat Venue" }],
+    } });
+    // A vendor saved with a phone or email isn't exempt, and nor is a new one.
+    expect(contactsForm({ vendors: [{ id: V1, role: "venue", name: "Pat", phone: "514 555-0188" }] }).unreachable).toEqual([]);
+    expect(contactsAnswersFromForm({ ...blank, vendors: [{ ...emptyVendor(V1), role: "venue", name: "Pat" }] })).toMatchObject({ ok: false, field: `entry:${V1}:phone` });
+  });
+
   it('refuses "No additional vendor contacts" while vendors are listed; round-trips saved answers', () => {
-    const vendor = { ...emptyVendor(V1), role: "planner" as const, name: " Sasha ", notes: "Shared note" };
+    const vendor = { ...emptyVendor(V1), role: "planner" as const, name: " Sasha ", phone: "514 555-0123", notes: "Shared note" };
     expect(contactsAnswersFromForm({ ...blank, vendors: [vendor], vendors_choice: "none" })).toMatchObject({ ok: false, field: "vendors_choice" });
-    const saved = { day_of_source: "other" as const, day_of_name: "Morgan", day_of_phone: "514 555-0142", vendors: [{ id: V1, role: "planner" as const, name: "Sasha", notes: "Shared note" }] };
+    const saved = { day_of_source: "other" as const, day_of_name: "Morgan", day_of_phone: "514 555-0142", vendors: [{ id: V1, role: "planner" as const, name: "Sasha", email: "sasha@dayof.test", notes: "Shared note" }] };
     const again = contactsAnswersFromForm(contactsForm(saved));
     expect(again.ok && answersKey(again.answers)).toBe(answersKey(saved));
   });

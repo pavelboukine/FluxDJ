@@ -2,13 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   PROVIDED_SECTION,
   firstIncompleteSection,
+  languageAskedInPreferences,
   neighbours,
   planSections,
   resolveSection,
   sectionSearch,
   sectionStatus,
 } from "@/lib/planning/navigation";
-import type { PlanProgress, PlanStructure } from "@/lib/planning/view";
+import { progressHeadline, progressPercent, progressPercentText, progressSummaryLine, type PlanProgress, type PlanStructure } from "@/lib/planning/view";
 
 const m = (id: string, key: string, label: string, editor: string | null) => ({ id, key, label, editor, disabled: false });
 
@@ -141,5 +142,45 @@ describe("planning sections", () => {
     expect(sectionSearch("", "ceremony")).toBe("?section=ceremony");
     expect(sectionSearch("?section=ceremony&x=1", null)).toBe("?x=1");
     expect(sectionSearch("?section=ceremony", null)).toBe("");
+  });
+});
+
+describe("announcement language placement", () => {
+  it("is asked in DJ expectations when that section is shown, else in Event basics (one stored answer either way)", () => {
+    expect(languageAskedInPreferences(structure)).toBe(true);
+    const hidden = { ...structure, general: structure.general.map((g) => (g.editor === "preferences" ? { ...g, disabled: true } : g)) };
+    expect(languageAskedInPreferences(hidden)).toBe(false);
+    expect(languageAskedInPreferences({ ...structure, general: structure.general.filter((g) => g.editor !== "preferences") })).toBe(false);
+  });
+});
+
+describe("progress percentage (display of the database's counts)", () => {
+  const counts = (met: number, total: number): PlanProgress => ({ ...progress([]), requirements_met: met, requirements_total: total });
+  it("rounds to the nearest percent: 18 of 42 is 43%", () => {
+    expect(progressPercent(counts(18, 42))).toBe(43);
+    expect(progressPercentText(counts(18, 42))).toBe("43% complete");
+    expect(progressHeadline(counts(18, 42))).toBe("18 of 42 required answers");
+    expect(progressSummaryLine(counts(18, 42))).toBe("43% complete · 18 of 42 required answers");
+    expect(progressPercent(counts(1, 2))).toBe(50);
+    expect(progressPercent(counts(1, 3))).toBe(33);
+  });
+  it("says 0% only with nothing answered and 100% only with everything answered", () => {
+    expect(progressPercent(counts(0, 42))).toBe(0);
+    expect(progressPercent(counts(1, 300))).toBe(1);
+    expect(progressPercent(counts(299, 300))).toBe(99);
+    expect(progressPercent(counts(42, 42))).toBe(100);
+    expect(progressHeadline(counts(42, 42))).toBe("42 of 42 required answers");
+  });
+  it("has no percentage when there is nothing to fill in", () => {
+    expect(progressPercent(counts(0, 0))).toBeNull();
+    expect(progressPercentText(counts(0, 0))).toBeNull();
+    expect(progressSummaryLine(counts(0, 0))).toBe("Nothing to fill in yet");
+  });
+  it("uses the database's own counts: not-applicable answers count as met, discuss stays open", () => {
+    const p = progress([
+      { id: "g1", key: "basics", states: ["answered", "unanswered"] },
+      { id: "g2", key: "dj_preferences", states: ["not_applicable", "unanswered", "unanswered"], discuss: true },
+    ]);
+    expect([p.requirements_met, p.requirements_total, progressPercent(p)]).toEqual([2, 5, 40]);
   });
 });

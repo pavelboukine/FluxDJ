@@ -1,6 +1,5 @@
 "use client";
 
-import { ANNOUNCEMENT_LANGUAGES } from "@/lib/planning/basics";
 import {
   GENRES,
   INTERACTION,
@@ -26,10 +25,12 @@ import {
   type PreferencesAnswers,
   type PreferencesForm,
   type VendorForm,
+  vendorReachable,
 } from "@/lib/planning/contacts";
-import { FieldBox } from "./basics-editor";
+import { selectClass } from "@/components/app/fields";
+import { FieldBox, LanguageSelect, describedBy } from "./basics-editor";
 import { Choices, EntryList, Frame, text, type Common } from "./participants-editor";
-import { useEditingClosed, usePlanProgress } from "./progress";
+import { useEditingClosed, useLanguageBinding, usePlanProgress } from "./progress";
 import { SaveStatus, useAutosave } from "./use-autosave";
 
 const djText = (props: { audience: "client" | "staff"; djName: string }) => (props.audience === "client" ? props.djName : "the DJ");
@@ -61,6 +62,7 @@ export function ContactsEditor(props: Common<ContactsAnswers> & { eventContacts:
   const chosen = props.eventContacts.find((c) => c.id === form.day_of_client_id);
   const unavailable = form.day_of_source === "event_contact" && form.day_of_client_id !== "" && !chosen;
   const { mc, officiant } = props.known;
+  const dj = djText(props);
 
   return (
     <Frame props={props as Common<unknown>} status={<SaveStatus saveState={saveState} message={message} retry={retry} />}>
@@ -97,32 +99,34 @@ export function ContactsEditor(props: Common<ContactsAnswers> & { eventContacts:
             { value: "undecided", label: "Not decided yet" },
           ]}
         />
-        <fieldset disabled={readOnly} className="grid gap-3 sm:grid-cols-2">
-          <legend className="sr-only">Day-of contact details</legend>
-          {form.day_of_source === "event_contact" ? (
-            <>
-              <FieldBox id={id("day_of_client_id")} label="Contact" error={errorFor("day_of_client_id")} className="sm:col-span-2"
-                hint={unavailable ? "That contact isn't on this event any more. Choose another contact or enter someone." : "The event's contacts as your DJ has them. Planning never changes them."}>
-                <select id={id("day_of_client_id")} className="h-9 w-full rounded-md border bg-transparent px-2 text-sm" value={form.day_of_client_id}
-                  onChange={(e) => update({ day_of_client_id: e.target.value }, ["day_of_client_id"])}>
-                  <option value="">Choose a contact</option>
-                  {unavailable ? <option value={form.day_of_client_id}>No longer on this event</option> : null}
-                  {props.eventContacts.map((c) => <option key={c.id} value={c.id}>{c.name}{c.phone ? ` (${c.phone})` : " (no phone on file)"}</option>)}
-                </select>
-              </FieldBox>
-              {text(id("day_of_phone"), chosen?.phone ? "Different phone for the day (optional)" : "Phone for the day (needed)", form.day_of_phone,
-                (v) => update({ day_of_phone: v }, ["day_of_phone"]), errorFor("day_of_phone"),
-                { hint: "Used for this event's planning only; it doesn't change the contact's details." })}
-            </>
-          ) : null}
-          {form.day_of_source === "other" ? (
-            <>
-              {text(id("day_of_name"), "Name (needed)", form.day_of_name, (v) => update({ day_of_name: v }, ["day_of_name"]), errorFor("day_of_name"))}
-              {text(id("day_of_phone"), "Phone (needed)", form.day_of_phone, (v) => update({ day_of_phone: v }, ["day_of_phone"]), errorFor("day_of_phone"))}
-              {text(id("day_of_role"), "Relationship or role (optional)", form.day_of_role, (v) => update({ day_of_role: v }, ["day_of_role"]), errorFor("day_of_role"), { hint: "For example: maid of honour, planner, brother.", wide: true })}
-            </>
-          ) : null}
-        </fieldset>
+        {form.day_of_source === "event_contact" || form.day_of_source === "other" ? (
+          <fieldset disabled={readOnly} className="grid gap-3 sm:grid-cols-2">
+            <legend className="sr-only">Day-of contact details</legend>
+            {form.day_of_source === "event_contact" ? (
+              <>
+                <FieldBox id={id("day_of_client_id")} label="Contact" error={errorFor("day_of_client_id")} className="col-span-full"
+                  hint={unavailable ? "That contact isn't on this event any more. Choose another contact or enter someone." : "The event's contacts as your DJ has them. Planning never changes them."}>
+                  <select id={id("day_of_client_id")} className={selectClass} value={form.day_of_client_id} aria-describedby={describedBy(id("day_of_client_id"), errorFor("day_of_client_id"), "hint")}
+                    onChange={(e) => update({ day_of_client_id: e.target.value }, ["day_of_client_id"])}>
+                    <option value="">Choose a contact</option>
+                    {unavailable ? <option value={form.day_of_client_id}>No longer on this event</option> : null}
+                    {props.eventContacts.map((c) => <option key={c.id} value={c.id}>{c.name}{c.phone ? ` (${c.phone})` : " (no phone on file)"}</option>)}
+                  </select>
+                </FieldBox>
+                {text(id("day_of_phone"), chosen?.phone ? "Different phone for the day (optional)" : "Phone for the day (needed)", form.day_of_phone,
+                  (v) => update({ day_of_phone: v }, ["day_of_phone"]), errorFor("day_of_phone"),
+                  { hint: "Used for this event's planning only; it doesn't change the contact's details." })}
+              </>
+            ) : null}
+            {form.day_of_source === "other" ? (
+              <>
+                {text(id("day_of_name"), "Name (needed)", form.day_of_name, (v) => update({ day_of_name: v }, ["day_of_name"]), errorFor("day_of_name"))}
+                {text(id("day_of_phone"), "Phone (needed)", form.day_of_phone, (v) => update({ day_of_phone: v }, ["day_of_phone"]), errorFor("day_of_phone"))}
+                {text(id("day_of_role"), "Relationship or role (optional)", form.day_of_role, (v) => update({ day_of_role: v }, ["day_of_role"]), errorFor("day_of_role"), { hint: "For example: maid of honour, planner, brother.", wide: true })}
+              </>
+            ) : null}
+          </fieldset>
+        ) : null}
       </section>
 
       <section className="grid gap-2 border-t pt-3" aria-label="Vendors">
@@ -154,27 +158,37 @@ export function ContactsEditor(props: Common<ContactsAnswers> & { eventContacts:
               <p className="font-medium [overflow-wrap:anywhere]">
                 {index + 1}. {roleLabel(v.role)}: {[v.name.trim(), v.business.trim()].filter(Boolean).join(", ") || "Unnamed"}
               </p>
-              {v.phone.trim() || v.email.trim() ? <p className="text-xs [overflow-wrap:anywhere]">{[v.phone.trim(), v.email.trim()].filter(Boolean).join(" · ")}</p> : null}
+              {vendorReachable(v) ? (
+                <p className="text-xs [overflow-wrap:anywhere]">{[v.phone.trim(), v.email.trim()].filter(Boolean).join(" · ")}</p>
+              ) : (
+                <p className="text-xs text-amber-700 dark:text-amber-400">No phone or email yet. Edit to add one so {dj} can reach them.</p>
+              )}
               {v.notes.trim() ? <p className="whitespace-pre-line text-xs [overflow-wrap:anywhere]">Shared notes: {v.notes}</p> : null}
             </>
           )}
           fields={(v, onChange, entryError, prefix) => (
             <>
-              <FieldBox id={`${prefix}-role`} label="Role" error={entryError("role")} className="sm:col-span-2">
-                <select id={`${prefix}-role`} className="h-9 w-full rounded-md border bg-transparent px-2 text-sm" value={v.role} onChange={(e) => onChange({ role: e.target.value as VendorForm["role"] })}>
+              <FieldBox id={`${prefix}-role`} label="Role" error={entryError("role")} className="col-span-full">
+                <select id={`${prefix}-role`} className={selectClass} value={v.role} aria-invalid={Boolean(entryError("role"))} aria-describedby={describedBy(`${prefix}-role`, entryError("role"))} onChange={(e) => onChange({ role: e.target.value as VendorForm["role"] })}>
                   <option value="">Choose a role</option>
                   {VENDOR_ROLES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </select>
               </FieldBox>
               {text(`${prefix}-name`, "Person's name", v.name, (x) => onChange({ name: x }), entryError("name"), { hint: "A name or a business name is needed." })}
               {text(`${prefix}-business`, "Business name (optional)", v.business, (x) => onChange({ business: x }), entryError("business"))}
-              {text(`${prefix}-phone`, "Phone (optional)", v.phone, (x) => onChange({ phone: x }), entryError("phone"))}
-              {text(`${prefix}-email`, "Email (optional)", v.email, (x) => onChange({ email: x }), entryError("email"))}
+              <fieldset className="grid gap-3 col-span-full sm:grid-cols-2" aria-describedby={`${prefix}-reach-hint`}>
+                <legend className="mb-1 text-sm font-medium">How to reach them (phone or email needed)</legend>
+                {text(`${prefix}-phone`, "Phone", v.phone, (x) => onChange({ phone: x }), entryError("phone"), { type: "tel", inputMode: "tel", autoComplete: "off" })}
+                {text(`${prefix}-email`, "Email", v.email, (x) => onChange({ email: x }), entryError("email"), { type: "email", inputMode: "email", autoComplete: "off" })}
+                <p id={`${prefix}-reach-hint`} className="text-xs text-muted-foreground col-span-full">
+                  Provide at least a phone number or email so {dj} can contact this vendor if needed.
+                </p>
+              </fieldset>
               {text(`${prefix}-notes`, "Coordination notes (optional, shared with you and the DJ)", v.notes, (x) => onChange({ notes: x }), entryError("notes"), { rows: 2 })}
             </>
           )}
           newEntry={emptyVendor}
-          check={vendorProblem}
+          check={(v) => vendorProblem(v)}
           fieldError={fieldError}
         />
         {fieldError?.field === "vendors" ? <p role="alert" className="text-xs text-destructive">{fieldError.message}</p> : null}
@@ -201,7 +215,11 @@ export function PreferencesEditor(props: Common<PreferencesAnswers>) {
   const errorFor = (f: string) => (fieldError?.field === f ? fieldError.message : null);
   const id = (f: string) => `${props.momentKey}-${f}`;
   const dj = djText(props);
-  const language = ANNOUNCEMENT_LANGUAGES.find(([v]) => v === plan?.basics.announcement_language)?.[1];
+  // Stored with Event basics and saved by its editor (see LanguageBinding); asked here, where it belongs.
+  const language = useLanguageBinding();
+  const savedLanguage = plan?.basics.announcement_language ?? "";
+  const languageId = id("announcement_language");
+  const languageHint = `The language ${dj} uses for announcements and introductions.`;
   return (
     <Frame
       props={props as Common<unknown>}
@@ -212,12 +230,16 @@ export function PreferencesEditor(props: Common<PreferencesAnswers>) {
         <legend className="sr-only">DJ expectations and overall preferences</legend>
         {text(id("atmosphere"), "Desired atmosphere and what matters most (optional)", form.atmosphere, (v) => update({ atmosphere: v }, ["atmosphere"]), errorFor("atmosphere"), { rows: 3, hint: "For example: elegant dinner, then a packed dance floor; keep grandparents in mind." })}
         <Choices name={id("interaction")} legend="How much should the DJ talk? (needed)" value={form.interaction} onChange={(v) => update({ interaction: v }, ["interaction"])} error={errorFor("interaction")} options={withDj(INTERACTION, dj)} />
-        <div className="grid gap-1 text-sm" data-testid="language-from-basics">
-          <p className="font-medium">Announcement language (needed)</p>
-          <p className={language ? "" : "text-amber-700 dark:text-amber-400"}>
-            {language ? `${language}, from Event basics.` : "Not set yet: choose it in Event basics."}
-          </p>
-          <p className="text-xs text-muted-foreground">It is kept in one place, Event basics, so it never disagrees.</p>
+        <div className="grid gap-1.5" data-testid="announcement-language">
+          <FieldBox id={languageId} label="Announcement language (needed)" error={language?.error ?? null} hint={languageHint} className="sm:max-w-sm">
+            <LanguageSelect id={languageId} value={language?.value ?? savedLanguage} onChange={(v) => language?.set(v)} error={language?.error ?? null} hint={languageHint} disabled={!language} />
+          </FieldBox>
+          {/* Saved with Event basics: say so only while that save is pending or failed. */}
+          {!language || language.value === savedLanguage || language.error ? null : language.saveState === "invalid" ? (
+            <p role="alert" className="text-sm text-destructive">Not saved yet: an answer in Event basics needs fixing first.</p>
+          ) : (
+            <SaveStatus saveState={language.saveState} message={language.message} retry={language.retry} />
+          )}
         </div>
         <Choices name={id("lyrics")} legend="Explicit lyrics (needed)" value={form.lyrics} onChange={(v) => update({ lyrics: v }, ["lyrics"])} error={errorFor("lyrics")} options={withDj(LYRICS, dj)} />
         <Choices name={id("requests")} legend="Guest song requests (needed)" value={form.requests} onChange={(v) => update({ requests: v }, ["requests"])} error={errorFor("requests")} options={withDj(REQUESTS, dj)} />

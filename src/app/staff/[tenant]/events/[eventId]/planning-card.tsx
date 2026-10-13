@@ -3,7 +3,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { StaffContext } from "@/lib/auth/staff";
 import { formatInstant } from "@/lib/planning/cutoff";
-import { planAwaitingSetup, progressHeadline, staffPlanningViewSchema } from "@/lib/planning/view";
+import { planAwaitingSetup, progressSummaryLine, staffPlanningViewSchema } from "@/lib/planning/view";
 
 /** The event's planning view (read only: rendering never sets up a plan). */
 export async function loadPlanning(staff: StaffContext, eventId: string) {
@@ -34,7 +34,7 @@ export function PlanningCard({ slug, eventId, view, archived }: { slug: string; 
       <CardContent className="grid gap-3 text-sm">
         {view.plan !== null ? (
           <p>
-            {progressHeadline(view.progress)} <span className="text-muted-foreground">(available sections only)</span>
+            {progressSummaryLine(view.progress)} <span className="text-muted-foreground">(available sections only)</span>
           </p>
         ) : null}
         {view.plan !== null && view.editing && !awaitingSetup ? (

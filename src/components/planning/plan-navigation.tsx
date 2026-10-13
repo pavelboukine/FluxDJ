@@ -2,7 +2,7 @@
 
 import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { ChevronDown, ChevronLeft, ChevronRight, Circle, CircleCheck, CircleDot, CircleMinus, Clock, TriangleAlert } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Circle, CircleCheck, CircleDot, CircleMinus, Clock, LayoutDashboard, TriangleAlert } from "lucide-react";
 import {
   SECTION_PARAM,
   WORKSPACE_ID,
@@ -16,6 +16,7 @@ import {
   type SectionMoment,
   type SectionStatus,
 } from "@/lib/planning/navigation";
+import { progressPercentText } from "@/lib/planning/view";
 import { cn } from "@/lib/utils";
 import { ItemStatus, usePlanProgress } from "./progress";
 import { SaveScope, useItemSaveSummary, useNotSavedSections, useSaveStore, useSectionSaveSummary, type SaveSummary } from "./save-registry";
@@ -262,16 +263,44 @@ function SectionNavItem({ section, number, onPicked }: { section: PlanSection; n
   );
 }
 
+/** The overview, as a navigation item like the sections (icon, label, status line), never a heading. */
+function OverviewNavItem({ onPicked }: { onPicked?: () => void }) {
+  const nav = useNav();
+  const plan = usePlanProgress();
+  const current = nav.active === null;
+  const percent = plan ? progressPercentText(plan.progress) : null;
+  return (
+    <li>
+      <NavLink
+        view={null}
+        onPicked={onPicked}
+        aria-current={current ? "page" : undefined}
+        data-testid="nav-overview"
+        className={cn(
+          "grid min-h-11 grid-cols-[1rem_minmax(0,1fr)] items-start gap-x-2 rounded-lg px-2.5 py-2 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+          current ? "bg-muted font-semibold" : "hover:bg-muted/60",
+        )}
+      >
+        <span className="pt-0.5"><LayoutDashboard aria-hidden className="size-4 shrink-0 text-muted-foreground" /></span>
+        <span className="grid min-w-0 gap-0.5">
+          <span>Overview</span>
+          <span className="text-xs font-normal text-muted-foreground">{percent ?? "Progress and next steps"}</span>
+        </span>
+      </NavLink>
+    </li>
+  );
+}
+
 function SectionNavList({ onPicked }: { onPicked?: () => void }) {
   const nav = useNav();
   const general = nav.sections.filter((s) => s.kind === "general");
   const stages = nav.sections.filter((s) => s.kind === "stage");
-  const plain = (view: string | null, label: string) => (
+  const plain = (view: string, label: string) => (
     <li>
       <NavLink
         view={view}
         onPicked={onPicked}
-        data-testid={`nav-${view ?? "overview"}`}
+        data-testid={`nav-${view}`}
         aria-current={nav.active === view ? "page" : undefined}
         className={cn(
           "flex min-h-11 items-center rounded-lg px-2.5 py-2 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
@@ -284,7 +313,7 @@ function SectionNavList({ onPicked }: { onPicked?: () => void }) {
   );
   return (
     <div className="grid gap-3">
-      <ul className="grid gap-0.5">{plain(null, "Overview")}</ul>
+      <ul className="grid gap-0.5"><OverviewNavItem onPicked={onPicked} /></ul>
       {general.length > 0 ? (
         <div className="grid gap-1">
           <h3 className="px-2.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">Event details</h3>

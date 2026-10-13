@@ -2,8 +2,8 @@
 
 import { ChevronRight } from "lucide-react";
 import { headingId, isIncomplete, sectionStatus } from "@/lib/planning/navigation";
-import { progressHeadline, progressScopeNote } from "@/lib/planning/view";
-import { usePlanProgress } from "./progress";
+import { progressScopeNote } from "@/lib/planning/view";
+import { ProgressMeter, usePlanProgress } from "./progress";
 import { Flags, NavLink, PanelHeading, StatusIcon, focusFor, useNav } from "./plan-navigation";
 
 /**
@@ -23,22 +23,10 @@ export function StaffPlanOverview() {
 
   return (
     <section aria-labelledby={headingId(null)} className="grid gap-4 rounded-xl border bg-card p-4 sm:p-5">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+      <div className="grid gap-2">
         <PanelHeading view={null}>Planning progress</PanelHeading>
-        <p className="text-sm font-medium" data-testid="progress-headline">{progressHeadline(p)}</p>
+        <ProgressMeter progress={p} bar="bg-primary" compact />
       </div>
-      {p.requirements_total > 0 ? (
-        <div
-          role="progressbar"
-          aria-label="Required answers in available sections"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={p.percent ?? 0}
-          className="h-2 overflow-hidden rounded-full bg-muted"
-        >
-          <div className="h-full bg-primary" style={{ width: `${p.percent ?? 0}%` }} />
-        </div>
-      ) : null}
       <p className="text-sm text-muted-foreground">
         {p.complete_sections} of {p.available_sections} {p.available_sections === 1 ? "section" : "sections"} complete
         {discuss > 0 ? ` · ${discuss} to discuss with the client` : ""}

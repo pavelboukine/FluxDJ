@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { STAGE_LAYOUT, STAGE_FIELDS, STAGE_EDITORS, minutesOf, nextDayLabel, stageAnswersFromForm, stageFormFromAnswers } from "@/lib/planning/stages";
+import { STAGE_LAYOUT, STAGE_FIELDS, STAGE_EDITORS, minutesOf, nextDayLabel, offersNextDay, stageAnswersFromForm, stageFormFromAnswers } from "@/lib/planning/stages";
 
 describe("stage detail validation (mirrors the database)", () => {
   it("normalizes partial answers: trims text, drops blanks and a next-day mark without its time", () => {
@@ -51,5 +51,28 @@ describe("stage detail validation (mirrors the database)", () => {
         if (b.type === "location") expect(fields.location_source).toBeDefined();
       }
     }
+  });
+});
+
+describe('"Next day" is offered only where it can matter', () => {
+  it("stays out of the way for daytime and evening times", () => {
+    for (const t of ["", "06:00", "10:30", "16:00", "18:30", "23:59"]) expect(offersNextDay(t, false)).toBe(false);
+  });
+  it("is offered for small-hours times, and never checked for the client", () => {
+    for (const t of ["00:00", "00:30", "01:00", "05:59"]) expect(offersNextDay(t, false)).toBe(true);
+  });
+  it("always shows a saved next-day time, an end that isn't after its start, and a field with an error", () => {
+    expect(offersNextDay("23:30", true)).toBe(true);
+    expect(offersNextDay("", true)).toBe(true);
+    expect(offersNextDay("07:00", false, { suggest: true })).toBe(true);
+    expect(offersNextDay("21:00", false, { error: true })).toBe(true);
+    expect(offersNextDay("2:00", false)).toBe(false);
+  });
+  it("leaves saved overnight answers and their order unchanged", () => {
+    const saved = { start_time: "22:00", end_time: "01:00", end_next_day: true as const };
+    const form = stageFormFromAnswers("stage_party", saved);
+    expect(form.end_next_day).toBe(true);
+    expect(stageAnswersFromForm("stage_party", form)).toEqual({ ok: true, answers: saved });
+    expect(minutesOf(saved, "end")! > minutesOf(saved, "start")!).toBe(true);
   });
 });

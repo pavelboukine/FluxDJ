@@ -252,12 +252,36 @@ export function formatImportedAnswer(q: ImportedQuestion, answers: Record<string
   }
 }
 
-/** The headline for progress. Never claims planning is complete: it covers available sections only. */
+/**
+ * Progress as a whole percentage, from the database's own counts (the same
+ * requirements, "discuss" and not-applicable rules; nothing recounted here):
+ * rounded to the nearest percent, but never 0% once something is answered
+ * nor 100% while something is open. Null when there is nothing to fill in.
+ * Display only: it never decides whether anything is complete.
+ */
+export function progressPercent(p: PlanProgress): number | null {
+  if (p.requirements_total <= 0) return null;
+  if (p.requirements_met <= 0) return 0;
+  if (p.requirements_met >= p.requirements_total) return 100;
+  return Math.min(99, Math.max(1, Math.round((p.requirements_met * 100) / p.requirements_total)));
+}
+
+/** "43% complete", or null when there is nothing to fill in. */
+export function progressPercentText(p: PlanProgress): string | null {
+  const percent = progressPercent(p);
+  return percent === null ? null : `${percent}% complete`;
+}
+
+/** The count behind the percentage: "18 of 42 required answers". It covers available sections only (see progressScopeNote). */
 export function progressHeadline(p: PlanProgress): string {
   if (p.requirements_total === 0) return "Nothing to fill in yet";
-  // Most planning editors aren't built yet, so finishing what exists is never "planning complete".
-  if (p.requirements_met === p.requirements_total) return "Available sections done";
   return `${p.requirements_met} of ${p.requirements_total} required answers`;
+}
+
+/** Percentage and count on one line, for compact summaries: "43% complete · 18 of 42 required answers". */
+export function progressSummaryLine(p: PlanProgress): string {
+  const percent = progressPercentText(p);
+  return percent ? `${percent} · ${progressHeadline(p)}` : progressHeadline(p);
 }
 
 export function progressScopeNote(p: PlanProgress): string {

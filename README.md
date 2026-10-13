@@ -301,8 +301,8 @@ pending mail in the background, run `pnpm outbox:work` alongside
    participants, the MC, speeches, contacts, preferences, activities and
    dedications save automatically.
 5. Open a stage card (Ceremony, Cocktail, Reception entrance, Dinner, Party,
-   Closing) and fill its details: "Same as the event venue", times with
-   **Next day** for after midnight, "Not sure, discuss with DJ". Overlapping
+   Closing) and fill its details: "Same as the event venue", times (a time
+   after midnight offers **Next day**), "Not sure, discuss with DJ". Overlapping
    stages show a timing note; staff see and edit the same details under
    **Stage details** on the event's planning page.
 
@@ -348,7 +348,12 @@ in the details above". Fields are a fixed typed list
   open. Reuse stores the choice, never a copy.
 - Times are local to the event's time zone with an explicit "Next day" mark.
   Within a stage the end must come after the start; an earlier end without
-  "Next day" is refused, never assumed. Unknown times are fine.
+  "Next day" is refused, never assumed. Unknown times are fine. Every planning
+  time uses one field (`TimeField`): the mark is shown only where it can
+  matter (`offersNextDay`: already set, a time before 06:00, an end that isn't
+  after its start, or an error), so daytime and evening times are a single
+  time picker. It is never checked for the client, and saved answers are
+  unchanged.
 - `private.plan_timeline_warnings` compares visible stages in the staff's
   order and flags a stage that starts before the previous one starts or ends
   (and guest arrival or entrance order inside a stage). Times never reorder
@@ -496,16 +501,17 @@ How it works:
 
 | Section | Editor | Needed to complete |
 |---|---|---|
-| Contacts and vendors (general) | Day-of contact: one of the event's contacts (by reference, with an optional phone for the day), someone else (name, phone, relationship), or "Not decided yet". Vendors in order: role (planner or coordinator, venue, photographer, videographer, caterer, live musician, other), person's name and/or business, optional phone, email and coordination notes shared with the client | A day-of contact with a phone; vendors listed, or "No additional vendor contacts" (not applicable) |
-| DJ expectations and overall preferences (general) | Atmosphere and what matters most; DJ interaction (mostly music, occasional announcements, interactive, discuss); explicit lyrics (clean only, allowed, discuss); guest requests (welcome, never anything on Do not play; not welcome; discuss); practical preferences | Interaction, announcement language, lyrics and requests; "discuss" stays open |
+| Contacts and vendors (general) | Day-of contact: one of the event's contacts (by reference, with an optional phone for the day), someone else (name, phone, relationship), or "Not decided yet". Vendors in order: role (planner or coordinator, venue, photographer, videographer, caterer, live musician, other), person's name and/or business, a phone or an email (at least one), and coordination notes shared with the client | A day-of contact with a phone; vendors listed, or "No additional vendor contacts" (not applicable) |
+| DJ expectations and overall preferences (general) | Atmosphere and what matters most; DJ interaction (mostly music, occasional announcements, interactive, discuss); announcement language (stored with Event basics); explicit lyrics (clean only, allowed, discuss); guest requests (welcome, never anything on Do not play; not welcome; discuss); practical preferences | Interaction, announcement language, lyrics and requests; "discuss" stays open |
 | Music preferences (Party) | Styles (pop, dance, hip-hop and R&B, rock, disco and funk, country, Latin, house and electronic, throwbacks) and another style, or DJ's choice; favourite artists; dance-floor atmosphere; slow songs (DJ's choice, none, a few, discuss) | Styles or DJ's choice; a slow-song choice ("discuss" stays open) |
 
 To try it: open **Contacts and vendors**. The MC and officiant appear under
 "Already in your plan" without being entered again. Choose **One of the
 event's contacts**, pick someone without a phone on file and add **Phone for
-the day**. Add vendors, including one with a bad email, then reorder and
-remove with **Undo**. In **DJ expectations**, the announcement language reads
-"Not set yet" until it is chosen in **Event basics**. In **Party → Music
+the day**. Add vendors, including one with a bad email and one with no phone
+or email (refused), then reorder and remove with **Undo**. In **DJ
+expectations**, choose the announcement language; Event basics doesn't ask it
+again. In **Party → Music
 preferences**, pick styles (DJ's choice is disabled until they're cleared).
 
 How it works:
@@ -527,13 +533,21 @@ How it works:
   ("contact_unavailable"). It can't be saved again until another choice is
   made.
 - **One place each.** The MC and officiant stay in their own editors and are
-  shown read-only in Contacts. The announcement language lives only in Event
-  basics; preferences read it from there and store no copy. Specific songs
-  stay in Must play, Play if possible and Do not play.
+  shown read-only in Contacts. The announcement language is one answer,
+  stored with Event basics (where the run sheet and progress read it). When
+  DJ expectations is part of the plan it is asked there, through Event
+  basics' own form and autosave (`LanguageBinding`), so the two sections never
+  save it separately; when DJ expectations is hidden or absent, Event basics
+  asks it (`languageAskedInPreferences`). Nothing is moved or rewritten.
+  Specific songs stay in Must play, Play if possible and Do not play.
 - **Validation.** Phones: 7 to 20 digits with optional `+`, spaces, dots,
   dashes or brackets (`private.is_phone`). Emails: a plausible address
-  (`private.is_email`); nothing is ever contacted. A vendor needs a role and
-  a person's name or a business. Optional fields never block completion.
+  (`private.is_email`); nothing is ever contacted. A vendor needs a role, a
+  person's name or a business, and a phone or an email. The last is checked
+  when saving (`private.check_plan_vendor_reach`, client and staff) against
+  the stored answers: a vendor stored without either, before that rule, stays
+  as it is, even renamed, so it never blocks the section's other answers; once
+  it has one it keeps one. Optional fields never block completion.
 - **Privacy.** Coordination notes are labelled as shared with the client.
   Staff notes, staff identities, payment references and signing evidence are
   never in the client view. Preferences are for the DJ's review; nothing
@@ -582,6 +596,11 @@ How it works:
   hold moments (Guest arrival, Speeches and program, Special dances) aren't
   counted themselves, so nothing reads "Not available yet". Hidden sections
   keep their answers and leave progress. Times never reorder stages.
+  Progress reads "43% complete" with its count ("18 of 42 required
+  answers") on the client's and staff overviews and summaries, one helper
+  (`progressPercent`) over the database's counts: nearest whole percent, never
+  0% once something is answered nor 100% while something is open. It is a
+  display only; completion rules are the database's.
 
 #### Planning deadline and reopening
 
@@ -977,7 +996,7 @@ in every relevant relationship.
 | `26_stage_details` | Library editors and covered moments; validation (times, explicit next day, impossible and equal intervals, choices, limits, unknown fields, conflicting entrance answers); partial answers and normalization; completion with venue and Event basics reuse, not applicable and "discuss with DJ"; overnight party and closing; chronology warnings in staff order without reordering; hidden stages keep answers; covered moments; Simple Party; other clients, other events' items, other businesses, anon and archived events; staff saves; no staff identity, payment references or notes for clients; contract, booking, payments, proposal and imports untouched; the Event basics entry point kept |
 | `27_music` | Music editors by moment key and Entrance music as the single source for reception entrance songs. Song validation: title and artist needed, limits, https links without credentials, unknown fields, cues on moment songs only, repeated or malformed ids, list and moment limits. Choices per editor; alternatives refused while songs exist. Completion: songs, DJ's choice, No requests, Nothing to exclude, not applicable without changing the structure, discuss with DJ open even with songs. Order kept by id. An identical retried import is saved once; a stale different list conflicts; a concurrent identical first save is the same save; stage details keep strict revisions. Hidden lists and stages keep their songs and leave views and progress. Other clients, other events' items, other businesses, anon and archived events; staff edits. Contract, booking, payments, proposal and imports untouched |
 | `28_participants` | Editors by moment key and Participants and names covered by Introductions (not saved, not counted); speeches wherever the library allows. Processional people saved with its songs: individual, pair and group entries without fixed labels, trimmed names and pronunciation in order, links to its own or Couple entrance songs only (another stage's or another event's refused), linked songs not removable from either (also from a stale revision), Couple entrance renames and hiding keeping links, not applicable refused while people exist, renamed and reordered songs leaving people untouched, discuss open. Introductions sharing Entrance music songs; links to another moment, another event or malformed ids refused; removing a linked song refused naming the entries, also from a stale revision; renames, reorders and unlinked removals allowed; hidden Entrance music keeping valid links; No introductions and discuss. MC choices, details kept only for someone else. Speech timing (exact time, next day, cue, undecided), bounds, completion. Retried adds saved once; hidden moments; other clients, other events, other businesses, anon and archived events; staff edits; contract, booking, payments, proposal and imports untouched |
-| `29_contacts_preferences` | Editors on their sections; this event's contacts in the view with name and phone only. Day-of contact: not decided (open), someone else needing a phone, phone checks, an event contact by id only (no copy), a phone for the day without changing the client, contacts of another event or business and names refused, a contact leaving the event (kept, unavailable, not resaved). Vendors: name or business, roles, phone and email checks, order, none refused while listed, retried adds once, stale conflicts. Preferences: no language copy, language from Event basics, discuss open, unknown questions refused. Music styles: list order once, unknown styles, DJ's choice exclusive, other style, slow songs. Hidden sections, other clients, events and businesses, anon, archived events, staff edits; no staff ids, notes, payment references or signing evidence; clients, event contacts and contractual records untouched |
+| `29_contacts_preferences` | Editors on their sections; this event's contacts in the view with name and phone only. Day-of contact: not decided (open), someone else needing a phone, phone checks, an event contact by id only (no copy), a phone for the day without changing the client, contacts of another event or business and names refused, a contact leaving the event (kept, unavailable, not resaved). Vendors: name or business, roles, phone and email checks, a phone or an email needed (new vendors and vendors that had one; older vendors without either kept, renamed and never blocking other answers; staff saves too), order, none refused while listed, retried adds once, stale conflicts. Preferences: no language copy, language from Event basics, discuss open, unknown questions refused. Music styles: list order once, unknown styles, DJ's choice exclusive, other style, slow songs. Hidden sections, other clients, events and businesses, anon, archived events, staff edits; no staff ids, notes, payment references or signing evidence; clients, event contacts and contractual records untouched |
 | `30_remaining_editors` | Editors in their library places (Dinner and Party sharing one); only moment-holding stages without an editor; nothing "not available". Arrival: ceremony reuse storing no copy, open while the Ceremony lacks it or is hidden, other place with overnight times and next day, event venue unknown, "no separate arrangements" refused with details and alone not applicable. Program: own times, agenda with exact, overnight, cue and undecided timings, titles needed, "No formal program" refused with entries. Activities: songs need title and artist and safe links, custom names, Party counted separately, stale tabs, unknown fields. Dedications: unfinished kept without invented songs, any time, songs needed, no durations, "No dedications". Retried adds once, stale conflicts, hidden stages, other clients, events and businesses, anon, archived events, staff edits, stage order unchanged; contractual records untouched |
 | `33_platform_invitations` | Only the database owner grants platform administration (not the app, the API or the service role), only to one verified identity, audited. Tenant owners, staff, clients, strangers, anon and unverified administrators can't invite, list, resend or revoke; administrators see no business, client, event or email. Normalized addresses, one open invitation per address (also enforced by a unique index), hashed tokens only, emails with no tenant and only the link id. The tenant worker never claims them. Resend limits, link rotation, cancelled queued emails, audit. Verification requests: service role only, old and malformed links, masked address, 3 per 15 minutes, invited address only. Wrong, unverified, revoked and expired accounts and invitations. Names, reserved and malformed addresses, existing businesses (untouched, invitation still open). One business and one owner membership for the signed-in user, defaults, an empty workspace, replays returning the same workspace, final accepted invitations, no deletes. Existing clients and staff keep their access; other owners see nothing. Archived businesses keep their address and a retry never creates another |
 | `34_workspace_suspension` | Only platform administrators suspend, restore or list workspaces (owners, staff, clients, strangers and anon can't); the suspension columns can't be written directly by any role. Reasons required, stale versions (PT409), repeats, and an administrator can't suspend their own workspace. While suspended: staff of the workspace read and write nothing (tables, settings, payments, planning, proposals, contracts, PDF requests, private media and uploads), learning only that it is suspended; staff of other businesses and strangers get the usual refusals; other businesses unaffected. Clients: events of the other business kept, contracts, invitations, signing, signed PDFs, signature images, payment summaries and planning unavailable. Proposal links open no session; sessions show and save nothing; expired sessions stay invalid. Every write refused for every role, including the service role, except the audit log. Undelivered emails cancelled (no reason in them), nothing claimed, a claimed email stopped before sending, other businesses' emails delivered. PDF jobs not claimed; a racing commit pauses without losing an attempt. Archiving stays independent. Restore: audited, sends and revives nothing, PDF job resumes, contracts, signatures, bookings, deadlines and payments unchanged, access back, revoked and expired links still invalid, no extended expiry |

@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { selectClass } from "@/components/app/fields";
 import {
   emptyPerson,
   emptySpeech,
@@ -33,7 +34,8 @@ import {
 } from "@/lib/planning/participants";
 import { EQUIPMENT_NOTE, nextDayLabel } from "@/lib/planning/stages";
 import type { SaveItemResult } from "@/lib/planning/view";
-import { FieldBox } from "./basics-editor";
+import { FieldBox, describedBy } from "./basics-editor";
+import { TimeField } from "./time-field";
 import { MusicSection, usePlanSongs } from "./music-editor";
 import { ItemChecklist, useEditingClosed } from "./progress";
 import { SaveStatus, useAutosave } from "./use-autosave";
@@ -76,7 +78,7 @@ export function Choices<C extends string>({ name, legend, value, options, onChan
   disabled?: boolean;
 }) {
   return (
-    <fieldset disabled={disabled} className="grid gap-1">
+    <fieldset disabled={disabled} className="grid content-start gap-1">
       <legend className="mb-1 text-sm font-medium">{legend}</legend>
       {options.map((o) => (
         <label key={o.value || "list"} className="flex min-h-9 items-start gap-2 text-sm">
@@ -216,12 +218,18 @@ export function EntryList<E extends { id: string }>(props: {
   );
 }
 
-export const text = (id: string, label: string, value: string, onChange: (v: string) => void, error: string | null, opts: { hint?: string; rows?: number; wide?: boolean } = {}) => (
-  <FieldBox key={id} id={id} label={label} error={error} hint={opts.hint} className={opts.rows || opts.wide ? "sm:col-span-2" : undefined}>
+/**
+ * A labelled text field. Wide ones (rows or `wide`) take the whole row of a
+ * two-column grid; col-span-full never adds a column to a one-column grid.
+ */
+export const text = (id: string, label: string, value: string, onChange: (v: string) => void, error: string | null,
+  opts: { hint?: string; rows?: number; wide?: boolean; type?: "email" | "tel"; inputMode?: "email" | "tel" | "url"; autoComplete?: string } = {}) => (
+  <FieldBox key={id} id={id} label={label} error={error} hint={opts.hint} className={opts.rows || opts.wide ? "col-span-full" : undefined}>
     {opts.rows ? (
-      <Textarea id={id} rows={opts.rows} value={value} onChange={(e) => onChange(e.target.value)} aria-invalid={Boolean(error)} />
+      <Textarea id={id} rows={opts.rows} value={value} onChange={(e) => onChange(e.target.value)} aria-invalid={Boolean(error)} aria-describedby={describedBy(id, error, opts.hint)} />
     ) : (
-      <Input id={id} value={value} onChange={(e) => onChange(e.target.value)} aria-invalid={Boolean(error)} />
+      <Input id={id} type={opts.type} inputMode={opts.inputMode} autoComplete={opts.autoComplete} value={value} onChange={(e) => onChange(e.target.value)}
+        aria-invalid={Boolean(error)} aria-describedby={describedBy(id, error, opts.hint)} />
     )}
   </FieldBox>
 );
@@ -239,8 +247,8 @@ function SongSelect({ id, value, songs, onChange, error, missingText }: {
 }) {
   const missing = value !== "" && !songs.some((s) => s.id === value);
   return (
-    <FieldBox id={id} label="Song (optional)" error={error} hint={missing ? missingText : songs.length === 0 ? "Add songs to the list first to pick one here." : undefined} className="sm:col-span-2">
-      <select id={id} className="h-9 w-full rounded-md border bg-transparent px-2 text-sm" value={value} onChange={(e) => onChange(e.target.value)}>
+    <FieldBox id={id} label="Song (optional)" error={error} hint={missing ? missingText : songs.length === 0 ? "Add songs to the list first to pick one here." : undefined} className="col-span-full">
+      <select id={id} className={selectClass} value={value} onChange={(e) => onChange(e.target.value)} aria-describedby={describedBy(id, error, missing ? missingText : songs.length === 0 ? "hint" : undefined)}>
         <option value="">No song</option>
         {missing ? <option value={value}>Linked song not in the active plan</option> : null}
         {songs.map((s) => <option key={s.id} value={s.id}>{songLabel(s)}</option>)}
@@ -502,7 +510,7 @@ export function SpeechesEditor(props: Common<SpeechesAnswers> & { event: { date:
             {text(`${idPrefix}-speaker`, "Speaker", s.speaker, (v) => onChange({ speaker: v }), errorFor("speaker"))}
             {text(`${idPrefix}-role`, "Role or relationship (optional)", s.role, (v) => onChange({ role: v }), errorFor("role"))}
             {text(`${idPrefix}-pronunciation`, "Pronunciation guide (optional)", s.pronunciation, (v) => onChange({ pronunciation: v }), errorFor("pronunciation"), { hint: PRONUNCIATION_HINT, wide: true })}
-            <fieldset className="grid gap-1 sm:col-span-2">
+            <fieldset className="grid gap-1 col-span-full">
               <legend className="mb-1 text-sm font-medium">When (needed to complete)</legend>
               {([["time", "At an exact time"], ["cue", "At a moment in the evening"], ["undecided", "Not decided yet"]] as [Timing, string][]).map(([value, label]) => (
                 <label key={value} className="flex min-h-9 items-center gap-2 text-sm">
@@ -513,15 +521,8 @@ export function SpeechesEditor(props: Common<SpeechesAnswers> & { event: { date:
               {errorFor("timing") ? <p className="text-xs text-destructive">{errorFor("timing")}</p> : null}
             </fieldset>
             {s.timing === "time" ? (
-              <FieldBox id={`${idPrefix}-time`} label="Time" error={errorFor("time")} className="sm:col-span-2">
-                <div className="flex flex-wrap items-center gap-3">
-                  <Input id={`${idPrefix}-time`} type="time" className="w-36" value={s.time} onChange={(e) => onChange({ time: e.target.value })} aria-invalid={Boolean(errorFor("time"))} />
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" className="size-4 accent-primary" checked={s.next_day} disabled={s.time === ""} onChange={(e) => onChange({ next_day: e.target.checked })} />
-                    Next day ({nextDay})
-                  </label>
-                </div>
-              </FieldBox>
+              <TimeField id={`${idPrefix}-time`} label="Time" time={s.time} nextDay={s.next_day} eventDate={props.event.date}
+                onTime={(t) => onChange({ time: t })} onNextDay={(n) => onChange({ next_day: n })} error={errorFor("time")} />
             ) : null}
             {s.timing === "cue" ? text(`${idPrefix}-cue`, "Moment", s.cue, (v) => onChange({ cue: v }), errorFor("cue"), { hint: 'For example "After the main course" or "Right after the first dance".', wide: true }) : null}
             <FieldBox id={`${idPrefix}-duration`} label="About how long, in minutes (optional)" error={errorFor("duration")}>

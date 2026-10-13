@@ -2,7 +2,8 @@
 -- library placement; the event's client-safe contacts; day-of contact by
 -- reference (this event's contacts only, never other events or businesses)
 -- or entered, with a phone; contacts leaving the event; vendors with roles,
--- names, checked phones and emails; announcement language read from Event
+-- names, checked phones and emails, and a phone or an email (older vendors
+-- without either are kept and never block); announcement language read from Event
 -- basics, never copied; styles and slow songs; explicit alternatives;
 -- retries; hidden sections; access, isolation and archiving; clients and
 -- contractual records untouched.
@@ -11,7 +12,7 @@ begin;
 \ir _catalog_fixtures.psql
 \ir _offer_fixtures.psql
 \ir _contract_fixtures.psql
-select plan(69);
+select plan(80);
 
 alter function tests.id(text) rename to id_base;
 create function tests.id(name text) returns uuid language sql immutable as $$
@@ -217,10 +218,10 @@ select is(tests.save('co_wed', 'contacts_vendors', tests.stored('co_wed', 'conta
   tests.vendor('v1', '{"role":"photographer","name":"Jo","email":"jo@"}')))) ->> 'field', 'entry:' || tests.id('vendor-v1') || ':email', 'and emails');
 select tests.save('co_wed', 'contacts_vendors', tests.stored('co_wed', 'contacts_vendors') || jsonb_build_object('vendors', jsonb_build_array(
   tests.vendor('v1', '{"role":"planner","name":" Sasha Roy ","business":"Day-Of Co.","phone":"514 555 0123","email":"sasha@dayof.test","notes":"Cue the DJ for the entrance"}'),
-  tests.vendor('v2', '{"role":"photographer","business":"Lumière Photo"}'),
-  tests.vendor('v3', '{"role":"musician","name":"String quartet","phone":"","email":""}')))) as s \gset v1_
+  tests.vendor('v2', '{"role":"photographer","business":"Lumière Photo","email":"photos@lumiere.test"}'),
+  tests.vendor('v3', '{"role":"musician","name":"String quartet","phone":" 514 555 0177 ","email":""}')))) as s \gset v1_
 select is(array[:'v1_s'::jsonb ->> 'status', tests.reqs2(:'v1_s'::jsonb, 'contacts_vendors')::text], array['saved', '{day_of:answered,vendors:answered}'],
-  'vendors save; missing optional phones and emails never block');
+  'vendors save with a phone or an email; the other is optional');
 select is((select array_agg((v ->> 'role') || '|' || coalesce(v ->> 'name', '') || '|' || coalesce(v ->> 'business', '') order by o)
            from jsonb_array_elements(:'v1_s'::jsonb -> 'answers' -> 'vendors') with ordinality x(v, o)),
   array['planner|Sasha Roy|Day-Of Co.', 'photographer||Lumière Photo', 'musician|String quartet|'], 'in order, trimmed, empty fields dropped');
@@ -230,11 +231,49 @@ select is(tests.reqs2(tests.save('co_party', 'contacts_vendors', '{"vendors_choi
   'a Simple Party has no contacts section unless staff add it');
 select tests.rev('co_wed', 'contacts_vendors') as c_rev \gset
 select tests.stored('co_wed', 'contacts_vendors') || jsonb_build_object('vendors', (tests.stored('co_wed', 'contacts_vendors') -> 'vendors')
-  || jsonb_build_array(tests.vendor('v4', '{"role":"caterer","business":"Bouchée"}'))) as added \gset
+  || jsonb_build_array(tests.vendor('v4', '{"role":"caterer","business":"Bouchée","email":"events@bouchee.test"}'))) as added \gset
 select is(tests.save('co_wed', 'contacts_vendors', :'added'::jsonb) ->> 'status', 'saved', 'a vendor is added');
 select is(array[tests.save('co_wed', 'contacts_vendors', :'added'::jsonb, 'client_y', :c_rev) ->> 'status', jsonb_array_length(tests.stored('co_wed', 'contacts_vendors') -> 'vendors')::text],
   array['saved', '4'], 'a retried add with the old revision is saved once');
 select is(tests.save('co_wed', 'contacts_vendors', '{"vendors_choice":"none"}', 'client_y', :c_rev) ->> 'status', 'conflict', 'a stale different save conflicts');
+
+-- A vendor needs a phone or an email. One stored without either (saved before
+-- that rule) stays as it is, so the item's other answers keep saving.
+select tests.stored('co_wed', 'contacts_vendors') as four \gset
+create function tests.with_vendor(base jsonb, v jsonb) returns jsonb language sql immutable as $$
+  select base || jsonb_build_object('vendors', (base -> 'vendors') || jsonb_build_array(v));
+$$;
+create function tests.vendor_at(event text, name text) returns jsonb language sql stable as $$
+  select v from jsonb_array_elements(tests.stored(event, 'contacts_vendors') -> 'vendors') v where v ->> 'id' = tests.id('vendor-' || name)::text;
+$$;
+select is(tests.save('co_wed', 'contacts_vendors', tests.with_vendor(:'four'::jsonb, tests.vendor('v5', '{"role":"videographer","name":"Remy","phone":" ","email":""}'))) - 'revision',
+  jsonb_build_object('status', 'invalid', 'field', 'entry:' || tests.id('vendor-v5') || ':phone', 'message', 'Enter a phone number or an email address for this vendor.'),
+  'a new vendor without a phone or an email is refused, pointing at the phone');
+select is(tests.stored('co_wed', 'contacts_vendors'), :'four'::jsonb, 'nothing was stored');
+-- An older vendor without either, as stored before the rule.
+update public.event_plan_responses set answers = tests.with_vendor(answers, tests.vendor('v6', '{"role":"venue","name":"Pat"}'))
+  where item_id = tests.item('co_wed', 'contacts_vendors');
+select is(tests.save('co_wed', 'contacts_vendors', tests.stored('co_wed', 'contacts_vendors') || '{"day_of_role":"Sister"}') ->> 'status', 'saved',
+  'an older vendor without contact details never blocks the item''s other answers');
+select is(array[tests.stored('co_wed', 'contacts_vendors') ->> 'day_of_role', tests.vendor_at('co_wed', 'v6') ->> 'name'], array['Sister', 'Pat'],
+  'which are stored, with that vendor kept as it was');
+select is(tests.save('co_wed', 'contacts_vendors', jsonb_set(tests.stored('co_wed', 'contacts_vendors'), '{vendors,4,name}', '"Pat Venue"')) ->> 'status', 'saved',
+  'it can still be edited without adding one');
+select is(tests.save('co_wed', 'contacts_vendors', jsonb_set(tests.stored('co_wed', 'contacts_vendors'), '{vendors,4,phone}', '"514 555 0188"')) ->> 'status', 'saved',
+  'a phone can be added later');
+select is(tests.save('co_wed', 'contacts_vendors', jsonb_set(tests.stored('co_wed', 'contacts_vendors'), '{vendors,4}', (tests.vendor_at('co_wed', 'v6') - 'phone'))) ->> 'field',
+  'entry:' || tests.id('vendor-v6') || ':phone', 'once it has one, it keeps a phone or an email');
+select is(tests.save('co_wed', 'contacts_vendors', jsonb_set(tests.stored('co_wed', 'contacts_vendors'), '{vendors,0}', (tests.vendor_at('co_wed', 'v1') - 'phone' - 'email'))) ->> 'field',
+  'entry:' || tests.id('vendor-v1') || ':phone', 'as does every vendor saved with one');
+select tests.item('co_wed', 'contacts_vendors') as item, tests.rev('co_wed', 'contacts_vendors') as rev,
+  tests.with_vendor(tests.stored('co_wed', 'contacts_vendors'), tests.vendor('v7', '{"role":"other","name":"Lighting"}')) as unreachable,
+  tests.with_vendor(tests.stored('co_wed', 'contacts_vendors'), tests.vendor('v7', '{"role":"other","name":"Lighting","phone":"514 555 0199"}')) as reachable \gset s7_
+select tests.login_as(tests.id('staff_a'));
+select is(public.staff_save_plan_item(tests.id('co_wed'), :'s7_item', :s7_rev, :'s7_unreachable'::jsonb) ->> 'message',
+  'Enter a phone number or an email address for this vendor.', 'staff saves follow the same rule');
+select is(public.staff_save_plan_item(tests.id('co_wed'), :'s7_item', :s7_rev, :'s7_reachable'::jsonb) ->> 'status', 'saved', 'and add vendors with one');
+select tests.su();
+select is(tests.save('co_wed', 'contacts_vendors', :'four'::jsonb) ->> 'status', 'saved', 'vendors can be removed');
 
 -- ===========================================================================
 -- DJ expectations: language from Event basics only

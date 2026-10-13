@@ -204,7 +204,7 @@ export const STAGE_REQUIREMENT_LABELS: Record<string, string> = {
   day_of: "Day-of contact with a phone",
   vendors: "Vendor contacts, or none",
   interaction: "DJ interaction",
-  language: "Announcement language (Event basics)",
+  language: "Announcement language",
   lyrics: "Explicit lyrics",
   requests: "Guest requests",
   style: "Music styles, or DJ's choice",
@@ -226,6 +226,19 @@ export const REQUIREMENT_NOTES: Record<string, string> = {
   entry_timing_open: "An entry has no time or moment yet",
   dedication_open: "A dedication still needs a song or timing",
 };
+
+/** Times before this are often after midnight, so the next-day mark is offered for them. */
+export const SMALL_HOURS_END = "06:00";
+
+/**
+ * Whether a time field shows its "Next day" mark. Most times are on the event
+ * day, so the mark stays out of the way unless it's already set, the time is
+ * in the small hours, the caller suggests it (an end that isn't after its
+ * start) or the field has an error to fix. Never inferred: the client checks it.
+ */
+export function offersNextDay(time: string, nextDay: boolean, opts: { suggest?: boolean; error?: boolean } = {}): boolean {
+  return nextDay || Boolean(opts.suggest) || Boolean(opts.error) || (TIME.test(time) && time < SMALL_HOURS_END);
+}
 
 /** "Sun, Aug 15" for the day after the event date. */
 export function nextDayLabel(eventDate: string): string {

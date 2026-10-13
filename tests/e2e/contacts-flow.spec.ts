@@ -7,8 +7,11 @@
  *   - the day-of contact is one of the event's contacts (by reference, with
  *     a phone for the day) or someone else; a contact who leaves the event is
  *     shown as unavailable; the event's clients never change;
- *   - vendors: add, check phone and email, edit, reorder, remove with undo;
- *   - preferences read the announcement language from Event basics;
+ *   - vendors: add with a phone or an email, check them, edit, reorder,
+ *     remove with undo; an older vendor without either is kept and never
+ *     blocks other answers;
+ *   - DJ expectations ask the announcement language, stored once with Event
+ *     basics (asked there instead when DJ expectations are hidden);
  *   - music styles or DJ's choice, slow songs, pending / failed / stale saves;
  *   - staff edit on a phone; hiding keeps answers; nothing contractual changes.
  */
@@ -132,20 +135,26 @@ test.describe.serial("contacts and preferences", () => {
       await expect(form).toContainText("Choose a role.");
       await form.getByLabel("Role").selectOption({ label: "Photographer" });
       await form.getByLabel("Business name (optional)").fill("Lumière Photo");
-      await form.getByLabel("Email (optional)").fill("jo@");
+      await expect(form).toContainText("Provide at least a phone number or email so");
+      await form.getByLabel("Email", { exact: true }).fill("jo@");
       await form.getByRole("button", { name: "Add", exact: true }).click();
       await expect(form).toContainText("Enter an email address such as name@example.com.");
-      await form.getByLabel("Email (optional)").fill("hello@lumiere.test");
+      await form.getByLabel("Email", { exact: true }).fill("hello@lumiere.test");
     });
     await addVendor(card, async (form) => {
       await form.getByLabel("Role").selectOption({ label: "Planner or coordinator" });
       await form.getByLabel("Person's name").fill("Sasha Roy");
-      await form.getByLabel("Phone (optional)").fill("514 555 0123");
+      await form.getByLabel("Phone", { exact: true }).fill("514 555 0123");
       await form.getByLabel("Coordination notes (optional, shared with you and the DJ)").fill("Cue the DJ for the entrance");
     });
     await addVendor(card, async (form) => {
       await form.getByLabel("Role").selectOption({ label: "Live musician" });
       await form.getByLabel("Person's name").fill("String quartet");
+      // A name alone isn't enough: the DJ needs a way to reach them.
+      await form.getByRole("button", { name: "Add", exact: true }).click();
+      await expect(form.getByText("Enter a phone number or an email address for this vendor.")).toBeVisible();
+      await expect(form.getByLabel("Phone", { exact: true })).toHaveAttribute("aria-describedby", /-phone-error$/);
+      await form.getByLabel("Phone", { exact: true }).fill("438 555 0199");
     });
     await expect(card.getByText("All changes saved")).toBeVisible();
     const rows = card.getByTestId("entry-row");
@@ -155,9 +164,11 @@ test.describe.serial("contacts and preferences", () => {
 
     await card.getByRole("button", { name: 'Move "Sasha Roy" up' }).click();
     await card.getByRole("button", { name: 'Edit "String quartet"' }).click();
-    await rows.filter({ hasText: "String quartet" }).getByLabel("Phone (optional)").fill("12");
+    await rows.filter({ hasText: "String quartet" }).getByLabel("Phone", { exact: true }).fill("12");
     await expect(card.getByText("Fix the highlighted answer to save.")).toBeVisible();
-    await rows.filter({ hasText: "String quartet" }).getByLabel("Phone (optional)").fill("438 555 0100");
+    await rows.filter({ hasText: "String quartet" }).getByLabel("Phone", { exact: true }).fill("");
+    await expect(rows.filter({ hasText: "String quartet" })).toContainText("Enter a phone number or an email address for this vendor.");
+    await rows.filter({ hasText: "String quartet" }).getByLabel("Phone", { exact: true }).fill("438 555 0100");
     await expect(card.getByText("All changes saved")).toBeVisible();
     await card.getByRole("button", { name: 'Remove "Lumière Photo"' }).click();
     await card.getByRole("button", { name: "Undo" }).click();
@@ -172,6 +183,33 @@ test.describe.serial("contacts and preferences", () => {
     expect(await noSideways(client)).toBeLessThanOrEqual(0);
   });
 
+  test("an older vendor saved without a phone or email is kept, never blocks other answers, and can get one later", async () => {
+    // As stored before a phone or email was needed.
+    const { data: plan } = await must(admin.from("event_plans").select("event_plan_items(id, key)").eq("event_id", eventId).single());
+    const itemId = plan!.event_plan_items.find((i) => i.key === "contacts_vendors")!.id;
+    const stored = (await answers(eventId, "contacts_vendors"))!;
+    const pat = { id: randomUUID(), role: "venue", name: "Pat" };
+    await must(admin.from("event_plan_responses").update({ answers: { ...stored, vendors: [...stored.vendors!, pat] } }).eq("item_id", itemId));
+    await client.reload();
+    const card = await openPlanSection(client, "contacts_vendors");
+    const patRow = card.getByTestId("entry-row").filter({ hasText: "Venue: Pat" });
+    await expect(patRow).toContainText(`No phone or email yet. Edit to add one so ${tenant.displayName} can reach them.`);
+    // Another vendor's change saves with Pat still incomplete.
+    await card.getByRole("button", { name: 'Edit "Sasha Roy"' }).click();
+    await card.getByTestId("entry-row").filter({ hasText: "Sasha Roy" }).getByLabel("Coordination notes (optional, shared with you and the DJ)").fill("Cue the DJ for the entrance, please");
+    await expect(card.getByText("All changes saved")).toBeVisible();
+    expect((await answers(eventId, "contacts_vendors"))!.vendors!.find((v) => v.id === pat.id)).toEqual(pat);
+    await card.getByRole("button", { name: 'Done editing "Sasha Roy"' }).click();
+    // An email added later is kept.
+    await card.getByRole("button", { name: 'Edit "Pat"' }).click();
+    await patRow.getByLabel("Email", { exact: true }).fill("pat@venue.test");
+    await expect(card.getByText("All changes saved")).toBeVisible();
+    await expect(patRow).toContainText("pat@venue.test");
+    await card.getByRole("button", { name: 'Remove "Pat"' }).click();
+    await expect(card.getByText("All changes saved")).toBeVisible();
+    expect((await answers(eventId, "contacts_vendors"))!.vendors).toHaveLength(3);
+  });
+
   test("a referenced contact who leaves the event is shown as unavailable and leaves the day-of contact open", async () => {
     await must(admin.from("clients").update({ archived_at: new Date().toISOString() }).eq("id", secondId));
     await client.reload();
@@ -184,9 +222,11 @@ test.describe.serial("contacts and preferences", () => {
     await expect(contactsStatus(client)).toContainText("Complete");
   });
 
-  test("DJ expectations read the announcement language from Event basics; discuss stays open", async () => {
+  test("DJ expectations ask the announcement language, stored once with Event basics; discuss stays open", async () => {
     const card = await openPlanSection(client, "dj_preferences");
-    await expect(card.getByTestId("language-from-basics")).toContainText("Not set yet: choose it in Event basics.");
+    const language = card.getByLabel("Announcement language (needed)");
+    await expect(language).toHaveValue("");
+    await expect(language).toBeEnabled();
     await card.getByLabel("Interactive: get the crowd going").check();
     await card.getByLabel("Clean versions only").check();
     await card.getByLabel(`Not sure yet, discuss with ${tenant.displayName}`).last().check();
@@ -195,13 +235,13 @@ test.describe.serial("contacts and preferences", () => {
     await expect(card).toContainText("2 of 4 needed answers");
     await expect(card).toContainText(`Discuss with ${tenant.displayName} (still open)`);
 
-    // Another section's answer reaches this one (it stays mounted while hidden).
+    // Asked here only: Event basics doesn't ask it again, and saves it as its own answer.
     const basics = await openPlanSection(client, "basics");
-    await basics.getByLabel("Language for announcements (optional)").selectOption({ label: "Bilingual (French and English)" });
-    await expect(basics.getByText("All changes saved")).toBeVisible();
+    await expect(basics.getByLabel("Language for announcements (optional)")).toHaveCount(0);
     await openPlanSection(client, "dj_preferences");
-    await expect(card.getByTestId("language-from-basics")).toContainText("Bilingual (French and English), from Event basics.");
+    await language.selectOption({ label: "Bilingual (French and English)" });
     await expect(card).toContainText("3 of 4 needed answers");
+    await expect.poll(async () => (await answers(eventId, "basics"))?.announcement_language).toBe("bilingual");
     await card.getByLabel("Guests may request songs (never anything on Do not play)").check();
     await expect(card.getByText("All changes saved")).toBeVisible();
     await expect(card).toContainText("DJ expectations and overall preferences is complete.");
@@ -269,7 +309,20 @@ test.describe.serial("contacts and preferences", () => {
     expect((await answers(eventId, "contacts_vendors"))!.vendors![0].notes).toBe("Cue the DJ for the entrance and the cake");
     expect(await noSideways(staff)).toBeLessThanOrEqual(0);
 
+    // Staff see the language where the client answered it.
+    const prefs = await openPlanSection(staff, "dj_preferences");
+    await expect(prefs.getByLabel("Announcement language (needed)")).toHaveValue("bilingual");
+    // With DJ expectations hidden, Event basics asks it again: the same stored answer.
     await openPlanSection(staff, "plan-structure");
+    await staff.getByRole("button", { name: "Hide DJ expectations and overall preferences from the client", exact: true }).click();
+    await expect(staff.getByRole("button", { name: "Restore DJ expectations and overall preferences", exact: true })).toBeVisible();
+    await client.reload();
+    const clientBasics = await openPlanSection(client, "basics");
+    await expect(clientBasics.getByLabel("Language for announcements (optional)")).toHaveValue("bilingual");
+    await staff.getByRole("button", { name: "Restore DJ expectations and overall preferences", exact: true }).click();
+    await expect(staff.getByRole("button", { name: "Hide DJ expectations and overall preferences from the client", exact: true })).toBeVisible();
+    expect((await answers(eventId, "basics"))?.announcement_language).toBe("bilingual");
+
     await staff.getByRole("button", { name: "Hide Contacts and vendors from the client", exact: true }).click();
     await expect(staff.getByRole("button", { name: "Restore Contacts and vendors", exact: true })).toBeVisible();
     await client.reload();

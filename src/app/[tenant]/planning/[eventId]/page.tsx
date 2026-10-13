@@ -25,7 +25,7 @@ import { StageDetailsEditor } from "@/components/planning/stage-details-editor";
 import { ClientHeader } from "@/components/app/client-header";
 import { signOut } from "@/app/auth/confirm/actions";
 import { savedListsFrom } from "@/lib/planning/music";
-import { PROVIDED_SECTION, WORKSPACE_ID, headingId, planSections } from "@/lib/planning/navigation";
+import { PROVIDED_SECTION, WORKSPACE_ID, headingId, languageAskedInPreferences, planSections } from "@/lib/planning/navigation";
 import type { StageEditor } from "@/lib/planning/stages";
 import { UUID_RE } from "@/lib/forms";
 import { SLUG_PATTERN } from "@/lib/proposals/client-session.server";
@@ -181,6 +181,7 @@ export default async function ClientPlanningPage({ params }: PageProps<"/[tenant
                               djName={dj}
                               audience="client"
                               save={save(view.basics.item_id)}
+                              languageInPreferences={languageAskedInPreferences(view.structure)}
                             />
                           ) : (
                             generalEditor(g, { moments: view.moments, eventContacts: view.event_contacts, known, djName: dj, audience: "client", save })
