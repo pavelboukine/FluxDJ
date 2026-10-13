@@ -111,7 +111,7 @@ async function openSession(context: BrowserContext, t: TestTenant, proposalId: s
 
 /** An optional extra's card (the outer list item, not its list of reasons). */
 const extraCard = (page: Page, name: string) =>
-  page.locator("section", { has: page.getByRole("heading", { name: "Optional extras" }) }).locator(":scope > ul > li").filter({ hasText: name });
+  page.locator("section", { has: page.getByRole("heading", { name: "Add-ons", exact: true }) }).locator(":scope > ul > li").filter({ hasText: name });
 const noSideScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 const shot = (page: Page, name: string, fullPage = false) => page.screenshot({ path: `${REVIEW_DIR}/${name}.png`, fullPage });
 
@@ -322,7 +322,7 @@ test.describe.serial("client proposal experience", () => {
     await expect(stepper).toContainText("1");
     await expect(page.getByText("All changes saved")).toBeVisible();
 
-    await page.getByRole("heading", { name: "Optional extras" }).scrollIntoViewIfNeeded();
+    await page.getByRole("heading", { name: "Add-ons", exact: true }).scrollIntoViewIfNeeded();
     await page.waitForLoadState("networkidle");
     await shot(page, "04-extras");
     await page.getByRole("heading", { name: "About your event" }).scrollIntoViewIfNeeded();
@@ -384,7 +384,7 @@ test.describe.serial("client proposal experience", () => {
         await phone.evaluate(() => window.scrollTo(0, 0));
         await phone.waitForLoadState("networkidle");
         await shot(phone, "12-phone-package-selection-390");
-        await phone.getByRole("heading", { name: "Optional extras" }).scrollIntoViewIfNeeded();
+        await phone.getByRole("heading", { name: "Add-ons", exact: true }).scrollIntoViewIfNeeded();
         await phone.waitForLoadState("networkidle");
         await shot(phone, "13-phone-two-column-extras-390");
 

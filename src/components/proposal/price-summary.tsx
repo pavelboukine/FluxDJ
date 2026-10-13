@@ -1,7 +1,14 @@
 import type { ReactNode } from "react";
-import type { PricedSelection } from "@/lib/pricing";
+import type { OfferSnapshot, PricedLine, PricedSelection } from "@/lib/pricing";
+import { quantityText } from "@/lib/catalog/quantity";
 import { formatCents } from "@/lib/money";
 import { cn } from "@/lib/utils";
+
+/** "2 × Speaker", or "1 pair of Moving Heads (2 lights)" when the frozen gear holds several pieces. */
+export function lineQuantityText(line: Pick<PricedLine, "item_key" | "name" | "quantity">, offer?: OfferSnapshot): string {
+  const gear = offer?.gear[line.item_key];
+  return gear ? quantityText({ ...gear, name: line.name }, line.quantity) : `${line.quantity} × ${line.name}`;
+}
 
 export function taxRateLabel(ratePpm: number): string {
   return `${(ratePpm / 10_000).toLocaleString("en-CA", { maximumFractionDigits: 4 })}%`;
@@ -11,10 +18,12 @@ export function taxRateLabel(ratePpm: number): string {
  * The price of a selection, straight from the shared pricing result: the
  * package's one price, the equipment it includes (never charged), each
  * chargeable addition, subtotal, each tax and the total. Nothing here adds
- * or rounds money itself.
+ * or rounds money itself. With the offer, quantities of multi-piece gear read
+ * as "1 pair of Moving Heads (2 lights)".
  */
-export function PriceLines({ priced, className }: { priced: PricedSelection; className?: string }) {
+export function PriceLines({ priced, offer, className }: { priced: PricedSelection; offer?: OfferSnapshot; className?: string }) {
   const money = (cents: number) => formatCents(cents, priced.currency);
+  const qty = (l: PricedLine) => lineQuantityText(l, offer);
   const pkg = priced.lines.find((l) => l.source === "package");
   const included = priced.lines.filter((l) => l.source === "included");
   const additions = priced.lines.filter((l) => (l.source === "optional" || l.source === "required") && l.quantity > 0);
@@ -29,7 +38,7 @@ export function PriceLines({ priced, className }: { priced: PricedSelection; cla
           </div>
           {included.length > 0 ? (
             <dd className="text-xs text-muted-foreground">
-              Includes {included.map((l) => `${l.quantity} × ${l.name}`).join(", ")} at no extra charge.
+              Includes {included.map(qty).join(", ")} at no extra charge.
             </dd>
           ) : null}
         </div>
@@ -37,7 +46,7 @@ export function PriceLines({ priced, className }: { priced: PricedSelection; cla
       {additions.map((l) => (
         <div key={`${l.source}-${l.item_key}`} className="flex justify-between gap-3">
           <dt className="min-w-0">
-            {l.quantity} × {l.name}
+            {qty(l)}
             {l.source === "required" ? <span className="text-muted-foreground"> (required)</span> : null}
             <span className="block text-xs text-muted-foreground">{money(l.unit_price_cents)} each</span>
           </dt>
@@ -69,6 +78,7 @@ export function PriceSummaryCard({
   id,
   title,
   headingLevel = 2,
+  offer,
   priced,
   provisional,
   problems,
@@ -77,6 +87,7 @@ export function PriceSummaryCard({
   id?: string;
   title: string;
   headingLevel?: 2 | 3;
+  offer?: OfferSnapshot;
   priced: PricedSelection | null;
   /** Shown while required answers are missing (the price is computed as if they were optional). */
   provisional?: boolean;
@@ -97,7 +108,7 @@ export function PriceSummaryCard({
           ))}
         </ul>
       ) : null}
-      {priced ? <PriceLines priced={priced} /> : <p className="text-sm text-muted-foreground">Choose a package to see your price.</p>}
+      {priced ? <PriceLines priced={priced} offer={offer} /> : <p className="text-sm text-muted-foreground">Choose a package to see your price.</p>}
       {priced && provisional ? (
         <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
           Provisional: answer the required questions to confirm your total. Some answers can add equipment.

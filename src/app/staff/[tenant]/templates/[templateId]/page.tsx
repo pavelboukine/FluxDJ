@@ -19,7 +19,7 @@ import { TemplateDetailsFields } from "../template-fields";
 
 /**
  * One proposal template: what clients will be offered (three packages in
- * order, the recommended one, the questions and their rules, the extras),
+ * order, the recommended one, the questions and their rules, the add-ons),
  * what would stop a proposal from being sent, Edit details and Edit
  * contents, and archiving.
  */
@@ -156,7 +156,7 @@ export default async function TemplatePage({ params, searchParams }: PageProps<"
       <InlineEditor
         id="contents"
         title="What clients are offered"
-        editLabel="Edit packages, questions and extras"
+        editLabel="Edit packages, questions and add-ons"
         view={
           <div className="grid gap-6">
             <section aria-label="Packages" className="grid gap-2">
@@ -239,8 +239,8 @@ export default async function TemplatePage({ params, searchParams }: PageProps<"
               ) : null}
             </section>
 
-            <section aria-label="Optional extras" className="grid gap-2">
-              <h3 className="text-sm font-semibold">Optional extras</h3>
+            <section aria-label="Add-ons" className="grid gap-2">
+              <h3 className="text-sm font-semibold">Add-ons</h3>
               {addons.length > 0 ? (
                 <ul className="divide-y rounded-lg border" data-testid="template-extras">
                   {addons.map((a) => {
@@ -266,14 +266,14 @@ export default async function TemplatePage({ params, searchParams }: PageProps<"
                   })}
                 </ul>
               ) : (
-                <p className="text-sm text-muted-foreground">No optional extras.</p>
+                <p className="text-sm text-muted-foreground">No add-ons.</p>
               )}
             </section>
           </div>
         }
         action={saveTemplateComposition.bind(null, slug, t.id)}
         submitLabel="Save contents"
-        discardMessage="Discard the changes you made to this template's packages, questions and extras?"
+        discardMessage="Discard the changes you made to this template's packages, questions and add-ons?"
       >
         <TemplateContentsEditor
           packages={packages}
@@ -301,7 +301,7 @@ export default async function TemplatePage({ params, searchParams }: PageProps<"
           action={setTemplateArchived.bind(null, slug, t.id)}
           effects={[
             "It's no longer offered under “Start from template” on events and proposal drafts.",
-            "Drafts already started from it keep their packages, questions and extras.",
+            "Drafts already started from it keep their packages, questions and add-ons.",
             "Sent proposals don't change.",
           ]}
         />

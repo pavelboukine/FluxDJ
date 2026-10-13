@@ -9,6 +9,7 @@ import { selectClass } from "@/components/app/fields";
 import { GearThumb } from "@/components/app/gear-thumb";
 import { answerTypeLabel } from "@/lib/catalog/rules";
 import type { GearChoice } from "@/lib/catalog/gear-choices.server";
+import { perUnitText } from "@/lib/catalog/quantity";
 import { formatCents } from "@/lib/money";
 import type { PackageChoice, QuestionChoice } from "./choices.server";
 
@@ -209,13 +210,13 @@ export function TemplateContentsEditor({
 
       <fieldset className="grid min-w-0 gap-3">
         <legend className="mb-3 grid gap-0.5">
-          <span className="text-sm font-semibold">Optional extras</span>
+          <span className="text-sm font-semibold">Add-ons</span>
           <span className="text-xs font-normal text-muted-foreground">
             Gear clients may add on top of their package, charged at each item&apos;s unit price. “Preselected” starts the client at that quantity.
           </span>
         </legend>
         {addons.length > 0 ? (
-          <ul aria-label="Optional extras" className="divide-y rounded-lg border">
+          <ul aria-label="Add-ons" className="divide-y rounded-lg border">
             {addons.map((a) => {
               const g = gearById.get(a.id);
               const name = g?.name ?? "Unavailable gear item";
@@ -229,6 +230,7 @@ export function TemplateContentsEditor({
                     <GearThumb url={g?.thumbUrl ?? null} />
                     <span className="grid min-w-0">
                       <span className="truncate text-sm font-medium">{name}</span>
+                      {g ? <span className="text-xs text-muted-foreground">{[g.category?.name, `${formatCents(g.priceCents, currency)} ${perUnitText({ name: g.name, unit_label: g.unitLabel, pieces_per_unit: g.piecesPerUnit, piece_label: g.pieceLabel })}`].filter(Boolean).join(" · ")}</span> : null}
                       {g && !g.active ? <span className="text-xs text-amber-800 dark:text-amber-300">Archived gear: proposals from this template can&apos;t be sent until you remove it or restore it.</span> : null}
                       {invalid ? <span className="text-xs text-destructive" role="alert">Preselected can&apos;t be more than the maximum.</span> : null}
                     </span>
@@ -251,11 +253,13 @@ export function TemplateContentsEditor({
             })}
           </ul>
         ) : (
-          <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">No optional extras.</p>
+          <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">No add-ons.</p>
         )}
         <ChoicePicker
           noun="gear"
-          available={gear.filter((g) => g.active && !addons.some((a) => a.id === g.id)).map((g) => ({ id: g.id, label: g.name, thumbUrl: g.thumbUrl }))}
+          available={gear
+            .filter((g) => g.active && !addons.some((a) => a.id === g.id))
+            .map((g) => ({ id: g.id, label: g.name, thumbUrl: g.thumbUrl, category: g.category, detail: formatCents(g.priceCents, currency) }))}
           total={gear.filter((g) => g.active).length}
           onAdd={(id) => setAddons((l) => [...l, { id, rec: "0", max: "1" }])}
           thumbs
@@ -263,7 +267,7 @@ export function TemplateContentsEditor({
           allAddedText="All active gear is offered."
         />
       </fieldset>
-      <p className="text-xs text-muted-foreground">Each package, question and extra appears once. Quantities are whole numbers up to 100.</p>
+      <p className="text-xs text-muted-foreground">Each package, question and add-on appears once. Quantities are whole numbers up to 100.</p>
     </div>
   );
 }

@@ -10,6 +10,9 @@ import { formatCents } from "@/lib/money";
 import { savePackageItems, updatePackage } from "../actions";
 import { loadGearChoices, type GearChoice } from "@/lib/catalog/gear-choices.server";
 import { GearThumb } from "@/components/app/gear-thumb";
+import { countText } from "@/lib/catalog/quantity";
+
+const gearUnit = (g: GearChoice) => ({ name: g.name, unit_label: g.unitLabel, pieces_per_unit: g.piecesPerUnit, piece_label: g.pieceLabel });
 import { IncludedGearEditor } from "../included-gear-editor";
 import { PackageFields } from "../package-fields";
 import { PackagePhotoEditor } from "../package-photo";
@@ -31,7 +34,7 @@ export default async function PackagePage({ params, searchParams }: PageProps<"/
   const { supabase, tenant } = staff;
   const { data: pkg } = await supabase
     .from("packages")
-    .select("id, key, name, description, base_price_cents, tax_category, sort_order, active, package_items(gear_item_id, quantity)")
+    .select("id, key, name, description, base_price_cents, tax_category, sort_order, active, package_items(gear_item_id, quantity, sort_order, gear_items!package_items_gear_item_fk(key))")
     .eq("id", packageId)
     .eq("tenant_id", tenant.id)
     .maybeSingle();
@@ -50,9 +53,9 @@ export default async function PackagePage({ params, searchParams }: PageProps<"/
   // A short-lived signed URL, issued to this staff user only (Storage RLS applies).
   const { data: signedPhoto } = currentPhoto ? await supabase.storage.from("gear-media").createSignedUrl(currentPhoto.storage_path, 600) : { data: null };
   const byId = new Map(choices.map((c) => [c.id, c]));
-  const included = pkg.package_items
-    .map((i) => ({ quantity: i.quantity, gear: byId.get(i.gear_item_id) ?? null, id: i.gear_item_id }))
-    .sort((a, b) => (a.gear?.name ?? "").localeCompare(b.gear?.name ?? ""));
+  // The order clients see: the package's order, then gear key (as offers freeze it).
+  const ordered = [...pkg.package_items].sort((a, b) => a.sort_order - b.sort_order || (a.gear_items?.key ?? "").localeCompare(b.gear_items?.key ?? ""));
+  const included = ordered.map((i) => ({ quantity: i.quantity, gear: byId.get(i.gear_item_id) ?? null, id: i.gear_item_id }));
   const archivedGear = included.filter((i) => i.gear && !i.gear.active).length;
   const configured = Object.keys((tenant.tax_categories ?? {}) as Record<string, unknown>);
   const uses = (templates ?? []).flatMap((t) => (t.proposal_templates ? [{ ...t.proposal_templates, position: t.sort_order }] : []));
@@ -127,7 +130,7 @@ export default async function PackagePage({ params, searchParams }: PageProps<"/
         submitLabel="Save included gear"
         discardMessage="Discard the changes you made to the included gear?"
       >
-        <IncludedGearEditor choices={choices} initial={pkg.package_items.map((i) => ({ id: i.gear_item_id, quantity: i.quantity }))} capped={capped} />
+        <IncludedGearEditor choices={choices} initial={ordered.map((i) => ({ id: i.gear_item_id, quantity: i.quantity }))} capped={capped} />
       </InlineEditor>
 
       <section aria-labelledby="uses-heading" className="grid gap-3 rounded-xl border bg-card p-4 sm:p-5">
@@ -226,7 +229,7 @@ function IncludedOverview({ items, slug, archivedGear }: { items: { id: string; 
   }
   return (
     <div className="grid gap-3">
-      <p className="text-sm text-muted-foreground">Part of the base price: shown to clients, never charged separately.</p>
+      <p className="text-sm text-muted-foreground">Part of the base price: shown to clients in this order, never charged separately.</p>
       {archivedGear > 0 ? (
         <p role="status" className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm" data-testid="archived-gear-warning">
           {archivedGear === 1 ? "1 included item is archived gear" : `${archivedGear} included items are archived gear`}. Proposals with this package can&apos;t be
@@ -246,7 +249,9 @@ function IncludedOverview({ items, slug, archivedGear }: { items: { id: string; 
               {i.gear && !i.gear.active ? <span className="text-xs text-amber-800 dark:text-amber-300">Archived gear</span> : null}
             </span>
             <span className="shrink-0 text-right whitespace-nowrap">
-              <span className="font-medium">× {i.quantity}</span> <span className="text-xs text-muted-foreground">{i.gear?.unitLabel}</span>
+              {/* "× 2 pack", or "× 1 pair (2 lights)" for gear that holds several pieces. */}
+              <span className="font-medium">× {i.gear && i.gear.piecesPerUnit > 1 ? countText(gearUnit(i.gear), i.quantity) : i.quantity}</span>{" "}
+              {i.gear && i.gear.piecesPerUnit === 1 ? <span className="text-xs text-muted-foreground">{i.gear.unitLabel}</span> : null}
             </span>
           </li>
         ))}

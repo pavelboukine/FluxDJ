@@ -11,7 +11,7 @@ import { loadTemplateChoices } from "../choices.server";
 import { TemplateContentsEditor } from "../template-contents-editor";
 import { TemplateDetailsFields, TemplateSettingsFields } from "../template-fields";
 
-/** Add a proposal template, with its packages, questions and extras in the same form. */
+/** Add a proposal template, with its packages, questions and add-ons in the same form. */
 export default async function NewTemplate({ params }: PageProps<"/staff/[tenant]/templates/new">) {
   const { tenant: slug } = await params;
   const staff = await requireStaff(slug);

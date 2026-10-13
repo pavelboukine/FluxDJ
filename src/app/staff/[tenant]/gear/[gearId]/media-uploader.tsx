@@ -26,8 +26,9 @@ const mb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(bytes < 1024 * 10
  * size, the browser uploads to Storage (tenant-scoped by RLS), then the
  * server verifies the content before the media row exists. A failure never
  * touches existing media and keeps the chosen file and description for a retry.
+ * The description (alt text) is optional: left empty, the item's name is used.
  */
-export function MediaUploader({ slug, gearId }: { slug: string; gearId: string }) {
+export function MediaUploader({ slug, gearId, gearName }: { slug: string; gearId: string; gearName: string }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -63,7 +64,6 @@ export function MediaUploader({ slug, gearId }: { slug: string; gearId: string }
     event.preventDefault();
     if (working) return;
     if (!file) return setStatus({ kind: "error", message: "Choose a file first." });
-    if (!alt.trim()) return setStatus({ kind: "error", message: "Describe the photo or video for people using screen readers." });
 
     setStatus({ kind: "working", step: "checking" });
     const prepared = await prepareGearMediaUpload(slug, gearId, { contentType: file.type, size: file.size });
@@ -97,8 +97,11 @@ export function MediaUploader({ slug, gearId }: { slug: string; gearId: string }
             </p>
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="media-alt">Description (alt text)</Label>
-            <Input id="media-alt" value={alt} onChange={(e) => setAlt(e.target.value)} maxLength={300} disabled={working} placeholder="Speaker on a stand beside the aisle" />
+            <Label htmlFor="media-alt">Description (alt text, optional)</Label>
+            <Input id="media-alt" value={alt} onChange={(e) => setAlt(e.target.value)} maxLength={300} disabled={working} placeholder={gearName} aria-describedby="media-alt-hint" />
+            <p id="media-alt-hint" className="text-xs text-muted-foreground">
+              Read aloud by screen readers. Left empty, “{gearName}” is used; add detail if the photo shows more.
+            </p>
           </div>
         </div>
         {file ? (

@@ -420,7 +420,7 @@ function ReviewChoices({ offer, priced }: { offer: OfferSnapshot; priced: Priced
         <h2 id="review-price" className="text-base font-semibold">
           Your price
         </h2>
-        <PriceLines priced={priced} />
+        <PriceLines priced={priced} offer={offer} />
       </section>
       {answered.length > 0 ? (
         <details className="rounded-2xl border">

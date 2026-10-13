@@ -118,7 +118,7 @@ select throws_like($$ select tests.set_photo('pkg_a_plus', tests.photo_path('ten
   'a type that doesn''t match the file name is refused');
 select throws_like($$ select tests.set_photo('pkg_a_plus', tests.photo_path('tenant_a', 'pkg_a_plus', 'missing')) $$, '%photo_invalid: the upload was not found%',
   'an upload that doesn''t exist is refused');
-select is((select count(*)::int from public.package_media), 0, 'refused calls change nothing');
+select is((select count(*)::int from public.package_media where tenant_id in (tests.id('tenant_a'), tests.id('tenant_b'))), 0, 'refused calls change nothing');
 
 -- Set, snapshot, send ---------------------------------------------------------------
 select is(tests.set_photo('pkg_a_plus', tests.photo_path('tenant_a', 'pkg_a_plus', 'a')), '{"status": "set", "replayed": false}'::jsonb, 'staff set a package photo');

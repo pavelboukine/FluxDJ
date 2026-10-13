@@ -600,18 +600,43 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
-                },"gear_items": {
+                },"gear_categories": {
                   Row: {
-                    "active": boolean,"created_at": string,"default_price_cents": number,"description": string | null,"id": string,"key": string,"name": string,"tax_category": string,"tenant_id": string,"unit_label": string,"updated_at": string
+                    "created_at": string,"id": string,"name": string,"sort_order": number,"tenant_id": string,"updated_at": string
                   }
                   Insert: {
-                    "active"?: boolean,"created_at"?: string,"default_price_cents": number,"description"?: string | null,"id"?: string,"key": string,"name": string,"tax_category"?: string,"tenant_id": string,"unit_label"?: string,"updated_at"?: string
+                    "created_at"?: string,"id"?: string,"name": string,"sort_order"?: number,"tenant_id": string,"updated_at"?: string
                   }
                   Update: {
-                    "active"?: boolean,"created_at"?: string,"default_price_cents"?: number,"description"?: string | null,"id"?: string,"key"?: string,"name"?: string,"tax_category"?: string,"tenant_id"?: string,"unit_label"?: string,"updated_at"?: string
+                    "created_at"?: string,"id"?: string,"name"?: string,"sort_order"?: number,"tenant_id"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
+      foreignKeyName: "gear_categories_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"gear_items": {
+                  Row: {
+                    "active": boolean,"category_id": string | null,"created_at": string,"default_price_cents": number,"description": string | null,"id": string,"key": string,"name": string,"piece_label": string | null,"pieces_per_unit": number,"tax_category": string,"tenant_id": string,"unit_label": string,"updated_at": string
+                  }
+                  Insert: {
+                    "active"?: boolean,"category_id"?: string | null,"created_at"?: string,"default_price_cents": number,"description"?: string | null,"id"?: string,"key": string,"name": string,"piece_label"?: string | null,"pieces_per_unit"?: number,"tax_category"?: string,"tenant_id": string,"unit_label"?: string,"updated_at"?: string
+                  }
+                  Update: {
+                    "active"?: boolean,"category_id"?: string | null,"created_at"?: string,"default_price_cents"?: number,"description"?: string | null,"id"?: string,"key"?: string,"name"?: string,"piece_label"?: string | null,"pieces_per_unit"?: number,"tax_category"?: string,"tenant_id"?: string,"unit_label"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "gear_items_category_fk"
+      columns: ["tenant_id","category_id"]
+isOneToOne: false
+      referencedRelation: "gear_categories"
+      referencedColumns: ["tenant_id","id"]
+    },{
       foreignKeyName: "gear_items_tenant_id_fkey"
       columns: ["tenant_id"]
 isOneToOne: false
@@ -696,13 +721,13 @@ isOneToOne: false
                   ]
                 },"package_items": {
                   Row: {
-                    "created_at": string,"gear_item_id": string,"id": string,"package_id": string,"quantity": number,"tenant_id": string,"updated_at": string
+                    "created_at": string,"gear_item_id": string,"id": string,"package_id": string,"quantity": number,"sort_order": number,"tenant_id": string,"updated_at": string
                   }
                   Insert: {
-                    "created_at"?: string,"gear_item_id": string,"id"?: string,"package_id": string,"quantity": number,"tenant_id": string,"updated_at"?: string
+                    "created_at"?: string,"gear_item_id": string,"id"?: string,"package_id": string,"quantity": number,"sort_order"?: number,"tenant_id": string,"updated_at"?: string
                   }
                   Update: {
-                    "created_at"?: string,"gear_item_id"?: string,"id"?: string,"package_id"?: string,"quantity"?: number,"tenant_id"?: string,"updated_at"?: string
+                    "created_at"?: string,"gear_item_id"?: string,"id"?: string,"package_id"?: string,"quantity"?: number,"sort_order"?: number,"tenant_id"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -1499,6 +1524,9 @@ isOneToOne: false
 { Args: Record<PropertyKey, never>; Returns: {
               "archived_at": string,"created_at": string,"display_name": string,"id": string,"is_member": boolean,"slug": string,"suspended_at": string,"suspended_by_email": string,"suspension_reason": string,"suspension_version": number
             }[]
+                           },
+"preview_proposal_draft":
+{ Args: { "p_offer": Json,"p_proposal_id": string }; Returns: Json
                            },
 "preview_proposal_offer":
 { Args: { "p_proposal_id": string }; Returns: Json

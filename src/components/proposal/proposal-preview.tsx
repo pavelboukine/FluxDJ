@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { priceSelection, recommendedSelection, type AnswerValue, type OfferSnapshot, type PricedSelection, type PricingResult, type ProposalSelectionState } from "@/lib/pricing";
 import { brandStyle } from "@/lib/branding/colors";
 import { shortDate } from "@/lib/dates";
+import { groupByCategory } from "@/lib/catalog/categories";
+import { countText, perUnitText, piecesText, quantityText } from "@/lib/catalog/quantity";
 import { formatCents } from "@/lib/money";
 import { leadMediaIndex, packageLeadMedia } from "@/lib/proposals/media";
 import { cn } from "@/lib/utils";
@@ -96,7 +98,7 @@ export function ProposalView(props: ViewProps) {
           <ol aria-label="How this works" className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs opacity-85">
             <li>1. Choose a package</li>
             <li>2. Tell us about your event</li>
-            {offer.addons.length > 0 ? <li>3. Add extras</li> : null}
+            {offer.addons.length > 0 ? <li>3. Choose add-ons</li> : null}
             <li>{offer.addons.length > 0 ? 4 : 3}. Review and submit</li>
           </ol>
         </header>
@@ -134,7 +136,7 @@ export function ProposalView(props: ViewProps) {
                     <ul className="grid grid-cols-2 gap-2.5 @xl/main:gap-4">
                       {pkg.included.map((i) => (
                         <GearCard key={i.gear_key} offer={offer} gearKey={i.gear_key} headingTag={asPage ? "h3" : "h4"}>
-                          <p className="font-medium">{i.quantity} included</p>
+                          <p className="font-medium">{offer.gear[i.gear_key] ? countText(offer.gear[i.gear_key], i.quantity) : i.quantity} included</p>
                         </GearCard>
                       ))}
                     </ul>
@@ -151,12 +153,12 @@ export function ProposalView(props: ViewProps) {
               {priced && priced.requirements.length > 0 ? <Requirements offer={offer} priced={priced} headingTag={H2} itemTag={asPage ? "h3" : "h4"} /> : null}
 
               {offer.addons.length > 0 ? (
-                <Extras offer={offer} addons={selection.addons} priced={priced} packageKey={selection.package_key} onAddons={setAddons} disabled={readOnly} headingTag={H2} itemTag={asPage ? "h3" : "h4"} />
+                <Addons offer={offer} addons={selection.addons} priced={priced} packageKey={selection.package_key} onAddons={setAddons} disabled={readOnly} headingTag={H2} itemTag={asPage ? "h3" : "h4"} />
               ) : null}
             </div>
 
             <aside aria-label="Price" className="grid gap-3 @4xl/proposal:sticky @4xl/proposal:top-4">
-              <PriceSummaryCard id="price-summary" title="Your total" headingLevel={asPage ? 2 : 3} priced={priced} provisional={pricing.provisional} problems={pricing.problems}>
+              <PriceSummaryCard id="price-summary" title="Your total" headingLevel={asPage ? 2 : 3} offer={offer} priced={priced} provisional={pricing.provisional} problems={pricing.problems}>
                 {summaryActions}
               </PriceSummaryCard>
             </aside>
@@ -217,9 +219,7 @@ function PackageCard({ offer, packageKey, selected, disabled, onSelect, headingT
               return (
                 <li key={i.gear_key} className="flex items-center gap-2">
                   <Check aria-hidden className="size-4 shrink-0 text-emerald-600" />
-                  <span className="min-w-0 flex-1">
-                    <span className="font-medium tabular-nums">{i.quantity} ×</span> {gear?.name}
-                  </span>
+                  <span className="min-w-0 flex-1">{gear ? quantityText(gear, i.quantity) : `${i.quantity} ×`}</span>
                   {gear && gear.media.length > 0 ? (
                     <button
                       type="button"
@@ -305,7 +305,7 @@ function CompareTable({ offer, selectedKey }: { offer: OfferSnapshot; selectedKe
                   const q = p.included.find((i) => i.gear_key === k)?.quantity;
                   return (
                     <td key={p.key} className={cn("p-2 text-center tabular-nums", p.key === selectedKey && "bg-muted")}>
-                      {q ? q : <span aria-label="Not included" className="text-muted-foreground">—</span>}
+                      {q ? (offer.gear[k] ? countText(offer.gear[k], q) : q) : <span aria-label="Not included" className="text-muted-foreground">—</span>}
                     </td>
                   );
                 })}
@@ -319,7 +319,7 @@ function CompareTable({ offer, selectedKey }: { offer: OfferSnapshot; selectedKe
 }
 
 /** A gear item with a large photo, its name, description and whatever the caller adds (quantity, price). */
-function GearCard({ offer, gearKey, headingTag: Heading, children, footer }: { offer: OfferSnapshot; gearKey: string; headingTag: "h3" | "h4"; children?: ReactNode; footer?: ReactNode }) {
+function GearCard({ offer, gearKey, headingTag: Heading, children, footer }: { offer: OfferSnapshot; gearKey: string; headingTag: "h3" | "h4" | "h5"; children?: ReactNode; footer?: ReactNode }) {
   const gear = offer.gear[gearKey];
   // Cards size themselves to their own width: compact two-up on phones, roomier where there is space.
   return (
@@ -476,15 +476,15 @@ function Requirements({ offer, priced, headingTag: Heading, itemTag }: { offer: 
           return (
             <GearCard key={r.gear_key} offer={offer} gearKey={r.gear_key} headingTag={itemTag}>
               <p className="font-medium">
-                {r.required_quantity} needed
-                {r.included_quantity > 0 ? ` · ${Math.min(r.included_quantity, r.required_quantity)} covered by your package` : ""}
+                {countText(gear, r.required_quantity)} needed
+                {r.included_quantity > 0 ? ` · ${countText(gear, Math.min(r.included_quantity, r.required_quantity))} covered by your package` : ""}
               </p>
               <p className={extra > 0 ? "text-amber-800 dark:text-amber-300" : "text-emerald-700 dark:text-emerald-400"}>
                 {extra === 0
                   ? "Already included in your package. Nothing extra to pay."
                   : addonKeys.has(r.gear_key)
-                    ? `At least ${extra} added at ${money(gear.unit_price_cents)} per ${gear.unit_label}. You can add more under Optional extras.`
-                    : `${extra} added at ${money(gear.unit_price_cents)} per ${gear.unit_label}.`}
+                    ? `At least ${countText(gear, extra)} added at ${money(gear.unit_price_cents)} ${perUnitText(gear)}. You can add more under Add-ons.`
+                    : `${countText(gear, extra)} added at ${money(gear.unit_price_cents)} ${perUnitText(gear)}.`}
               </p>
               <ul className="grid list-disc gap-0.5 pl-4 text-muted-foreground @xs/card:pl-5">
                 {r.reasons.map((reason) => (
@@ -499,7 +499,7 @@ function Requirements({ offer, priced, headingTag: Heading, itemTag }: { offer: 
   );
 }
 
-function Extras({
+function Addons({
   offer,
   addons,
   priced,
@@ -522,71 +522,88 @@ function Extras({
   const pkg = offer.packages.find((p) => p.key === packageKey);
   const requirement = new Map((priced?.requirements ?? []).map((r) => [r.gear_key, r]));
   const lines = new Map((priced?.lines ?? []).filter((l) => l.source === "optional" || l.source === "required").map((l) => [l.item_key, l]));
+  // Grouped by category only when that helps: add-ons from two or more categories.
+  const groups = groupByCategory(offer.addons, (a) => offer.gear[a.gear_key]?.category);
+  const grouped = groups.length > 1;
+  const cardTag = grouped ? (itemTag === "h3" ? "h4" : "h5") : itemTag;
+  const GroupHeading = itemTag;
+
+  const card = (a: OfferSnapshot["addons"][number]) => {
+    const gear = offer.gear[a.gear_key];
+    const req = requirement.get(a.gear_key);
+    const minimum = req?.required_extra_quantity ?? 0;
+    // The quantity the price uses: the larger of the client's choice and what answers require.
+    const shown = Math.max(addons[a.gear_key] ?? 0, minimum);
+    const ceiling = Math.max(a.max_quantity, minimum);
+    const includedQty = pkg?.included.find((i) => i.gear_key === a.gear_key)?.quantity ?? 0;
+    const line = lines.get(a.gear_key);
+    const pieces = shown > 0 ? piecesText(gear, shown) : null;
+    return (
+      <GearCard
+        key={a.gear_key}
+        offer={offer}
+        gearKey={a.gear_key}
+        headingTag={cardTag}
+        footer={
+          <div className="grid gap-1.5 border-t p-2 @xs/card:flex @xs/card:flex-wrap @xs/card:items-center @xs/card:justify-between @xs/card:gap-3 @xs/card:p-3">
+            <div className="flex items-center justify-between gap-0.5 @xs/card:justify-start @xs/card:gap-1" role="group" aria-label={`${gear.name} quantity`}>
+              <Button type="button" size="icon-lg" variant="outline" className="size-11" aria-label={`Fewer ${gear.name}`} disabled={disabled || shown <= minimum || shown === 0} onClick={() => onAddons({ ...addons, [a.gear_key]: Math.max(0, shown - 1) })}>
+                <Minus aria-hidden />
+              </Button>
+              <span className="w-7 text-center text-base font-semibold tabular-nums @xs/card:w-8" aria-live="polite">
+                {shown}
+              </span>
+              <Button type="button" size="icon-lg" variant="outline" className="size-11" aria-label={`More ${gear.name}`} disabled={disabled || shown >= ceiling} onClick={() => onAddons({ ...addons, [a.gear_key]: shown + 1 })}>
+                <Plus aria-hidden />
+              </Button>
+            </div>
+            <span className="grid text-center text-xs text-muted-foreground tabular-nums @xs/card:text-right @xs/card:text-sm">
+              {line && shown > 0 ? <span className="font-medium text-foreground">Adds {money(line.line_total_cents)}</span> : shown > 0 ? "Choose a package to see the price" : `Up to ${a.max_quantity}`}
+              {pieces ? <span className="text-xs">{pieces} in all</span> : null}
+            </span>
+          </div>
+        }
+      >
+        <p className="font-medium">
+          {money(gear.unit_price_cents)} {perUnitText(gear)}
+        </p>
+        {includedQty > 0 ? (
+          <p className="rounded-lg bg-muted px-2 py-1.5 @xs/card:px-3 @xs/card:py-2">
+            Your package already includes {countText(gear, includedQty)}. Add-ons here are in addition.
+          </p>
+        ) : null}
+        {minimum > 0 ? (
+          <div className="rounded-lg bg-amber-500/10 px-2 py-1.5 text-amber-900 @xs/card:px-3 @xs/card:py-2 dark:text-amber-200">
+            <p className="font-medium">Required for your event: at least {countText(gear, minimum)}.</p>
+            <ul className="grid list-disc gap-0.5 pl-4 @xs/card:pl-5">
+              {req!.reasons.map((reason) => (
+                <li key={reason}>{reason}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </GearCard>
+    );
+  };
+
   return (
     <section aria-labelledby="addon-heading" className="grid gap-4">
       <div className="grid gap-1">
         <Heading id="addon-heading" className="text-lg font-semibold">
-          Optional extras
+          Add-ons
         </Heading>
         <p className="text-muted-foreground">Add anything you&apos;d like on top of your package. Prices are per unit.</p>
       </div>
-      <ul className="grid grid-cols-2 gap-2.5 @xl/main:gap-4">
-        {offer.addons.map((a) => {
-          const gear = offer.gear[a.gear_key];
-          const req = requirement.get(a.gear_key);
-          const minimum = req?.required_extra_quantity ?? 0;
-          // The quantity the price uses: the larger of the client's choice and what answers require.
-          const shown = Math.max(addons[a.gear_key] ?? 0, minimum);
-          const ceiling = Math.max(a.max_quantity, minimum);
-          const includedQty = pkg?.included.find((i) => i.gear_key === a.gear_key)?.quantity ?? 0;
-          const line = lines.get(a.gear_key);
-          return (
-            <GearCard
-              key={a.gear_key}
-              offer={offer}
-              gearKey={a.gear_key}
-              headingTag={itemTag}
-              footer={
-                <div className="grid gap-1.5 border-t p-2 @xs/card:flex @xs/card:flex-wrap @xs/card:items-center @xs/card:justify-between @xs/card:gap-3 @xs/card:p-3">
-                  <div className="flex items-center justify-between gap-0.5 @xs/card:justify-start @xs/card:gap-1" role="group" aria-label={`${gear.name} quantity`}>
-                    <Button type="button" size="icon-lg" variant="outline" className="size-11" aria-label={`Fewer ${gear.name}`} disabled={disabled || shown <= minimum || shown === 0} onClick={() => onAddons({ ...addons, [a.gear_key]: Math.max(0, shown - 1) })}>
-                      <Minus aria-hidden />
-                    </Button>
-                    <span className="w-7 text-center text-base font-semibold tabular-nums @xs/card:w-8" aria-live="polite">
-                      {shown}
-                    </span>
-                    <Button type="button" size="icon-lg" variant="outline" className="size-11" aria-label={`More ${gear.name}`} disabled={disabled || shown >= ceiling} onClick={() => onAddons({ ...addons, [a.gear_key]: shown + 1 })}>
-                      <Plus aria-hidden />
-                    </Button>
-                  </div>
-                  <span className="text-center text-xs text-muted-foreground tabular-nums @xs/card:text-sm">
-                    {line && shown > 0 ? <span className="font-medium text-foreground">Adds {money(line.line_total_cents)}</span> : shown > 0 ? "Choose a package to see the price" : `Up to ${a.max_quantity}`}
-                  </span>
-                </div>
-              }
-            >
-              <p className="font-medium">
-                {money(gear.unit_price_cents)} per {gear.unit_label}
-              </p>
-              {includedQty > 0 ? (
-                <p className="rounded-lg bg-muted px-2 py-1.5 @xs/card:px-3 @xs/card:py-2">
-                  Your package already includes {includedQty}. Extras here are in addition.
-                </p>
-              ) : null}
-              {minimum > 0 ? (
-                <div className="rounded-lg bg-amber-500/10 px-2 py-1.5 text-amber-900 @xs/card:px-3 @xs/card:py-2 dark:text-amber-200">
-                  <p className="font-medium">Required for your event: at least {minimum}.</p>
-                  <ul className="grid list-disc gap-0.5 pl-4 @xs/card:pl-5">
-                    {req!.reasons.map((reason) => (
-                      <li key={reason}>{reason}</li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-            </GearCard>
-          );
-        })}
-      </ul>
+      {grouped ? (
+        groups.map((g) => (
+          <div key={g.key} className="grid gap-2.5" data-testid="addon-group">
+            <GroupHeading className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">{g.name ?? "More add-ons"}</GroupHeading>
+            <ul className="grid grid-cols-2 gap-2.5 @xl/main:gap-4">{g.items.map(card)}</ul>
+          </div>
+        ))
+      ) : (
+        <ul className="grid grid-cols-2 gap-2.5 @xl/main:gap-4">{offer.addons.map(card)}</ul>
+      )}
     </section>
   );
 }

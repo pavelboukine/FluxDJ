@@ -3,16 +3,23 @@ import { ImageOff, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { PageHeader } from "@/components/app/fields";
-import { EmptyList, FilterCheckbox, ListRows, Pagination, ResultLine } from "@/components/app/list";
+import { EmptyList, FilterCheckbox, FilterSelect, ListRows, Pagination, ResultLine } from "@/components/app/list";
 import { ListFilters } from "@/components/app/list-filters";
 import { requireStaff } from "@/lib/auth/staff";
 import { PAGE_SIZE, containsFilter, gearListHref, isDefaultGearList, parseGearListParams, rangeText } from "@/lib/lists";
 import { formatCents } from "@/lib/money";
+import { UNCATEGORIZED } from "@/lib/catalog/categories";
+import { perUnitText } from "@/lib/catalog/quantity";
 import { SetupReturn } from "@/components/app/setup-return";
+import { CategoryManager } from "./category-manager";
 
 const SEARCHED = ["name", "description"] as const;
 
-/** The gear catalog: active items by default, searchable by name or description, all in the URL. Read-only. */
+/**
+ * The gear catalog: active items by default, searchable by name or
+ * description and filtered by category, all in the URL; plus the business's
+ * categories (add, rename, order, delete).
+ */
 export default async function GearList({ params, searchParams }: PageProps<"/staff/[tenant]/gear">) {
   const { tenant: slug } = await params;
   const query = await searchParams;
@@ -25,7 +32,10 @@ export default async function GearList({ params, searchParams }: PageProps<"/sta
   // filter left out, and whether the business has any gear at all.
   let rowsQuery = supabase
     .from("gear_items")
-    .select("id, name, description, default_price_cents, unit_label, active, thumb:gear_media(storage_path), media:gear_media(count)", { count: "exact" })
+    .select(
+      "id, name, description, default_price_cents, unit_label, pieces_per_unit, piece_label, active, category:gear_categories!gear_items_category_fk(name), thumb:gear_media(storage_path), media:gear_media(count)",
+      { count: "exact" },
+    )
     .eq("tenant_id", tenant.id)
     .eq("thumb.active", true)
     .eq("thumb.kind", "image")
@@ -38,13 +48,22 @@ export default async function GearList({ params, searchParams }: PageProps<"/sta
     rowsQuery = rowsQuery.or(containsFilter(SEARCHED, p.q));
     archivedQuery = archivedQuery.or(containsFilter(SEARCHED, p.q));
   }
+  if (p.category === "none") {
+    rowsQuery = rowsQuery.is("category_id", null);
+    archivedQuery = archivedQuery.is("category_id", null);
+  } else if (p.category) {
+    rowsQuery = rowsQuery.eq("category_id", p.category);
+    archivedQuery = archivedQuery.eq("category_id", p.category);
+  }
   if (!p.archived) rowsQuery = rowsQuery.eq("active", true);
-  const [rows, archived, any] = await Promise.all([
+  const [rows, archived, any, categories] = await Promise.all([
     rowsQuery.order("name").order("id").range(from, from + PAGE_SIZE - 1),
     p.archived ? Promise.resolve({ count: 0, error: null }) : archivedQuery,
     supabase.from("gear_items").select("id", { count: "exact", head: true }).eq("tenant_id", tenant.id),
+    supabase.from("gear_categories").select("id, name, sort_order, gear:gear_items!gear_items_category_fk(count)").eq("tenant_id", tenant.id).order("sort_order").order("name"),
   ]);
-  if (rows.error || archived.error || any.error) throw new Error("The gear list couldn't be loaded.");
+  if (rows.error || archived.error || any.error || categories.error) throw new Error("The gear list couldn't be loaded.");
+  const categoryList = categories.data.map((c) => ({ id: c.id, name: c.name, items: c.gear[0]?.count ?? 0 }));
   const items = rows.data;
   const total = rows.count ?? 0;
   const archivedExcluded = archived.count ?? 0;
@@ -70,6 +89,14 @@ export default async function GearList({ params, searchParams }: PageProps<"/sta
         }
       />
       <ListFilters label="Filter gear" query={p.q} placeholder="Name or description" clearHref={base} showClear={!isDefaultGearList(p)}>
+        {categoryList.length > 0 ? (
+          <FilterSelect
+            label="Category"
+            name="category"
+            value={p.category}
+            options={[["", "All categories"], ...categoryList.map((c) => [c.id, c.name] as const), ["none", UNCATEGORIZED]]}
+          />
+        ) : null}
         <FilterCheckbox label="Include archived" name="archived" checked={p.archived} />
       </ListFilters>
 
@@ -108,6 +135,9 @@ export default async function GearList({ params, searchParams }: PageProps<"/sta
                         <Link className="truncate font-medium underline-offset-4 hover:underline" href={`${base}/${g.id}`}>{g.name}</Link>
                         {g.active ? null : <Badge variant="secondary">Archived</Badge>}
                       </span>
+                      {categoryList.length > 0 ? (
+                        <span className="text-xs font-medium text-muted-foreground" data-testid="gear-category">{g.category?.name ?? UNCATEGORIZED}</span>
+                      ) : null}
                       {g.description ? <span className="line-clamp-1 text-muted-foreground">{g.description}</span> : null}
                       <span className="text-xs text-muted-foreground">
                         {mediaCount === 0 ? "No photos or videos" : `${mediaCount} photo${mediaCount === 1 ? "" : "s"} or video${mediaCount === 1 ? "" : "s"}`}
@@ -115,7 +145,7 @@ export default async function GearList({ params, searchParams }: PageProps<"/sta
                     </span>
                     <span className="col-start-2 grid sm:col-start-3 sm:justify-items-end sm:text-right" data-testid="gear-price">
                       <span className="font-medium">{formatCents(g.default_price_cents, tenant.currency)}</span>
-                      <span className="text-xs text-muted-foreground">unit price, per {g.unit_label}</span>
+                      <span className="text-xs text-muted-foreground">unit price, {perUnitText(g)}</span>
                     </span>
                   </div>
                 </li>
@@ -141,6 +171,7 @@ export default async function GearList({ params, searchParams }: PageProps<"/sta
           </div>
         </EmptyList>
       )}
+      <CategoryManager slug={slug} categories={categoryList} />
     </>
   );
 }

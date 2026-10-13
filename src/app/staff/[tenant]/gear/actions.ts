@@ -3,9 +3,10 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireStaff } from "@/lib/auth/staff";
+import { requireStaff, type StaffContext } from "@/lib/auth/staff";
+import { normalizeCategoryName, SUGGESTED_CATEGORIES } from "@/lib/catalog/categories";
 import { describeDbError } from "@/lib/db-errors";
-import { fail, KEY_RE, keyFromName, ok, optionalText, text, UUID_RE, type ActionState } from "@/lib/forms";
+import { fail, int, KEY_RE, keyFromName, ok, optionalText, text, UUID_RE, type ActionState } from "@/lib/forms";
 import { parseMoneyToCents } from "@/lib/money";
 import { GEAR_MEDIA_TYPES, isGearMediaType } from "@/lib/media/sniff";
 import { checkUploadedMedia, declaredTypeOf, discardUpload } from "@/lib/media/verify-upload.server";
@@ -21,12 +22,17 @@ function readGearForm(form: FormData, categories: string[]) {
   const price = parseMoneyToCents(text(form, "price"));
   const taxCategory = text(form, "tax_category");
   const unitLabel = text(form, "unit_label") || "unit";
+  // Absent from older forms: one piece per unit.
+  const pieces = form.has("pieces_per_unit") ? int(form, "pieces_per_unit", 1, 1000) : 1;
+  const pieceLabel = text(form, "piece_label").replace(/\s+/g, " ");
   if (name.length < 1 || name.length > 200) return { ok: false, error: "Name is required (up to 200 characters)." } as const;
   if (price === null || price > 100_000_000) return { ok: false, error: "Enter a price like 150 or 150.00." } as const;
   if (!taxCategory) return { ok: false, error: "Choose a tax category." } as const;
   if (!KEY_RE.test(taxCategory) || (categories.length > 0 && !categories.includes(taxCategory)))
     return { ok: false, error: "Choose a configured tax category." } as const;
   if (unitLabel.length > 40) return { ok: false, error: "Unit label is too long." } as const;
+  if (pieces === null) return { ok: false, error: "Pieces per unit must be a whole number from 1 to 1000." } as const;
+  if (pieceLabel.length > 40) return { ok: false, error: "What the pieces are called can be up to 40 characters." } as const;
   return {
     ok: true,
     values: {
@@ -35,20 +41,68 @@ function readGearForm(form: FormData, categories: string[]) {
       unit_label: unitLabel,
       default_price_cents: price,
       tax_category: taxCategory,
+      pieces_per_unit: pieces,
+      // Only meaningful for several pieces per unit.
+      piece_label: pieces > 1 ? pieceLabel || null : null,
     },
   } as const;
 }
 
+type CategoryResult = { ok: true; id: string | null } | { ok: false; error: string };
+
+/**
+ * The gear form's category: "" (none), an existing category id of this
+ * business, or "new:<name>" / "new" with new_category (created on first use,
+ * or the existing one of that name).
+ */
+async function resolveCategory(staff: StaffContext, form: FormData): Promise<CategoryResult> {
+  const { supabase, tenant } = staff;
+  const choice = text(form, "category_id");
+  if (!choice) return { ok: true, id: null };
+  if (UUID_RE.test(choice)) {
+    const { data } = await supabase.from("gear_categories").select("id").eq("tenant_id", tenant.id).eq("id", choice).maybeSingle();
+    return data ? { ok: true, id: data.id } : { ok: false, error: "That category no longer exists. Choose another." };
+  }
+  const raw = choice === "new" ? text(form, "new_category") : choice.startsWith("new:") ? choice.slice(4) : "";
+  const name = normalizeCategoryName(raw);
+  if (!name) return { ok: false, error: "Name the new category (up to 60 characters)." };
+  return findOrCreateCategory(staff, name);
+}
+
+async function findOrCreateCategory({ supabase, tenant }: StaffContext, name: string): Promise<CategoryResult> {
+  const existing = async () => {
+    const { data } = await supabase.from("gear_categories").select("id, name, sort_order").eq("tenant_id", tenant.id);
+    return data ?? [];
+  };
+  const all = await existing();
+  const match = all.find((c) => c.name.toLowerCase() === name.toLowerCase());
+  if (match) return { ok: true, id: match.id };
+  // Suggested categories keep their suggested order; others go last.
+  const suggested = SUGGESTED_CATEGORIES.findIndex((s) => s.toLowerCase() === name.toLowerCase());
+  const sortOrder = suggested >= 0 ? (suggested + 1) * 10 : Math.min(10_000, Math.max(SUGGESTED_CATEGORIES.length * 10, ...all.map((c) => c.sort_order)) + 10);
+  const { data, error } = await supabase.from("gear_categories").insert({ tenant_id: tenant.id, name, sort_order: sortOrder }).select("id").single();
+  if (!error) return { ok: true, id: data.id };
+  // Created at the same moment by another save: use it.
+  if (error.code === "23505") {
+    const again = (await existing()).find((c) => c.name.toLowerCase() === name.toLowerCase());
+    if (again) return { ok: true, id: again.id };
+  }
+  return { ok: false, error: describeDbError(error) };
+}
+
 export async function createGear(slug: string, _state: ActionState, form: FormData): Promise<ActionState> {
-  const { supabase, tenant } = await requireStaff(slug);
+  const staff = await requireStaff(slug);
+  const { supabase, tenant } = staff;
   const parsed = readGearForm(form, taxCategories(tenant.tax_categories));
   if (!parsed.ok) return fail(parsed.error);
   const key = text(form, "key") || keyFromName(parsed.values.name);
   if (!KEY_RE.test(key)) return fail("Key must start with a letter and use lowercase letters, digits and underscores.");
+  const category = await resolveCategory(staff, form);
+  if (!category.ok) return fail(category.error);
 
   const { data, error } = await supabase
     .from("gear_items")
-    .insert({ ...parsed.values, key, tenant_id: tenant.id })
+    .insert({ ...parsed.values, category_id: category.id, key, tenant_id: tenant.id })
     .select("id")
     .single();
   if (error) return fail(describeDbError(error));
@@ -57,13 +111,16 @@ export async function createGear(slug: string, _state: ActionState, form: FormDa
 }
 
 export async function updateGear(slug: string, gearId: string, _state: ActionState, form: FormData): Promise<ActionState> {
-  const { supabase, tenant } = await requireStaff(slug);
+  const staff = await requireStaff(slug);
+  const { supabase, tenant } = staff;
   const parsed = readGearForm(form, taxCategories(tenant.tax_categories));
   if (!parsed.ok) return fail(parsed.error);
+  const category = await resolveCategory(staff, form);
+  if (!category.ok) return fail(category.error);
   // Archiving is its own confirmed action (setGearActive); saving details never changes it.
   const { data, error } = await supabase
     .from("gear_items")
-    .update(parsed.values)
+    .update({ ...parsed.values, category_id: category.id })
     .eq("id", gearId)
     .eq("tenant_id", tenant.id)
     .select("id");
@@ -132,7 +189,6 @@ export async function finalizeGearMediaUpload(
     `^${tenant.id}/gear-items/${gearId}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.(jpg|png|webp|avif|mp4|webm)$`,
   );
   if (!UUID_RE.test(gearId) || !pathPattern.test(input.path)) return fail("Invalid upload.");
-  const altText = input.altText.trim();
 
   const declared = declaredTypeOf(input.path)!;
 
@@ -141,7 +197,11 @@ export async function finalizeGearMediaUpload(
     return fail(message);
   };
 
-  if (altText.length < 1 || altText.length > 300) return reject("Describe the photo or video (alt text, up to 300 characters).");
+  const { data: gear } = await supabase.from("gear_items").select("name").eq("id", gearId).eq("tenant_id", tenant.id).maybeSingle();
+  if (!gear) return reject("Gear item not found.");
+  // A description is optional: the item's name describes its photo well enough.
+  const altText = input.altText.trim() || gear.name;
+  if (altText.length > 300) return reject("The description can be up to 300 characters.");
 
   const checked = await checkUploadedMedia(supabase, input.path, declared);
   if (!checked.ok) return checked.discard ? reject(checked.message) : fail(checked.message);
@@ -231,4 +291,66 @@ export async function moveMedia(slug: string, gearId: string, mediaId: string, d
   }
   revalidatePath(`/staff/${slug}/gear/${gearId}`);
   return ok(direction === "earlier" ? "Moved earlier." : "Moved later.");
+}
+
+// ---------------------------------------------------------------------------
+// Categories (gear list → Categories). Each business keeps its own; deleting
+// one leaves its gear uncategorized. Offers already frozen keep the category
+// name they were sent with.
+// ---------------------------------------------------------------------------
+
+export async function createCategory(slug: string, _state: ActionState, form: FormData): Promise<ActionState> {
+  const staff = await requireStaff(slug);
+  const name = normalizeCategoryName(text(form, "name"));
+  if (!name) return fail("Name the category (up to 60 characters).");
+  const result = await findOrCreateCategory(staff, name);
+  if (!result.ok) return fail(result.error);
+  revalidatePath(`/staff/${slug}/gear`, "layout");
+  return ok(`Category “${name}” is ready.`);
+}
+
+export async function renameCategory(slug: string, categoryId: string, _state: ActionState, form: FormData): Promise<ActionState> {
+  const { supabase, tenant } = await requireStaff(slug);
+  if (!UUID_RE.test(categoryId)) return fail("Category not found.");
+  const name = normalizeCategoryName(text(form, "name"));
+  if (!name) return fail("Name the category (up to 60 characters).");
+  const { data, error } = await supabase.from("gear_categories").update({ name }).eq("id", categoryId).eq("tenant_id", tenant.id).select("id");
+  if (error) return fail(error.code === "23505" ? "Another category already has that name." : describeDbError(error));
+  if (!data?.length) return fail("Category not found.");
+  revalidatePath(`/staff/${slug}/gear`, "layout");
+  return ok("Category renamed.");
+}
+
+/** Moves a category one place earlier or later (renumbering 10, 20, 30…, writing only rows that change). */
+export async function moveCategory(slug: string, categoryId: string, direction: "earlier" | "later"): Promise<ActionState> {
+  const { supabase, tenant } = await requireStaff(slug);
+  if (!UUID_RE.test(categoryId)) return fail("Category not found.");
+  const { data: all, error } = await supabase.from("gear_categories").select("id, name, sort_order").eq("tenant_id", tenant.id).order("sort_order").order("name");
+  if (error) return fail(describeDbError(error));
+  const ids = (all ?? []).map((c) => c.id);
+  const from = ids.indexOf(categoryId);
+  if (from < 0) return fail("Category not found.");
+  const to = direction === "earlier" ? from - 1 : from + 1;
+  if (to < 0 || to >= ids.length) return ok("Already in place.");
+  [ids[from], ids[to]] = [ids[to], ids[from]];
+  const current = new Map((all ?? []).map((c) => [c.id, c.sort_order]));
+  for (const [index, id] of ids.entries()) {
+    const order = Math.min(10_000, (index + 1) * 10);
+    if (current.get(id) === order) continue;
+    const { error: updateError } = await supabase.from("gear_categories").update({ sort_order: order }).eq("id", id).eq("tenant_id", tenant.id);
+    if (updateError) return fail(describeDbError(updateError));
+  }
+  revalidatePath(`/staff/${slug}/gear`, "layout");
+  return ok(direction === "earlier" ? "Moved earlier." : "Moved later.");
+}
+
+/** Deletes a category; its gear becomes uncategorized (nothing else changes). */
+export async function deleteCategory(slug: string, categoryId: string): Promise<ActionState> {
+  const { supabase, tenant } = await requireStaff(slug);
+  if (!UUID_RE.test(categoryId)) return fail("Category not found.");
+  const { data, error } = await supabase.from("gear_categories").delete().eq("id", categoryId).eq("tenant_id", tenant.id).select("id");
+  if (error) return fail(describeDbError(error));
+  if (!data?.length) return fail("Category not found.");
+  revalidatePath(`/staff/${slug}/gear`, "layout");
+  return ok("Category deleted. Its gear is now uncategorized.");
 }

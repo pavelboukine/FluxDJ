@@ -48,7 +48,7 @@ export default async function Templates({ params, searchParams }: PageProps<"/st
       <SetupReturn slug={slug} from={query.from} />
       <PageHeader
         title="Proposal templates"
-        description="Starting points for proposals: three packages, a recommended one, questions and optional extras."
+        description="Starting points for proposals: three packages, a recommended one, questions and add-ons."
         actions={
           <Link className={buttonVariants()} href={`${base}/new`}>
             <Plus aria-hidden />

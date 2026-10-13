@@ -72,11 +72,11 @@ export function renderEmail(input: TemplateInput): RenderedEmail {
       const revised = typeof input.payload.revision === "number" && input.payload.revision > 1;
       return render(`${dj} sent you a proposal for ${event}`, {
         brand,
-        preheader: `Choose your package and extras for ${event}.`,
+        preheader: `Choose your package and add-ons for ${event}.`,
         heading: revised ? "Your updated proposal is ready" : "Your proposal is ready",
         greeting: `Hi ${str(input.payload.client_name, "there")},`,
         paragraphs: [
-          `${dj} has prepared a proposal for ${event}. Choose your package and any extras, answer a few questions about the venue, and submit your choices for ${dj} to review.`,
+          `${dj} has prepared a proposal for ${event}. Choose your package and any add-ons, answer a few questions about the venue, and submit your choices for ${dj} to review.`,
           ...(revised ? ["This updated proposal replaces the one you received before."] : []),
         ],
         details: [
@@ -111,7 +111,7 @@ export function renderEmail(input: TemplateInput): RenderedEmail {
         heading: "A selection is ready for your review",
         paragraphs: [
           `The client submitted their selection for ${event}${total ? ` (total ${total})` : ""}.`,
-          "Review the exact package, extras, required gear and answers, then approve it or send a revised offer.",
+          "Review the exact package, add-ons, required gear and answers, then approve it or send a revised offer.",
         ],
         details: [
           ["Event", event],

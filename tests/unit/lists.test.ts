@@ -114,11 +114,19 @@ describe("a client's events", () => {
 
 describe("gear list parameters", () => {
   it("defaults to active items and accepts the earlier show=archived link", () => {
-    expect(parseGearListParams({})).toEqual({ q: "", archived: false, page: 1 });
+    expect(parseGearListParams({})).toEqual({ q: "", archived: false, page: 1, category: "" });
     expect(isDefaultGearList(parseGearListParams({}))).toBe(true);
     expect(parseGearListParams({ show: "archived" }).archived).toBe(true);
-    expect(parseGearListParams({ q: " mic ", archived: "1", page: "2" })).toEqual({ q: "mic", archived: true, page: 2 });
+    expect(parseGearListParams({ q: " mic ", archived: "1", page: "2" })).toEqual({ q: "mic", archived: true, page: 2, category: "" });
     expect(gearListHref("/g", { q: "mic", archived: true, page: 1 })).toBe("/g?q=mic&archived=1");
+    // Category filter: "none" (uncategorized) or a category id; anything else is ignored.
+    const id = "0b5c2f1e-6f2a-4b8e-9d3c-2a1b0c9d8e7f";
+    expect(parseGearListParams({ category: id }).category).toBe(id);
+    expect(parseGearListParams({ category: "none" }).category).toBe("none");
+    expect(parseGearListParams({ category: "audio" }).category).toBe("");
+    expect(isDefaultGearList(parseGearListParams({ category: "none" }))).toBe(false);
+    expect(gearListHref("/g", { category: "none" })).toBe("/g?category=none");
+    expect(gearListHref("/g", { q: "mic", category: id, page: 2 })).toBe(`/g?q=mic&page=2&category=${id}`);
   });
 
   it("searches literally, whatever the punctuation", () => {

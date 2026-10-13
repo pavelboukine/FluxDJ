@@ -6,6 +6,8 @@ import { PageHeader } from "@/components/app/fields";
 import { InlineEditor } from "@/components/app/inline-editor";
 import { requireStaff } from "@/lib/auth/staff";
 import { UUID_RE } from "@/lib/forms";
+import { UNCATEGORIZED } from "@/lib/catalog/categories";
+import { perUnitText, piecesText, quantityText } from "@/lib/catalog/quantity";
 import { formatCents } from "@/lib/money";
 import { updateGear } from "../actions";
 import { GearFields } from "../gear-fields";
@@ -28,13 +30,13 @@ export default async function GearItem({ params, searchParams }: PageProps<"/sta
   const { supabase, tenant } = await requireStaff(slug);
   const { data: gear } = await supabase
     .from("gear_items")
-    .select("id, key, name, description, unit_label, default_price_cents, tax_category, active")
+    .select("id, key, name, description, unit_label, default_price_cents, tax_category, active, category_id, pieces_per_unit, piece_label, category:gear_categories!gear_items_category_fk(name)")
     .eq("id", gearId)
     .eq("tenant_id", tenant.id)
     .maybeSingle();
   if (!gear) notFound();
 
-  const [{ data: media }, { data: packages }, { data: addons }, { data: rules }] = await Promise.all([
+  const [{ data: media }, { data: packages }, { data: addons }, { data: rules }, { data: gearCategories }] = await Promise.all([
     supabase
       .from("gear_media")
       .select("id, storage_path, kind, content_type, alt_text, sort_order, active")
@@ -62,6 +64,7 @@ export default async function GearItem({ params, searchParams }: PageProps<"/sta
       .eq("tenant_id", tenant.id)
       .eq("gear_item_id", gear.id)
       .limit(USES_LIMIT),
+    supabase.from("gear_categories").select("id, name").eq("tenant_id", tenant.id).order("sort_order").order("name"),
   ]);
 
   // Short-lived signed URLs, issued to this staff user only (Storage RLS applies).
@@ -136,7 +139,7 @@ export default async function GearItem({ params, searchParams }: PageProps<"/sta
           submitLabel="Save details"
           discardMessage="Discard the changes you made to this gear item?"
         >
-          <GearFields gear={gear} taxCategories={configured} currency={tenant.currency} slug={slug} />
+          <GearFields gear={gear} taxCategories={configured} categories={gearCategories ?? []} currency={tenant.currency} slug={slug} />
         </InlineEditor>
       </div>
 
@@ -148,7 +151,7 @@ export default async function GearItem({ params, searchParams }: PageProps<"/sta
             so proposals already sent still show it.
           </p>
         </div>
-        <MediaUploader slug={slug} gearId={gear.id} />
+        <MediaUploader slug={slug} gearId={gear.id} gearName={gear.name} />
         {all.length > 0 ? <MediaManager slug={slug} gearId={gear.id} media={all} /> : null}
       </section>
 
@@ -192,7 +195,7 @@ function GearOverview({
   anyTaxes,
   slug,
 }: {
-  gear: { key: string; description: string | null; unit_label: string; default_price_cents: number; tax_category: string };
+  gear: { key: string; name: string; description: string | null; unit_label: string; default_price_cents: number; tax_category: string; pieces_per_unit: number; piece_label: string | null; category: { name: string } | null };
   currency: string;
   taxReady: boolean;
   anyTaxes: boolean;
@@ -205,7 +208,18 @@ function GearOverview({
         <dt className={term}>Unit price</dt>
         <dd>
           <span className="text-lg font-semibold" data-testid="gear-price">{formatCents(gear.default_price_cents, currency)}</span>{" "}
-          <span className="text-muted-foreground">per {gear.unit_label}, before tax</span>
+          <span className="text-muted-foreground">{perUnitText(gear)}, before tax</span>
+        </dd>
+      </div>
+      <div className="grid gap-0.5">
+        <dt className={term}>Category</dt>
+        <dd data-testid="gear-category">{gear.category?.name ?? <span className="text-muted-foreground italic">{UNCATEGORIZED}</span>}</dd>
+      </div>
+      <div className="grid gap-0.5">
+        <dt className={term}>One unit holds</dt>
+        <dd data-testid="gear-pieces">
+          {piecesText(gear, 1) ?? "1 piece"}
+          <span className="block text-xs text-muted-foreground">Clients see “{quantityText(gear, 1)}”.</span>
         </dd>
       </div>
       <div className="grid gap-0.5">
@@ -226,7 +240,7 @@ function GearOverview({
       </div>
       <div className="grid gap-0.5 sm:col-span-2">
         <dt className={term}>Pricing</dt>
-        <dd className="text-muted-foreground">Charged per {gear.unit_label} when the client adds it or a rule requires it. Quantities a package includes are not charged again.</dd>
+        <dd className="text-muted-foreground">Charged {perUnitText(gear)} when the client adds it or a rule requires it. Quantities a package includes are not charged again.</dd>
       </div>
       <div className="grid gap-0.5">
         <dt className={term}>Key</dt>

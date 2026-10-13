@@ -47,7 +47,7 @@ function Fact({ label, value, hint }: { label: string; value: ReactNode; hint: R
 }
 
 const BOOKING_STEPS: [string, string][] = [
-  ["Proposal sent and submitted", "The client chooses a package and extras and submits their choices. Nothing is booked yet."],
+  ["Proposal sent and submitted", "The client chooses a package and add-ons and submits their choices. Nothing is booked yet."],
   ["Proposal approved", "You approve the submitted choices. Its prices and taxes are then fixed, and you can generate a contract from it."],
   ["Contract signed", "The client signs the contract you sent. The signed copy and its evidence never change."],
   ["Deposit recorded", "You record payments yourself on the event page. Flux doesn't take payments."],

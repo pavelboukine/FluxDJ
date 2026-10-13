@@ -227,18 +227,29 @@ export function isUpcomingEvent(e: { event_date: string; archived: boolean }, ev
   return !e.archived && e.event_date >= eventToday;
 }
 
-export type GearListParams = { q: string; archived: boolean; page: number };
+/** category: "" (all), "none" (uncategorized) or a category id. */
+export type GearListParams = { q: string; archived: boolean; page: number; category: string };
 
-/** Defaults: active gear only. `?show=archived` (the earlier "Show archived" link) includes archived items. */
+const GEAR_CATEGORY_RE = /^(none|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
+
+/** Defaults: active gear only, every category. `?show=archived` (the earlier "Show archived" link) includes archived items. */
 export function parseGearListParams(sp: Params): GearListParams {
-  return { q: search(sp.q), archived: one(sp.archived) === "1" || one(sp.show) === "archived", page: page(sp.page) };
+  const category = one(sp.category) ?? "";
+  return {
+    q: search(sp.q),
+    archived: one(sp.archived) === "1" || one(sp.show) === "archived",
+    page: page(sp.page),
+    category: GEAR_CATEGORY_RE.test(category) ? category : "",
+  };
 }
 
 export function gearListHref(base: string, p: Partial<GearListParams>): string {
-  return clientListHref(base, p);
+  const href = clientListHref(base, p);
+  if (!p.category) return href;
+  return `${href}${href.includes("?") ? "&" : "?"}category=${encodeURIComponent(p.category)}`;
 }
 
-export const isDefaultGearList = (p: GearListParams) => !p.q && !p.archived;
+export const isDefaultGearList = (p: GearListParams) => !p.q && !p.archived && !p.category;
 
 /**
  * A PostgREST `or` filter matching rows where any column contains `q`, case
@@ -251,15 +262,15 @@ export function containsFilter(columns: readonly string[], q: string): string {
   return columns.map((c) => `${c}.ilike.${quoted}`).join(",");
 }
 
-export type PackageListParams = GearListParams;
+export type PackageListParams = { q: string; archived: boolean; page: number };
 
 /** Defaults: active packages only. */
 export function parsePackageListParams(sp: Params): PackageListParams {
   return { q: search(sp.q), archived: one(sp.archived) === "1", page: page(sp.page) };
 }
 
-export const packageListHref = gearListHref;
-export const isDefaultPackageList = isDefaultGearList;
+export const packageListHref = (base: string, p: Partial<PackageListParams>) => clientListHref(base, p);
+export const isDefaultPackageList = (p: PackageListParams) => !p.q && !p.archived;
 
 /**
  * "2 × Wireless microphone, Main sound system +2 more": a package's included

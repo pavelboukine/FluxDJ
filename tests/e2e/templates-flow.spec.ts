@@ -234,7 +234,7 @@ test.describe.serial("proposal templates", () => {
     await expect(page.getByTestId("addon-row").getByRole("alert")).toContainText("Preselected can't be more than the maximum.");
     await page.getByLabel("Preselected quantity of Uplights (pack of 4)").evaluate((el: HTMLInputElement) => el.removeAttribute("max"));
     await page.getByRole("button", { name: "Save template" }).click();
-    const alert = page.getByRole("main").getByRole("alert").filter({ hasText: "Extras:" });
+    const alert = page.getByRole("main").getByRole("alert").filter({ hasText: "Add-ons:" });
     await expect(alert).toContainText("“Preselected” from 0 to that maximum");
     await expect(page.getByLabel("Name")).toHaveValue(name);
     await expect(page.getByTestId("question-row")).toHaveCount(2);
@@ -280,7 +280,7 @@ test.describe.serial("proposal templates", () => {
   test("edit contents: reorder, change the recommendation, remove a question; Cancel asks first", async () => {
     const page = await staffPage(tenant);
     await page.goto(`/staff/${tenant.slug}/templates/${createdId}`);
-    await page.getByRole("button", { name: "Edit packages, questions and extras" }).click();
+    await page.getByRole("button", { name: "Edit packages, questions and add-ons" }).click();
     await page.getByRole("button", { name: "Move package 3 earlier" }).click();
     await page.getByRole("radio", { name: "Premium" }).check();
     await page.getByRole("button", { name: "Remove “DEMO: Will there be speeches that need a wireless microphone?”" }).click();
@@ -340,7 +340,7 @@ test.describe.serial("proposal templates", () => {
     const before = await frozen();
 
     await page.goto(`/staff/${tenant.slug}/templates/${ids.wedding}`);
-    await page.getByRole("button", { name: "Edit packages, questions and extras" }).click();
+    await page.getByRole("button", { name: "Edit packages, questions and add-ons" }).click();
     await page.getByRole("radio", { name: "Premium" }).check();
     await page.getByRole("button", { name: "Remove “DEMO: Where will cocktail hour take place?”" }).click();
     await page.getByRole("button", { name: "Save contents" }).click();
@@ -389,7 +389,7 @@ test.describe.serial("proposal templates", () => {
       }
       await page.goto(`/staff/${tenant.slug}/templates/${ids.wedding}`);
       if (width === 390) await shot(page, "template-overview-phone-390");
-      await page.getByRole("button", { name: "Edit packages, questions and extras" }).click();
+      await page.getByRole("button", { name: "Edit packages, questions and add-ons" }).click();
       expect(await sideways(page), `editing contents at ${width}`).toBeLessThanOrEqual(0);
       if (width === 320) {
         await shot(page, "template-edit-phone-320");

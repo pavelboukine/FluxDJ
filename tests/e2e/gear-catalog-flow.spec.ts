@@ -50,7 +50,7 @@ test.describe.serial("gear catalog", () => {
 
   async function upload(page: Page, file: { name: string; mimeType: string; buffer: Buffer }, alt: string) {
     await page.getByLabel("Photo or video", { exact: true }).setInputFiles(file);
-    await page.getByLabel("Description (alt text)").fill(alt);
+    await page.getByLabel("Description (alt text, optional)").fill(alt);
     await page.getByRole("button", { name: "Upload" }).click();
   }
 
@@ -214,7 +214,7 @@ test.describe.serial("gear catalog", () => {
     // A real photo, previewed before uploading.
     await page.getByLabel("Photo or video", { exact: true }).setInputFiles({ name: "bubbles.png", mimeType: "image/png", buffer: await transparentPng(320, 200) });
     await expect(page.getByTestId("media-uploader").locator("img")).toBeVisible();
-    await page.getByLabel("Description (alt text)").fill("Bubble machine on a stand");
+    await page.getByLabel("Description (alt text, optional)").fill("Bubble machine on a stand");
     await page.getByRole("button", { name: "Upload" }).click();
     await expect(page.getByRole("status").filter({ hasText: "Added bubbles.png." })).toBeVisible();
     await expect(page.getByTestId("gear-gallery").getByRole("img", { name: "Bubble machine on a stand" })).toBeVisible();
@@ -222,7 +222,7 @@ test.describe.serial("gear catalog", () => {
     // HTML renamed to .png: rejected by content; nothing added, the photo stays.
     await upload(page, { name: "evil.png", mimeType: "image/png", buffer: htmlDisguisedAsPng() }, "Not really an image");
     await expect(page.getByRole("main").getByRole("alert").filter({ hasText: "not a supported image or video" })).toBeVisible();
-    await expect(page.getByLabel("Description (alt text)")).toHaveValue("Not really an image");
+    await expect(page.getByLabel("Description (alt text, optional)")).toHaveValue("Not really an image");
     expect(await mediaRows(createdId)).toHaveLength(1);
     const { data: objects } = await admin.storage.from("gear-media").list(`${tenant.id}/gear-items/${createdId}`);
     expect(objects).toHaveLength(1);

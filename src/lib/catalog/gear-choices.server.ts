@@ -4,20 +4,33 @@ import type { StaffContext } from "@/lib/auth/staff";
 /** Gear offered in the package gear picker, at most this many. */
 export const GEAR_CHOICES_LIMIT = 300;
 
-export type GearChoice = { id: string; name: string; unitLabel: string; active: boolean; thumbUrl: string | null; taxCategory: string };
+export type GearChoice = {
+  id: string;
+  name: string;
+  unitLabel: string;
+  piecesPerUnit: number;
+  pieceLabel: string | null;
+  active: boolean;
+  thumbUrl: string | null;
+  taxCategory: string;
+  priceCents: number;
+  category: { name: string; sort_order: number } | null;
+};
 
 /**
  * Gear a package can include: every active item (by name, bounded), plus the
  * given ids even when archived (gear already included stays visible, never
  * silently dropped). Each has its first active photo as a short-lived signed
- * thumbnail, as on the gear list.
+ * thumbnail, as on the gear list, and its category for grouping.
  */
 export async function loadGearChoices({ supabase, tenant }: StaffContext, includedIds: string[]): Promise<{ choices: GearChoice[]; capped: boolean }> {
   // Each item with its first active photo only.
   const base = () =>
     supabase
       .from("gear_items")
-      .select("id, name, unit_label, active, tax_category, thumb:gear_media(storage_path)")
+      .select(
+        "id, name, unit_label, pieces_per_unit, piece_label, active, tax_category, default_price_cents, category:gear_categories!gear_items_category_fk(name, sort_order), thumb:gear_media(storage_path)",
+      )
       .eq("tenant_id", tenant.id)
       .eq("thumb.active", true)
       .eq("thumb.kind", "image")
@@ -38,7 +51,18 @@ export async function loadGearChoices({ supabase, tenant }: StaffContext, includ
     : { data: [] as { path: string | null; signedUrl: string }[] };
   const urlFor = new Map((signed ?? []).map((s) => [s.path, s.signedUrl]));
   const choices = [...rows.values()]
-    .map((g) => ({ id: g.id, name: g.name, unitLabel: g.unit_label, active: g.active, taxCategory: g.tax_category, thumbUrl: g.thumb[0] ? (urlFor.get(g.thumb[0].storage_path) ?? null) : null }))
+    .map((g) => ({
+      id: g.id,
+      name: g.name,
+      unitLabel: g.unit_label,
+      piecesPerUnit: g.pieces_per_unit,
+      pieceLabel: g.piece_label,
+      active: g.active,
+      taxCategory: g.tax_category,
+      priceCents: g.default_price_cents,
+      category: g.category ? { name: g.category.name, sort_order: g.category.sort_order } : null,
+      thumbUrl: g.thumb[0] ? (urlFor.get(g.thumb[0].storage_path) ?? null) : null,
+    }))
     .sort((a, b) => a.name.localeCompare(b.name));
   return { choices, capped: (active.data?.length ?? 0) >= GEAR_CHOICES_LIMIT };
 }

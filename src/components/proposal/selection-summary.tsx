@@ -1,6 +1,7 @@
 import type { OfferSnapshot, PricedSelection } from "@/lib/pricing";
 import { formatCents } from "@/lib/money";
-import { PriceLines } from "./price-summary";
+import { countText } from "@/lib/catalog/quantity";
+import { lineQuantityText, PriceLines } from "./price-summary";
 
 function answerLabel(offer: OfferSnapshot, key: string, value: unknown): string {
   const question = offer.questions.find((q) => q.key === key);
@@ -12,7 +13,7 @@ function answerLabel(offer: OfferSnapshot, key: string, value: unknown): string 
 
 /**
  * A priced selection, read-only: package and included equipment, equipment
- * the answers require, extras, answers and the price. Used for the client's
+ * the answers require, add-ons, answers and the price. Used for the client's
  * review step, the submitted proposal and the staff's view of a submission.
  */
 export function SelectionSummary({ offer, selection, headingLevel = 3 }: { offer: OfferSnapshot; selection: PricedSelection; headingLevel?: 2 | 3 }) {
@@ -31,7 +32,7 @@ export function SelectionSummary({ offer, selection, headingLevel = 3 }: { offer
         {included.length > 0 ? (
           <ul className="text-muted-foreground">
             {included.map((l) => (
-              <li key={l.item_key}>✓ Included: {l.quantity} × {l.name}</li>
+              <li key={l.item_key}>✓ Included: {lineQuantityText(l, offer)}</li>
             ))}
           </ul>
         ) : null}
@@ -42,8 +43,10 @@ export function SelectionSummary({ offer, selection, headingLevel = 3 }: { offer
           <ul className="grid gap-1">
             {selection.requirements.map((r) => (
               <li key={r.gear_key}>
-                {r.required_quantity} × {offer.gear[r.gear_key]?.name ?? r.gear_key} required
-                {r.included_quantity > 0 ? ` (${r.included_quantity} included, ${r.required_extra_quantity} extra)` : ""}
+                {offer.gear[r.gear_key] ? lineQuantityText({ item_key: r.gear_key, name: offer.gear[r.gear_key].name, quantity: r.required_quantity }, offer) : `${r.required_quantity} × ${r.gear_key}`} required
+                {r.included_quantity > 0 && offer.gear[r.gear_key]
+                  ? ` (${countText(offer.gear[r.gear_key], r.included_quantity)} included, ${countText(offer.gear[r.gear_key], r.required_extra_quantity)} extra)`
+                  : ""}
                 <ul className="text-muted-foreground">
                   {r.reasons.map((reason) => (
                     <li key={reason}>{reason}</li>
@@ -56,12 +59,10 @@ export function SelectionSummary({ offer, selection, headingLevel = 3 }: { offer
       ) : null}
       {extras.length > 0 ? (
         <section className="grid gap-1">
-          <Heading className="font-semibold">Extras</Heading>
+          <Heading className="font-semibold">Add-ons</Heading>
           <ul>
             {extras.map((l) => (
-              <li key={l.item_key}>
-                {l.quantity} × {l.name}
-              </li>
+              <li key={l.item_key}>{lineQuantityText(l, offer)}</li>
             ))}
           </ul>
         </section>
@@ -79,7 +80,7 @@ export function SelectionSummary({ offer, selection, headingLevel = 3 }: { offer
       </section>
       <section className="grid gap-2">
         <Heading className="font-semibold">Total</Heading>
-        <PriceLines priced={selection} />
+        <PriceLines priced={selection} offer={offer} />
       </section>
     </div>
   );

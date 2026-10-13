@@ -10,8 +10,9 @@ import { GearFields } from "../gear-fields";
 /** Add a gear item. Photos and videos are added on its page once it's saved (uploads belong to a saved item). */
 export default async function NewGear({ params }: PageProps<"/staff/[tenant]/gear/new">) {
   const { tenant: slug } = await params;
-  const { tenant } = await requireStaff(slug);
+  const { supabase, tenant } = await requireStaff(slug);
   const categories = Object.keys((tenant.tax_categories ?? {}) as Record<string, unknown>);
+  const { data: gearCategories } = await supabase.from("gear_categories").select("id, name").eq("tenant_id", tenant.id).order("sort_order").order("name");
   return (
     <>
       <PageHeader
@@ -32,7 +33,7 @@ export default async function NewGear({ params }: PageProps<"/staff/[tenant]/gea
             trackUnsaved
             secondary={<GuardedCancel cancelHref={`/staff/${slug}/gear`} message="Discard this new gear item?" />}
           >
-            <GearFields taxCategories={categories} currency={tenant.currency} slug={slug} isNew />
+            <GearFields taxCategories={categories} categories={gearCategories ?? []} currency={tenant.currency} slug={slug} isNew />
             <fieldset className="grid gap-2">
               <legend className="mb-2 text-sm font-semibold">Photos and videos</legend>
               <p className="flex items-start gap-2 rounded-lg border border-dashed p-3 text-sm text-muted-foreground">

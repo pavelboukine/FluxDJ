@@ -34,9 +34,12 @@ function readPackageForm(form: FormData, categories: string[]) {
   } as const;
 }
 
-/** Form fields "qty:<gear id>" -> included quantity (0 or empty = not included). */
+/**
+ * Form fields "qty:<gear id>" -> included quantity (0 or empty = not
+ * included), in the form's order, which is the order clients see.
+ */
 function readPackageItems(form: FormData) {
-  const items: { gear_item_id: string; quantity: number }[] = [];
+  const items: { gear_item_id: string; quantity: number; sort_order: number }[] = [];
   for (const [name, value] of form.entries()) {
     if (!name.startsWith("qty:") || typeof value !== "string") continue;
     const gearId = name.slice(4);
@@ -44,7 +47,7 @@ function readPackageItems(form: FormData) {
     if (raw === "" || raw === "0") continue;
     if (!UUID_RE.test(gearId) || !/^\d{1,3}$/.test(raw) || Number(raw) > 100) return { ok: false, error: "Quantities must be whole numbers from 1 to 100." } as const;
     if (items.some((i) => i.gear_item_id === gearId)) return { ok: false, error: "Each gear item can be included once; change its quantity instead." } as const;
-    items.push({ gear_item_id: gearId, quantity: Number(raw) });
+    items.push({ gear_item_id: gearId, quantity: Number(raw), sort_order: items.length });
   }
   return { ok: true, items } as const;
 }

@@ -30,11 +30,11 @@ function readContents(form: FormData) {
 
   const addons: { gear_item_id: string; recommended_quantity: number; max_quantity: number }[] = [];
   for (const gearId of form.getAll("addon").filter((v): v is string => typeof v === "string")) {
-    if (!UUID_RE.test(gearId)) return { ok: false, error: "Choose extras from the list." } as const;
-    if (addons.some((a) => a.gear_item_id === gearId)) return { ok: false, error: "Each extra can appear once." } as const;
+    if (!UUID_RE.test(gearId)) return { ok: false, error: "Choose add-ons from the list." } as const;
+    if (addons.some((a) => a.gear_item_id === gearId)) return { ok: false, error: "Each add-on can appear once." } as const;
     const max = int(form, `max:${gearId}`, 1, 100);
     const rec = int(form, `rec:${gearId}`, 0, 100);
-    if (max === null || rec === null || rec > max) return { ok: false, error: "Extras: “Up to” must be 1 to 100, and “Preselected” from 0 to that maximum." } as const;
+    if (max === null || rec === null || rec > max) return { ok: false, error: "Add-ons: “Up to” must be 1 to 100, and “Preselected” from 0 to that maximum." } as const;
     addons.push({ gear_item_id: gearId, recommended_quantity: rec, max_quantity: max });
   }
   const questionIds = form.getAll("question").filter((v): v is string => typeof v === "string");
@@ -95,7 +95,7 @@ export async function updateTemplate(slug: string, templateId: string, _state: A
   return ok("Details saved.");
 }
 
-/** Replaces the template's packages, recommendation, extras and questions in one call (set_proposal_template_composition). */
+/** Replaces the template's packages, recommendation, add-ons and questions in one call (set_proposal_template_composition). */
 export async function saveTemplateComposition(slug: string, templateId: string, _state: ActionState, form: FormData): Promise<ActionState> {
   const { supabase } = await requireStaff(slug);
   if (!UUID_RE.test(templateId)) return fail("Template not found.");

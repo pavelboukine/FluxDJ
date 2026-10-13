@@ -35,6 +35,8 @@ type Props = {
   navigateOnSuccess?: string;
   /** Ask for confirmation before submitting when the page's editor has unsaved changes. */
   confirmIfUnsaved?: string;
+  /** Ask for confirmation before every submit (when confirmIfUnsaved doesn't already ask). */
+  confirm?: string;
   /** Called after a successful submit (e.g. to start a fresh idempotency key). */
   onSuccess?: (result: ActionState) => void;
   /** Shown beside the submit button (e.g. a Cancel button). */
@@ -71,6 +73,7 @@ export function ActionForm({
   trackUnsaved,
   navigateOnSuccess,
   confirmIfUnsaved,
+  confirm,
   onSuccess,
   secondary,
 }: Props) {
@@ -105,7 +108,9 @@ export function ActionForm({
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending) return;
-    if (confirmIfUnsaved && editor?.unsaved && !window.confirm(confirmIfUnsaved)) return;
+    if (confirmIfUnsaved && editor?.unsaved) {
+      if (!window.confirm(confirmIfUnsaved)) return;
+    } else if (confirm && !window.confirm(confirm)) return;
     const form = event.currentTarget;
     const data = new FormData(form);
     if (version !== undefined) {

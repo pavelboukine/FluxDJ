@@ -53,6 +53,12 @@ const gearSchema = z.strictObject({
       alt_text: z.string().min(1),
     }),
   ),
+  // Frozen only when set (absent in older offers and for uncategorized gear).
+  category: z.strictObject({ name: z.string().min(1), sort_order: z.number().int().min(0) }).optional(),
+  // Physical pieces in one sellable unit (a pair of moving heads: 2 "lights"),
+  // frozen only when more than one. Display only: prices stay per unit.
+  pieces_per_unit: z.number().int().min(2).max(1000).optional(),
+  piece_label: z.string().min(1).nullable().optional(),
 });
 
 const packageSchema = z.strictObject({

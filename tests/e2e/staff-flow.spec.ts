@@ -214,14 +214,14 @@ test.describe.serial("staff interface", () => {
     expect(saved!.default_price_cents).toBe(9550);
 
     await page.getByLabel("Photo or video", { exact: true }).setInputFiles({ name: "fog.png", mimeType: "image/png", buffer: PNG });
-    await page.getByLabel("Description (alt text)").fill("Fog machine on stage");
+    await page.getByLabel("Description (alt text, optional)").fill("Fog machine on stage");
     await page.getByRole("button", { name: "Upload" }).click();
     await expect(page.getByRole("status").filter({ hasText: "Added fog.png." })).toBeVisible();
     await expect(page.getByRole("img", { name: "Fog machine on stage" }).first()).toBeVisible();
 
     // HTML renamed to .png with an image/png type: rejected by content and deleted.
     await page.getByLabel("Photo or video", { exact: true }).setInputFiles({ name: "evil.png", mimeType: "image/png", buffer: Buffer.from("<html><script>alert(1)</script></html>") });
-    await page.getByLabel("Description (alt text)").fill("Not really an image");
+    await page.getByLabel("Description (alt text, optional)").fill("Not really an image");
     await page.getByRole("button", { name: "Upload" }).click();
     await expect(page.getByRole("alert").filter({ hasText: "not a supported image or video" })).toBeVisible();
 
@@ -409,6 +409,9 @@ test.describe.serial("staff interface", () => {
 
     // Applying a template intentionally replaces the editor's contents, including unsaved choices.
     await page.getByLabel("Package 1").selectOption({ label: "Premium ($3,000.00)" });
+    // A draft started from a template opens straight into editing; changing the template is a secondary action.
+    await expect(page.getByText("Start from a template", { exact: true })).toHaveCount(0);
+    await page.locator("#change-template summary").click();
     await page.getByLabel("Template").selectOption({ label: `E2E Wedding ${run}` });
     // With unsaved changes, applying asks first. Declining keeps the edits and changes nothing.
     let prompt = "";
