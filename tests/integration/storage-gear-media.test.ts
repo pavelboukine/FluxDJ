@@ -13,6 +13,8 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import sharp from "sharp";
+import { checkUploadedMedia } from "@/lib/media/verify-upload.server";
 
 type LocalStatus = { API_URL: string; ANON_KEY: string; SERVICE_ROLE_KEY: string };
 
@@ -115,6 +117,31 @@ describe("gear-media Storage authorization (local Supabase)", () => {
     await must(users.ownerA.db.storage.from(BUCKET).upload(pathA, JPEG_BYTES, { contentType: "image/jpeg" }));
     const { data } = await must(users.ownerA.db.storage.from(BUCKET).download(pathA));
     assert.deepEqual(new Uint8Array(await data!.arrayBuffer()), JPEG_BYTES);
+  });
+
+  it("verifies an uploaded photo by decoding it: too small or unreadable refused, low resolution flagged, another business refused", async () => {
+    const photo = (width: number, height: number) => sharp({ create: { width, height, channels: 3, background: "#336699" } }).jpeg().toBuffer();
+    const put = async (bytes: Uint8Array) => {
+      const path = `${ids.tenantA}/gear-items/${ids.gearA}/${randomUUID()}.jpg`;
+      await must(users.ownerA.db.storage.from(BUCKET).upload(path, bytes, { contentType: "image/jpeg" }));
+      return path;
+    };
+    const check = (db: SupabaseClient, path: string) => checkUploadedMedia(db as never, path, "image/jpeg");
+
+    // The browser's check can be skipped; this one can't.
+    const tiny = await check(users.ownerA.db, await put(await photo(300, 200)));
+    assert.deepEqual(tiny, { ok: false, discard: true, message: "This photo is too small (300 × 200 pixels). Choose a higher-resolution photo, at least 400 × 300 pixels." });
+    // Valid JPEG magic bytes, nothing decodable after them.
+    const broken = await check(users.ownerA.db, pathA);
+    assert.equal(broken.ok, false);
+    assert.match((broken as { message: string }).message, /can't be read/);
+    assert.deepEqual(await check(users.ownerA.db, await put(await photo(800, 600))), { ok: true, type: "image/jpeg", resolution: "low" });
+    const sharpPhoto = await put(await photo(1600, 1200));
+    assert.deepEqual(await check(users.ownerA.db, sharpPhoto), { ok: true, type: "image/jpeg", resolution: "ok" });
+    // Portrait counts too (any shape works).
+    assert.deepEqual(await check(users.ownerA.db, await put(await photo(1200, 1600))), { ok: true, type: "image/jpeg", resolution: "ok" });
+    // Another business's staff can't read (or verify) A's upload.
+    assert.deepEqual(await check(users.ownerB.db, sharpPhoto), { ok: false, message: "Upload not found. Try again.", discard: false });
   });
 
   it("issues a working short-lived signed URL only to authorized staff", async () => {

@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import { fitLogo } from "@/lib/email/branding.server";
 import { PREVIEW_LOGO_SIZE, PREVIEW_VARIANTS, previewIndex, type PreviewVariant } from "@/lib/email/previews";
 
 /**
@@ -16,7 +17,8 @@ export async function GET(request: Request) {
     const { width, height } = PREVIEW_LOGO_SIZE;
     const ink = dark ? "#ffffff" : "#18181b";
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><circle cx="45" cy="45" r="32" fill="none" stroke="${ink}" stroke-width="8"/><circle cx="45" cy="45" r="8" fill="${ink}"/><text x="92" y="58" font-family="Helvetica,Arial" font-size="34" font-weight="700" fill="${ink}">LOGO</text></svg>`;
-    return `data:image/png;base64,${(await sharp(Buffer.from(svg)).png().toBuffer()).toString("base64")}`;
+    const plated = await fitLogo(await sharp(Buffer.from(svg)).png().toBuffer(), dark);
+    return `data:image/png;base64,${plated!.png.toString("base64")}`;
   };
   const [light, dark] = await Promise.all([logo(false), logo(true)]);
   const html = previewIndex(variant, (d) => (d ? dark : light), url.searchParams.get("email") ?? undefined);

@@ -8,8 +8,8 @@ export type GalleryItem = { id: string; url: string | null; kind: string; alt: s
 
 /**
  * The item's active photos and videos as clients see them, in proposal order:
- * a large preview (proportions kept, videos never autoplay) and thumbnail
- * buttons to switch it.
+ * a large preview (whole, on the same white mat, videos never autoplay) and
+ * thumbnail buttons to switch it.
  */
 export function MediaGallery({ items }: { items: GalleryItem[] }) {
   const [index, setIndex] = useState(0);
@@ -17,10 +17,10 @@ export function MediaGallery({ items }: { items: GalleryItem[] }) {
   if (!current) return null;
   return (
     <div className="grid gap-3" data-testid="gear-gallery">
-      <div className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded-lg bg-muted">
+      <div className={cn("flex aspect-[4/3] items-center justify-center overflow-hidden rounded-lg", current.url && current.kind === "image" ? "bg-white p-[3%] ring-1 ring-black/5 ring-inset" : "bg-muted")}>
         {current.url && current.kind === "image" ? (
           // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL
-          <img key={current.id} src={current.url} alt={current.alt} className="max-h-full max-w-full object-contain" />
+          <img key={current.id} src={current.url} alt={current.alt} className="size-full object-contain" />
         ) : current.url ? (
           <video key={current.id} src={current.url} controls playsInline preload="metadata" aria-label={current.alt} className="max-h-full max-w-full" />
         ) : (
@@ -37,13 +37,14 @@ export function MediaGallery({ items }: { items: GalleryItem[] }) {
                 aria-pressed={m.id === current.id}
                 aria-label={`Show ${m.kind === "video" ? "video" : "photo"} ${i + 1}: ${m.alt}`}
                 className={cn(
-                  "flex size-16 items-center justify-center overflow-hidden rounded-md border-2 bg-muted outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+                  "flex size-16 items-center justify-center overflow-hidden rounded-md border-2 outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+                  m.url && m.kind === "image" ? "bg-white" : "bg-muted",
                   m.id === current.id ? "border-primary" : "border-transparent",
                 )}
               >
                 {m.url && m.kind === "image" ? (
                   // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL
-                  <img src={m.url} alt="" loading="lazy" className="size-full object-cover" />
+                  <img src={m.url} alt="" loading="lazy" className="size-full object-contain p-0.5" />
                 ) : (
                   <Film aria-hidden className="size-5 text-muted-foreground" />
                 )}

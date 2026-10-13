@@ -30,13 +30,13 @@ export function InviteRequest({ slug, brand }: { slug: string; brand: string }) 
     start(async () => setResult(await requestContractSignIn(slug, value)));
   }
 
-  if (ready === "loading") return <p className="text-sm text-muted-foreground">Opening your invitation…</p>;
+  if (ready === "loading") return <p role="status" className="text-muted-foreground">Opening your invitation…</p>;
   if (ready === "missing") {
-    return <p role="alert" className="text-sm">This link is incomplete. Open your contract from the button in your email from {brand}.</p>;
+    return <p role="alert">This link is incomplete. Open your contract from the button in your email from {brand}.</p>;
   }
   if (result?.status === "ok") {
     return (
-      <div role="status" className="grid gap-2 text-sm">
+      <div role="status" className="grid gap-2">
         <p className="font-medium">Check your email.</p>
         <p>
           We sent a second email, &ldquo;Confirm your email to read your contract&rdquo;, to {result.maskedEmail}. Open it on any device, click{" "}
@@ -46,19 +46,17 @@ export function InviteRequest({ slug, brand }: { slug: string; brand: string }) 
     );
   }
   return (
-    <div className="grid gap-3 text-sm">
+    <div className="grid gap-4">
       <p>
         To keep your contract private, we first confirm your email address. We will email a secure sign-in link to the address {brand} has
         on file. No password is needed.
       </p>
-      <div>
-        <Button type="button" onClick={request} disabled={pending}>{pending ? "Sending…" : "Email me a sign-in link"}</Button>
-      </div>
+      <Button type="button" size="lg" className="w-full" onClick={request} disabled={pending}>{pending ? "Sending…" : "Email me a sign-in link"}</Button>
       {result?.status === "invalid" ? (
-        <p role="alert" className="text-destructive">This invitation is no longer valid. It may have expired or been replaced. Use your most recent email from {brand}, or contact them.</p>
+        <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-destructive">This invitation is no longer valid. It may have expired or been replaced. Use your most recent email from {brand}, or contact them.</p>
       ) : null}
-      {result?.status === "rate_limited" ? <p role="alert" className="text-destructive">Too many requests. Please wait a few minutes and try again.</p> : null}
-      {result?.status === "error" ? <p role="alert" className="text-destructive">Something went wrong. Please try again.</p> : null}
+      {result?.status === "rate_limited" ? <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-destructive">Too many requests. Please wait a few minutes and try again.</p> : null}
+      {result?.status === "error" ? <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-destructive">Something went wrong. Please try again.</p> : null}
     </div>
   );
 }

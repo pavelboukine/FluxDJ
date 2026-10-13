@@ -158,6 +158,8 @@ export async function setGearActive(slug: string, gearId: string, active: boolea
 //    gear_media row created, so offers can never reference unvalidated files.
 // ---------------------------------------------------------------------------
 
+const LOW_RESOLUTION_NOTE = " It may look blurry when enlarged; a larger photo would look sharper.";
+
 export type PrepareResult = { ok: true; path: string } | { ok: false; message: string };
 
 export async function prepareGearMediaUpload(
@@ -219,7 +221,7 @@ export async function finalizeGearMediaUpload(
   });
   if (error) return reject(describeDbError(error));
   revalidatePath(`/staff/${slug}/gear/${gearId}`);
-  return ok("Uploaded.");
+  return ok(`It's verified and appears on new proposals.${checked.resolution === "low" ? LOW_RESOLUTION_NOTE : ""}`);
 }
 
 export async function updateMedia(slug: string, gearId: string, mediaId: string, _state: ActionState, form: FormData): Promise<ActionState> {

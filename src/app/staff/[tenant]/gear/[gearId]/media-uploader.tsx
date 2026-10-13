@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
 import { GEAR_MEDIA_TYPES, isGearMediaType } from "@/lib/media/sniff";
+import { PHOTO_SIZE_HINT, photoLowResolutionMessage, photoResolution, photoTooSmallMessage, readImageSize } from "@/lib/media/resolution";
 import { finalizeGearMediaUpload, prepareGearMediaUpload } from "../actions";
 
 const ACCEPT = "image/jpeg,image/png,image/webp,image/avif,video/mp4,video/webm";
@@ -17,6 +18,7 @@ type Status =
   | { kind: "idle" }
   | { kind: "working"; step: keyof typeof STEPS }
   | { kind: "error"; message: string }
+  | { kind: "warning"; message: string }
   | { kind: "success"; message: string };
 
 const mb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(bytes < 1024 * 1024 ? 2 : 1)} MB`;
@@ -36,6 +38,7 @@ export function MediaUploader({ slug, gearId, gearName }: { slug: string; gearId
   const [alt, setAlt] = useState("");
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const working = status.kind === "working";
+  const chosen = useRef<File | null>(null);
 
   // The chosen image's local preview URL is released when replaced or on leaving.
   useEffect(() => () => {
@@ -49,7 +52,8 @@ export function MediaUploader({ slug, gearId, gearName }: { slug: string; gearId
     return () => window.removeEventListener("beforeunload", warn);
   }, [working]);
 
-  function choose(next: File | null) {
+  async function choose(next: File | null) {
+    chosen.current = next;
     setFile(next);
     setPreview(next && next.type.startsWith("image/") ? URL.createObjectURL(next) : null);
     if (!next) return setStatus({ kind: "idle" });
@@ -58,6 +62,17 @@ export function MediaUploader({ slug, gearId, gearName }: { slug: string; gearId
     const max = GEAR_MEDIA_TYPES[next.type].maxBytes;
     if (next.size > max) return setStatus({ kind: "error", message: `That file is ${mb(next.size)}. ${GEAR_MEDIA_TYPES[next.type].kind === "image" ? "Images" : "Videos"} can be up to ${mb(max)}.` });
     setStatus({ kind: "idle" });
+    if (GEAR_MEDIA_TYPES[next.type].kind !== "image") return;
+    const size = await readImageSize(next);
+    if (!size || chosen.current !== next) return; // Undecodable here (the server decides), or replaced meanwhile.
+    const resolution = photoResolution(size.width, size.height);
+    if (resolution === "too_small") {
+      setStatus({ kind: "error", message: photoTooSmallMessage(size.width, size.height) });
+      chosen.current = null;
+      setFile(null);
+      setPreview(null);
+      if (fileRef.current) fileRef.current.value = "";
+    } else if (resolution === "low") setStatus({ kind: "warning", message: photoLowResolutionMessage(size.width, size.height) });
   }
 
   async function upload(event: React.FormEvent) {
@@ -77,7 +92,7 @@ export function MediaUploader({ slug, gearId, gearName }: { slug: string; gearId
     const result = await finalizeGearMediaUpload(slug, gearId, { path: prepared.path, altText: alt });
     if (result.status === "error") return setStatus({ kind: "error", message: `Not added: ${result.message}` });
 
-    setStatus({ kind: "success", message: `Added ${file.name}. It's verified and appears on new proposals.` });
+    setStatus({ kind: "success", message: `Added ${file.name}. ${result.status === "success" ? result.message : ""}` });
     setAlt("");
     setFile(null);
     setPreview(null);
@@ -91,9 +106,9 @@ export function MediaUploader({ slug, gearId, gearName }: { slug: string; gearId
         <div className="grid content-start gap-3">
           <div className="grid gap-1.5">
             <Label htmlFor="media-file">Photo or video</Label>
-            <Input id="media-file" ref={fileRef} type="file" accept={ACCEPT} disabled={working} onChange={(e) => choose(e.target.files?.[0] ?? null)} aria-describedby="media-rules" />
+            <Input id="media-file" ref={fileRef} type="file" accept={ACCEPT} disabled={working} onChange={(e) => void choose(e.target.files?.[0] ?? null)} aria-describedby="media-rules" />
             <p id="media-rules" className="text-xs text-muted-foreground">
-              JPEG, PNG, WebP or AVIF up to 15 MB; MP4 or WebM up to 100 MB. Files are checked by their contents, not their names.
+              JPEG, PNG, WebP or AVIF up to 15 MB; MP4 or WebM up to 100 MB. Photos: {PHOTO_SIZE_HINT.charAt(0).toLowerCase() + PHOTO_SIZE_HINT.slice(1)} Files are checked by their contents, not their names.
             </p>
           </div>
           <div className="grid gap-1.5">
@@ -105,7 +120,7 @@ export function MediaUploader({ slug, gearId, gearName }: { slug: string; gearId
           </div>
         </div>
         {file ? (
-          <div className="flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-muted" aria-hidden>
+          <div className={`flex aspect-square items-center justify-center overflow-hidden rounded-lg ${preview ? "bg-white ring-1 ring-black/5 ring-inset" : "bg-muted"}`} aria-hidden>
             {preview ? (
               // eslint-disable-next-line @next/next/no-img-element -- local preview of the chosen file
               <img src={preview} alt="" className="max-h-full max-w-full object-contain" />
@@ -130,6 +145,8 @@ export function MediaUploader({ slug, gearId, gearName }: { slug: string; gearId
           </span>
         ) : status.kind === "error" ? (
           <p role="alert" className="text-sm text-destructive">{status.message}</p>
+        ) : status.kind === "warning" ? (
+          <p role="status" className="text-sm text-amber-700 dark:text-amber-400">{status.message}</p>
         ) : status.kind === "success" ? (
           <p role="status" className="flex items-center gap-1.5 text-sm text-emerald-700 dark:text-emerald-400">
             <CheckCircle2 aria-hidden className="size-4" />

@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { FileSignature } from "lucide-react";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { PublicCard } from "@/components/app/public-shell";
 import { signOut } from "@/app/auth/confirm/actions";
 import { UUID_RE } from "@/lib/forms";
 import { SLUG_PATTERN } from "@/lib/proposals/client-session.server";
@@ -33,40 +34,35 @@ export default async function InvitationPage({ params }: PageProps<"/[tenant]/in
   const brand = status.tenant_display_name ?? "your DJ";
 
   return (
-    <main className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-4 py-12">
-      <Card>
-        <CardHeader><CardTitle>{status.state === "ready" || status.state === "accepted" ? `Your contract from ${brand}` : "Open your contract"}</CardTitle></CardHeader>
-        <CardContent className="grid gap-3 text-sm">
-          {status.state === "ready" ? (
-            <>
-              <p>Hi {status.signer_name}. Your email is confirmed. Your contract for <strong>{status.event_title}</strong> is ready to read.</p>
-              <form action={acceptInvitation.bind(null, slug, linkId)}>
-                <Button type="submit">Open my contract</Button>
-              </form>
-            </>
-          ) : status.state === "accepted" ? (
-            <>
-              <p>Your contract for <strong>{status.event_title}</strong> is ready to read.</p>
-              <Link className="underline" href={`/${slug}/contracts/${status.contract_id}`}>Open my contract</Link>
-            </>
-          ) : status.state === "wrong_account" ? (
-            <>
-              <p role="alert">
-                You&apos;re signed in as {status.signed_in_email}, but this contract was sent to {status.intended_email}. Sign out, then use the
-                &ldquo;Confirm and continue&rdquo; link sent to that address.
-              </p>
-              <form action={signOut}><Button type="submit" variant="outline">Sign out</Button></form>
-            </>
-          ) : status.state === "invalid" ? (
-            <p role="alert">This invitation isn&apos;t available any more. It may have expired, been replaced by a newer email, or been cancelled. Use your most recent email from your DJ, or contact them.</p>
-          ) : (
-            <p>
-              Please confirm your email first: open the &ldquo;Confirm your email to read your contract&rdquo; message, click{" "}
-              <strong>Confirm and continue</strong>, then <strong>Sign in</strong>. If that link expired, open your contract email again to get a new one.
-            </p>
-          )}
-        </CardContent>
-      </Card>
-    </main>
+    <PublicCard icon={FileSignature} title={status.state === "ready" || status.state === "accepted" ? `Your contract from ${brand}` : "Open your contract"}>
+      {status.state === "ready" ? (
+        <>
+          <p>Hi {status.signer_name}. Your email is confirmed. Your contract for <strong>{status.event_title}</strong> is ready to read.</p>
+          <form action={acceptInvitation.bind(null, slug, linkId)}>
+            <Button type="submit" size="lg" className="w-full">Open my contract</Button>
+          </form>
+        </>
+      ) : status.state === "accepted" ? (
+        <>
+          <p>Your contract for <strong>{status.event_title}</strong> is ready to read.</p>
+          <Link className={buttonVariants({ size: "lg", className: "w-full" })} href={`/${slug}/contracts/${status.contract_id}`}>Open my contract</Link>
+        </>
+      ) : status.state === "wrong_account" ? (
+        <>
+          <p role="alert" className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 [overflow-wrap:anywhere]">
+            You&apos;re signed in as {status.signed_in_email}, but this contract was sent to {status.intended_email}. Sign out, then use the
+            &ldquo;Confirm and continue&rdquo; link sent to that address.
+          </p>
+          <form action={signOut}><Button type="submit" variant="outline">Sign out</Button></form>
+        </>
+      ) : status.state === "invalid" ? (
+        <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-destructive">This invitation isn&apos;t available any more. It may have expired, been replaced by a newer email, or been cancelled. Use your most recent email from your DJ, or contact them.</p>
+      ) : (
+        <p>
+          Please confirm your email first: open the &ldquo;Confirm your email to read your contract&rdquo; message, click{" "}
+          <strong>Confirm and continue</strong>, then <strong>Sign in</strong>. If that link expired, open your contract email again to get a new one.
+        </p>
+      )}
+    </PublicCard>
   );
 }

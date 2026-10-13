@@ -44,7 +44,7 @@ function MediaRow({ slug, gearId, media: m, position, count, first }: { slug: st
 
   return (
     <li data-testid="media-item" className="grid gap-3 rounded-xl border p-3 sm:grid-cols-[10rem_minmax(0,1fr)]">
-      <div className="flex aspect-video items-center justify-center overflow-hidden rounded-lg bg-muted">
+      <div className={`flex aspect-video items-center justify-center overflow-hidden rounded-lg ${m.url && m.kind === "image" ? "bg-white ring-1 ring-black/5 ring-inset" : "bg-muted"}`}>
         {m.url && m.kind === "image" ? (
           // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL
           <img src={m.url} alt={m.alt} loading="lazy" className={`max-h-full max-w-full object-contain ${m.active ? "" : "opacity-50"}`} />

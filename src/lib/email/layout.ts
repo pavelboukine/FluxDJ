@@ -10,9 +10,16 @@ import { brandTheme } from "@/lib/branding/colors";
  * No tracking pixels, no remote images: a logo is an inline (CID) attachment
  * added by the worker, and the business name is always shown in text too, so
  * the email reads the same when images are blocked.
+ *
+ * Dark mode: clients differ (Apple Mail keeps this light layout, Outlook and
+ * Gmail recolour backgrounds and text, Gmail's apps can invert everything),
+ * but none of them recolour images. So the logo's background is part of its
+ * image: the worker attaches it on its own rounded plate (white, or near-black
+ * for mostly light logos), and it reads the same in every client and mode.
  */
 
-export type EmailLogo = { cid: string; width: number; height: number; darkBackground: boolean };
+/** `width`/`height`: the plated image's display size in CSS pixels (the attached image is up to twice that). */
+export type EmailLogo = { cid: string; width: number; height: number };
 
 export type EmailBrand = {
   /** The business (or "Flux DJ" for platform emails). */
@@ -50,22 +57,28 @@ const TEXT = "#18181b";
 const BORDER = "#e4e4e7";
 const PAGE = "#f4f4f5";
 
-/** Logo display size: at most 220 x 56 CSS pixels, aspect ratio kept (the attached image is about twice that). */
+/** Logo artwork display size: at most 220 x 56 CSS pixels, aspect ratio kept (the attached image is about twice that). */
 export function logoDisplaySize(width: number, height: number): { width: number; height: number } {
   if (!(width > 0 && height > 0)) return { width: 160, height: 48 };
   const scale = Math.min(220 / width, 56 / height, 1);
   return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
 }
 
+/** The plate's padding around the artwork, in CSS pixels. */
+export const LOGO_PLATE_PADDING = { x: 14, y: 10 };
+
+/** Display size of a logo on its plate: the artwork's size plus the padding. */
+export function logoPlateSize(width: number, height: number): { width: number; height: number } {
+  const art = logoDisplaySize(width, height);
+  return { width: art.width + 2 * LOGO_PLATE_PADDING.x, height: art.height + 2 * LOGO_PLATE_PADDING.y };
+}
+
 function header(brand: EmailBrand): string {
   const theme = brandTheme(brand.color);
   const name = escapeHtml(brand.name);
   if (brand.logo) {
-    const size = logoDisplaySize(brand.logo.width, brand.logo.height);
-    const img = `<img src="cid:${escapeHtml(brand.logo.cid)}" width="${size.width}" height="${size.height}" alt="${name}" style="display:block;border:0;outline:none;text-decoration:none;width:${size.width}px;height:${size.height}px;max-width:100%;font-family:${FONT};font-size:18px;font-weight:700;color:${TEXT};">`;
-    return brand.logo.darkBackground
-      ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="background:#18181b;border-radius:10px;padding:10px 14px;">${img}</td></tr></table>`
-      : img;
+    const { width, height } = brand.logo;
+    return `<img src="cid:${escapeHtml(brand.logo.cid)}" width="${width}" height="${height}" alt="${name}" style="display:block;border:0;outline:none;text-decoration:none;width:${width}px;height:${height}px;max-width:100%;font-family:${FONT};font-size:18px;font-weight:700;color:${TEXT};">`;
   }
   // No logo: the name in text, with a small brand-colour mark.
   return `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="width:10px;height:10px;background:${theme.color};border-radius:3px;font-size:0;line-height:0;">&nbsp;</td><td style="padding-left:10px;font-family:${FONT};font-size:19px;line-height:1.3;font-weight:700;color:${TEXT};">${name}</td></tr></table>`;

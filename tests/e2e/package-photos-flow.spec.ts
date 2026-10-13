@@ -3,7 +3,8 @@
  * package with a photo (wrong types and oversized files refused before
  * anything is saved), adding, replacing (contents verified) and removing a
  * photo, the list thumbnail, the draft preview and the client's proposal
- * showing the package's own photo (desktop and phone), a sent proposal
+ * showing the package's own photo (filling its card, enlargeable to the
+ * whole photo; desktop and phone), a sent proposal
  * keeping its photo after replacement while a new revision shows the new
  * one, removal falling back to the gear photo, and another business getting
  * nothing.
@@ -102,9 +103,14 @@ test.describe.serial("package photos", () => {
     await page.getByLabel("Photo (optional)").setInputFiles({ name: "huge.jpg", mimeType: "image/jpeg", buffer: Buffer.alloc(16 * 1024 * 1024, 1) });
     await expect(picker.getByRole("alert")).toHaveText("That file is 16.0 MB. Photos can be up to 15.0 MB.");
     await expect(picker.locator("img")).toHaveCount(0);
+    await page.getByLabel("Photo (optional)").setInputFiles({ name: "thumb.jpg", mimeType: "image/jpeg", buffer: await opaqueJpeg(380, 280) });
+    await expect(picker.getByRole("alert")).toHaveText("This photo is too small (380 × 280 pixels). Choose a higher-resolution photo, at least 400 × 300 pixels.");
+    await expect(picker.locator("img")).toHaveCount(0);
 
     await page.getByLabel("Photo (optional)").setInputFiles({ name: "setup.jpg", mimeType: "image/jpeg", buffer: await opaqueJpeg(800, 600) });
     await expect(picker.getByRole("alert")).toHaveCount(0);
+    // Accepted, with a note: 800 pixels looks soft full screen.
+    await expect(picker.getByRole("status")).toHaveText(/may appear blurry when enlarged/);
     await loaded(picker.locator("img"));
     await page.getByLabel("Photo description (optional)").fill("Complete DJ setup at a reception");
     await page.getByRole("button", { name: "Save package" }).click();
@@ -171,7 +177,21 @@ test.describe.serial("package photos", () => {
     const clientCards = client.getByTestId("package-card");
     const photo = clientCards.nth(1).getByRole("img", { name: "Photo A: speakers and lights" });
     await loaded(photo);
-    expect(await photo.evaluate((img: HTMLImageElement) => getComputedStyle(img).objectFit)).toBe("contain");
+    // A setup fills its card's frame (cropped from the centre, not stretched or letterboxed).
+    expect(await photo.evaluate((img: HTMLImageElement) => getComputedStyle(img).objectFit)).toBe("cover");
+    const frame = (await clientCards.nth(1).getByTestId("package-photo").boundingBox())!;
+    const box = (await photo.boundingBox())!;
+    expect(Math.abs(box.width - frame.width) + Math.abs(box.height - frame.height)).toBeLessThan(2);
+    // Enlarged, it is shown whole.
+    await clientCards.nth(1).getByRole("button", { name: "View photo of Signature" }).click();
+    const viewer = client.getByRole("dialog", { name: "Signature: photo" });
+    const whole = viewer.getByRole("img", { name: "Photo A: speakers and lights" });
+    await loaded(whole);
+    expect(await whole.evaluate((img: HTMLImageElement) => getComputedStyle(img).objectFit)).toBe("contain");
+    await expect(viewer.getByRole("button", { name: "Next" })).toHaveCount(0);
+    await client.keyboard.press("Escape");
+    await expect(viewer).toBeHidden();
+    await expect(clientCards.nth(1).getByRole("button", { name: "View photo of Signature" })).toBeFocused();
     expect(served.some((s) => s.status === 200 && s.type === "image/webp")).toBe(true);
     await expect(clientCards.nth(0).getByTestId("package-photo")).toHaveCount(0);
     await context.close();
@@ -194,7 +214,8 @@ test.describe.serial("package photos", () => {
     await expect(page.getByTestId("package-photo-editor").getByRole("alert")).toHaveText("Not saved: That file's contents are not a supported image or video.");
     expect((await photos(signature)).map((p) => p.active)).toEqual([true]);
     expect(await stored(signature)).toBe(1);
-    await page.getByLabel("Photo", { exact: true }).setInputFiles({ name: "b.webp", mimeType: "image/webp", buffer: await opaqueWebp(900, 600) });
+    // A wide panorama (3:1).
+    await page.getByLabel("Photo", { exact: true }).setInputFiles({ name: "b.webp", mimeType: "image/webp", buffer: await opaqueWebp(1800, 600) });
     await page.getByLabel("Photo description (optional)").fill("Photo B: the full rig");
     await page.getByRole("button", { name: "Save photo" }).click();
     await expect(page.getByRole("status").filter({ hasText: "Photo saved." })).toBeVisible();
@@ -217,7 +238,12 @@ test.describe.serial("package photos", () => {
     const next = await clientContext(revision.id, revision.tokenHash);
     const nextPage = await next.newPage();
     await nextPage.goto(`/${tenant.slug}/proposals/${revision.id}`);
-    await loaded(nextPage.getByTestId("package-card").nth(1).getByRole("img", { name: "Photo B: the full rig" }));
+    const wide = nextPage.getByTestId("package-card").nth(1).getByRole("img", { name: "Photo B: the full rig" });
+    await loaded(wide);
+    // No bars above and below: the wide photo covers its 4:3 frame.
+    const wideFrame = (await nextPage.getByTestId("package-card").nth(1).getByTestId("package-photo").boundingBox())!;
+    expect(Math.abs((await wide.boundingBox())!.height - wideFrame.height)).toBeLessThan(2);
+    expect(await wide.evaluate((img: HTMLImageElement) => getComputedStyle(img).objectFit)).toBe("cover");
     await next.close();
     const staff = await staffPage(tenant);
     await staff.goto(`/staff/${tenant.slug}/proposals/${firstProposal.id}`);

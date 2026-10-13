@@ -1,4 +1,4 @@
-import { businessBrand, escapeHtml, type EmailBrand, type RenderedEmail } from "./layout";
+import { businessBrand, escapeHtml, logoPlateSize, type EmailBrand, type RenderedEmail } from "./layout";
 import {
   renderBookingConfirmedEmail,
   renderContractEmail,
@@ -25,7 +25,7 @@ export const PREVIEW_VARIANTS = {
 } as const;
 export type PreviewVariant = keyof typeof PREVIEW_VARIANTS;
 
-/** The sample logo's image, shown in place of the email's cid: reference. */
+/** The sample logo artwork's pixel size; the preview route plates it as the worker does. */
 export const PREVIEW_LOGO_SIZE = { width: 300, height: 90 };
 
 export function previewEmails(variant: PreviewVariant): { key: string; label: string; email: RenderedEmail }[] {
@@ -33,7 +33,7 @@ export function previewEmails(variant: PreviewVariant): { key: string; label: st
   const brand: EmailBrand = businessBrand(
     v.name,
     v.color,
-    v.logo ? { cid: "business-logo", ...PREVIEW_LOGO_SIZE, darkBackground: v.logo === "dark" } : null,
+    v.logo ? { cid: "business-logo", ...logoPlateSize(PREVIEW_LOGO_SIZE.width, PREVIEW_LOGO_SIZE.height) } : null,
   );
   const long = variant === "long";
   const event = long ? "Alexandra & Christopher's Wedding Reception and After-Party at the Grand Riverside Ballroom" : "Patel & Chen Wedding";

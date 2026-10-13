@@ -191,7 +191,7 @@ export async function finalizePackagePhotoUpload(slug: string, packageId: string
   });
   if (error) return reject(describeDbError(error));
   revalidatePath(`/staff/${slug}/packages`, "layout");
-  return ok("Photo saved. It appears on new proposals.");
+  return ok(`Photo saved. It appears on new proposals.${checked.resolution === "low" ? " It may look blurry when enlarged; a larger photo would look sharper." : ""}`);
 }
 
 /** Removes the package's photo from new proposals. The file is kept for proposals already sent. */

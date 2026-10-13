@@ -149,6 +149,24 @@ describe("branded emails", () => {
     expect(fresh.messages[0].replyTo).toBe(`second-${run}@example.test`);
   });
 
+  it("logos are attached on their own opaque plate, dark for a mostly light logo, so dark-mode clients can't hide them", async () => {
+    await activateLogo("b", "#ffffff", 1); // a white logo: shown on a dark plate
+    await sendProposal("a"); // a's green logo: a white plate
+    await sendProposal("b");
+    const mail = new RecordingTransport();
+    await deliver(mail, "a");
+    await deliver(mail, "b");
+    const plateAt = async (m: EmailMessage) => {
+      const { data, info } = await sharp(inlineLogo(m)!.content).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+      const i = (Math.floor(info.height / 2) * info.width + 6) * 4; // inside the plate, left of the artwork
+      return [...data.subarray(i, i + 4)];
+    };
+    expect(await plateAt(mail.messages[0])).toEqual([255, 255, 255, 255]);
+    expect(await plateAt(mail.messages[1])).toEqual([24, 24, 27, 255]);
+    // No background colour in the HTML for a client to recolour: the plate is the image.
+    for (const m of mail.messages) expect(m.html).not.toContain("background:#18181b");
+  });
+
   it("a logo that can't be read leaves it out; the email still goes", async () => {
     const path = (await must(admin.from("tenants").select("logo_storage_path").eq("id", shops.b.tenantId).single())).data!.logo_storage_path!;
     await must(admin.storage.from(LOGO_BUCKET).remove([path]));

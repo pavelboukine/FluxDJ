@@ -6,7 +6,7 @@ import { ActionForm } from "@/components/app/action-form";
 import { GuardedCancel } from "@/components/app/unsaved-guard";
 import { fail, ok, type ActionState } from "@/lib/forms";
 import { createPackage } from "../actions";
-import { photoFileProblem, uploadPackagePhoto } from "../package-photo";
+import { photoFileCheck, uploadPackagePhoto } from "../package-photo";
 
 /**
  * The new-package form. Without a photo it saves as before (create_package,
@@ -26,7 +26,7 @@ export function NewPackageForm({ slug, children }: { slug: string; children: Rea
     const photo = file instanceof File && file.size > 0 ? file : null;
     if (!photo) return createPackage(slug, state, data);
 
-    const problem = photoFileProblem(photo);
+    const { problem } = await photoFileCheck(photo);
     if (problem) return fail(`Nothing was saved. ${problem}`);
     data.set("photo_pending", "1");
     const created = await createPackage(slug, state, data);

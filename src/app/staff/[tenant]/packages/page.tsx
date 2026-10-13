@@ -103,7 +103,7 @@ export default async function PackageList({ params, searchParams }: PageProps<"/
               return (
                 <li key={pk.id} data-testid="package-row">
                   <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 px-4 py-3 text-sm sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center sm:gap-x-4">
-                    <GearThumb url={urlFor.get(photoOf.get(pk.id) ?? "") ?? null} className="size-12 row-span-2 sm:row-span-1" />
+                    <GearThumb url={urlFor.get(photoOf.get(pk.id) ?? "") ?? null} fit={pk.photo[0] ? "cover" : "contain"} className="size-12 row-span-2 sm:row-span-1" />
                     <span className="grid min-w-0">
                       <span className="flex min-w-0 items-center gap-2">
                         <Link className="truncate font-medium underline-offset-4 hover:underline" href={`${base}/${pk.id}`}>{pk.name}</Link>

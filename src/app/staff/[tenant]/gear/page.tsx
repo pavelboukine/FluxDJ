@@ -119,10 +119,10 @@ export default async function GearList({ params, searchParams }: PageProps<"/sta
               return (
                 <li key={g.id} data-testid="gear-row">
                   <div className="grid grid-cols-[3.5rem_minmax(0,1fr)] items-center gap-x-4 gap-y-1 px-4 py-3 text-sm sm:grid-cols-[3.5rem_minmax(0,1fr)_auto]">
-                    <span className="row-span-2 flex size-14 items-center justify-center overflow-hidden rounded-lg bg-muted sm:row-span-1">
+                    <span className={`row-span-2 flex size-14 items-center justify-center overflow-hidden rounded-lg sm:row-span-1 ${thumb ? "bg-white ring-1 ring-black/5 ring-inset" : "bg-muted"}`}>
                       {thumb ? (
                         // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL
-                        <img src={thumb} alt="" loading="lazy" decoding="async" className="size-full object-cover" data-testid="gear-thumb" />
+                        <img src={thumb} alt="" loading="lazy" decoding="async" className="size-full object-contain p-0.5" data-testid="gear-thumb" />
                       ) : (
                         <span data-testid="gear-no-photo">
                           <ImageOff aria-hidden className="size-5 text-muted-foreground" />

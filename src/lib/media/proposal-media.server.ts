@@ -12,7 +12,9 @@ import type { ImageWidth, MediaItem } from "@/lib/proposals/media";
  * Images: the original is read from the private gear-media bucket and
  * re-encoded on request as WebP, at most `width` pixels wide and tall
  * (proportions kept, never enlarged, never cropped, EXIF orientation applied,
- * metadata dropped). Nothing derived is stored: originals are immutable
+ * metadata dropped), with any transparency flattened onto white: a product
+ * cut-out then reads the same on cards (a white mat) and in the dark viewer.
+ * Nothing derived is stored: originals are immutable
  * (objects are never overwritten), so the response is safe for the viewer's
  * browser to keep privately, and a repeat request is answered 304 from the
  * ETag without touching Storage. Proposals frozen before this existed work
@@ -31,7 +33,8 @@ const MAX_INPUT_PIXELS = 100_000_000;
 const IMAGE_CACHE = "private, max-age=3600";
 
 export function mediaEtag(storagePath: string, width: number): string {
-  return `"${createHash("sha256").update(`v1:${storagePath}:${width}`).digest("base64url").slice(0, 32)}"`;
+  // v2: flattened onto white, encoded at effort 2 (v1 copies kept transparency).
+  return `"${createHash("sha256").update(`v2:${storagePath}:${width}`).digest("base64url").slice(0, 32)}"`;
 }
 
 const plain = (status: number, body: string, extra: Record<string, string> = {}) =>
@@ -62,7 +65,9 @@ export async function serveGearMedia(media: MediaItem, width: ImageWidth): Promi
     const webp = await sharp(Buffer.from(await original.arrayBuffer()), { limitInputPixels: MAX_INPUT_PIXELS, failOn: "error", animated: false })
       .rotate()
       .resize({ width, height: width, fit: "inside", withoutEnlargement: true })
-      .webp({ quality: 80 })
+      .flatten({ background: "#ffffff" })
+      // effort 2: about a third less CPU than the default 4 for a 1600-pixel photo, at the same size.
+      .webp({ quality: 80, effort: 2 })
       .toBuffer();
     return new Response(new Uint8Array(webp), {
       status: 200,

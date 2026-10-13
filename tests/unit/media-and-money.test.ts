@@ -1,5 +1,8 @@
+import sharp from "sharp";
 import { describe, expect, it } from "vitest";
+import { photoResolution } from "@/lib/media/resolution";
 import { sniffMediaType } from "@/lib/media/sniff";
+import { checkPhoto } from "@/lib/media/verify-upload.server";
 import { centsToInputValue, formatCents, parseMoneyToCents } from "@/lib/money";
 
 const bytes = (...parts: (number[] | string)[]) =>
@@ -35,6 +38,31 @@ describe("sniffMediaType", () => {
     ["truncated JPEG", bytes([0xff, 0xd8])],
   ])("rejects %s", (_label, input) => {
     expect(sniffMediaType(input)).toBeNull();
+  });
+});
+
+describe("photo resolution", () => {
+  it.each([
+    [399, 350, "too_small"],
+    [2000, 299, "too_small"],
+    [400, 300, "low"],
+    [300, 400, "low"],
+    [1199, 900, "low"],
+    [1200, 300, "ok"],
+    [1600, 1200, "ok"],
+    [900, 1600, "ok"],
+  ] as const)("%i x %i is %s", (width, height, expected) => {
+    expect(photoResolution(width, height)).toBe(expected);
+  });
+
+  it("decodes the photo, measures it as displayed (EXIF orientation) and refuses a mismatched format", async () => {
+    const turned = await sharp({ create: { width: 1600, height: 350, channels: 3, background: "#123" } }).jpeg().withMetadata({ orientation: 6 }).toBuffer();
+    expect(await checkPhoto(turned, "image/jpeg")).toMatchObject({ ok: true, width: 350, height: 1600, resolution: "ok" });
+    const png = await sharp({ create: { width: 800, height: 600, channels: 4, background: "#0000" } }).png().toBuffer();
+    expect(await checkPhoto(png, "image/png")).toMatchObject({ ok: true, resolution: "low" });
+    expect(await checkPhoto(png, "image/jpeg")).toMatchObject({ ok: false });
+    const truncated = (await sharp({ create: { width: 1600, height: 1200, channels: 3, background: "#456" } }).jpeg().toBuffer()).subarray(0, 600);
+    expect(await checkPhoto(truncated, "image/jpeg")).toMatchObject({ ok: false });
   });
 });
 

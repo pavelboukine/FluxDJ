@@ -86,7 +86,7 @@ export function LinkOpener({ slug }: { slug: string }) {
   }, [slug]);
 
   return (
-    <p role={state === "opening" ? "status" : "alert"} className="text-sm">
+    <p role={state === "opening" ? "status" : "alert"} className={state === "opening" ? "text-muted-foreground" : "rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-destructive"}>
       {state === "opening" ? "Opening your proposal…" : MESSAGES[state]}
     </p>
   );

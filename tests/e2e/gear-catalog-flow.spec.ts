@@ -211,12 +211,20 @@ test.describe.serial("gear catalog", () => {
     const page = await staffPage(tenant);
     await page.goto(`/staff/${tenant.slug}/gear/${createdId}`);
 
-    // A real photo, previewed before uploading.
-    await page.getByLabel("Photo or video", { exact: true }).setInputFiles({ name: "bubbles.png", mimeType: "image/png", buffer: await transparentPng(320, 200) });
-    await expect(page.getByTestId("media-uploader").locator("img")).toBeVisible();
+    // Too small for a proposal photo: refused before uploading, with the reason.
+    const uploader = page.getByTestId("media-uploader");
+    await page.getByLabel("Photo or video", { exact: true }).setInputFiles({ name: "tiny.png", mimeType: "image/png", buffer: await transparentPng(320, 200) });
+    await expect(uploader.getByRole("alert")).toHaveText("This photo is too small (320 × 200 pixels). Choose a higher-resolution photo, at least 400 × 300 pixels.");
+    await expect(uploader.locator("img")).toHaveCount(0);
+    await expect(uploader).toContainText("best at 1600 pixels or more on the long side");
+
+    // A real photo, previewed before uploading; small enough to look soft when enlarged, so it says so.
+    await page.getByLabel("Photo or video", { exact: true }).setInputFiles({ name: "bubbles.png", mimeType: "image/png", buffer: await transparentPng(640, 400) });
+    await expect(uploader.locator("img")).toBeVisible();
+    await expect(uploader.getByRole("status")).toHaveText(/may appear blurry when enlarged/);
     await page.getByLabel("Description (alt text, optional)").fill("Bubble machine on a stand");
     await page.getByRole("button", { name: "Upload" }).click();
-    await expect(page.getByRole("status").filter({ hasText: "Added bubbles.png." })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "Added bubbles.png. It's verified and appears on new proposals. It may look blurry when enlarged" })).toBeVisible();
     await expect(page.getByTestId("gear-gallery").getByRole("img", { name: "Bubble machine on a stand" })).toBeVisible();
 
     // HTML renamed to .png: rejected by content; nothing added, the photo stays.
@@ -230,7 +238,7 @@ test.describe.serial("gear catalog", () => {
 
     // A failed Storage upload reports failure and changes nothing.
     await page.route("**/storage/v1/object/gear-media/**", (route) => route.fulfill({ status: 500, body: "{}" }));
-    await upload(page, { name: "later.jpg", mimeType: "image/jpeg", buffer: await opaqueJpeg(200, 200) }, "Should not appear");
+    await upload(page, { name: "later.jpg", mimeType: "image/jpeg", buffer: await opaqueJpeg(1600, 1200) }, "Should not appear");
     await expect(page.getByRole("main").getByRole("alert").filter({ hasText: "The upload didn't finish." })).toBeVisible();
     await expect(page.getByText("Added later.jpg")).toHaveCount(0);
     await page.unroute("**/storage/v1/object/gear-media/**");

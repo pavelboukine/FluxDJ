@@ -2353,10 +2353,19 @@ Subjects are unchanged. DJ (platform) invitations are Flux-branded.
 
 **Logos.** Never a URL: the worker (`branding.server.ts`) reads the logo from
 private Storage, only from the row's own business folder, fits it into
-440 x 112 pixels (no stretching, cropping or enlarging; PNG, at most 120 KB)
-and attaches it inline (`cid:business-logo`; Resend `content_id`, Mailpit
+440 x 112 pixels (no stretching, cropping or enlarging), centres it on an
+opaque rounded plate with a hairline edge (white, or near-black when the logo
+was marked "needs a dark background" at upload), and attaches the PNG (at most
+120 KB) inline (`cid:business-logo`; Resend `content_id`, Mailpit
 `ContentID`). Any failure leaves the logo out and the email still goes, with
 the business name.
+
+**Dark mode.** Clients disagree: Apple Mail keeps the light layout, Outlook
+and Gmail recolour backgrounds and text, and Gmail's apps may invert the
+whole message. None of them recolour images, so the plate is part of the
+image rather than a background colour in the HTML: a dark logo on a
+transparent background stays visible in every client and mode. One logo per
+business is enough; no separate dark-mode upload exists or is needed.
 
 **Which branding.** Frozen per outbox row at its first attempt
 (`freeze_email_branding`, service role; a trigger keeps it unchanged):
@@ -2737,12 +2746,22 @@ them to create packages and to archive or restore them.
 
 **Gear photos on proposals.** The frozen offer stores, per gear item, its
 active media at freeze time (`storage_path`, `kind`, `content_type`,
-`alt_text`, in sort order). The client proposal redesign must make these
-photos large and browsable (requirement in `docs/Flux-DJ-V1-Spec.md`).
-Known limits for that work: only original files are stored (images up to
-15 MB, no resized versions or image transformations), no width/height or
-poster frame is recorded, there is no caption beyond alt text, and client
-signed URLs last 10 minutes.
+`alt_text`, in sort order). Only originals are stored; the proposal's media
+routes (`src/lib/media/proposal-media.server.ts`) re-check access on every
+request and resize on the fly to 400–1600 pixels (WebP, transparency
+flattened onto white, `private, max-age=3600` plus an ETag, never a shared
+cache). On the proposal (`src/components/proposal/gear-media.tsx`) gear
+photos sit whole on a white mat (`contain`); a gear item with several
+photos and videos can be browsed on its card (arrows, arrow keys, swipe) and
+opens the full-screen viewer at the one shown. Package photos fill their
+card (`cover`, from the centre) and open the viewer, which always shows the
+whole photo. Speed: pointing at a photo or an arrow loads what is likely
+next, the viewer shows the card's copy at once while the sharper one loads,
+then loads its neighbours. New photos must be at least 400 × 300 pixels;
+under 1200 pixels on the long side they are accepted with a "may look
+blurry when enlarged" warning (`src/lib/media/resolution.ts`; the server's
+decode check in `verify-upload.server.ts` is authoritative). Existing photos
+are never re-validated.
 
 ### Proposal templates and questions & rules
 

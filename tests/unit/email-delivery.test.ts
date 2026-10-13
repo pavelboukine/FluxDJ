@@ -3,7 +3,7 @@ import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import { fitLogo } from "@/lib/email/branding.server";
 import { deliveryState, emailPurpose, errorSummary, type OutboxRow } from "@/lib/email/history";
-import { businessBrand, FLUX_BRAND, logoDisplaySize } from "@/lib/email/layout";
+import { businessBrand, FLUX_BRAND, logoDisplaySize, logoPlateSize } from "@/lib/email/layout";
 import { parseProviderEvent, verifyWebhookSignature } from "@/lib/email/provider-events";
 import { previewEmails } from "@/lib/email/previews";
 import { renderContractEmail, renderEmail, renderPlatformInvitationEmail, renderStaffInvitationEmail } from "@/lib/email/templates";
@@ -14,10 +14,12 @@ const proposal = (brand = businessBrand("BOUPROD", "#e11d48")) =>
 
 describe("branded layout", () => {
   it("leads with the business: its logo by content id, its name as alt text and in the plain text", () => {
-    const email = proposal(businessBrand("BOUPROD", "#e11d48", { cid: "business-logo", width: 440, height: 112, darkBackground: false }));
+    const email = proposal(businessBrand("BOUPROD", "#e11d48", { cid: "business-logo", width: 248, height: 76 }));
     expect(email.html).toContain('src="cid:business-logo"');
     expect(email.html).toContain('alt="BOUPROD"');
-    expect(email.html).toContain('width="220" height="56"');
+    expect(email.html).toContain('width="248" height="76"');
+    // The plate is in the image, so no background a client could recolour sits behind it.
+    expect(email.html).not.toContain("background:#18181b");
     expect(email.text.split("\n")[0]).toBe("BOUPROD");
     expect(email.html).not.toMatch(/https?:\/\/[^"]*\.(png|jpe?g|gif)/); // no remote images, no tracking pixel
   });
@@ -35,6 +37,9 @@ describe("branded layout", () => {
     expect(logoDisplaySize(1000, 1000)).toEqual({ width: 56, height: 56 });
     expect(logoDisplaySize(880, 112)).toEqual({ width: 220, height: 28 });
     expect(logoDisplaySize(100, 40)).toEqual({ width: 100, height: 40 });
+    // On its plate: 14 x 10 CSS pixels of padding around the artwork.
+    expect(logoPlateSize(880, 112)).toEqual({ width: 248, height: 48 });
+    expect(logoPlateSize(100, 40)).toEqual({ width: 128, height: 60 });
   });
   it("escapes business, event and client text everywhere", () => {
     const email = renderEmail({ ...base, brand: businessBrand("<b>DJ</b>", "#ff0000"), tenantDisplayName: "<b>DJ</b>", eventType: "proposal_approved", payload: { event_title: "<script>x</script>", client_name: '"Robin"' } });
@@ -73,17 +78,41 @@ describe("branded layout", () => {
   });
 });
 
+/** RGBA of one pixel of a PNG. */
+async function pixel(png: Buffer, x: number, y: number): Promise<number[]> {
+  const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const i = (y * info.width + x) * 4;
+  return [...data.subarray(i, i + 4)];
+}
+
 describe("logo for email", () => {
-  it("is fitted into 440 x 112 pixels without stretching, as PNG", async () => {
+  it("is fitted into 440 x 112 pixels without stretching, on a plate at the same density, as PNG", async () => {
     const wide = await sharp({ create: { width: 2000, height: 400, channels: 4, background: { r: 200, g: 0, b: 0, alpha: 1 } } }).png().toBuffer();
     const fitted = await fitLogo(wide);
     expect(fitted).not.toBeNull();
-    expect([fitted!.width, fitted!.height]).toEqual([440, 88]);
     expect(fitted!.png.subarray(1, 4).toString()).toBe("PNG");
+    // Artwork 440 x 88 pixels = 220 x 44 CSS pixels at 2x; plus the plate: 248 x 64 CSS, 496 x 128 pixels.
+    expect([fitted!.width, fitted!.height]).toEqual([248, 64]);
+    const meta = await sharp(fitted!.png).metadata();
+    expect([meta.width, meta.height]).toEqual([496, 128]);
+    expect(await pixel(fitted!.png, 248, 64)).toEqual([200, 0, 0, 255]); // the artwork, centred
+  });
+  it("keeps a dark logo on an opaque white plate and a light one on an opaque dark plate", async () => {
+    // A transparent logo with dark ink, like most uploads: invisible on a darkened email without a plate.
+    const ink = (colour: string) => sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="300" height="80"><rect x="100" y="20" width="100" height="40" fill="${colour}"/></svg>`)).png().toBuffer();
+    const light = (await fitLogo(await ink("#111111")))!;
+    const dark = (await fitLogo(await ink("#ffffff"), true))!;
+    for (const [logo, fill] of [[light, [255, 255, 255, 255]], [dark, [24, 24, 27, 255]]] as const) {
+      expect(await pixel(logo.png, 20, logo.height)).toEqual(fill); // inside the plate, beside the artwork: opaque
+      expect((await pixel(logo.png, 0, 0))[3]).toBeLessThan(255); // rounded corner
+    }
   });
   it("leaves small logos at their size and refuses unreadable input", async () => {
     const small = await sharp({ create: { width: 120, height: 40, channels: 3, background: "#000" } }).png().toBuffer();
-    expect(await fitLogo(small)).toMatchObject({ width: 120, height: 40 });
+    const fitted = (await fitLogo(small))!;
+    expect([fitted.width, fitted.height]).toEqual([148, 60]);
+    const meta = await sharp(fitted.png).metadata();
+    expect([meta.width, meta.height]).toEqual([148, 60]); // 1x: never enlarged
     expect(await fitLogo(Buffer.from("not an image"))).toBeNull();
   });
 });

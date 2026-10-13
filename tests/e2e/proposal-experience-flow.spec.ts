@@ -112,6 +112,7 @@ async function openSession(context: BrowserContext, t: TestTenant, proposalId: s
 /** An optional extra's card (the outer list item, not its list of reasons). */
 const extraCard = (page: Page, name: string) =>
   page.locator("section", { has: page.getByRole("heading", { name: "Add-ons", exact: true }) }).locator(":scope > ul > li").filter({ hasText: name });
+const loaded = (img: ReturnType<Page["locator"]>) => expect.poll(() => img.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0)).toBe(true);
 const noSideScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 const shot = (page: Page, name: string, fullPage = false) => page.screenshot({ path: `${REVIEW_DIR}/${name}.png`, fullPage });
 
@@ -280,6 +281,93 @@ test.describe.serial("client proposal experience", () => {
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
     await expect(opener).toBeFocused();
+  });
+
+  test("gear cards: browse photos in place by button, key and swipe; the viewer opens at the photo shown; nothing downloads twice", async () => {
+    const card = (p: Page) => p.getByTestId("gear-photo").filter({ has: p.getByRole("button", { name: /^View 4 photos and videos of Uplights \(pack of 4\)/ }) }).first();
+    const shownIndex = (p: Page) => card(p).locator("img").last().evaluate((img: HTMLImageElement) => /\/uplights_4\/(\d)/.exec(img.currentSrc || img.src)?.[1]);
+    const photo = card(page);
+    await photo.scrollIntoViewIfNeeded();
+    const position = photo.getByTestId("photo-position");
+    // The previous test closed the viewer on the video, so the card shows it.
+    await expect(position).toHaveText("4 / 4");
+    const next = photo.getByRole("button", { name: "Next photo of Uplights (pack of 4)" });
+    const previous = photo.getByRole("button", { name: "Previous photo of Uplights (pack of 4)" });
+    // A mouse sees the arrows on hover (keyboard focus shows them too); they wrap around.
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await page.mouse.move(0, 0);
+    await expect(next).toHaveCSS("opacity", "0");
+    await photo.hover();
+    await expect(next).toHaveCSS("opacity", "1");
+    await next.click();
+    await expect(position).toHaveText("1 / 4");
+    await next.click();
+    await expect(position).toHaveText("2 / 4");
+    await expect.poll(() => shownIndex(page)).toBe("1");
+    await previous.click();
+    await expect(position).toHaveText("1 / 4");
+
+    // Keys on the focused photo; Enter opens the viewer at the photo shown.
+    const open = photo.getByRole("button", { name: /^View 4 photos and videos of Uplights/ });
+    await open.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(position).toHaveText("2 / 4");
+    await expect(open).toBeFocused();
+    await page.keyboard.press("Enter");
+    const dialog = page.getByRole("dialog", { name: "Uplights (pack of 4): photos and videos" });
+    await expect(dialog).toContainText("Photo 2 of 4");
+    await loaded(dialog.getByRole("img", { name: "Four uplights washing a wall in purple" }));
+    await page.keyboard.press("ArrowRight");
+    await expect(dialog).toContainText("Photo 3 of 4");
+    await page.keyboard.press("Escape");
+    // The card follows the viewer; focus returns to the photo.
+    await expect(position).toHaveText("3 / 4");
+    await expect(open).toBeFocused();
+
+    // One photo: no arrows, no position, still enlargeable.
+    const single = page.getByTestId("gear-photo").filter({ has: page.getByRole("button", { name: /^View photo of Additional-location speaker/ }) }).first();
+    await expect(single.getByRole("button", { name: /Next photo|Previous photo/ })).toHaveCount(0);
+    await expect(single.getByTestId("photo-position")).toHaveCount(0);
+
+    // Every resized photo crossed the network at most once (later views come from the browser's private cache).
+    const fetched = await page.evaluate(() =>
+      performance
+        .getEntriesByType("resource")
+        .map((e) => e as PerformanceResourceTiming)
+        .filter((e) => /\/proposals\/[^/]+\/(package-)?media\//.test(e.name) && e.initiatorType === "img" && e.responseStatus === 200 && e.transferSize > 0)
+        .map((e) => new URL(e.name).pathname + new URL(e.name).search),
+    );
+    const repeats = fetched.filter((u, i) => fetched.indexOf(u) !== i && !u.includes("retry="));
+    expect(repeats, fetched.join("\n")).toEqual([]);
+
+    // A touch screen: arrows always shown, tappable; a horizontal swipe moves, a tap opens the viewer.
+    const touch = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    await openSession(touch, tenant, proposalId, tokenHash);
+    const phone = await touch.newPage();
+    await phone.goto(url);
+    const small = card(phone);
+    await small.scrollIntoViewIfNeeded();
+    const tapNext = small.getByRole("button", { name: "Next photo of Uplights (pack of 4)" });
+    await expect(tapNext).toHaveCSS("opacity", "1");
+    await tapNext.tap();
+    await expect(small.getByTestId("photo-position")).toHaveText("2 / 4");
+    const box = (await small.boundingBox())!;
+    const y = box.y + box.height / 2;
+    const target = small.getByRole("button", { name: /^View 4 photos/ });
+    const swipe = async (from: number, to: number) => {
+      await target.dispatchEvent("pointerdown", { pointerType: "touch", isPrimary: true, clientX: from, clientY: y });
+      await target.dispatchEvent("pointerup", { pointerType: "touch", isPrimary: true, clientX: to, clientY: y + 4 });
+      await target.dispatchEvent("click", { clientX: to, clientY: y });
+    };
+    await swipe(box.x + box.width * 0.8, box.x + box.width * 0.2); // right to left: next
+    await expect(small.getByTestId("photo-position")).toHaveText("3 / 4");
+    await expect(phone.getByRole("dialog")).toHaveCount(0); // a swipe is not a tap
+    await swipe(box.x + box.width * 0.2, box.x + box.width * 0.8);
+    await expect(small.getByTestId("photo-position")).toHaveText("2 / 4");
+    await target.tap();
+    await expect(phone.getByRole("dialog", { name: "Uplights (pack of 4): photos and videos" })).toContainText("Photo 2 of 4");
+    expect(await noSideScroll(phone)).toBeLessThanOrEqual(0);
+    await touch.close();
   });
 
   test("answers add required equipment; included and extra quantities are never charged twice; exact totals", async () => {
