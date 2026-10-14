@@ -211,7 +211,9 @@ describe("run sheet model", () => {
     expect(speeches.map((r) => whenText(r.when, "2027-08-14"))).toEqual(["19:15", "Cue: After the main course", "Time not decided yet"]);
     expect(speeches[0].notes).toEqual(["About 5 min", "AV: Wireless mic, slideshow on screen 2"]);
     const dances = sheet.stages.find((s) => s.key === "special_dances")!;
-    expect(dances.rows.find((r) => r.title === "Other special dances")!.status?.text).toBe("Not applicable: this moment won't happen");
+    // A moment that won't happen isn't on the timeline; it's named once with its stage.
+    expect(dances.rows.some((r) => r.title === "Other special dances")).toBe(false);
+    expect(dances.instructions).toContainEqual({ label: "Not happening", value: "Other special dances" });
     expect(sheet.stages.find((s) => s.key === "ceremony")!.rows.find((r) => r.title === "Signing")!.status?.text).toBe("DJ's choice");
     expect(sheet.musicLists.find((l) => l.key === "cocktail_music")!.status?.text).toBe("DJ's choice: no suggestions");
     const party = sheet.stages.find((s) => s.key === "party")!;
@@ -303,6 +305,7 @@ describe("run sheet model", () => {
       [["4. Bride and her father"], ["Canon in D"], ["Same song as 1. Groom and his mother, 2. Bridesmaids", "Bride and her father: Restart from the beginning"], null],
       [["5. Ushers"], [], [], "No song linked"],
     ]);
+    expect(ceremony.rows.map((r) => r.title)).toEqual(["Processional", "Processional (continued)", "Processional (continued)", "Processional (continued)"]);
     expect(ceremony.rows.some((r) => r.title.includes("Couple entrance"))).toBe(false);
   });
 

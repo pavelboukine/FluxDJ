@@ -353,7 +353,7 @@ export function buildRunSheet(input: RunSheetInput): RunSheet {
             const earlier = g.songId ? firstWith.get(g.songId) : undefined;
             if (g.songId && !earlier) firstWith.set(g.songId, g.people);
             rows.push({
-              id: `${m.id}:${i}`, when: { kind: "sequence" }, title: m.label, people: g.people,
+              id: `${m.id}:${i}`, when: { kind: "sequence" }, title: i === 0 ? m.label : `${m.label} (continued)`, people: g.people,
               songs: linked ? [song(linked)!].filter(Boolean) : [],
               notes: [...(earlier ? [`Same song as ${earlier.map(numbered).join(", ")}`] : []), ...g.notes], status: null,
               warning: linked ? undefined : g.songId ? undefined : "No song linked",
@@ -480,6 +480,12 @@ export function buildRunSheet(input: RunSheetInput): RunSheet {
         default:
           break; // stage-detail placeholders and covered moments: shown with their stage
       }
+    }
+    // Moments the client said won't happen aren't on the timeline: they're named once with their stage.
+    const skipped = sheet.rows.filter((r) => r.status === MOMENT_CHOICE.not_applicable);
+    if (skipped.length > 0) {
+      sheet.rows = sheet.rows.filter((r) => !skipped.includes(r));
+      sheet.instructions.push({ label: "Not happening", value: skipped.map((r) => r.title.replace(/: songs$/, "")).join(", ") });
     }
     base.stages.push(sheet);
   }

@@ -652,8 +652,10 @@ test.describe.serial("planning", () => {
     await expect(staff.getByRole("button", { name: "Hide Dinner from the client", exact: true })).toBeVisible();
     await client.reload();
     const dinner = await openPlanSection(client, "dinner");
-    // Timing is the stage's own details; the other moments follow in their configured order.
-    await expect(dinner.getByRole("heading", { name: "Timing", exact: true })).toBeVisible();
+    // Dinner details are the stage's own; the other moments follow in their configured order.
+    await expect(dinner.getByRole("heading", { name: "Dinner details", exact: true })).toBeVisible();
+    // The checklist names the same thing as the heading above it.
+    await expect(dinner.getByTestId("details-dinner")).toContainText(/Dinner details is complete|of \d+ needed answers/);
     await expect(dinner.getByRole("list", { name: "Moments in Dinner" }).locator(":scope > li")).toHaveText([/Background music/, /Speeches and toasts/, /Activities/, /Cake cutting/]);
     await expect(dinner.getByTestId("details-dinner").getByLabel("Dinner start (needed)")).toHaveValue("19:30");
 

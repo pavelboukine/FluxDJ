@@ -219,6 +219,7 @@ export default async function ClientPlanningPage({ params }: PageProps<"/[tenant
                                       itemId={s.id}
                                       stageKey={s.key}
                                       stageLabel={s.label}
+                                      title={s.detailsLabel ?? `${s.label} details`}
                                       editor={s.stageEditor as StageEditor}
                                       initialAnswers={view.stage_details[s.id]?.answers ?? {}}
                                       initialRevision={view.stage_details[s.id]?.revision ?? 0}

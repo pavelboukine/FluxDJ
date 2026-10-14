@@ -344,6 +344,7 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
                               itemId={s.id}
                               stageKey={s.key}
                               stageLabel={s.label}
+                              title={s.detailsLabel ?? `${s.label} details`}
                               editor={s.stageEditor as StageEditor}
                               initialAnswers={view.stage_details[s.id]?.answers ?? {}}
                               initialRevision={view.stage_details[s.id]?.revision ?? 0}

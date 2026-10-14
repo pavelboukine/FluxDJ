@@ -93,6 +93,7 @@ test.describe.serial("DJ run sheet", () => {
     ] });
     await saveItem("speeches", { entries: [{ id: randomUUID(), speaker: "Olivier Lévesque", pronunciation: "oh-lee-VYAY", role: "Best man", timing: "cue", cue: "After the main course" }] });
     await saveItem("must_play", { songs: Array.from({ length: 80 }, (_, i) => song(`Chanson ${i + 1}`, `Artiste ${i + 1}`)) });
+    await saveItem("other_dances", { choice: "not_applicable" });
     await saveItem("do_not_play", { songs: [song("Macarena", "Los del Río"), song("Chicken Dance", "Werner Thomas")] });
     contractual = await contractualState(eventId);
     runSheetUrl = `/staff/${tenant.slug}/events/${eventId}/run-sheet`;
@@ -135,6 +136,11 @@ test.describe.serial("DJ run sheet", () => {
     await expect(entrance.getByTestId("run-row").filter({ hasText: "4. Les grands-parents" })).toContainText("DJ's choice");
     await expect(entrance.getByTestId("run-row").filter({ hasText: "5. Les témoins" })).toContainText("Music not decided yet");
     await expect(entrance.getByTestId("run-row").filter({ hasText: "5. Les témoins" })).not.toContainText("DJ's choice");
+    // A dance that won't happen isn't on the timeline; it's named once with its stage.
+    const dances = staff.getByTestId("run-stage-special_dances");
+    await expect(dances.getByTestId("run-row").filter({ hasText: "Other special dances" })).toHaveCount(0);
+    await expect(dances).toContainText("Not happening");
+    await expect(dances).toContainText("Other special dances");
     await expect(staff.getByTestId("run-stage-dinner")).toContainText("Cue: After the main course");
     await expect(staff.getByTestId("run-stage-ceremony")).toContainText("No music during the vows.");
     // The processional in walking order, numbered, with each person's song; a repeat is said as a fact, the instruction as given.
@@ -174,7 +180,7 @@ test.describe.serial("DJ run sheet", () => {
     }
     const text = pages.join("\n");
     expect(pages[0]).toContain(`Revision ${firstRevision}`);
-    for (const expected of ["Gig overview", "1. Groom and his mother", "3. Bride and her father", "Same song as 1. Groom and his mother", "3. Chloé Gagnon et François Lévesque [klo-AY gah-NYON]", "Guest entry", "Grand entrance", "4. Les grands-parents", "DJ's choice", "5. Les témoins", "Music not decided yet", "Cue: After the main course", "Loading dock at the back, door 4.", "DO NOT PLAY", "Chanson 80", "01:00 (next day, Sun, Aug 15)"]) {
+    for (const expected of ["Gig overview", "1. Groom and his mother", "3. Bride and her father", "Same song as 1. Groom and his mother", "3. Chloé Gagnon et François Lévesque [klo-AY gah-NYON]", "Guest entry", "Grand entrance", "4. Les grands-parents", "DJ's choice", "5. Les témoins", "Music not decided yet", "Not happening: Other special dances", "Cue: After the main course", "Loading dock at the back, door 4.", "DO NOT PLAY", "Chanson 80", "01:00 (next day, Sun, Aug 15)"]) {
       expect(text).toContain(expected);
     }
     for (const bad of ["E2E INTERNAL NOTE", "E2E-PAYMENT-REF", "undefined", "null", "[object", tenant.ownerEmail, clientEmail]) expect(text).not.toContain(bad);

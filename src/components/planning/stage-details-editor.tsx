@@ -38,6 +38,8 @@ type Props = {
   itemId: string;
   stageKey: string;
   stageLabel: string;
+  /** The heading the details sit under (the plan's own label for them), so the checklist names the same thing. */
+  title?: string;
   editor: StageEditor;
   initialAnswers: StageAnswers;
   initialRevision: number;
@@ -60,6 +62,7 @@ export function StageDetailsEditor(props: Props) {
   const basics = plan?.basics ?? {};
   const readOnly = useEditingClosed(props.disabledReason);
   const entrance = useGrandEntrance();
+  const title = props.title ?? `${props.stageLabel} details`;
   const { form, update, saveState, message, fieldError, retry } = useAutosave<StageForm, StageAnswers>({
     initialForm: stageFormFromAnswers(props.editor, props.initialAnswers),
     initialAnswers: props.initialAnswers,
@@ -238,13 +241,13 @@ export function StageDetailsEditor(props: Props) {
 
   return (
     <div className="grid gap-4" data-testid={`details-${props.stageKey}`}>
-      <ItemChecklist itemId={props.itemId} title={`${props.stageLabel} details`} djName={props.djName} audience={props.audience} />
+      <ItemChecklist itemId={props.itemId} title={title} djName={props.djName} audience={props.audience} />
       <ItemWarnings itemId={props.itemId} />
       {props.disabledReason ? (
         <p role="status" className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm">{props.disabledReason}</p>
       ) : null}
       <fieldset disabled={readOnly} className="grid gap-4 sm:grid-cols-2">
-        <legend className="sr-only">{props.stageLabel} details</legend>
+        <legend className="sr-only">{title}</legend>
         {timeRuns(STAGE_LAYOUT[props.editor]).map((run, index) =>
           Array.isArray(run) ? (
             // A stage's times (arrival, start, end) side by side, wrapping on narrow screens.

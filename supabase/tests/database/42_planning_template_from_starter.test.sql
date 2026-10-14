@@ -3,7 +3,7 @@
 -- staff of the business only, and the installed starter untouched.
 begin;
 \ir _fixtures.psql
-select plan(14);
+select plan(16);
 
 create function tests.keys(p_template uuid, p_kind text) returns text[] language sql as $$
   select array_agg(i.key order by i.position) from public.planning_template_items i where i.template_id = p_template and i.kind = p_kind;
@@ -28,6 +28,12 @@ select is((select array_agg(i.key order by i.position) from public.planning_temp
   array['ceremony_details', 'pre_ceremony_music', 'processional', 'ceremony_signing', 'recessional'], 'moments sit under their stage, in order (no separate Couple entrance)');
 select is((select count(*)::int from public.planning_template_items where template_id = :'fr' and label <> (select l.default_label from private.planning_library() l where l.key = planning_template_items.key)),
   0, 'labels are the library defaults');
+select is((select array_agg(key || ':' || label order by key) from public.planning_template_items where template_id = :'fr' and key in ('ceremony_details', 'cocktail_details', 'dinner_details', 'closing_instructions')),
+  array['ceremony_details:Ceremony details', 'closing_instructions:Closing details', 'cocktail_details:Cocktail details', 'dinner_details:Dinner details'],
+  'each stage''s details are named "<stage> details" (same keys as before)');
+select is((select array_agg(i.key order by i.position) from public.planning_template_items i join public.planning_template_items p on p.id = i.parent_id
+           where i.template_id = :'fr' and p.key = 'reception_entrance'), array['mc', 'introductions'],
+  'the reception entrance holds MC and the grand entrance order only');
 select is((select version from public.planning_templates where id = :'installed'), :installed_version, 'the installed starter is untouched');
 
 select public.create_planning_template_from_starter(tests.id('tenant_a'), 'simple_party', 'Birthday', 'Small birthdays') as party \gset

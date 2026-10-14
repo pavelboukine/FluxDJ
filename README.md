@@ -707,8 +707,10 @@ on gig night:
   pronunciation and announcement wording, linked songs with cue labels,
   versions and start/fade notes, speeches and activities with their exact
   time or cue ("Cue: After the main course", never a made-up clock time),
-  durations and AV needs, and explicit choices ("DJ's choice", "Not
-  applicable", "No introductions") kept distinct from "Not answered yet".
+  durations and AV needs, and explicit choices ("DJ's choice", "No
+  introductions") kept distinct from "Not answered yet". A moment the client
+  said won't happen isn't a timeline row: its stage says "Not happening:
+  Cake cutting, …" once.
   The processional is numbered in walking order (also for people shown with
   a Couple entrance song); consecutive people sharing a song are one row, a
   song reused later says "Same song as 1. …" (a fact; how to play it is only
@@ -717,7 +719,7 @@ on gig night:
   reception shows guest entry and the grand entrance separately, and the
   grand entrance order numbered the same way. With no formal grand entrance
   it says so once, with no order, song warnings or entrance time; not
-  decided yet is shown as open, with nothing fabricated.
+  decided yet is shown as open, with nothing fabricated. Rows of one ordered list after the first read "(continued)".
 - **Music lists** collapsed by default so long playlists don't bury the
   cues; **Do not play** is linked from the top and open.
 
