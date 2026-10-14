@@ -52,6 +52,8 @@ const PURPOSE: Record<string, string> = {
   booking_confirmed: "Booking confirmation",
   staff_invitation: "Team invitation",
   staff_sign_in: "Team invitation sign-in link",
+  planning_invitation: "Planning invitation",
+  planning_sign_in: "Planning sign-in link",
 };
 
 /** Emails addressed to the business's own team rather than the client. */

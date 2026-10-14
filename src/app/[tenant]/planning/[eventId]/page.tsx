@@ -96,7 +96,8 @@ export default async function ClientPlanningPage({ params }: PageProps<"/[tenant
     return (
       <Notice title="Planning isn't available" email={email}>
         <p>
-          Planning opens once your booking is confirmed. If it was, this account may not have access to this event. See{" "}
+          Planning opens once your event is booked and your DJ has shared it with you. If that has happened, this account may not have
+          access to this event. See{" "}
           <Link className="underline" href="/my">your events</Link>.
         </p>
       </Notice>

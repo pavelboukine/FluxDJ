@@ -75,3 +75,22 @@ describe("upcoming and past", () => {
     expect(past.map((e) => e.id)).toEqual(["b", "d"]);
   });
 });
+
+describe("events booked elsewhere", () => {
+  const external = (over: Partial<HomeEvent>) => card({ bookingSource: "external", lifecycle: "lead", ...over });
+
+  it("invite the client to plan, with no proposal, contract or payment wording", () => {
+    const c = external({ plan: { editing: "open" } });
+    expect(c.status).toBe("Booked");
+    expect(c.note).toBe("Your event is booked. Let's plan the details.");
+    expect(c.primary).toEqual({ label: "Plan your event", href: "/dj/planning/e1", kind: "link" });
+    expect(JSON.stringify(c)).not.toMatch(/proposal|contract|deposit|pay/i);
+  });
+
+  it("read-only once editing closes; a waiting note before planning is shared", () => {
+    expect(external({ plan: { editing: "closed" } }).primary?.label).toBe("View planning");
+    const waiting = external({ plan: null });
+    expect(waiting.primary).toBeNull();
+    expect(JSON.stringify(waiting)).not.toMatch(/proposal|contract|deposit/i);
+  });
+});

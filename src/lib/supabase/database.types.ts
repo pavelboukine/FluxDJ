@@ -577,13 +577,13 @@ isOneToOne: false
                   ]
                 },"events": {
                   Row: {
-                    "active_proposal_id": string | null,"archived_at": string | null,"booking_confirmed_at": string | null,"created_at": string,"event_date": string,"event_type": string,"id": string,"internal_notes": string | null,"lifecycle_status": string,"planning_client_closed_at": string | null,"planning_lock_at": string | null,"planning_override_until": string | null,"tenant_id": string,"timezone": string,"title": string,"updated_at": string,"venue_address": string | null,"venue_name": string | null
+                    "active_proposal_id": string | null,"archived_at": string | null,"booking_confirmed_at": string | null,"booking_source": string,"created_at": string,"event_date": string,"event_type": string,"id": string,"internal_notes": string | null,"lifecycle_status": string,"planning_client_closed_at": string | null,"planning_lock_at": string | null,"planning_override_until": string | null,"tenant_id": string,"timezone": string,"title": string,"updated_at": string,"venue_address": string | null,"venue_name": string | null
                   }
                   Insert: {
-                    "active_proposal_id"?: string | null,"archived_at"?: string | null,"booking_confirmed_at"?: string | null,"created_at"?: string,"event_date": string,"event_type": string,"id"?: string,"internal_notes"?: string | null,"lifecycle_status"?: string,"planning_client_closed_at"?: string | null,"planning_lock_at"?: string | null,"planning_override_until"?: string | null,"tenant_id": string,"timezone"?: string,"title": string,"updated_at"?: string,"venue_address"?: string | null,"venue_name"?: string | null
+                    "active_proposal_id"?: string | null,"archived_at"?: string | null,"booking_confirmed_at"?: string | null,"booking_source"?: string,"created_at"?: string,"event_date": string,"event_type": string,"id"?: string,"internal_notes"?: string | null,"lifecycle_status"?: string,"planning_client_closed_at"?: string | null,"planning_lock_at"?: string | null,"planning_override_until"?: string | null,"tenant_id": string,"timezone"?: string,"title": string,"updated_at"?: string,"venue_address"?: string | null,"venue_name"?: string | null
                   }
                   Update: {
-                    "active_proposal_id"?: string | null,"archived_at"?: string | null,"booking_confirmed_at"?: string | null,"created_at"?: string,"event_date"?: string,"event_type"?: string,"id"?: string,"internal_notes"?: string | null,"lifecycle_status"?: string,"planning_client_closed_at"?: string | null,"planning_lock_at"?: string | null,"planning_override_until"?: string | null,"tenant_id"?: string,"timezone"?: string,"title"?: string,"updated_at"?: string,"venue_address"?: string | null,"venue_name"?: string | null
+                    "active_proposal_id"?: string | null,"archived_at"?: string | null,"booking_confirmed_at"?: string | null,"booking_source"?: string,"created_at"?: string,"event_date"?: string,"event_type"?: string,"id"?: string,"internal_notes"?: string | null,"lifecycle_status"?: string,"planning_client_closed_at"?: string | null,"planning_lock_at"?: string | null,"planning_override_until"?: string | null,"tenant_id"?: string,"timezone"?: string,"title"?: string,"updated_at"?: string,"venue_address"?: string | null,"venue_name"?: string | null
                   }
                   Relationships: [
                     {
@@ -788,6 +788,37 @@ isOneToOne: false
                   Relationships: [
                     {
       foreignKeyName: "packages_tenant_id_fkey"
+      columns: ["tenant_id"]
+isOneToOne: false
+      referencedRelation: "tenants"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"planning_invitations": {
+                  Row: {
+                    "accepted_at": string | null,"accepted_by": string | null,"client_id": string,"created_at": string,"email": string,"event_id": string,"expires_at": string,"id": string,"invited_by": string,"revoke_reason": string | null,"revoked_at": string | null,"revoked_by": string | null,"tenant_id": string,"token_hash": string,"updated_at": string
+                  }
+                  Insert: {
+                    "accepted_at"?: string | null,"accepted_by"?: string | null,"client_id": string,"created_at"?: string,"email": string,"event_id": string,"expires_at": string,"id": string,"invited_by": string,"revoke_reason"?: string | null,"revoked_at"?: string | null,"revoked_by"?: string | null,"tenant_id": string,"token_hash": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "accepted_at"?: string | null,"accepted_by"?: string | null,"client_id"?: string,"created_at"?: string,"email"?: string,"event_id"?: string,"expires_at"?: string,"id"?: string,"invited_by"?: string,"revoke_reason"?: string | null,"revoked_at"?: string | null,"revoked_by"?: string | null,"tenant_id"?: string,"token_hash"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "planning_invitations_client_fk"
+      columns: ["tenant_id","client_id"]
+isOneToOne: false
+      referencedRelation: "clients"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "planning_invitations_event_fk"
+      columns: ["tenant_id","event_id"]
+isOneToOne: false
+      referencedRelation: "events"
+      referencedColumns: ["tenant_id","id"]
+    },{
+      foreignKeyName: "planning_invitations_tenant_id_fkey"
       columns: ["tenant_id"]
 isOneToOne: false
       referencedRelation: "tenants"
@@ -1309,6 +1340,9 @@ isOneToOne: false
             "accept_contract_invitation":
 { Args: { "p_link_id": string,"p_tenant_slug": string }; Returns: Json
                            },
+"accept_planning_invitation":
+{ Args: { "p_invitation_id": string,"p_tenant_slug": string }; Returns: Json
+                           },
 "accept_platform_invitation":
 { Args: { "p_display_name": string,"p_invitation_id": string,"p_slug": string }; Returns: Json
                            },
@@ -1349,6 +1383,11 @@ isOneToOne: false
               "access_link_id": string,"attempts": number,"contract_deliverable": boolean,"contract_id": string,"entity_id": string,"event_type": string,"id": string,"link_token_hash": string,"link_usable": boolean,"payload": Json,"proposal_active": boolean,"recipient_email": string,"tenant_display_name": string,"tenant_id": string,"tenant_reply_to": string,"tenant_slug": string
             }[]
                            },
+"claim_planning_email_outbox":
+{ Args: { "p_invitation_id"?: string,"p_limit"?: number,"p_lock_seconds"?: number,"p_tenant_id"?: string }; Returns: {
+              "attempts": number,"deliverable": boolean,"event_type": string,"expires_at": string,"id": string,"invitation_id": string,"payload": Json,"recipient_email": string,"tenant_display_name": string,"tenant_id": string,"tenant_reply_to": string,"tenant_slug": string,"token_hash": string
+            }[]
+                           },
 "claim_platform_email_outbox":
 { Args: { "p_invitation_id"?: string,"p_limit"?: number,"p_lock_seconds"?: number }; Returns: {
               "attempts": number,"deliverable": boolean,"event_type": string,"id": string,"invitation_id": string,"link_id": string,"payload": Json,"recipient_email": string,"token_hash": string
@@ -1367,6 +1406,9 @@ isOneToOne: false
                            },
 "client_payment_summary":
 { Args: { "p_contract_id": string,"p_tenant_slug": string }; Returns: Json
+                           },
+"client_planning_invitation_status":
+{ Args: { "p_invitation_id": string,"p_tenant_slug": string }; Returns: Json
                            },
 "client_planning_view":
 { Args: { "p_event_id": string,"p_tenant_slug": string }; Returns: Json
@@ -1488,7 +1530,7 @@ isOneToOne: false
                            },
 "my_events":
 { Args: Record<PropertyKey, never>; Returns: {
-              "event_date": string,"event_id": string,"event_type": string,"lifecycle_status": string,"tenant_display_name": string,"tenant_slug": string,"timezone": string,"title": string,"venue_address": string,"venue_name": string
+              "booking_source": string,"event_date": string,"event_id": string,"event_type": string,"lifecycle_status": string,"tenant_display_name": string,"tenant_slug": string,"timezone": string,"title": string,"venue_address": string,"venue_name": string
             }[]
                            },
 "my_plans":
@@ -1575,6 +1617,9 @@ isOneToOne: false
 "request_contract_sign_in":
 { Args: { "p_tenant_slug": string,"p_token_hash": string }; Returns: Json
                            },
+"request_planning_sign_in":
+{ Args: { "p_tenant_slug": string,"p_token_hash": string }; Returns: Json
+                           },
 "request_platform_sign_in":
 { Args: { "p_token_hash": string }; Returns: Json
                            },
@@ -1610,6 +1655,9 @@ isOneToOne: false
                            },
 "send_contract":
 { Args: { "p_contract_id": string,"p_link_id": string,"p_token_hash": string }; Returns: Json
+                           },
+"send_planning_invitation":
+{ Args: { "p_event_id": string,"p_invitation_id": string,"p_token_hash": string }; Returns: Json
                            },
 "send_proposal":
 { Args: { "p_access_link_id": string,"p_expected_draft_version": number,"p_proposal_id": string,"p_token_hash": string }; Returns: Json

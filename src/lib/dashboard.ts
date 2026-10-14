@@ -20,6 +20,8 @@ const upcomingSchema = z.object({
   timezone: z.string(),
   venue_name: z.string().nullable(),
   lifecycle_status: z.string(),
+  // 20261115000100; absent from an older database (every event was a Flux booking then).
+  booking_source: z.string().optional(),
   client_name: z.string().nullable(),
   contract_signed: z.boolean(),
   // The records the shared event status reads (20261105000100); absent from an older database.
@@ -89,7 +91,7 @@ export function relativeDay(isoDate: string, timeZone: string, now: Date): strin
 // Upcoming events
 // ---------------------------------------------------------------------------
 
-export type UpcomingRow = UpcomingEvent & { href: string; date: string; relative: string | null; status: string; booked: boolean; venue: string };
+export type UpcomingRow = UpcomingEvent & { href: string; date: string; relative: string | null; status: string; booked: boolean; external: boolean; venue: string };
 
 export function upcomingRows(facts: DashboardFacts, slug: string): UpcomingRow[] {
   const now = new Date(facts.now);
@@ -104,11 +106,13 @@ export function upcomingRows(facts: DashboardFacts, slug: string): UpcomingRow[]
         ? eventStatusLabel(e.lifecycle_status, e.contract_signed)
         : eventDisplayStatus({
             lifecycle: e.lifecycle_status,
+            bookingSource: e.booking_source,
             proposalStatus: e.proposal_status ?? null,
             proposalDraft: e.proposal_draft,
             contractStatus: e.contract_status ?? (e.contract_signed ? "signed" : null),
           }),
     booked: e.lifecycle_status === "booked",
+    external: e.booking_source === "external",
     venue: e.venue_name ?? "Venue not set",
   }));
 }

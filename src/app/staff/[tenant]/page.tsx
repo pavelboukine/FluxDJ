@@ -196,7 +196,11 @@ export default async function Dashboard({ params, searchParams }: PageProps<"/st
                     <span className="sm:justify-self-end">
                       <Badge
                         variant="outline"
-                        className={cn("h-auto whitespace-normal", e.booked ? "border-emerald-600/40 bg-emerald-600/10 text-emerald-800 dark:text-emerald-300" : null)}
+                        className={cn(
+                          "h-auto whitespace-normal",
+                          e.booked ? "border-emerald-600/40 bg-emerald-600/10 text-emerald-800 dark:text-emerald-300" : null,
+                          e.external ? "border-sky-600/40 bg-sky-600/10 text-sky-900 dark:text-sky-200" : null,
+                        )}
                       >
                         {e.status}
                       </Badge>

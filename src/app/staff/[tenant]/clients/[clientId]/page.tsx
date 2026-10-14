@@ -23,7 +23,7 @@ const UPCOMING_LIMIT = 50;
 const HISTORY_PAGE = 10;
 
 const EVENT_COLUMNS =
-  "id, title, event_date, timezone, venue_name, lifecycle_status, archived_at, active_proposal_id, event_clients!inner(client_id, is_primary, can_sign), contracts(status), proposals!proposals_event_fk(id, status, expires_at)";
+  "id, title, event_date, timezone, venue_name, lifecycle_status, booking_source, archived_at, active_proposal_id, event_clients!inner(client_id, is_primary, can_sign), contracts(status), proposals!proposals_event_fk(id, status, expires_at)";
 
 /**
  * One client: a readable overview with Edit details, their events (upcoming
@@ -142,7 +142,7 @@ export default async function ClientPage({ params, searchParams }: PageProps<"/s
                   eventDate={e.event_date}
                   today={e.today}
                   details={<EventDetails role={e.role} venue={e.venue_name} />}
-                  status={e.lifecycle_status}
+                  status={e.booking_source === "external" ? "external" : e.lifecycle_status}
                   contractSigned={e.signed}
                   statusLabel={e.statusLabel}
                   archived={e.archived}
@@ -181,7 +181,7 @@ export default async function ClientPage({ params, searchParams }: PageProps<"/s
                   eventDate={e.event_date}
                   today={e.today}
                   details={<EventDetails role={e.role} venue={e.venue_name} />}
-                  status={e.lifecycle_status}
+                  status={e.booking_source === "external" ? "external" : e.lifecycle_status}
                   contractSigned={e.signed}
                   statusLabel={e.statusLabel}
                   archived={e.archived}
@@ -222,6 +222,7 @@ type EventRowData = {
   timezone: string;
   venue_name: string | null;
   lifecycle_status: string;
+  booking_source: string;
   archived_at: string | null;
   active_proposal_id: string | null;
   event_clients: { is_primary: boolean; can_sign: boolean }[];
@@ -243,9 +244,9 @@ function shape(rows: EventRowData[], now: Date) {
       today,
       archived,
       upcoming: isUpcomingEvent({ event_date: e.event_date, archived }, today),
-      role: contactRoleLabel(e.event_clients[0] ?? { is_primary: false, can_sign: false }),
+      role: contactRoleLabel(e.event_clients[0] ?? { is_primary: false, can_sign: false }, e.booking_source === "external"),
       signed: contractStatus === "signed",
-      statusLabel: eventDisplayStatus({ lifecycle: e.lifecycle_status, proposalStatus, proposalDraft: e.proposals.some((p) => p.status === "draft"), contractStatus }),
+      statusLabel: eventDisplayStatus({ lifecycle: e.lifecycle_status, bookingSource: e.booking_source, proposalStatus, proposalDraft: e.proposals.some((p) => p.status === "draft"), contractStatus }),
     };
   });
 }

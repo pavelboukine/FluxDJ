@@ -98,9 +98,9 @@ export default async function Events({ params, searchParams }: PageProps<"/staff
                 eventDate={e.event_date}
                 today={e.today}
                 details={<>{e.client_name ?? "No primary contact"} · <span className={e.venue_name ? undefined : "italic"}>{e.venue_name ?? "Venue not set"}</span> · {TYPE_LABEL[e.event_type] ?? e.event_type}</>}
-                status={e.lifecycle_status}
+                status={e.booking_source === "external" ? "external" : e.lifecycle_status}
                 contractSigned={e.contract_signed}
-                statusLabel={eventDisplayStatus({ lifecycle: e.lifecycle_status, proposalStatus: e.proposal_status, proposalDraft: e.proposal_draft, contractStatus: e.contract_status })}
+                statusLabel={eventDisplayStatus({ lifecycle: e.lifecycle_status, bookingSource: e.booking_source, proposalStatus: e.proposal_status, proposalDraft: e.proposal_draft, contractStatus: e.contract_status })}
                 archived={e.archived}
               />
             ))}

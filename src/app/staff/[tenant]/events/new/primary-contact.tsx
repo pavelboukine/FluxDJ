@@ -25,7 +25,7 @@ export function PrimaryContact({
   return (
     <div className="grid gap-4">
       <fieldset className="grid gap-2">
-        <legend className="mb-2 text-sm text-muted-foreground">Receives the proposal and signs the contract in later steps.</legend>
+        <legend className="mb-2 text-sm text-muted-foreground">Receives the proposal and signs the contract, or, for an event booked elsewhere, plans it with you.</legend>
         <div className="flex flex-wrap gap-2">
           <label className={option}>
             <input type="radio" name="contact_mode" value="existing" checked={mode === "existing"} onChange={() => setMode("existing")} className="size-4 accent-primary" />

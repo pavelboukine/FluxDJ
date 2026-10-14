@@ -54,7 +54,7 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
   const { supabase, tenant } = await requireStaff(slug);
   const { data: event } = await supabase
     .from("events")
-    .select("id, title, event_type, event_date, timezone, venue_name, venue_address, lifecycle_status, booking_confirmed_at, archived_at, event_clients(is_primary, clients(name, email, phone, archived_at))")
+    .select("id, title, event_type, event_date, timezone, venue_name, venue_address, lifecycle_status, booking_confirmed_at, booking_source, archived_at, event_clients(is_primary, clients(name, email, phone, archived_at))")
     .eq("id", eventId)
     .eq("tenant_id", tenant.id)
     .maybeSingle();
@@ -70,7 +70,9 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
   const templateOptions = (templates ?? []).map((t) => ({ value: t.id, label: t.name }));
   const archived = Boolean(event.archived_at);
   const lockedReason = archived ? "Unarchive the event to edit planning." : undefined;
-  const booked = Boolean(event.booking_confirmed_at) && (event.lifecycle_status === "booked" || event.lifecycle_status === "completed");
+  // Booked for planning, as the database decides it (private.event_booked_for_planning): by Flux, or affirmed as booked elsewhere.
+  const external = event.booking_source === "external";
+  const booked = external || (Boolean(event.booking_confirmed_at) && (event.lifecycle_status === "booked" || event.lifecycle_status === "completed"));
   const awaitingSetup = planAwaitingSetup(view);
   const base = `/staff/${slug}/events/${event.id}`;
   const clients = (event.event_clients ?? [])
@@ -116,10 +118,20 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
           <CardHeader>
             <CardTitle>Set up planning</CardTitle>
             <CardDescription>
-              Booking sets planning up automatically
-              {defaultTemplate ? ` from "${defaultTemplate.name}", the default for ${typeLabel} events` : `, with Event basics only (no template is the default for ${typeLabel} events)`}.
-              Set it up now to choose a template before the booking. The template is copied into this event then; later edits to the template
-              don&apos;t change this event&apos;s planning.
+              {external ? (
+                <>
+                  This event was booked outside Flux DJ. Choose a template to set up its planning; the client sees nothing until you invite them
+                  from the event page. The template is copied into this event; later edits to the template don&apos;t change this event&apos;s
+                  planning.
+                </>
+              ) : (
+                <>
+                  Booking sets planning up automatically
+                  {defaultTemplate ? ` from "${defaultTemplate.name}", the default for ${typeLabel} events` : `, with Event basics only (no template is the default for ${typeLabel} events)`}.
+                  Set it up now to choose a template before the booking. The template is copied into this event then; later edits to the template
+                  don&apos;t change this event&apos;s planning.
+                </>
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -254,7 +266,11 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
                     </ul>
                   ) : <p className="text-muted-foreground">No client on this event yet.</p>}
                   <p className="text-muted-foreground" data-testid="client-access">
-                    {booked
+                    {external
+                      ? archived
+                        ? "Booked externally, but archived: client planning is closed."
+                        : "Booked externally: the client opens planning after you invite them (Client access on the event page) and confirm their email."
+                      : booked
                       ? archived
                         ? "The event is booked, but archived: client planning is closed."
                         : awaitingSetup

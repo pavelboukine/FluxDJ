@@ -16,20 +16,25 @@ type Row = OutboxRow & { entity_type: string; entity_id: string };
 const EMAILS_LOADED = 100;
 
 /**
- * This event's emails: everything queued for its proposals and contracts
- * (client emails and the team's own notices), from the outbox under the
+ * This event's emails: everything queued for its proposals, contracts and
+ * planning invitations (client emails and the team's own notices), from the outbox under the
  * staff RLS policy, so other businesses' rows can't appear. Team and
  * platform invitations are never here. Newest first (ties in a fixed
  * order), at most EMAILS_LOADED of them, with the true total.
  */
-export async function loadCommunications(staff: StaffContext, proposalIds: string[], contractIds: string[]): Promise<{ rows: Row[]; total: number }> {
-  const ids = [...proposalIds, ...contractIds];
+export async function loadCommunications(
+  staff: StaffContext,
+  proposalIds: string[],
+  contractIds: string[],
+  planningInvitationIds: string[] = [],
+): Promise<{ rows: Row[]; total: number }> {
+  const ids = [...proposalIds, ...contractIds, ...planningInvitationIds];
   if (ids.length === 0) return { rows: [], total: 0 };
   const { data, count, error } = await staff.supabase
     .from("email_outbox")
     .select("id, event_type, recipient_email, status, attempts, max_attempts, last_error, next_attempt_at, sent_at, created_at, provider_status, provider_status_at, provider_detail, payload, entity_type, entity_id", { count: "exact" })
     .eq("tenant_id", staff.tenant.id)
-    .in("entity_type", ["proposal", "contract"])
+    .in("entity_type", ["proposal", "contract", "planning_invitation"])
     .in("entity_id", ids)
     .order("created_at", { ascending: false })
     .order("id", { ascending: false })
@@ -77,7 +82,7 @@ export function CommunicationsCard({ slug, data, timeZone }: { slug: string; dat
           </p>
         ) : null}
         {items.length === 0 ? (
-          <p className="text-muted-foreground" data-testid="communications-empty">No emails for this event yet. They appear here once a proposal or contract is sent.</p>
+          <p className="text-muted-foreground" data-testid="communications-empty">No emails for this event yet. They appear here once a proposal, contract or planning invitation is sent.</p>
         ) : (
           <EmailHistoryList
             note={total > rows.length ? `Showing the latest ${rows.length} of ${total} emails.` : null}

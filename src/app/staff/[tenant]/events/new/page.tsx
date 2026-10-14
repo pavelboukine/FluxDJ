@@ -8,6 +8,7 @@ import { UUID_RE } from "@/lib/forms";
 import { searchClients } from "../../clients/actions";
 import { createEvent } from "../actions";
 import { EventFields } from "../event-fields";
+import { BookingSourceField } from "./booking-source";
 import { PrimaryContact } from "./primary-contact";
 
 /**
@@ -31,10 +32,11 @@ export default async function NewEvent({ params, searchParams }: PageProps<"/sta
   return (
     <>
       <SetupReturn slug={slug} from={from} />
-      <PageHeader title="New event" description="Find or add the client, enter what you know about the event, then start a proposal." />
+      <PageHeader title="New event" description="Find or add the client and enter what you know about the event. Then start a proposal, or, for an event booked elsewhere, set up its planning." />
       <Card>
         <CardContent>
           <ActionForm action={createEvent.bind(null, slug)} submitLabel="Create event" pendingLabel="Creating…">
+            <BookingSourceField />
             <Card className="bg-muted/30">
               <CardHeader><CardTitle className="text-base">Primary contact</CardTitle></CardHeader>
               <CardContent>
@@ -42,7 +44,7 @@ export default async function NewEvent({ params, searchParams }: PageProps<"/sta
               </CardContent>
             </Card>
             <EventFields defaultTimezone={tenant.timezone} />
-            <p className="text-xs text-muted-foreground">Only the title and date are needed now. Venue details can be added later from the event page.</p>
+            <p className="text-xs text-muted-foreground">Only the title and date are needed now. Venue details can be added later from the event page. For an event booked elsewhere, internal notes are a good place for the agency or booking reference.</p>
           </ActionForm>
         </CardContent>
       </Card>

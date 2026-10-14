@@ -3,6 +3,7 @@ import { formatCents } from "@/lib/money";
 import { shortDate, shortInstant } from "@/lib/dates";
 import type { StaffEditing } from "@/lib/planning/cutoff";
 import { progressSummaryLine, type PlanProgress } from "@/lib/planning/view";
+import { BOOKED_EXTERNALLY, BOOKED_EXTERNALLY_DETAIL } from "./status";
 
 /**
  * The staff event workspace: what to do next and one-line summaries, decided
@@ -11,10 +12,33 @@ import { progressSummaryLine, type PlanProgress } from "@/lib/planning/view";
  * label alone. Every action is a link to the existing screen or section
  * where the database still checks eligibility and asks for confirmation;
  * nothing here performs an action.
+ *
+ * An event booked elsewhere (bookingSource "external") follows the planning
+ * workflow only: set up planning, invite the client, follow their answers,
+ * run sheet. It never shows proposal, contract, signature or deposit steps.
  */
 
 export type ProposalRecord = { id: string; revision: number; status: string; expires_at: string | null };
 export type ContractRecord = { id: string; status: string; signing_mode: string; created_at: string; signed_at: string | null; label: string };
+
+/**
+ * Client access to an event booked elsewhere: the latest planning invitation
+ * (null when none was sent) and whether a client has verified, active access.
+ * Having a client record alone never counts as invited.
+ */
+export type PlanningAccess = {
+  invitation: {
+    id: string;
+    email: string;
+    createdAt: string;
+    expiresAt: string;
+    revoked: boolean;
+    accepted: boolean;
+    /** The primary contact, or their email, changed since it was sent: it no longer works (the database checks the same). */
+    stale?: boolean;
+  } | null;
+  clientHasAccess: boolean;
+};
 
 export type WorkspaceFacts = {
   slug: string;
@@ -22,6 +46,10 @@ export type WorkspaceFacts = {
   now: Date;
   archived: boolean;
   lifecycle: string;
+  /** events.booking_source: "flux" (default) or "external" (booked elsewhere; planning only). */
+  bookingSource?: string;
+  /** Only read for events booked elsewhere. */
+  planningAccess?: PlanningAccess | null;
   proposals: ProposalRecord[];
   activeProposalId: string | null;
   /** The active proposal is approved and its approval is current (contracts are generated from it). */
@@ -107,7 +135,10 @@ export function nextAction(f: WorkspaceFacts): NextAction {
       ...blank,
       key: "archived",
       title: "Paused until you unarchive it",
-      detail: "Client links are revoked, and proposals, contracts and payments are paused. Its history stays available below.",
+      detail:
+        f.bookingSource === "external"
+          ? "Client planning is paused and an unaccepted invitation is cancelled. Its history stays available below."
+          : "Client links are revoked, and proposals, contracts and payments are paused. Its history stays available below.",
       primary: null,
       secondary: { label: "Unarchive", href: "#manage" },
     };
@@ -122,6 +153,8 @@ export function nextAction(f: WorkspaceFacts): NextAction {
       secondary: f.planning.exists ? runSheet : null,
     };
   }
+
+  if (f.bookingSource === "external") return externalNextAction(f, { planningHref, runSheet, blank, undelivered });
 
   if (signed) {
     if (f.lifecycle === "booked") {
@@ -269,9 +302,91 @@ export function nextAction(f: WorkspaceFacts): NextAction {
   };
 }
 
+/** An invitation that still works: not replaced or revoked, not expired. */
+export const invitationOpen = (i: PlanningAccess["invitation"], now: Date) => Boolean(i && !i.revoked && !i.stale && new Date(i.expiresAt) > now);
+
+/** The planning workflow for an event booked elsewhere (no proposal, contract or payment steps). */
+function externalNextAction(
+  f: WorkspaceFacts,
+  h: { planningHref: string; runSheet: Link; blank: Pick<NextAction, "secondary" | "waiting" | "blockers" | "warning">; undelivered: (entityId: string, types: string[]) => Blocker | null },
+): NextAction {
+  const { planningHref, runSheet, blank } = h;
+  const review: Link = { label: "Review planning", href: planningHref };
+  if (!f.planning.exists || f.planning.awaitingSetup) {
+    return {
+      ...blank,
+      key: "set_up_planning",
+      title: "Set up planning",
+      detail: "This event was booked outside Flux DJ. Choose a planning template; the client sees nothing until you invite them.",
+      primary: { label: "Set up planning", href: planningHref },
+    };
+  }
+  const access = f.planningAccess ?? { invitation: null, clientHasAccess: false };
+  const progress = f.planning.progress;
+  const complete = Boolean(progress && progress.requirements_total > 0 && progress.requirements_met >= progress.requirements_total);
+  if (access.clientHasAccess) {
+    return complete
+      ? { ...blank, key: "planning_complete", title: "Planning complete", detail: "Every required answer is in. Review the answers and the run sheet.", primary: review, secondary: runSheet }
+      : {
+          ...blank,
+          key: "monitor_planning",
+          title: "Follow the client's planning",
+          detail: planningLine(f.planning) ?? "The client can open planning.",
+          primary: review,
+          secondary: runSheet,
+        };
+  }
+  const contactBlockers: Blocker[] =
+    !f.primaryContact || f.primaryContact.archived
+      ? [{ text: f.primaryContact ? "The primary contact is archived; inviting needs an active one." : "Add a primary contact to invite.", link: { label: "Contacts", href: "#contacts" } }]
+      : [];
+  const invitation = access.invitation;
+  if (invitation && invitationOpen(invitation, f.now)) {
+    return {
+      ...blank,
+      key: "awaiting_planning_acceptance",
+      title: "Waiting for the client to open planning",
+      detail: `A planning invitation was sent to ${invitation.email}. They haven't confirmed their email yet.`,
+      primary: null,
+      secondary: { label: "Client access", href: "#client-access" },
+      waiting: true,
+      warning: h.undelivered(invitation.id, ["planning_invitation", "planning_sign_in"]),
+    };
+  }
+  return {
+    ...blank,
+    key: "invite_client",
+    title: invitation ? "Invite the client again" : "Invite the client",
+    detail: invitation
+      ? invitation.stale
+        ? "The primary contact or their email changed since the last invitation, so it no longer works. Send a new one when you're ready."
+        : "The last planning invitation expired or was replaced. Send a new one when you're ready."
+      : "Planning is set up. Review it, then invite the client to plan online. Nothing has been sent yet.",
+    primary: contactBlockers.length > 0 ? null : { label: "Invite client", href: "#client-access" },
+    secondary: review,
+    blockers: contactBlockers,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Overview summaries
 // ---------------------------------------------------------------------------
+
+/** The booking tile of an event booked elsewhere (replaces the proposal tile). */
+export function bookingSummary(): Summary {
+  return { status: BOOKED_EXTERNALLY, detail: BOOKED_EXTERNALLY_DETAIL, link: { label: "Details", href: "#details" } };
+}
+
+/** The client access tile of an event booked elsewhere (replaces the contract tile). */
+export function clientAccessSummary(f: WorkspaceFacts, fmt: (iso: string) => string): Summary {
+  const access = f.planningAccess ?? { invitation: null, clientHasAccess: false };
+  const link: Link = { label: "Details", href: "#client-access" };
+  if (access.clientHasAccess) return { status: "Client has access", detail: "Verified and able to open planning.", link };
+  const i = access.invitation;
+  if (i && invitationOpen(i, f.now)) return { status: "Invited", detail: `Sent ${fmt(i.createdAt)} to ${i.email}; not opened yet.`, link };
+  if (i) return { status: i.stale ? "Invitation outdated" : "Invitation expired", detail: "Send a new invitation.", link, attention: !f.archived };
+  return { status: "Not invited", detail: f.planning.exists && !f.planning.awaitingSetup ? "Invite the client when planning is ready." : "Set up planning first.", link };
+}
 
 export type Summary = { status: string; detail: string | null; link: Link; attention?: boolean };
 
@@ -374,7 +489,8 @@ export function planningLine(p: WorkspaceFacts["planning"]): string | null {
 export function planningSummary(f: WorkspaceFacts): Summary {
   const event = `/staff/${f.slug}/events/${f.eventId}`;
   if (!f.planning.exists) {
-    return { status: "Not set up", detail: f.lifecycle === "booked" ? "Set it up from the planning page." : "Set up automatically when the event is booked.", link: { label: "Details", href: "#planning" } };
+    const detail = f.bookingSource === "external" || f.lifecycle === "booked" ? "Set it up from the planning page." : "Set up automatically when the event is booked.";
+    return { status: "Not set up", detail, link: { label: "Details", href: "#planning" } };
   }
   if (f.planning.awaitingSetup) {
     return { status: "Not set up", detail: "Event basics only: choose a planning template.", link: { label: "Set up", href: `${event}/planning` } };

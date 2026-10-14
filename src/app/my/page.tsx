@@ -79,6 +79,7 @@ export default async function MyEvents() {
     timezone: e.timezone,
     venueName: e.venue_name || null,
     lifecycle: e.lifecycle_status,
+    bookingSource: e.booking_source,
     contract: contractByEvent.get(e.event_id)?.contract ?? null,
     payments: contractByEvent.get(e.event_id)?.payments ?? null,
     plan: planByEvent.get(e.event_id) ?? null,

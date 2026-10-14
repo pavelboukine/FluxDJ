@@ -13,7 +13,14 @@ export async function loadPlanning(staff: StaffContext, eventId: string) {
 }
 
 /** Where the event's planning stands, with links to it and the run sheet. Staff only. */
-export function PlanningCard({ slug, eventId, view, archived }: { slug: string; eventId: string; view: Awaited<ReturnType<typeof loadPlanning>>; archived: boolean }) {
+export function PlanningCard({ slug, eventId, view, archived, external = false }: {
+  slug: string;
+  eventId: string;
+  view: Awaited<ReturnType<typeof loadPlanning>>;
+  archived: boolean;
+  /** Booked elsewhere: staff set planning up themselves; nothing is set up by a booking. */
+  external?: boolean;
+}) {
   if (!view) return null;
   const base = `/staff/${slug}/events/${eventId}`;
   const awaitingSetup = planAwaitingSetup(view);
@@ -23,7 +30,9 @@ export function PlanningCard({ slug, eventId, view, archived }: { slug: string; 
         <CardTitle>Planning</CardTitle>
         <CardDescription>
           {view.plan === null
-            ? "Not set up yet. Booking sets it up automatically; you can also set it up now and choose a template."
+            ? external
+              ? "Not set up yet. Set it up and choose a template to start planning with the client."
+              : "Not set up yet. Booking sets it up automatically; you can also set it up now and choose a template."
             : awaitingSetup
               ? "Not set up: booked with Event basics only. Choose a planning template; the client can't edit planning until you do."
               : view.plan.origin === "template"

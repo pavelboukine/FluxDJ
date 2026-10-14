@@ -26,7 +26,7 @@ export async function loadRunSheet(supabase: SupabaseClient<Database>, tenant: {
   const [{ data: event }, { data: brand }] = await Promise.all([
     supabase
       .from("events")
-      .select("title, event_type, event_date, timezone, venue_name, venue_address, archived_at, booking_confirmed_at, lifecycle_status")
+      .select("title, event_type, event_date, timezone, venue_name, venue_address, archived_at, booking_confirmed_at, lifecycle_status, booking_source")
       .eq("id", eventId)
       .eq("tenant_id", tenant.id)
       .maybeSingle(),

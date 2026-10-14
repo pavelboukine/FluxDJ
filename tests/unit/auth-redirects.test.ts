@@ -5,7 +5,7 @@ const UUID = "0b9c7f3e-1a2b-4c3d-8e9f-0a1b2c3d4e5f";
 
 describe("sign-in destinations", () => {
   it("allows only same-site app pages, including a client's contract and planning pages", () => {
-    for (const ok of ["/staff", "/staff/bouprod", "/staff/bouprod/events/new", "/my", `/bouprod/contracts/${UUID}`, `/bouprod/planning/${UUID}`, `/join/${UUID}`]) {
+    for (const ok of ["/staff", "/staff/bouprod", "/staff/bouprod/events/new", "/my", `/bouprod/contracts/${UUID}`, `/bouprod/planning/${UUID}`, `/bouprod/planning-invitations/${UUID}`, `/join/${UUID}`]) {
       expect(allowedNext(ok)).toBe(ok);
     }
     for (const bad of [
@@ -15,6 +15,8 @@ describe("sign-in destinations", () => {
       "/my?x=1",
       `/bouprod/planning/${UUID}/../../staff`,
       `/bouprod/planning/not-a-uuid`,
+      `/bouprod/planning-invitations/not-a-uuid`,
+      `/bouprod/planning-invite`,
       "/%2F%2Fevil.example",
       "javascript:alert(1)",
       "",

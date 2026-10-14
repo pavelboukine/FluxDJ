@@ -428,3 +428,56 @@ export function renderStaffSignInEmail(input: Branding & { tenantDisplayName: st
     footer: [`Sent by ${input.tenantDisplayName} with Flux DJ.`],
   });
 }
+
+/**
+ * Planning invitation for an event booked outside Flux DJ (outbox event
+ * "planning_invitation"). It says the event is booked and planning is ready;
+ * it never mentions a proposal, contract, deposit or payment, and never
+ * suggests Flux DJ took the booking. The link only lets the invited address
+ * ask for a verification email.
+ */
+export function renderPlanningInvitationEmail(
+  input: Branding & { tenantDisplayName: string; clientName: string; eventTitle: string; eventDate: string | null; invitationLink: string; expiresAt: string | null },
+): RenderedEmail {
+  const dj = input.tenantDisplayName;
+  const expires = formatDate(input.expiresAt);
+  return render(`Plan your event with ${dj}: ${input.eventTitle}`, {
+    brand: brandOf(input, dj),
+    preheader: `Your event is booked. Let's plan the details of ${input.eventTitle}.`,
+    heading: "Let's plan your event",
+    greeting: `Hi ${input.clientName},`,
+    paragraphs: [
+      `Your event is booked. ${dj} uses Flux DJ to plan the details with you: timing, music, people and vendors.`,
+      "To keep your planning private, you'll confirm your email address before you open it. No password is needed.",
+    ],
+    details: [
+      ["Event", input.eventTitle],
+      ["Date", input.eventDate ? formatDay(input.eventDate) : null],
+    ],
+    action: { label: "Start planning", href: input.invitationLink },
+    notes: [
+      expires ? `This invitation link works until ${expires}. Please don't forward it.` : "Please don't forward this link.",
+      input.canReply ? "Questions? Reply to this email." : "",
+    ].filter(Boolean),
+    footer: clientFooter(dj, input.canReply),
+  });
+}
+
+/**
+ * Verification for a planning invitation (outbox event "planning_sign_in").
+ * The Supabase link is generated at delivery time and never stored; it opens
+ * the explicit "Sign in" confirmation page, so scanners cannot use it.
+ */
+export function renderPlanningSignInEmail(input: Branding & { tenantDisplayName: string; clientName: string; eventTitle: string; verificationLink: string }): RenderedEmail {
+  const dj = input.tenantDisplayName;
+  return render(`Confirm your email to plan your event with ${dj}`, {
+    brand: brandOf(input, dj),
+    preheader: "Confirm your email address to open your event planning.",
+    heading: "Confirm it's you",
+    greeting: `Hi ${input.clientName},`,
+    paragraphs: [`Use this link to confirm your email address and open the planning for ${input.eventTitle} with ${dj}.`],
+    action: { label: "Confirm and continue", href: input.verificationLink },
+    notes: ["It works once and expires in one hour. You can open it on any device. If you didn't ask for it, you can ignore this email."],
+    footer: clientFooter(dj, input.canReply),
+  });
+}

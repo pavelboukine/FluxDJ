@@ -2,7 +2,7 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { publicEnv } from "@/lib/env";
 import { serverEnv } from "@/lib/env.server";
-import { contractInviteToken, platformInviteToken, proposalLinkToken, sha256Hex, staffInviteToken } from "@/lib/proposals/tokens.server";
+import { contractInviteToken, planningInviteToken, platformInviteToken, proposalLinkToken, sha256Hex, staffInviteToken } from "@/lib/proposals/tokens.server";
 import { IntegrityError, readVerifiedDocument } from "@/lib/contracts/documents.server";
 import { formatSignedAt, signedPdfFileName } from "@/lib/contracts/pdf/data";
 import { configuredTransport, type EmailAttachment, type EmailTransport } from "./transport.server";
@@ -15,6 +15,8 @@ import {
   renderBookingConfirmedEmail,
   renderPlatformInvitationEmail,
   renderPlatformSignInEmail,
+  renderPlanningInvitationEmail,
+  renderPlanningSignInEmail,
   renderSignedCopyEmail,
   renderStaffInvitationEmail,
   renderStaffSignInEmail,
@@ -56,8 +58,9 @@ export type OutboxRunResult = { claimed: number; sent: number; failed: number; c
  * the row's frozen values (payload, frozen sender) and the canonical PDF, so
  * a retry is the same request even if Business settings changed meanwhile.
  *
- * DJ invitations (platform emails, no tenant) and staff invitations are
- * claimed separately; see deliverPlatformEmails and deliverStaffEmails.
+ * DJ invitations (platform emails, no tenant), staff invitations and
+ * planning invitations (events booked elsewhere) are claimed separately; see
+ * deliverPlatformEmails, deliverStaffEmails and deliverPlanningEmails.
  * `tenantId` limits a run to one business's emails, `platformInvitationId`
  * and `staffInvitationId` to one invitation's.
  */
@@ -76,6 +79,7 @@ export async function processOutbox(
   if (options.platformInvitationId) return result;
   await deliverStaffEmails(admin, transport, appUrl, fromAddress, result, options, logos);
   if (options.staffInvitationId) return result;
+  await deliverPlanningEmails(admin, transport, appUrl, fromAddress, result, options, logos);
 
   const { data: rows, error } = await admin.rpc("claim_email_outbox", {
     p_limit: options.limit ?? 20,
@@ -572,6 +576,106 @@ async function deliverStaffEmails(
         fromAddress,
         to: row.recipient_email,
         replyTo: branding.replyTo === undefined ? row.tenant_reply_to : branding.replyTo,
+        ...email,
+        attachments: inline(branding.attachments),
+        idempotencyKey,
+      });
+      await admin.rpc("complete_email_outbox", { p_id: row.id, p_provider_message_id: sent.id });
+      result.sent += 1;
+    } catch (cause) {
+      // Error text must never include the link: transports report status codes only.
+      const message = cause instanceof Error ? cause.message.slice(0, 300) : "Unknown delivery error";
+      await admin.rpc("fail_email_outbox", { p_id: row.id, p_error: message, p_permanent: false });
+      result.failed += 1;
+    }
+  }
+}
+
+/**
+ * Planning invitations for events booked outside Flux DJ, sent as
+ * "{business} via Flux DJ" with the business's reply-to. Rechecked at claim
+ * time (the invitation is still open and unexpired, the event booked
+ * elsewhere and not archived, the client still on it, the row addressed to
+ * the invitation's address) and again right before sending (suspension).
+ * "planning_invitation" rebuilds the link from the invitation id, with a
+ * provider idempotency key; "planning_sign_in" asks Supabase Auth for a fresh
+ * verification link now, returning to /{business}/planning-invitations/{id};
+ * no Auth token is stored.
+ */
+async function deliverPlanningEmails(
+  admin: ReturnType<typeof createAdminClient>,
+  transport: EmailTransport,
+  appUrl: string,
+  fromAddress: string,
+  result: OutboxRunResult,
+  options: { tenantId?: string; limit?: number },
+  logos: LogoCache,
+) {
+  const { data: rows, error } = await admin.rpc("claim_planning_email_outbox", {
+    p_limit: options.limit ?? 20,
+    p_lock_seconds: 120,
+    p_tenant_id: options.tenantId,
+  });
+  // Before migration 20261115000100 there is nothing to claim; other emails still go out.
+  if (error) return;
+
+  for (const row of rows ?? []) {
+    result.claimed += 1;
+    try {
+      if (!row.deliverable || !row.invitation_id) {
+        await admin.rpc("cancel_email_outbox", {
+          p_id: row.id,
+          p_reason: "The invitation was replaced, revoked or expired, or the event was archived, before delivery.",
+        });
+        result.cancelled += 1;
+        continue;
+      }
+      const payload = (row.payload ?? {}) as Record<string, unknown>;
+      const branding = await emailBranding(admin, row, row.tenant_display_name, logos);
+      const replyTo = branding.replyTo === undefined ? row.tenant_reply_to : branding.replyTo;
+      let email: RenderedEmail;
+      let idempotencyKey: string | undefined;
+      if (row.event_type === "planning_invitation") {
+        const token = planningInviteToken(row.invitation_id);
+        if (sha256Hex(token) !== row.token_hash) {
+          await admin.rpc("fail_email_outbox", {
+            p_id: row.id,
+            p_error: "The link secret changed after this invitation was created. Send a new invitation to issue a new link.",
+            p_permanent: true,
+          });
+          result.failed += 1;
+          continue;
+        }
+        email = renderPlanningInvitationEmail({
+          brand: branding.brand,
+          canReply: Boolean(replyTo),
+          tenantDisplayName: row.tenant_display_name,
+          clientName: str(payload.client_name) || "there",
+          eventTitle: str(payload.event_title) || "your event",
+          eventDate: str(payload.event_date) || null,
+          invitationLink: `${appUrl}/${row.tenant_slug}/planning-invite#${token}`,
+          expiresAt: row.expires_at,
+        });
+        idempotencyKey = `flux-planning-invite-${row.id}`;
+      } else {
+        email = renderPlanningSignInEmail({
+          brand: branding.brand,
+          canReply: Boolean(replyTo),
+          tenantDisplayName: row.tenant_display_name,
+          clientName: str(payload.client_name) || "there",
+          eventTitle: str(payload.event_title) || "your event",
+          verificationLink: await verificationLink(admin, row.recipient_email, appUrl, `/${row.tenant_slug}/planning-invitations/${row.invitation_id}`),
+        });
+      }
+      if (!(await dispatchAllowed(admin, row.id))) {
+        result.cancelled += 1;
+        continue;
+      }
+      const sent = await transport.send({
+        fromName: `${row.tenant_display_name} via Flux DJ`,
+        fromAddress,
+        to: row.recipient_email,
+        replyTo,
         ...email,
         attachments: inline(branding.attachments),
         idempotencyKey,

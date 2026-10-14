@@ -8,7 +8,8 @@ import { formatCents } from "@/lib/money";
  * Everything comes from client views that already decide access and status
  * in the database:
  *  - my_events: events with verified, unrevoked access (never archived or
- *    suspended), with their lifecycle status;
+ *    suspended), with their lifecycle status and booking source (an event
+ *    booked outside Flux DJ has no proposal, contract or payment here);
  *  - my_contracts + client_contract_view: a contract, only for its intended
  *    signer;
  *  - client_payment_summary: the signer's booking status and payment figures;
@@ -43,6 +44,8 @@ export type HomeEvent = {
   timezone: string;
   venueName: string | null;
   lifecycle: string;
+  /** "external": booked outside Flux DJ, planning only. Absent (older database) or "flux": a Flux booking. */
+  bookingSource?: string | null;
   /** Present only when this user is the contract's signer (only signers can read contracts). */
   contract: HomeContract | null;
   payments: HomePayments | null;
@@ -92,6 +95,21 @@ export function homeCard(e: HomeEvent): HomeCard {
           primary: { label: "Read contract", href: contractHref!, kind: "link" },
           secondary: [],
         };
+  }
+
+  // Booked outside Flux DJ: nothing to sign or pay here, only planning.
+  if (e.bookingSource === "external") {
+    return {
+      status: "Booked",
+      tone: planAction && e.plan?.editing !== "closed" ? "action" : "done",
+      note: planAction
+        ? e.plan?.editing === "closed"
+          ? "Planning is closed for changes. You can still read it."
+          : "Your event is booked. Let's plan the details."
+        : `${dj} will share your event planning when it's ready.`,
+      primary: planAction,
+      secondary: [],
+    };
   }
 
   switch (e.lifecycle) {

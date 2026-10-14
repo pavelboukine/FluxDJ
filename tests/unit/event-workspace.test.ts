@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contractChanges, contractSummary, nextAction, paymentOverview, planningLine, planningSummary, proposalSummary, type ContractRecord, type WorkspaceFacts } from "@/lib/events/workspace";
+import { bookingSummary, clientAccessSummary, contractChanges, contractSummary, nextAction, paymentOverview, planningLine, planningSummary, proposalSummary, type ContractRecord, type WorkspaceFacts } from "@/lib/events/workspace";
 import type { PaymentSummary } from "@/lib/payments";
 
 const NOW = new Date("2026-10-07T16:00:00Z");
@@ -273,5 +273,56 @@ describe("details edited after a contract froze them", () => {
     expect(sent).toMatchObject({ key: "awaiting_signature", waiting: true });
     expect(sent.detail).toMatch(/venue changed after the contract was sent; the contract keeps the earlier details/);
     expect(nextAction(facts({ lifecycle: "awaiting_signature", approvalId: "ap", contracts: [contract("c1", "draft")] })).key).toBe("review_contract");
+  });
+});
+
+describe("events booked elsewhere", () => {
+  const ready = { exists: true, awaitingSetup: false, progress, editing: editing("open") };
+  const invitation = (over: Partial<NonNullable<NonNullable<WorkspaceFacts["planningAccess"]>["invitation"]>> = {}) => ({
+    id: "inv1", email: "noam@example.test", createdAt: "2026-10-06T16:00:00Z", expiresAt: "2026-10-20T16:00:00Z", revoked: false, accepted: false, ...over,
+  });
+  const ext = (over: Partial<WorkspaceFacts> = {}) => facts({ bookingSource: "external", planningAccess: { invitation: null, clientHasAccess: false }, ...over });
+  const keys = (f: WorkspaceFacts) => JSON.stringify(nextAction(f));
+
+  it("follow the planning workflow: set up, invite, wait, follow, complete", () => {
+    expect(pick(ext())).toEqual({ key: "set_up_planning", primary: "/staff/dj/events/ev/planning", secondary: null, waiting: false });
+    expect(pick(ext({ planning: { exists: true, awaitingSetup: true, progress, editing: editing("open") } })).key).toBe("set_up_planning");
+    expect(pick(ext({ planning: ready }))).toEqual({ key: "invite_client", primary: "#client-access", secondary: "/staff/dj/events/ev/planning", waiting: false });
+    expect(pick(ext({ planning: ready, planningAccess: { invitation: invitation(), clientHasAccess: false } }))).toEqual({
+      key: "awaiting_planning_acceptance", primary: null, secondary: "#client-access", waiting: true,
+    });
+    expect(pick(ext({ planning: ready, planningAccess: { invitation: invitation(), clientHasAccess: true } })).key).toBe("monitor_planning");
+    const done = { ...progress, requirements_met: progress.requirements_total };
+    expect(pick(ext({ planning: { ...ready, progress: done }, planningAccess: { invitation: invitation({ accepted: true }), clientHasAccess: true } }))).toEqual({
+      key: "planning_complete", primary: "/staff/dj/events/ev/planning", secondary: "/staff/dj/events/ev/run-sheet", waiting: false,
+    });
+  });
+
+  it("never claim an invitation from a client record alone; expired or replaced invitations ask again", () => {
+    expect(nextAction(ext({ planning: ready })).title).toBe("Invite the client");
+    expect(nextAction(ext({ planning: ready, planningAccess: { invitation: invitation({ expiresAt: "2026-10-01T00:00:00Z" }), clientHasAccess: false } })).title).toBe("Invite the client again");
+    expect(nextAction(ext({ planning: ready, planningAccess: { invitation: invitation({ revoked: true }), clientHasAccess: false } })).key).toBe("invite_client");
+    expect(nextAction(ext({ planning: ready, primaryContact: null })).primary).toBeNull();
+    // The primary contact or their email changed since sending: the database no longer accepts it, so neither does the page.
+    const stale = ext({ planning: ready, planningAccess: { invitation: invitation({ stale: true }), clientHasAccess: false } });
+    expect(nextAction(stale).key).toBe("invite_client");
+    expect(nextAction(stale).detail).toMatch(/primary contact or their email changed/);
+    expect(clientAccessSummary(stale, (iso) => iso).status).toBe("Invitation outdated");
+  });
+
+  it("never show proposal, contract, signature or deposit steps, even with a lead lifecycle", () => {
+    for (const f of [ext(), ext({ planning: ready }), ext({ planning: ready, planningAccess: { invitation: invitation(), clientHasAccess: true } })]) {
+      expect(keys(f)).not.toMatch(/proposal|contract|deposit|sign the|record payment/i);
+    }
+    expect(nextAction(ext({ archived: true })).detail).not.toMatch(/proposal|contract/i);
+  });
+
+  it("summaries say booked externally and who can open planning", () => {
+    const fmt = (iso: string) => iso.slice(0, 10);
+    expect(bookingSummary().status).toBe("Booked externally");
+    expect(clientAccessSummary(ext({ planning: ready }), fmt).status).toBe("Not invited");
+    expect(clientAccessSummary(ext({ planning: ready, planningAccess: { invitation: invitation(), clientHasAccess: false } }), fmt).status).toBe("Invited");
+    expect(clientAccessSummary(ext({ planning: ready, planningAccess: { invitation: invitation(), clientHasAccess: true } }), fmt).status).toBe("Client has access");
+    expect(planningSummary(ext()).detail).toBe("Set it up from the planning page.");
   });
 });

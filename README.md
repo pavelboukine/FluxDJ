@@ -756,6 +756,23 @@ How it works:
   and never "final": staff can still change the plan after the client
   deadline.
 
+#### Events booked elsewhere
+
+1. **Events → New event**, choose **Already booked elsewhere** (for an event
+   booked through an agency or directly), a client and the date. The choice
+   can't be changed later. The event reads **Booked externally**: no
+   proposal, contract, signature or deposit steps, and Flux DJ records no
+   payments or invoice link for it.
+2. Its next step is **Set up planning**: choose a template on the planning
+   page. Nothing is sent to the client.
+3. **Client access → Invite** emails the primary contact a link. They confirm
+   their email, then **Open my planning**. A new invitation replaces the
+   previous one; archiving cancels an unaccepted one, and an invitation stops
+   working if the primary contact or their email changes.
+4. The client plans as usual (deadline, closing and reopening apply); `/my`
+   shows "Your event is booked. Let's plan the details." Staff follow the
+   answers and open the run sheet and its PDF.
+
 #### Inviting a DJ
 
 Platform administration is a separate grant, never part of a business role
@@ -1322,6 +1339,24 @@ signed-out browser:
   hiding and restoring stages with their answers; contract, payments and
   booking unchanged; template edits not reaching the plan; archiving and
   unarchiving.
+- `56_external_bookings` (pgTAP): the booking source set once by active
+  staff only; no proposal, contract, payment or Flux booking state; planning
+  eligible only through the shared rule, after setup and an accepted
+  invitation; invitations refused to other businesses, clients, removed staff
+  and suspended workspaces; wrong and unverified accounts; replacement and
+  archiving; Flux events still waiting for their booking.
+- `57_external_booking_payment_guard` (pgTAP): no payment, invalidation or
+  invoice link for an event booked elsewhere, by any role or path, with
+  nothing written and no status change; Flux payments unchanged; invitations
+  stop at a primary contact or email change.
+- `tests/integration/external-bookings.test.ts`: the staff insert path, the
+  real invitation and verification emails, acceptance, client saves, the web
+  and PDF run sheet, payment refusals with the app's message, and a Flux event
+  still needing its booking.
+- `tests/e2e/external-booking-flow.spec.ts`: the New event form, setup and
+  invitation from the event page, the emailed link, the client planning and
+  home, staff review and run sheet, lists and dashboard, and a Flux event
+  with an existing client still starting with a proposal.
 
 ### Booking tests
 
@@ -2961,6 +2996,29 @@ invitations keep their rows and expiry, so a still-valid link works again
 after restoration. Revoking them would force every client to be re-sent
 links for a reversible, administrative action; the database blocks them
 without exception while suspended.
+
+### Events booked elsewhere
+
+Migrations `20261115000100_external_bookings.sql` and
+`20261116000100_external_booking_payment_guard.sql`.
+
+- `events.booking_source` is `flux` (default, every earlier event) or
+  `external`, chosen by staff when inserting the event and never changed
+  (`events_immutable`). A check constraint keeps external events at
+  `lead` with no booking confirmation or active proposal, and proposals
+  can't be started for them, so no contract either.
+- Client planning eligibility is one rule,
+  `private.event_booked_for_planning`: booked by Flux, or booked elsewhere.
+  `client_can_access_plan` keeps every other condition (verified access,
+  nothing archived or suspended, a plan, the setup gate, editing rules).
+- Clients get event access through `planning_invitations`, built like
+  contract invitations: the emailed token (HMAC, domain
+  `flux:planning-invite:v1:`) only asks for a verification email to the
+  invited address; `accept_planning_invitation` grants access to the
+  verified, current primary contact. Emails are claimed only by
+  `claim_planning_email_outbox`.
+- Triggers on `event_payments` and `event_billing` refuse every write for
+  external events (`payment_invalid`), whatever the role or path.
 
 ### Client access
 

@@ -6,10 +6,22 @@ import { eventStatusLabel } from "@/lib/events/status";
 import { nearDay } from "@/lib/lists";
 import { cn } from "@/lib/utils";
 
-/** The lifecycle badge of the event lists, with "Booked" in green. `label` is a status already derived from the event's records. */
+/**
+ * The lifecycle badge of the event lists, with "Booked" in green and events
+ * booked elsewhere (status "external") in blue. `label` is a status already
+ * derived from the event's records.
+ */
 export function EventStatusBadge({ status, contractSigned, label }: { status: string; contractSigned: boolean; label?: string }) {
   return (
-    <Badge variant="outline" data-testid="event-status" className={cn("h-auto whitespace-normal", status === "booked" ? "border-emerald-600/40 bg-emerald-600/10 text-emerald-800 dark:text-emerald-300" : null)}>
+    <Badge
+      variant="outline"
+      data-testid="event-status"
+      className={cn(
+        "h-auto whitespace-normal",
+        status === "booked" ? "border-emerald-600/40 bg-emerald-600/10 text-emerald-800 dark:text-emerald-300" : null,
+        status === "external" ? "border-sky-600/40 bg-sky-600/10 text-sky-900 dark:text-sky-200" : null,
+      )}
+    >
       {label ?? eventStatusLabel(status, contractSigned)}
     </Badge>
   );

@@ -29,6 +29,8 @@ export const EVENT_STATUSES = [
   ["booked", "Booked"],
   ["completed", "Completed"],
   ["cancelled", "Cancelled"],
+  // Not a lifecycle stage: events booked elsewhere (staff_event_list matches events.booking_source).
+  ["external", "Booked externally"],
 ] as const;
 export type EventStatus = (typeof EVENT_STATUSES)[number][0];
 
@@ -146,6 +148,8 @@ export const eventListSchema = z.object({
       timezone: z.string(),
       venue_name: z.string().nullable(),
       lifecycle_status: z.string(),
+      // 20261115000100; absent from an older database (every event was a Flux booking then).
+      booking_source: z.string().optional(),
       archived: z.boolean(),
       client_name: z.string().nullable(),
       today: z.string(),
@@ -206,7 +210,9 @@ export function nextEventLabel(next: { event_date: string; today: string }): { l
  * A client's role on one event (roles belong to the event's contact link,
  * not to the client): primary contact, signer, both, or another contact.
  */
-export function contactRoleLabel(link: { is_primary: boolean; can_sign: boolean }): string {
+export function contactRoleLabel(link: { is_primary: boolean; can_sign: boolean }, external = false): string {
+  // An event booked elsewhere has no contract, so nobody signs.
+  if (external) return link.is_primary ? "Primary contact" : "Other contact";
   if (link.is_primary && link.can_sign) return "Primary contact · Signer";
   if (link.is_primary) return "Primary contact";
   if (link.can_sign) return "Signer";

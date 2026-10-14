@@ -10,8 +10,10 @@ import { ClientPicker } from "@/components/app/client-picker";
 import { CheckboxField, SelectField } from "@/components/app/fields";
 import { requireStaff } from "@/lib/auth/staff";
 import { dateIn, shortDate } from "@/lib/dates";
-import { eventDisplayStatus } from "@/lib/events/status";
+import { BOOKED_EXTERNALLY_DETAIL, eventDisplayStatus } from "@/lib/events/status";
 import {
+  bookingSummary,
+  clientAccessSummary,
   contractChanges,
   contractSummary,
   currentProposals,
@@ -34,6 +36,7 @@ import { addEventContact, openProposalDraft, removeEventContact, updateEvent } f
 import { EventFields } from "../event-fields";
 import { EVENT_TYPES } from "../event-form";
 import { ArchivePanel } from "./archive-panel";
+import { ClientAccessCard, loadPlanningAccess } from "./client-access-card";
 import { CommunicationsCard, emailProblems, loadCommunications } from "./communications-card";
 import { PaymentsCard, loadPayments } from "./payments-card";
 import { PlanningCard, loadPlanning } from "./planning-card";
@@ -66,7 +69,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
   const [{ data: event }, { data: templates }, { data: identity }, contracts, payments, planning] = await Promise.all([
     supabase
       .from("events")
-      .select("id, title, event_type, event_date, timezone, venue_name, venue_address, internal_notes, lifecycle_status, active_proposal_id, archived_at, event_clients(id, is_primary, can_sign, clients(id, name, email, phone, archived_at)), proposals!proposals_event_fk(id, revision, status, offer_frozen_at, updated_at, expires_at)")
+      .select("id, title, event_type, event_date, timezone, venue_name, venue_address, internal_notes, lifecycle_status, booking_source, active_proposal_id, archived_at, event_clients(id, is_primary, can_sign, clients(id, name, email, phone, archived_at)), proposals!proposals_event_fk(id, revision, status, offer_frozen_at, updated_at, expires_at)")
       .eq("id", eventId)
       .eq("tenant_id", tenant.id)
       .maybeSingle(),
@@ -77,7 +80,16 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
     loadPlanning(staff, eventId),
   ]);
   if (!event) notFound();
-  const communications = await loadCommunications(staff, event.proposals.map((p) => p.id), contracts.contracts.map((c) => c.id));
+  // Booked elsewhere: planning is the whole workflow; client access comes from a planning invitation.
+  const external = event.booking_source === "external";
+  const primaryClient = event.event_clients.find((c) => c.is_primary)?.clients ?? null;
+  const planningAccess = external ? await loadPlanningAccess(staff, eventId, primaryClient ? { id: primaryClient.id, email: primaryClient.email } : null) : null;
+  const communications = await loadCommunications(
+    staff,
+    event.proposals.map((p) => p.id),
+    contracts.contracts.map((c) => c.id),
+    planningAccess?.invitationIds ?? [],
+  );
   // The current approval, if the active proposal is approved; contracts are generated from it.
   const activeApproved = event.proposals.find((p) => p.id === event.active_proposal_id && p.status === "approved");
   const { data: approval } = activeApproved
@@ -103,6 +115,8 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
     now: new Date(),
     archived,
     lifecycle: event.lifecycle_status,
+    bookingSource: event.booking_source,
+    planningAccess: planningAccess?.access ?? null,
     proposals: event.proposals,
     activeProposalId: event.active_proposal_id,
     approvalId: approval?.id ?? null,
@@ -129,12 +143,19 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
   const contractStatuses = new Set(contracts.contracts.map((c) => c.status));
   const status = eventDisplayStatus({
     lifecycle: event.lifecycle_status,
+    bookingSource: event.booking_source,
     proposalStatus: active ? (active.status === "sent" && active.expires_at && new Date(active.expires_at) <= facts.now ? "expired" : active.status) : null,
     proposalDraft: Boolean(draft),
     contractStatus: contractStatuses.has("signed") ? "signed" : contractStatuses.has("sent") ? "sent" : contractStatuses.has("draft") ? "draft" : null,
   });
   const when = archived ? null : daysAway(event.event_date, dateIn(event.timezone, facts.now));
   const frozenDocs = Boolean(active) || contracts.contracts.some((c) => ["draft", "sent", "signed"].includes(c.status));
+  const fmtDate = (iso: string) => shortDate(dateIn(event.timezone, new Date(iso)));
+  // Flux DJ records no payments for an event booked elsewhere (the database refuses them).
+  const showPayments = !external;
+  const sections: [string, string][] = external
+    ? [["#planning", "Planning"], ["#client-access", "Client access"], ["#communications", "Emails"], ["#contacts", "Contacts & details"]]
+    : [["#proposal", "Proposal & contract"], ["#payments", "Payments"], ["#planning", "Planning"], ["#communications", "Emails"], ["#contacts", "Contacts & details"]];
 
   return (
     <>
@@ -149,10 +170,20 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
               {shortDate(event.event_date)} · {event.venue_name ?? "Venue not set"} · {TYPE_LABEL[event.event_type] ?? event.event_type}
             </p>
             {when ? <p className={cn("text-sm font-medium", when.soon ? "text-amber-800 dark:text-amber-300" : "text-foreground/80")} data-testid="event-when">{when.label}</p> : null}
+            {external ? <p className="text-sm text-muted-foreground" data-testid="booking-source-note">{BOOKED_EXTERNALLY_DETAIL}</p> : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {archived ? <Badge variant="secondary">Archived</Badge> : null}
-            <Badge variant="outline" data-testid="event-header-status" className={cn("h-auto whitespace-normal", event.lifecycle_status === "booked" ? "border-emerald-600/40 bg-emerald-600/10 text-emerald-800 dark:text-emerald-300" : null)}>
+            <Badge
+              variant="outline"
+              data-testid="event-header-status"
+              title={external ? BOOKED_EXTERNALLY_DETAIL : undefined}
+              className={cn(
+                "h-auto whitespace-normal",
+                event.lifecycle_status === "booked" ? "border-emerald-600/40 bg-emerald-600/10 text-emerald-800 dark:text-emerald-300" : null,
+                external ? "border-sky-600/40 bg-sky-600/10 text-sky-900 dark:text-sky-200" : null,
+              )}
+            >
               {status}
             </Badge>
             <a className={buttonVariants({ variant: "outline", size: "sm" })} href="#edit-details">Edit details</a>
@@ -162,12 +193,21 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
 
       {contact === "failed" ? <p role="alert" className="text-sm text-destructive">The event was created but its contact could not be attached. Add the contact below.</p> : null}
 
-      <NextStep action={action} archived={archived} />
+      <NextStep action={action} archived={archived} external={external} />
 
-      <section aria-label="Overview" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Tile title="Proposal" summary={proposalSummary(facts)} testId="overview-proposal" />
-        <Tile title="Contract" summary={contractSummary(facts, (iso) => shortDate(dateIn(event.timezone, new Date(iso))))} testId="overview-contract" />
-        <div className="grid content-start gap-1.5 rounded-xl border bg-card p-3.5 text-sm" data-testid="overview-payments">
+      <section aria-label="Overview" className={cn("grid gap-3 sm:grid-cols-2", showPayments ? "xl:grid-cols-4" : "xl:grid-cols-3")}>
+        {external ? (
+          <>
+            <Tile title="Booking" summary={bookingSummary()} testId="overview-booking" />
+            <Tile title="Client access" summary={clientAccessSummary(facts, fmtDate)} testId="overview-client-access" />
+          </>
+        ) : (
+          <>
+            <Tile title="Proposal" summary={proposalSummary(facts)} testId="overview-proposal" />
+            <Tile title="Contract" summary={contractSummary(facts, fmtDate)} testId="overview-contract" />
+          </>
+        )}
+        {showPayments ? <div className="grid content-start gap-1.5 rounded-xl border bg-card p-3.5 text-sm" data-testid="overview-payments">
           <div className="flex items-baseline justify-between gap-2">
             <h2 className="text-xs font-medium tracking-wider text-muted-foreground uppercase">Payments</h2>
             <a className="text-xs font-medium underline-offset-4 hover:underline" href="#payments">Details</a>
@@ -193,23 +233,32 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
           ) : (
             <p className="text-muted-foreground">Unavailable</p>
           )}
-        </div>
+        </div> : null}
         <Tile title="Planning" summary={planningSummary(facts)} testId="overview-planning" extra={planningLine(facts.planning)} />
       </section>
 
       <nav aria-label="Event sections" className="flex flex-wrap gap-x-4 gap-y-1 border-b pb-2 text-sm">
-        {[
-          ["#proposal", "Proposal & contract"],
-          ["#payments", "Payments"],
-          ["#planning", "Planning"],
-          ["#communications", "Emails"],
-          ["#contacts", "Contacts & details"],
-        ].map(([href, label]) => (
+        {sections.map(([href, label]) => (
           <a key={href} className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline" href={href}>{label}</a>
         ))}
       </nav>
 
       <div className="grid gap-6">
+        {external ? (
+          <>
+            <PlanningCard slug={slug} eventId={event.id} view={planning} archived={archived} external />
+            <ClientAccessCard
+              slug={slug}
+              eventId={event.id}
+              access={planningAccess!.access}
+              planningReady={facts.planning.exists && !facts.planning.awaitingSetup}
+              primary={primary?.clients ? { name: primary.clients.name, email: primary.clients.email, archived: Boolean(primary.clients.archived_at) } : null}
+              archived={archived}
+              fmt={fmtDate}
+            />
+          </>
+        ) : (
+        <>
         <Card id="proposal" className="scroll-mt-20">
           <CardHeader>
             <CardTitle>Proposal</CardTitle>
@@ -268,6 +317,8 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
         <PaymentsCard staff={staff} slug={slug} eventId={event.id} archived={archived} data={payments} recordOpen={action.key === "record_payment"} timeZone={event.timezone} />
 
         <PlanningCard slug={slug} eventId={event.id} view={planning} archived={archived} />
+        </>
+        )}
 
         <CommunicationsCard slug={slug} data={communications} timeZone={event.timezone} />
 
@@ -275,7 +326,9 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
           <Card id="contacts" className="scroll-mt-20">
             <CardHeader>
               <CardTitle>Contacts</CardTitle>
-              <CardDescription>The primary contact receives proposals; the signer signs the contract.</CardDescription>
+              <CardDescription>
+                {external ? "The primary contact is the one you invite to planning." : "The primary contact receives proposals; the signer signs the contract."}
+              </CardDescription>
             </CardHeader>
             <CardContent className="grid gap-3 text-sm">
               <ul className="grid gap-2">
@@ -285,7 +338,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
                       <span className="flex flex-wrap items-center gap-1.5">
                         <span className="font-medium">{ec.clients?.name}</span>
                         {ec.is_primary ? <Badge>Primary</Badge> : null}
-                        {ec.can_sign ? <Badge variant="secondary">Signer</Badge> : null}
+                        {ec.can_sign && !external ? <Badge variant="secondary">Signer</Badge> : null}
                         {ec.clients?.archived_at ? <Badge variant="outline">Archived client</Badge> : null}
                       </span>
                       <span className="break-all text-muted-foreground">
@@ -297,7 +350,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
                           </>
                         ) : null}
                       </span>
-                      {ec.can_sign && ec.clients && !ec.clients.phone && anyVersionNeedsPhone && !hasSignedContract ? (
+                      {ec.can_sign && ec.clients && !ec.clients.phone && anyVersionNeedsPhone && !hasSignedContract && !external ? (
                         <span className="flex gap-1 text-xs text-amber-800 dark:text-amber-300" data-testid="signer-phone-needed">
                           <AlertTriangle aria-hidden className="mt-px size-3.5 shrink-0" />
                           <span>
@@ -315,7 +368,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
                 ))}
                 {event.event_clients.length === 0 ? <li className="text-muted-foreground">No contacts yet.</li> : null}
               </ul>
-              {signer && primary && signer.id !== primary.id ? <p className="text-xs text-muted-foreground">The signer is not the primary contact.</p> : null}
+              {signer && primary && signer.id !== primary.id && !external ? <p className="text-xs text-muted-foreground">The signer is not the primary contact.</p> : null}
               <Disclosure id="add-contact" summary="Add a contact">
                 <ActionForm action={addEventContact.bind(null, slug, event.id)} submitLabel="Add contact" resetOnSuccess>
                   <input type="hidden" name="expected_primary_client_id" value={primary?.clients?.id ?? ""} />
@@ -324,9 +377,9 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
                     Not a client yet? <Link className="underline" href={`/staff/${slug}/clients#add-client`}>Add them on the Clients page</Link> first.
                   </p>
                   <CheckboxField
-                    label="Make primary contact and signer"
+                    label={external ? "Make primary contact" : "Make primary contact and signer"}
                     name="is_primary"
-                    hint={primary?.clients ? `Replaces ${primary.clients.name} as primary contact and signer.` : undefined}
+                    hint={primary?.clients ? `Replaces ${primary.clients.name} as primary contact${external ? "" : " and signer"}.` : undefined}
                   />
                 </ActionForm>
               </Disclosure>
@@ -342,6 +395,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
                 <Detail label="Date">{shortDate(event.event_date)}</Detail>
                 <Detail label="Time zone">{event.timezone}</Detail>
                 <Detail label="Type">{TYPE_LABEL[event.event_type] ?? event.event_type}</Detail>
+                <Detail label="Booking">{external ? `Booked externally. ${BOOKED_EXTERNALLY_DETAIL}` : "Through Flux DJ"}</Detail>
                 <Detail label="Venue">{event.venue_name ?? <span className="text-muted-foreground">Not set</span>}</Detail>
                 <Detail label="Address">{event.venue_address ?? <span className="text-muted-foreground">Not set</span>}</Detail>
                 <Detail label="Internal notes · staff only">
@@ -366,7 +420,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
         <Card id="manage" size="sm" className="scroll-mt-20">
           <CardHeader>
             <CardTitle>{archived ? "Archived" : "Manage event"}</CardTitle>
-            <CardDescription>Archiving is separate from cancelling or booking. Nothing is deleted.</CardDescription>
+            <CardDescription>{external ? "Archiving pauses client planning and cancels an open invitation. Nothing is deleted." : "Archiving is separate from cancelling or booking. Nothing is deleted."}</CardDescription>
           </CardHeader>
           <CardContent>
             <ArchivePanel slug={slug} eventId={event.id} archived={archived} />
@@ -385,7 +439,7 @@ function daysAway(eventDate: string, today: string): { label: string; soon: bool
   return { label: diff === 0 ? "Today" : diff === 1 ? "Tomorrow" : `In ${diff} days`, soon: diff <= 14 };
 }
 
-function NextStep({ action, archived }: { action: NextAction; archived: boolean }) {
+function NextStep({ action, archived, external }: { action: NextAction; archived: boolean; external: boolean }) {
   return (
     <section
       aria-labelledby="next-step-heading"
@@ -399,7 +453,12 @@ function NextStep({ action, archived }: { action: NextAction; archived: boolean 
       </p>
       <div className="grid gap-1">
         <h2 id="next-step-heading" className="text-lg font-semibold">{action.title}</h2>
-        {archived ? (
+        {archived && external ? (
+          <p role="status" className="text-sm">
+            This event is archived. It is hidden from the events list, the client can&apos;t open planning, an unaccepted planning invitation
+            is cancelled, and planning can&apos;t be changed until you unarchive it. Its history is kept.
+          </p>
+        ) : archived ? (
           <p role="status" className="text-sm">
             This event is archived. It is hidden from the events list, its client links are revoked, and proposals can&apos;t be sent or
             approved and contracts can&apos;t be generated until you unarchive it. Its history is kept.

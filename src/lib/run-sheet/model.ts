@@ -103,6 +103,8 @@ export type RunSheetInput = {
   event: {
     title: string; event_type: string; event_date: string; timezone: string; venue_name: string | null; venue_address: string | null;
     archived_at: string | null; booking_confirmed_at: string | null; lifecycle_status: string;
+    /** events.booking_source; "external" is booked elsewhere (no contract), "flux" or absent a Flux booking. */
+    booking_source?: string;
   };
   view: StaffPlanningView;
   eventTypeLabel: string;
@@ -184,7 +186,9 @@ export function buildRunSheet(input: RunSheetInput): RunSheet {
     event: {
       title: event.title, typeLabel: input.eventTypeLabel, date, dateLabel: formatEventDate(date), timezone: event.timezone,
       venueName: event.venue_name, venueAddress: event.venue_address, archived: Boolean(event.archived_at),
-      booked: Boolean(event.booking_confirmed_at) && (event.lifecycle_status === "booked" || event.lifecycle_status === "completed"),
+      booked:
+        event.booking_source === "external" ||
+        (Boolean(event.booking_confirmed_at) && (event.lifecycle_status === "booked" || event.lifecycle_status === "completed")),
     },
     asOf: view.plan === null ? new Date().toISOString() : (view.editing?.now ?? new Date().toISOString()),
     planReady: view.plan !== null,

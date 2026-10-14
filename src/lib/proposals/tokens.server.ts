@@ -48,6 +48,15 @@ export function staffInviteToken(linkId: string): string {
   return createHmac("sha256", serverEnv().PROPOSAL_LINK_SECRET).update(`flux:staff-invite:v1:${linkId}`).digest("base64url");
 }
 
+/**
+ * Planning invitation tokens (events booked elsewhere): same derivation, their
+ * own domain prefix. Each send is a new invitation id, so earlier links stop
+ * working. The token only lets the invited address ask for a verification email.
+ */
+export function planningInviteToken(invitationId: string): string {
+  return createHmac("sha256", serverEnv().PROPOSAL_LINK_SECRET).update(`flux:planning-invite:v1:${invitationId}`).digest("base64url");
+}
+
 export function sha256Hex(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }

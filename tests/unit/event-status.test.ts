@@ -54,3 +54,15 @@ describe("eventDisplayStatus", () => {
     expect(eventDisplayStatus(r({ lifecycle: "pending_approval", contractStatus: "sent" }))).toBe("Choices submitted · review");
   });
 });
+
+describe("events booked elsewhere", () => {
+  it("are \"Booked externally\", never a proposal, contract or payment state", () => {
+    expect(eventDisplayStatus({ lifecycle: "lead", bookingSource: "external", proposalStatus: null, proposalDraft: false, contractStatus: null })).toBe("Booked externally");
+    expect(eventStatusLabel("external", false)).toBe("Booked externally");
+  });
+
+  it("leave Flux events unchanged, also on an older database without the field", () => {
+    expect(eventDisplayStatus({ lifecycle: "lead", bookingSource: "flux", proposalStatus: null, proposalDraft: false, contractStatus: null })).toBe("New inquiry");
+    expect(eventDisplayStatus({ lifecycle: "booked", proposalStatus: "approved", proposalDraft: false, contractStatus: "signed" })).toBe("Booked");
+  });
+});

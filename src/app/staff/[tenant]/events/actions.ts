@@ -23,6 +23,9 @@ export async function createEvent(slug: string, _state: ActionState, form: FormD
   const { supabase, tenant } = staff;
   const parsed = readEventForm(form);
   if (!parsed.ok) return fail(parsed.error);
+  // Set once, here; the database refuses any later change.
+  const source = text(form, "booking_source") || "flux";
+  if (source !== "flux" && source !== "external") return fail("Choose how this event is being booked.");
 
   // Primary contact: an existing client, or a new one entered on the form.
   let clientId = text(form, "client_id");
@@ -47,7 +50,7 @@ export async function createEvent(slug: string, _state: ActionState, form: FormD
     if (problem) return fail(problem);
   }
 
-  const { data: event, error } = await supabase.from("events").insert({ ...parsed.values, tenant_id: tenant.id }).select("id").single();
+  const { data: event, error } = await supabase.from("events").insert({ ...parsed.values, booking_source: source, tenant_id: tenant.id }).select("id").single();
   if (error) return fail(describeDbError(error));
   const { error: contactError } = await supabase
     .from("event_clients")
@@ -159,6 +162,13 @@ export async function setEventArchived(slug: string, eventId: string, archived: 
   if (error) return fail(describeDbError(error));
   revalidatePath(`/staff/${slug}`, "layout");
   const result = data as { links_revoked?: number };
-  if (!archived) return ok("Event restored. Client links stay revoked; send a revised offer to give the client access again.");
+  if (!archived) {
+    const { data: event } = await supabase.from("events").select("booking_source").eq("id", eventId).maybeSingle();
+    return ok(
+      event?.booking_source === "external"
+        ? "Event restored. A client who already had access can open planning again; send a new invitation if they hadn't accepted one."
+        : "Event restored. Client links stay revoked; send a revised offer to give the client access again.",
+    );
+  }
   return ok(`Event archived.${result.links_revoked ? ` ${result.links_revoked} client link(s) revoked.` : ""}`);
 }
