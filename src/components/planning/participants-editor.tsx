@@ -13,12 +13,14 @@ import {
   introductionsForm,
   linksBySong,
   mcAnswersFromForm,
+  newSongProblem,
   mcForm,
   processionalAnswersFromForm,
   processionalForm,
   songLabel,
   speechesAnswersFromForm,
   speechesForm,
+  withNewSongs,
   type IntroductionsAnswers,
   type IntroductionsForm,
   type ListChoice,
@@ -27,16 +29,19 @@ import {
   type PersonForm,
   type ProcessionalAnswers,
   type ProcessionalForm,
+  type ProcessionalPersonForm,
   type SpeechForm,
   type SpeechesAnswers,
   type SpeechesForm,
   type Timing,
 } from "@/lib/planning/participants";
+import { MUSIC_RULES } from "@/lib/planning/music";
 import { EQUIPMENT_NOTE, nextDayLabel } from "@/lib/planning/stages";
 import type { SaveItemResult } from "@/lib/planning/view";
 import { FieldBox, describedBy } from "./basics-editor";
 import { TimeField } from "./time-field";
 import { MusicSection, usePlanSongs } from "./music-editor";
+import { SongPicker, type SongGroup } from "./song-picker";
 import { ItemChecklist, useEditingClosed } from "./progress";
 import { SaveStatus, useAutosave } from "./use-autosave";
 
@@ -130,7 +135,7 @@ export function EntryList<E extends { id: string }>(props: {
   const [draft, setDraft] = useState<E>(() => props.newEntry(newId()));
   const [draftError, setDraftError] = useState<{ field: string; message: string } | null>(null);
   const { entries, setEntries } = props;
-  const clears = (id: string) => ["entries", ...["names", "role", "pronunciation", "wording", "notes", "song_id", "speaker", "timing", "time", "next_day", "cue", "duration", "av_notes", "name", "business", "phone", "email", "title", "recipient", "presenter", "host", "participants", "relationship", "message", "song_title", "song_artist", "song_version", "song_link"].map((f) => entryField(id, f))];
+  const clears = (id: string) => ["entries", ...["names", "role", "pronunciation", "wording", "notes", "song_id", "speaker", "timing", "time", "next_day", "cue", "duration", "av_notes", "name", "business", "phone", "email", "title", "recipient", "presenter", "host", "participants", "relationship", "message", "song_title", "song_artist", "song_version", "song_link", "song_notes"].map((f) => entryField(id, f))];
   const errorFor = (id: string) => (field: string) => (props.fieldError?.field === entryField(id, field) ? props.fieldError.message : null);
 
   function move(index: number, by: -1 | 1) {
@@ -292,9 +297,18 @@ function personSummary(songs: { id: string; title: string; artist: string; cue?:
 const checkPerson = (p: PersonForm) => (p.names.trim() ? null : { field: "names", message: "Enter the name or names." });
 
 // ---------------------------------------------------------------------------
-// Processional: its songs, then who walks in
+// Processional: who walks in, in order, each with their song
 // ---------------------------------------------------------------------------
 
+/**
+ * The processional as couples think of it: who walks in, in order, and the
+ * song each walks to, chosen or typed right with the person (SongPicker).
+ * People and songs are one answer saved together, so a song and its link
+ * are never saved apart. Several people can share a song; the songs list
+ * below holds each song once, with the choice for the processional's music.
+ * No pronunciation guide here: nobody is announced while walking in (older
+ * guides are kept, and shown to staff).
+ */
 export function ProcessionalEditor(props: Common<ProcessionalAnswers>) {
   const readOnly = useEditingClosed(props.disabledReason);
   const songs = usePlanSongs();
@@ -311,22 +325,117 @@ export function ProcessionalEditor(props: Common<ProcessionalAnswers>) {
     },
   });
   const notApplicable = form.choice === "not_applicable";
-  // This moment's songs, then Couple entrance's (same ceremony): the couple's own entry can use its song.
+  const dj = props.audience === "client" ? props.djName : "the DJ";
+  // Older plans may also have a Couple entrance moment: its songs can still be picked here.
   const couple = songs?.lists.find((l) => l.key === "couple_entrance");
-  const songList = [
-    ...form.songs.filter((s) => s.title.trim() && s.artist.trim()).map((s) => ({ id: s.id, title: s.title, artist: s.artist, cue: s.cue })),
-    ...(couple?.songs ?? []).map((s) => ({ ...s, cue: `${couple!.label}${s.cue ? `, ${s.cue}` : ""}` })),
+  const own = form.songs.filter((s) => s.title.trim() && s.artist.trim()).map((s) => ({ id: s.id, title: s.title, artist: s.artist, cue: s.cue }));
+  const groups: SongGroup[] = [
+    { label: "Songs already in this processional", songs: own },
+    ...(couple ? [{ label: couple.label, songs: couple.songs.map((s) => ({ id: s.id, title: s.title, artist: s.artist, cue: s.cue })) }] : []),
   ];
-  const missing = couple
-    ? "The linked song isn't in Processional or Couple entrance any more. Choose another song or none."
-    : "The linked song isn't in the active plan (Couple entrance is hidden). It's kept; choose another song or none.";
+  const known = new Map(groups.flatMap((g) => g.songs).map((s) => [s.id, s]));
+  const missing = "The linked song isn't in this processional's songs any more. It's kept; choose another song or none.";
+  const room = MUSIC_RULES.moment_songs.maxSongs - form.songs.length;
+  const setParticipants = (participants: ProcessionalPersonForm[], clears?: string[]) => {
+    const next = withNewSongs(form, participants);
+    update({ participants: next.participants, songs: next.songs }, clears);
+  };
+
   return (
     <Frame
       props={props as Common<unknown>}
-      hint="Songs for the processional and who walks in, in order, the couple included. The couple's own song goes under Couple entrance and can be picked for their entry here."
+      hint="Add everyone who will walk down the aisle, in the order they'll enter. Include either partner, wedding party members, family or other participants. Choose each one's song as you add them; several people can walk to the same song."
       status={<SaveStatus saveState={saveState} message={message} retry={retry} />}
     >
-      <div data-testid={`music-${props.momentKey}`}>
+      <section className="grid gap-2" aria-label="Who walks in" data-testid="processional-participants">
+        <Choices<"discuss">
+          name={`${props.momentKey}-participants-choice`}
+          legend="Who walks in (needed)"
+          value={form.participants_choice}
+          disabled={readOnly || notApplicable}
+          onChange={(v) => update({ participants_choice: v as "" | "discuss" }, ["participants_choice"])}
+          error={fieldError?.field === "participants_choice" ? fieldError.message : null}
+          options={[
+            { value: "", label: "I'll list who walks in" },
+            { value: "discuss", label: `Not sure yet, discuss with ${dj}` },
+          ]}
+        />
+        <p className="text-xs text-muted-foreground">
+          One entry per person or group, in walking order, for example &ldquo;Alex with their mother, Dana&rdquo;, &ldquo;The bridesmaids&rdquo; or
+          &ldquo;Sam and Jo&rdquo; if you walk in together. Someone already waiting at the front doesn&apos;t need an entry.
+        </p>
+        <EntryList<ProcessionalPersonForm>
+          base={`${props.momentKey}-people`}
+          noun="Person or group"
+          entries={form.participants}
+          setEntries={setParticipants}
+          readOnly={readOnly}
+          canAdd={!notApplicable}
+          addBlockedText={notApplicable ? "This moment is marked as not happening." : undefined}
+          max={30}
+          nameOf={(p) => p.names.trim() || "Unnamed"}
+          summary={(p, index) => {
+            const song = p.song_id ? known.get(p.song_id) : undefined;
+            const sameAsAbove = Boolean(p.song_id) && form.participants[index - 1]?.song_id === p.song_id;
+            return (
+              <>
+                <NameLine index={index} name={p.names} pronunciation={props.audience === "staff" ? p.pronunciation : ""} />
+                {p.role.trim() ? <p className="text-xs [overflow-wrap:anywhere]">{p.role}</p> : null}
+                {song ? (
+                  <p className="text-xs [overflow-wrap:anywhere]">
+                    <span aria-hidden>♪ </span>
+                    {sameAsAbove ? "Same song as the entry above: " : "Song: "}
+                    {songLabel(song)}
+                  </p>
+                ) : p.song_id ? (
+                  <p className="text-xs text-amber-700 dark:text-amber-400">{missing}</p>
+                ) : (
+                  <p className="text-xs text-amber-700 dark:text-amber-400">No song chosen yet</p>
+                )}
+                {p.notes.trim() ? <p className="whitespace-pre-line text-xs [overflow-wrap:anywhere]">Instructions: {p.notes}</p> : null}
+              </>
+            );
+          }}
+          fields={(p, onChange, errorFor, idPrefix) => {
+            const draft = p.new_song ?? null;
+            const pending = draft?.use ? newSongProblem(draft, room) : null;
+            const songError = (f: "song_id" | "song_title" | "song_artist" | "song_notes") => errorFor(f) ?? (pending?.field === f ? pending.message : null);
+            const listed = form.participants.some((x) => x.id === p.id);
+            return (
+              <>
+                {text(`${idPrefix}-names`, "Name or names", p.names, (v) => onChange({ names: v }), errorFor("names"), { hint: "As they should appear for the DJ; no particular titles needed.", wide: true })}
+                {text(`${idPrefix}-role`, "Role or relationship (optional)", p.role, (v) => onChange({ role: v }), errorFor("role"), { hint: "For example: maid of honour, grandparents." })}
+                <SongPicker
+                  id={`${idPrefix}-song`}
+                  label="Song they walk in to"
+                  value={p.song_id}
+                  groups={groups}
+                  draft={draft}
+                  onSelect={(songId) => onChange({ song_id: songId })}
+                  onDraft={(d) => onChange({ new_song: d })}
+                  onUseDraft={listed ? () => onChange({ new_song: draft ? { ...draft, use: true } : null }) : undefined}
+                  sharedWith={form.participants.filter((x) => x.id !== p.id && x.song_id && x.song_id === p.song_id).map((x) => x.names.trim() || "Unnamed")}
+                  errorFor={songError}
+                  missingText={missing}
+                  hint={listed ? undefined : "Pick a song already listed, enter a new one, or leave it for later."}
+                />
+                {text(`${idPrefix}-notes`, "Instructions for the DJ (optional)", p.notes, (v) => onChange({ notes: v }), errorFor("notes"), {
+                  rows: 2, hint: 'For example "keep the same song playing", "start the next song when they reach the front" or "wait for the doors to open".',
+                })}
+              </>
+            );
+          }}
+          newEntry={(id) => ({ ...emptyPerson(id), new_song: null })}
+          check={(p) => checkPerson(p) ?? newSongProblem(p.new_song, room)}
+          fieldError={fieldError}
+        />
+      </section>
+      <section className="grid gap-2 border-t pt-3" aria-label="Processional songs" data-testid={`music-${props.momentKey}`}>
+        <h4 className="text-sm font-semibold">Processional songs</h4>
+        <p className="text-xs text-muted-foreground">
+          Each song chosen above appears here once. Edit a song here to change it for everyone walking to it, or add a song for the processional as a
+          whole. A song can&apos;t be removed while someone walks to it.
+        </p>
         <MusicSection
           itemId={props.itemId}
           momentKey={props.momentKey}
@@ -339,41 +448,7 @@ export function ProcessionalEditor(props: Common<ProcessionalAnswers>) {
           djName={props.djName}
           audience={props.audience}
           linked={linksBySong(form.participants)}
-          linkedWhere="Who walks in"
-        />
-      </div>
-      <section className="grid gap-2 border-t pt-3" aria-label="Who walks in" data-testid="processional-participants">
-        <Choices<"discuss">
-          name={`${props.momentKey}-participants-choice`}
-          legend="Who walks in (needed)"
-          value={form.participants_choice}
-          disabled={readOnly || notApplicable}
-          onChange={(v) => update({ participants_choice: v as "" | "discuss" }, ["participants_choice"])}
-          error={fieldError?.field === "participants_choice" ? fieldError.message : null}
-          options={[
-            { value: "", label: "I'll list who walks in" },
-            { value: "discuss", label: `Not sure yet, discuss with ${props.audience === "client" ? props.djName : "the DJ"}` },
-          ]}
-        />
-        <p className="text-xs text-muted-foreground">
-          One entry per person or group, in walking order, for example &ldquo;Alex with their mother, Dana&rdquo; or &ldquo;Sam and Jo&rdquo;. Each can
-          have one of the songs above or the Couple entrance song.
-        </p>
-        <EntryList<PersonForm>
-          base={`${props.momentKey}-people`}
-          noun="Person or group"
-          entries={form.participants}
-          setEntries={(participants, clears) => update({ participants }, clears)}
-          readOnly={readOnly}
-          canAdd={!notApplicable}
-          addBlockedText={notApplicable ? "This moment is marked as not happening." : undefined}
-          max={30}
-          nameOf={(p) => p.names.trim() || "Unnamed"}
-          summary={personSummary(songList, missing, { wording: false })}
-          fields={personFields({ wording: false, songs: songList, missingText: missing, namesLabel: "Name or names", namesHint: "As they should appear for the DJ; no particular titles needed." })}
-          newEntry={emptyPerson}
-          check={checkPerson}
-          fieldError={fieldError}
+          linkedWhere="who walks in"
         />
       </section>
     </Frame>

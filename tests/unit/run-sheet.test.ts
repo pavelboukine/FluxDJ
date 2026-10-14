@@ -277,6 +277,33 @@ describe("run sheet model", () => {
     expect(i.stages[2].rows[0]).toMatchObject({ warning: "Still needs: timing and song" });
   });
 
+  it("shows the processional in walking order, numbered, with each song once and repeats said as facts (no Couple entrance)", () => {
+    const a = song("Canon in D", "Johann Pachelbel");
+    const b = song("A Thousand Years", "Christina Perri", { notes: "Start at 0:20" });
+    const groom = id(); const maids = id(); const flower = id(); const bride = id(); const usher = id();
+    const plan = planView({
+      basics: { guest_count: 120 },
+      stages: [{ key: "ceremony", editor: "stage_ceremony", label: "Ceremony", answers: { location_source: "event_venue", start_time: "16:00" }, moments: [
+        { key: "processional", editor: "processional", label: "Processional", answers: { songs: [a, b], participants: [
+          { id: groom, names: "Groom and his mother", song_id: a.id },
+          { id: maids, names: "Bridesmaids", song_id: a.id, notes: "Keep the same song playing" },
+          { id: flower, names: "Flower girl", song_id: b.id },
+          { id: bride, names: "Bride and her father", song_id: a.id, notes: "Restart from the beginning" },
+          { id: usher, names: "Ushers" },
+        ] } },
+      ] }],
+    });
+    const ceremony = buildRunSheet(input(plan)).stages[0];
+    expect(ceremony.times.map((t) => [t.label, whenText(t.when, "2027-08-14")])).toEqual([["Guest arrival", "Not set"], ["Start", "16:00"]]);
+    expect(ceremony.rows.map((r) => [r.people.map((p) => `${p.order}. ${p.names}`), r.songs.map((x) => x.title), r.notes, r.warning ?? null])).toEqual([
+      [["1. Groom and his mother", "2. Bridesmaids"], ["Canon in D"], ["Bridesmaids: Keep the same song playing"], null],
+      [["3. Flower girl"], ["A Thousand Years"], [], null],
+      [["4. Bride and her father"], ["Canon in D"], ["Same song as 1. Groom and his mother, 2. Bridesmaids", "Bride and her father: Restart from the beginning"], null],
+      [["5. Ushers"], [], [], "No song linked"],
+    ]);
+    expect(ceremony.rows.some((r) => r.title.includes("Couple entrance"))).toBe(false);
+  });
+
   it("names the download safely", () => {
     expect(runSheetFileName("Mariage Gagnon–Lévesque", "2027-08-14")).toBe("run-sheet-mariage-gagnon-levesque-2027-08-14.pdf");
     expect(runSheetFileName("", "x")).toBe("run-sheet-event-undated.pdf");

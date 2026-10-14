@@ -25,7 +25,7 @@ select is((select count(*)::int from public.planning_template_items where templa
           (select count(*)::int from public.planning_template_items where template_id = :'installed' and kind = 'moment'), 'and every moment');
 select is((select array_agg(i.key order by i.position) from public.planning_template_items i join public.planning_template_items p on p.id = i.parent_id
            where i.template_id = :'fr' and p.key = 'ceremony'),
-  array['ceremony_details', 'pre_ceremony_music', 'processional', 'couple_entrance', 'ceremony_signing', 'recessional'], 'moments sit under their stage, in order');
+  array['ceremony_details', 'pre_ceremony_music', 'processional', 'ceremony_signing', 'recessional'], 'moments sit under their stage, in order (no separate Couple entrance)');
 select is((select count(*)::int from public.planning_template_items where template_id = :'fr' and label <> (select l.default_label from private.planning_library() l where l.key = planning_template_items.key)),
   0, 'labels are the library defaults');
 select is((select version from public.planning_templates where id = :'installed'), :installed_version, 'the installed starter is untouched');

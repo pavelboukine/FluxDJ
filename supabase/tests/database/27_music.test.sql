@@ -145,7 +145,7 @@ select is((select array_agg(key || ':' || editor order by library_order) from pr
 select is((select array_agg(coalesce(editor, 'none') order by library_order) from private.planning_library() where key in ('introductions', 'entrance_participants', 'entrance_music')),
   array['introductions', 'included', 'moment_songs'], 'reception entrance songs have one source: Entrance music');
 select tests.view('mu_wed') as v \gset v0_
-select is((select count(*)::int from jsonb_object_keys(:'v0_v'::jsonb -> 'music')), 17, 'the client view lists the 17 visible music moments of a wedding');
+select is((select count(*)::int from jsonb_object_keys(:'v0_v'::jsonb -> 'music')), 16, 'the client view lists the 16 visible music moments of a wedding (no separate Couple entrance)');
 select is(tests.reqs(:'v0_v'::jsonb, 'must_play'), array['songs:unanswered'], 'an empty list is unanswered');
 select is(tests.state(:'v0_v'::jsonb, 'must_play'), 'not_started', 'and not started');
 

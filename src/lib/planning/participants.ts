@@ -1,5 +1,5 @@
 import { UUID_RE } from "@/lib/forms";
-import { musicAnswersFromForm, type MusicAnswers, type MusicForm } from "./music";
+import { MUSIC_RULES, SONG_LIMITS, emptySong, musicAnswersFromForm, type MusicAnswers, type MusicForm, type SongForm } from "./music";
 
 /**
  * Participants, MC and speeches. The database (private.normalize_plan_*,
@@ -62,9 +62,18 @@ function parsePeople(people: PersonForm[], opts: { max: number; wording: boolean
   return { ok: true, answers: out };
 }
 
-// Processional: its songs plus who walks in.
+// Processional: who walks in, in order, each with their entrance song. The
+// songs are the moment's own list (participants link to them by id, so
+// several people can share one); a song can be entered right with a person.
 export type ProcessionalAnswers = MusicAnswers & { participants?: Person[]; participants_choice?: "discuss" };
-export type ProcessionalForm = MusicForm & { participants: PersonForm[]; participants_choice: "" | "discuss" };
+/**
+ * A song typed in with a person, not yet in the songs list. It joins the list
+ * (and the person links to it) in one change: when a new person is added, or
+ * when `use` is set on a person already listed. Never saved on its own.
+ */
+export type NewSongForm = { id: string; title: string; artist: string; notes: string; use?: boolean };
+export type ProcessionalPersonForm = PersonForm & { new_song?: NewSongForm | null };
+export type ProcessionalForm = MusicForm & { participants: ProcessionalPersonForm[]; participants_choice: "" | "discuss" };
 
 export function processionalForm(a: ProcessionalAnswers): ProcessionalForm {
   return {
@@ -73,6 +82,46 @@ export function processionalForm(a: ProcessionalAnswers): ProcessionalForm {
     participants: (a.participants ?? []).map(personForm),
     participants_choice: a.participants_choice ?? "",
   };
+}
+
+export function emptyNewSong(id: string): NewSongForm {
+  return { id, title: "", artist: "", notes: "" };
+}
+
+const blankSong = (s: NewSongForm) => !s.title.trim() && !s.artist.trim() && !s.notes.trim();
+
+/** Why a person's new song can't join the list yet (field of the person), or null. `room`: songs the list can still take. */
+export function newSongProblem(s: NewSongForm | null | undefined, room: number): { field: string; message: string } | null {
+  if (!s || blankSong(s)) return null;
+  if (!s.title.trim()) return { field: "song_title", message: "Enter the song's title and artist, or choose \"No song yet\"." };
+  if (!s.artist.trim()) return { field: "song_artist", message: "Enter the song's title and artist, or choose \"No song yet\"." };
+  if (s.title.trim().length > SONG_LIMITS.title) return { field: "song_title", message: `Keep this under ${SONG_LIMITS.title} characters.` };
+  if (s.artist.trim().length > SONG_LIMITS.artist) return { field: "song_artist", message: `Keep this under ${SONG_LIMITS.artist} characters.` };
+  if (s.notes.trim().length > SONG_LIMITS.notes) return { field: "song_notes", message: `Keep this under ${SONG_LIMITS.notes} characters.` };
+  if (room <= 0) return { field: "song_title", message: `The processional has the maximum of ${MUSIC_RULES.moment_songs.maxSongs} songs: choose one of them.` };
+  return null;
+}
+
+/**
+ * Moves the new songs that are ready into the songs list and links their
+ * people to them, in one change: every person newly in `participants` (not in
+ * `before`), and those marked `use`. A blank new song is dropped. Songs
+ * already in the list are never added twice (a doubled click finds them).
+ */
+export function withNewSongs(form: Pick<ProcessionalForm, "songs" | "participants">, participants: ProcessionalPersonForm[]): { songs: SongForm[]; participants: ProcessionalPersonForm[] } {
+  const known = new Set(form.participants.map((p) => p.id));
+  const songs = [...form.songs];
+  const out = participants.map((p) => {
+    const s = p.new_song;
+    if (!s || !(s.use || !known.has(p.id))) return p;
+    if (blankSong(s)) return { ...p, new_song: null };
+    if (newSongProblem(s, MUSIC_RULES.moment_songs.maxSongs - songs.length)) return p;
+    if (!songs.some((x) => x.id === s.id)) {
+      songs.push({ ...emptySong(s.id), title: s.title.trim(), artist: s.artist.trim(), notes: s.notes.trim() });
+    }
+    return { ...p, song_id: s.id, new_song: null };
+  });
+  return { songs, participants: out };
 }
 
 export function processionalAnswersFromForm(form: ProcessionalForm): Parsed<ProcessionalAnswers> {

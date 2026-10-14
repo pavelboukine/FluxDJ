@@ -76,7 +76,7 @@ function PersonText({ p }: { p: PersonLine }) {
   return (
     <Text style={s.cell}>
       {/* One string per run: react-pdf may break (with a hyphen) between adjacent runs with no space. */}
-      <Text style={s.bold}>{p.names}</Text>
+      <Text style={s.bold}>{p.order ? `${p.order}. ${p.names}` : p.names}</Text>
       {p.pronunciation ? <Text>{` [${p.pronunciation}]`}</Text> : null}
       {p.role ? <Text style={s.muted}>{` · ${p.role}`}</Text> : null}
       {p.wording ? <Text>{`\nAnnounce: “${p.wording}”`}</Text> : null}

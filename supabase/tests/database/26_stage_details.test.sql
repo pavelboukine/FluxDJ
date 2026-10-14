@@ -10,7 +10,7 @@ begin;
 \ir _catalog_fixtures.psql
 \ir _offer_fixtures.psql
 \ir _contract_fixtures.psql
-select plan(65);
+select plan(66);
 
 alter function tests.id(text) rename to id_base;
 create function tests.id(name text) returns uuid language sql immutable as $$
@@ -158,17 +158,19 @@ select tests.save('sd_wed', 'ceremony', '{"location_source":"event_venue","start
 select is(array[:'c1_s'::jsonb ->> 'status', :'c1_s'::jsonb ->> 'revision'], array['saved', '1'], 'partial answers save');
 select is(:'c1_s'::jsonb -> 'answers', '{"location_source":"event_venue","start_time":"16:00","guest_arrival_time":"15:30"}'::jsonb,
   'normalized: blank text and a next-day mark without its time are dropped');
-select is(tests.reqs(:'c1_s'::jsonb, 'ceremony'), array['location:unanswered:venue_unknown', 'start_time:answered', 'microphones:unanswered'],
+select is(tests.reqs(:'c1_s'::jsonb, 'ceremony'), array['location:unanswered:venue_unknown', 'guest_arrival:answered', 'start_time:answered', 'microphones:unanswered'],
   '"same as the event venue" stays open while no venue is known');
 select is(tests.state(:'c1_s'::jsonb, 'ceremony'), 'in_progress', 'partly answered: in progress');
 -- Event basics' venue resolves it, without entering the address again.
 select tests.save('sd_wed', 'basics', '{"venue_details":"Domaine du Lac, 2 Rue du Lac"}');
-select is(tests.reqs(tests.view('sd_wed'), 'ceremony'), array['location:answered', 'start_time:answered', 'microphones:unanswered'],
+select is(tests.reqs(tests.view('sd_wed'), 'ceremony'), array['location:answered', 'guest_arrival:answered', 'start_time:answered', 'microphones:unanswered'],
   'Event basics'' venue satisfies "same as the event venue"');
 select is(tests.reqs(tests.save('sd_wed', 'ceremony', '{"location_source":"event_venue","start_time":"16:00","microphones":"discuss"}'), 'ceremony'),
-  array['location:answered', 'start_time:answered', 'microphones:unanswered:discuss'], '"discuss with DJ" stays open and is labelled as such');
+  array['location:answered', 'guest_arrival:unanswered', 'start_time:answered', 'microphones:unanswered:discuss'], '"discuss with DJ" stays open and is labelled as such');
 select tests.save('sd_wed', 'ceremony', '{"location_source":"event_venue","start_time":"16:00","microphones":"needed"}') as s \gset c2_
-select is(tests.state(:'c2_s'::jsonb, 'ceremony'), 'complete', 'location, start time and microphone needs complete the ceremony; optional fields don''t block');
+select is(tests.state(:'c2_s'::jsonb, 'ceremony'), 'in_progress', 'a ceremony needs its guest arrival time; none is assumed');
+select tests.save('sd_wed', 'ceremony', '{"location_source":"event_venue","guest_arrival_time":"15:30","start_time":"16:00","microphones":"needed"}') as s \gset c3_
+select is(tests.state(:'c3_s'::jsonb, 'ceremony'), 'complete', 'location, guest arrival, start time and microphone needs complete the ceremony; optional fields don''t block');
 select is(tests.save('sd_wed', 'ceremony', '{"start_time":"16:00"}', 'client_y') ->> 'status', 'saved', 'the same tab saves again with its revision');
 select tests.item('sd_wed', 'ceremony') as ceremony, tests.item('sd_other', 'ceremony') as other_ceremony \gset it_
 select tests.login_as(tests.id('client_y'));

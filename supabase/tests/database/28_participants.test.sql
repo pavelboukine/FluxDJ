@@ -10,7 +10,7 @@ begin;
 \ir _catalog_fixtures.psql
 \ir _offer_fixtures.psql
 \ir _contract_fixtures.psql
-select plan(78);
+select plan(79);
 
 alter function tests.id(text) rename to id_base;
 create function tests.id(name text) returns uuid language sql immutable as $$
@@ -188,6 +188,14 @@ select is(array[:'p2_s'::jsonb ->> 'status', :'p2_s'::jsonb -> 'answers' -> 'par
 select is(tests.reqs(tests.save('pe_wed', 'processional', tests.stored('pe_wed', 'processional') || '{"participants_choice":"discuss"}'), 'processional'),
   array['songs:answered', 'participants:unanswered:discuss'], '"discuss with DJ" about who walks in stays open');
 select tests.save('pe_wed', 'processional', tests.stored('pe_wed', 'processional') - 'participants_choice');
+
+-- Wedding plans from the starter list everyone, either partner included, under Processional: no separate Couple entrance.
+select is((select count(*)::int from public.event_plan_items i join public.event_plans p on p.id = i.plan_id
+           where p.event_id = tests.id('pe_wed') and i.key = 'couple_entrance'), 0, 'a Wedding plan from the starter has no separate Couple entrance');
+-- Plans that have one (set up earlier, or added by staff) keep working as before.
+select tests.login_as(tests.id('staff_a'));
+select public.add_event_plan_item(tests.id('pe_wed'), tests.version('pe_wed'), 'couple_entrance', 'ceremony');
+select tests.su();
 
 -- The couple's entry uses its Couple entrance song: same ceremony, same plan, entered once.
 select tests.save('pe_wed', 'couple_entrance', jsonb_build_object('songs', jsonb_build_array(tests.song('couple', 'At Last', 'Etta James', '{"cue":"Couple"}'))));

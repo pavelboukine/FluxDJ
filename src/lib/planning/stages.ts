@@ -141,7 +141,7 @@ const instructionsBlock: Block = { type: "text", field: "instructions", label: "
 export const STAGE_LAYOUT: Record<StageEditor, Block[]> = {
   stage_ceremony: [
     { type: "location", label: "Where is the ceremony?" },
-    { type: "time", prefix: "guest_arrival", label: "Guest arrival (optional)" },
+    { type: "time", prefix: "guest_arrival", label: "Guest arrival (needed)" },
     { type: "time", prefix: "start", label: "Ceremony start (needed)" },
     { type: "time", prefix: "end", label: "Ceremony end (optional)" },
     { type: "text", field: "officiant_name", label: "Officiant name (optional)" },
@@ -191,6 +191,7 @@ export const STAGE_LAYOUT: Record<StageEditor, Block[]> = {
 
 export const STAGE_REQUIREMENT_LABELS: Record<string, string> = {
   location: "Location",
+  guest_arrival: "Guest arrival time",
   start_time: "Start time",
   microphones: "Microphone needs",
   entrance: "Entrance time",

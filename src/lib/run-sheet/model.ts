@@ -38,7 +38,8 @@ export type When =
   | { kind: "missing" }
   | { kind: "sequence" };
 
-export type PersonLine = { names: string; pronunciation?: string; role?: string; wording?: string };
+/** `order`: the entry's place in an ordered list such as the processional (1 is first). */
+export type PersonLine = { names: string; pronunciation?: string; role?: string; wording?: string; order?: number };
 export type SongLine = { title: string; artist: string; version?: string; cue?: string; notes?: string };
 /** An explicit answer instead of content. */
 export type Status = { tone: "choice" | "open" | "none"; text: string };
@@ -241,6 +242,8 @@ export function buildRunSheet(input: RunSheetInput): RunSheet {
   const processional = moment("processional");
   const processionalAnswers = (processional ? answersOf(processional.id) : {}) as ProcessionalAnswers;
   const procPeople = (processionalAnswers.participants ?? []).filter((p) => str(p.names));
+  // Walking order, numbered wherever the people are shown (with a Couple entrance song too).
+  const procOrder = new Map(procPeople.map((p, i) => [p.id, i + 1]));
   const coupleEntrance = stages.flatMap((s) => s.moments).find((m) => m.key === "couple_entrance");
   const coupleSongIds = new Set(((coupleEntrance ? (answersOf(coupleEntrance.id) as MusicAnswers).songs : undefined) ?? []).map((s) => s.id));
   const entranceMusic = stages.flatMap((s) => s.moments).find((m) => m.key === "entrance_music");
@@ -259,7 +262,7 @@ export function buildRunSheet(input: RunSheetInput): RunSheet {
     };
     switch (s.editor) {
       case "stage_ceremony":
-        time("Guest arrival", "guest_arrival", false);
+        time("Guest arrival", "guest_arrival", true);
         time("Start", "start", true);
         time("End", "end", false);
         sheet.location = location(a) ?? "Location not set";
@@ -313,6 +316,7 @@ export function buildRunSheet(input: RunSheetInput): RunSheet {
         rows.push(...musicRows(m, editor, ans as MusicAnswers, s.label, base.musicLists, {
           // Processional people walking to a Couple entrance song are shown here, with it.
           linked: m.key === "couple_entrance" ? procPeople.filter((p) => p.song_id && coupleSongIds.has(p.song_id)) : [],
+          order: m.key === "couple_entrance" ? procOrder : undefined,
           // Entrance songs already shown with their Introductions aren't repeated (when Introductions is visible).
           skip: m.key === "entrance_music" ? new Set(introEntries.flatMap((e) => (e.song_id ? [e.song_id] : []))) : new Set<string>(),
         }));
@@ -323,14 +327,19 @@ export function buildRunSheet(input: RunSheetInput): RunSheet {
           const own = new Map((processionalAnswers.songs ?? []).map((x) => [x.id, x]));
           // People walking to a Couple entrance song are shown there, with that song.
           const walking = procPeople.filter((p) => !(p.song_id && coupleSongIds.has(p.song_id)));
-          const groups = groupBySong(walking);
+          const groups = groupBySong(walking, procOrder);
           const used = new Set<string>();
+          // A song already played for earlier people: said as a fact; how to play it is the client's instruction, never inferred.
+          const firstWith = new Map<string, PersonLine[]>();
           groups.forEach((g, i) => {
             const linked = g.songId ? own.get(g.songId) : undefined;
             if (linked) used.add(linked.id);
+            const earlier = g.songId ? firstWith.get(g.songId) : undefined;
+            if (g.songId && !earlier) firstWith.set(g.songId, g.people);
             rows.push({
               id: `${m.id}:${i}`, when: { kind: "sequence" }, title: m.label, people: g.people,
-              songs: linked ? [song(linked)!].filter(Boolean) : [], notes: g.notes, status: null,
+              songs: linked ? [song(linked)!].filter(Boolean) : [],
+              notes: [...(earlier ? [`Same song as ${earlier.map(numbered).join(", ")}`] : []), ...g.notes], status: null,
               warning: linked ? undefined : g.songId ? undefined : "No song linked",
             });
           });
@@ -532,12 +541,15 @@ export function buildRunSheet(input: RunSheetInput): RunSheet {
 // Pieces
 // ---------------------------------------------------------------------------
 
-/** Consecutive people sharing one linked song become one group, so the song is shown once. */
-function groupBySong(entries: Person[]): { songId: string | undefined; people: PersonLine[]; notes: string[] }[] {
+const numbered = (p: PersonLine) => (p.order ? `${p.order}. ${p.names}` : p.names);
+
+/** Consecutive people sharing one linked song become one group, so the song is shown once. `order` numbers them. */
+function groupBySong(entries: Person[], order?: Map<string, number>): { songId: string | undefined; people: PersonLine[]; notes: string[] }[] {
   const groups: { songId: string | undefined; people: PersonLine[]; notes: string[] }[] = [];
   for (const e of entries) {
-    const p = person(e);
-    if (!p) continue;
+    const found = person(e);
+    if (!found) continue;
+    const p: PersonLine = order?.get(e.id) ? { ...found, order: order.get(e.id) } : found;
     const last = groups[groups.length - 1];
     const notes = str(e.notes) ? [`${p.names}: ${str(e.notes)}`] : [];
     if (last && e.song_id && last.songId === e.song_id) {
@@ -548,7 +560,7 @@ function groupBySong(entries: Person[]): { songId: string | undefined; people: P
   return groups;
 }
 
-function musicRows(m: { id: string; key: string; label: string }, editor: MusicEditor | "processional", a: MusicAnswers, stageLabel: string, lists: MusicList[], opts: { linked: Person[]; skip: Set<string> }): Row[] {
+function musicRows(m: { id: string; key: string; label: string }, editor: MusicEditor | "processional", a: MusicAnswers, stageLabel: string, lists: MusicList[], opts: { linked: Person[]; skip: Set<string>; order?: Map<string, number> }): Row[] {
   const list = songs(a.songs);
   const choice = a.choice;
   if (editor === "music_background" || editor === "music_requests" || editor === "music_exclusions") {
@@ -569,7 +581,7 @@ function musicRows(m: { id: string; key: string; label: string }, editor: MusicE
   const rows: Row[] = [];
   const shown = new Set<string>();
   if (opts.linked.length) {
-    for (const g of groupBySong(opts.linked)) {
+    for (const g of groupBySong(opts.linked, opts.order)) {
       const s = g.songId ? byId.get(g.songId) : undefined;
       if (!s) continue;
       shown.add(s.id);

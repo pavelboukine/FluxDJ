@@ -74,7 +74,14 @@ test.describe.serial("DJ run sheet", () => {
     const parents = song("September", "Earth, Wind & Fire", { cue: "Parents" });
     const couple = song("Crazy in Love", "Beyoncé", { cue: "Couple", version: "Clean" });
     await saveItem("basics", { guest_count: 150, start_time: "15:30", end_time: "01:00", access_notes: "Loading dock at the back, door 4.\nService elevator to level 2.", announcement_language: "bilingual" });
-    await saveItem("ceremony", { location_source: "other", location_other: "Chapelle Sainte-Anne", start_time: "16:00", microphones: "needed", instructions: "No music during the vows." });
+    await saveItem("ceremony", { location_source: "other", location_other: "Chapelle Sainte-Anne", guest_arrival_time: "15:30", start_time: "16:00", microphones: "needed", instructions: "No music during the vows." });
+    const canon = song("Canon in D", "Pachelbel");
+    const thousand = song("A Thousand Years", "Christina Perri");
+    await saveItem("processional", { songs: [canon, thousand], participants: [
+      { id: randomUUID(), names: "Groom and his mother", song_id: canon.id },
+      { id: randomUUID(), names: "Bridesmaids", song_id: thousand.id },
+      { id: randomUUID(), names: "Bride and her father", song_id: canon.id, notes: "Restart from the beginning" },
+    ] });
     await saveItem("entrance_music", { songs: [parents, couple] });
     await saveItem("introductions", { entries: [
       { id: randomUUID(), names: "Parents de la mariée", song_id: parents.id },
@@ -116,6 +123,14 @@ test.describe.serial("DJ run sheet", () => {
     await expect(entrance.getByText("September", { exact: true })).toHaveCount(1); // shared by both parents' entries, shown once
     await expect(staff.getByTestId("run-stage-dinner")).toContainText("Cue: After the main course");
     await expect(staff.getByTestId("run-stage-ceremony")).toContainText("No music during the vows.");
+    // The processional in walking order, numbered, with each person's song; a repeat is said as a fact, the instruction as given.
+    const ceremony = staff.getByTestId("run-stage-ceremony");
+    await expect(ceremony).toContainText("Guest arrival");
+    await expect(ceremony).toContainText("15:30");
+    await expect(ceremony.getByTestId("run-row").filter({ hasText: "Processional" })).toHaveText([
+      /1\. Groom and his mother.*Canon in D by Pachelbel/, /2\. Bridesmaids.*A Thousand Years by Christina Perri/,
+      /3\. Bride and her father.*Canon in D by Pachelbel.*Same song as 1\. Groom and his mother.*Restart from the beginning/,
+    ]);
 
     // Long lists stay collapsed; Do not play is one tap away and open.
     await expect(staff.getByTestId("run-list-must_play")).not.toHaveAttribute("open", "");
@@ -145,7 +160,7 @@ test.describe.serial("DJ run sheet", () => {
     }
     const text = pages.join("\n");
     expect(pages[0]).toContain(`Revision ${firstRevision}`);
-    for (const expected of ["Gig overview", "Chloé Gagnon et François Lévesque [klo-AY gah-NYON]", "Cue: After the main course", "Loading dock at the back, door 4.", "DO NOT PLAY", "Chanson 80", "01:00 (next day, Sun, Aug 15)"]) {
+    for (const expected of ["Gig overview", "1. Groom and his mother", "3. Bride and her father", "Same song as 1. Groom and his mother", "Chloé Gagnon et François Lévesque [klo-AY gah-NYON]", "Cue: After the main course", "Loading dock at the back, door 4.", "DO NOT PLAY", "Chanson 80", "01:00 (next day, Sun, Aug 15)"]) {
       expect(text).toContain(expected);
     }
     for (const bad of ["E2E INTERNAL NOTE", "E2E-PAYMENT-REF", "undefined", "null", "[object", tenant.ownerEmail, clientEmail]) expect(text).not.toContain(bad);

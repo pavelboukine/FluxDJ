@@ -55,7 +55,7 @@ select is((select array[name, coalesce(starter_key, 'none'), coalesce(default_ev
 select ok((select description like 'Ceremony to closing%' from public.planning_templates where id = tests.id('req_wed')), 'with the outline''s description');
 select is(tests.keys('req_wed', 'stage'), array['ceremony', 'cocktail', 'reception_entrance', 'dinner', 'special_dances', 'party', 'closing'],
   'the outline''s stages in order');
-select is((select count(*)::int from public.planning_template_items where template_id = tests.id('req_wed') and kind = 'moment'), 29, 'and its moments');
+select is((select count(*)::int from public.planning_template_items where template_id = tests.id('req_wed') and kind = 'moment'), 28, 'and its moments');
 
 select tests.create('req_party', 'simple_party', 'Birthday', description => 'Small birthdays');
 select is(tests.keys('req_party', 'moment'), array['must_play', 'do_not_play'], 'Simple Party: must play, then do not play');
@@ -80,7 +80,7 @@ select throws_ok($$ select tests.create('req_copy_foreign', 'copy', 'Theirs', so
 select is(tests.create('req_wed', 'basics', 'Something else', description => 'Different'), jsonb_build_object('id', tests.id('req_wed'), 'replayed', true),
   'the same id, even with other inputs, returns the template already created');
 select is((select name || '|' || (select count(*) from public.planning_template_items where template_id = tests.id('req_wed'))
-           from public.planning_templates where id = tests.id('req_wed')), 'Wedding (French)|39', 'and changes nothing');
+           from public.planning_templates where id = tests.id('req_wed')), 'Wedding (French)|38', 'and changes nothing');
 select throws_ok($$ select tests.create('req_wed', 'wedding', 'Claim', who => 'owner_b', tenant => 'tenant_b') $$, 'P0002', 'not found',
   'another business cannot claim the id');
 

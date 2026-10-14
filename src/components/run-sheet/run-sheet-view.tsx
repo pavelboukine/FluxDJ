@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 function Person({ p }: { p: PersonLine }) {
   return (
     <p className="[overflow-wrap:anywhere]">
+      {p.order ? <span className="tabular-nums text-muted-foreground">{p.order}. </span> : null}
       <span className="font-semibold">{p.names}</span>
       {p.pronunciation ? <span className="text-foreground"> [{p.pronunciation}]</span> : null}
       {p.role ? <span className="text-muted-foreground"> · {p.role}</span> : null}

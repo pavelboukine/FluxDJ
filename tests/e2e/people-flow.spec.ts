@@ -3,9 +3,10 @@
  * against local Supabase, inside a dedicated test tenant with a booked
  * wedding (booking set up through the database functions the app calls; see
  * booking.ts). Everything about people goes through the UI:
- *   - Processional keeps its songs and lists who walks in (people or groups,
- *     no fixed labels), with pronunciation and links to its own songs or the
- *     Couple entrance song, which then can't be removed;
+ *   - Processional lists who walks in, in order (people or groups, either
+ *     partner included), each with a song chosen or typed right there;
+ *     shared songs, changes, reordering and removals; no pronunciation guide
+ *     (older ones kept for staff); plans with a Couple entrance still link it;
  *   - Introductions are the one reception participant editor; entries share
  *     Entrance music songs by link, titles follow edits, linked songs can't
  *     be removed (also from a stale tab), hidden songs are shown as such;
@@ -98,63 +99,95 @@ test.describe.serial("people in planning", () => {
     await archiveTestTenant(tenant);
   });
 
-  test("Processional keeps its songs and lists who walks in, with pronunciation and song links", async () => {
+  test("Processional: everyone in walking order, each with a song chosen or typed right there; shared, changed, reordered and removed safely", async () => {
     const card = await openMoment(client, "ceremony", "processional");
-    const music = card.getByTestId("music-processional");
-    await addSong(music, { cue: "Wedding party", title: "Canon in D", artist: "Pachelbel" });
-    await addSong(music, { cue: "Partner", title: "A Thousand Years", artist: "Christina Perri" });
-    await expect(card.getByText("All changes saved")).toBeVisible();
-    await expect(card).toContainText("1 of 2 needed answers");
-
+    await expect(card).toContainText("Add everyone who will walk down the aisle, in the order they'll enter.");
     const people = card.getByTestId("processional-participants");
+    const add = people.getByTestId("processional-people-add");
     await addEntry(people, "processional-people-add", async (form) => {
       await form.getByRole("button", { name: "Add", exact: true }).click(); // a name is needed first
       await expect(form).toContainText("Enter the name or names.");
-      await form.getByLabel("Name or names").fill("Sam & Jo");
-      await form.getByLabel("Role or relationship (optional)").fill("Wedding party");
-      await form.getByLabel("Song (optional)").selectOption({ label: "Wedding party: Canon in D by Pachelbel" });
+      // Nobody is announced while walking in: no pronunciation guide here.
+      await expect(form.getByLabel("Pronunciation guide (optional)")).toHaveCount(0);
+      await form.getByLabel("Name or names").fill("Groom and his mother");
+      await form.getByLabel("Song they walk in to").selectOption({ label: "Enter a new song…" });
+      await form.getByLabel("Song title").fill("Canon in D");
+      await form.getByLabel("Artist", { exact: true }).fill("Pachelbel");
+      await form.getByLabel("Playback instructions (optional)").fill("Start at 0:10");
     });
     await addEntry(people, "processional-people-add", async (form) => {
-      await form.getByLabel("Name or names").fill("The flower children");
-      await form.getByLabel("Song (optional)").selectOption({ label: "Wedding party: Canon in D by Pachelbel" });
+      await form.getByLabel("Name or names").fill("Bridesmaids");
+      await form.getByLabel("Song they walk in to").selectOption({ label: "Canon in D by Pachelbel" });
+      await expect(form).toContainText("Also walking to this song: Groom and his mother.");
+      await form.getByLabel("Instructions for the DJ (optional)").fill("Keep the same song playing");
+    });
+    // An unfinished new song is pointed at; nothing is added half-done.
+    await addEntry(people, "processional-people-add", async (form) => {
+      await form.getByLabel("Name or names").fill("Flower girl");
+      await form.getByLabel("Song they walk in to").selectOption({ label: "Enter a new song…" });
+      await form.getByLabel("Song title").fill("A Thousand Years");
+      await form.getByRole("button", { name: "Add", exact: true }).click();
+      await expect(form).toContainText('Enter the song\'s title and artist, or choose "No song yet".');
+      await form.getByLabel("Artist", { exact: true }).fill("Christina Perri");
     });
     await addEntry(people, "processional-people-add", async (form) => {
-      await form.getByLabel("Name or names").fill("Alex Dubois with their mother Dana");
-      await form.getByLabel("Pronunciation guide (optional)").fill("ah-LEX doo-BWAH");
-      await form.getByLabel("Instructions (optional)").fill("Pause at the aisle");
-      await form.getByLabel("Song (optional)").selectOption({ label: "Partner: A Thousand Years by Christina Perri" });
+      await form.getByLabel("Name or names").fill("Bride and her father");
     });
     await expect(card.getByText("All changes saved")).toBeVisible();
     const rows = people.getByTestId("entry-row");
-    await expect(rows).toHaveCount(3);
-    await expect(rows.nth(2)).toContainText("3. Alex Dubois with their mother Dana (say: ah-LEX doo-BWAH)");
-    await expect(rows.nth(2)).toContainText("Song: Partner: A Thousand Years by Christina Perri");
+    await expect(rows).toHaveText([/1\. Groom and his mother.*Song: Canon in D by Pachelbel/, /2\. Bridesmaids.*Same song as the entry above: Canon in D by Pachelbel.*Keep the same song playing/,
+      /3\. Flower girl.*Song: A Thousand Years by Christina Perri/, /4\. Bride and her father.*No song chosen yet/]);
     await expect(client.getByTestId("moment-processional")).toContainText("Complete");
+    let saved = (await answers(eventId, "processional"))!;
+    expect(saved.songs!.map((x) => x.title)).toEqual(["Canon in D", "A Thousand Years"]);
+    expect(saved.participants!.map((p) => p.song_id ?? null)).toEqual([saved.songs![0].id, saved.songs![0].id, saved.songs![1].id, null]);
+    await expect(add.getByLabel("Song they walk in to")).toHaveValue("");
 
-    // Linked songs show who uses them and can't be removed.
+    // Linked songs list who walks to them and can't be removed.
+    const music = card.getByTestId("music-processional");
     const canon = music.getByTestId("song-row").filter({ hasText: "Canon in D" });
-    await expect(canon).toContainText("Linked to: Sam & Jo, The flower children");
+    await expect(canon).toContainText("Linked to: Groom and his mother, Bridesmaids");
     await expect(canon.getByRole("button", { name: 'Remove "Canon in D"' })).toBeDisabled();
-    // Renaming the song shows through the link; people are untouched.
-    await music.getByRole("button", { name: 'Edit "A Thousand Years"' }).click();
-    await music.getByTestId("song-row").filter({ hasText: "A Thousand Years" }).getByLabel("Title", { exact: true }).fill("A Thousand Years (Piano)");
-    await expect(rows.nth(2)).toContainText("Song: Partner: A Thousand Years (Piano) by Christina Perri");
-    // Reorder people.
-    await people.getByRole("button", { name: 'Move "Alex Dubois with their mother Dana" up' }).click();
+
+    // A listed person gets a new song with "Use this song"; until then nothing changes.
+    await people.getByRole("button", { name: 'Edit "Bride and her father"' }).click();
+    const bride = rows.filter({ hasText: "Bride and her father" });
+    await bride.getByLabel("Song they walk in to").selectOption({ label: "Enter a new song…" });
+    await bride.getByLabel("Song title").fill("Here Comes the Sun");
+    await bride.getByLabel("Artist", { exact: true }).fill("The Beatles");
+    await bride.getByRole("button", { name: "Use this song" }).click();
+    await expect(bride).toContainText("Song: Here Comes the Sun by The Beatles");
+    // Changing a song keeps the old one for everyone else.
+    await people.getByRole("button", { name: 'Edit "Flower girl"' }).click();
+    await rows.filter({ hasText: "Flower girl" }).getByLabel("Song they walk in to").selectOption({ label: "Canon in D by Pachelbel" });
+    await expect(rows.filter({ hasText: "Flower girl" })).toContainText("Same song as the entry above: Canon in D by Pachelbel");
+    // Reorder and remove.
+    await people.getByRole("button", { name: 'Move "Bride and her father" up' }).click();
+    await people.getByRole("button", { name: 'Remove "Bridesmaids"' }).click();
     await expect(card.getByText("All changes saved")).toBeVisible();
 
     await client.reload();
     const again = await openMoment(client, "ceremony", "processional");
     await expect(again.getByTestId("processional-participants").getByTestId("entry-row")).toHaveText([
-      /1\. Sam & Jo/, /2\. Alex Dubois with their mother Dana \(say: ah-LEX doo-BWAH\)/, /3\. The flower children/,
+      /1\. Groom and his mother/, /2\. Bride and her father.*Here Comes the Sun/, /3\. Flower girl.*Canon in D/,
     ]);
-    const saved = (await answers(eventId, "processional"))!;
-    expect(saved.songs!.map((s) => s.title)).toEqual(["Canon in D", "A Thousand Years (Piano)"]);
-    expect(saved.participants!.map((p) => p.song_id)).toEqual([saved.songs![0].id, saved.songs![1].id, saved.songs![0].id]);
+    saved = (await answers(eventId, "processional"))!;
+    // Each song once; the removed person's song stays for the others; the unused one stays listed (removable).
+    expect(saved.songs!.map((x) => x.title)).toEqual(["Canon in D", "A Thousand Years", "Here Comes the Sun"]);
+    expect(saved.participants!.map((p) => [p.names, saved.songs!.find((x) => x.id === p.song_id)?.title])).toEqual([
+      ["Groom and his mother", "Canon in D"], ["Bride and her father", "Here Comes the Sun"], ["Flower girl", "Canon in D"],
+    ]);
+    const unused = again.getByTestId("music-processional").getByTestId("song-row").filter({ hasText: "A Thousand Years" });
+    await expect(unused.getByRole("button", { name: 'Remove "A Thousand Years"' })).toBeEnabled();
     expect(await noSideways(client)).toBeLessThanOrEqual(0);
   });
 
-  test("the couple's Processional entry uses its Couple entrance song, entered once; that song can't be removed while linked", async () => {
+  test("plans with a Couple entrance (older ones, or added by staff) still link the couple's entry to its song, which can't be removed while linked", async () => {
+    // New Wedding plans have no separate Couple entrance; staff add it here as older plans have it.
+    const staffDb = await sessionFor(tenant.ownerEmail);
+    const { data: plan } = await must(admin.from("event_plans").select("structure_version").eq("event_id", eventId).single());
+    await must(staffDb.rpc("add_event_plan_item", { p_event_id: eventId, p_expected_version: plan!.structure_version, p_key: "couple_entrance", p_parent_key: "ceremony" }));
+    await client.reload();
     const couple = await openMoment(client, "ceremony", "couple_entrance");
     await addSong(couple, { cue: "Couple", title: "At Last", artist: "Etta James" });
     await expect(couple.getByText("All changes saved")).toBeVisible();
@@ -163,11 +196,11 @@ test.describe.serial("people in planning", () => {
     const people = card.getByTestId("processional-participants");
     await addEntry(people, "processional-people-add", async (form) => {
       await form.getByLabel("Name or names").fill("Alex & Taylor");
-      await form.getByLabel("Song (optional)").selectOption({ label: "Couple entrance, Couple: At Last by Etta James" });
+      await form.getByLabel("Song they walk in to").selectOption({ label: "Couple: At Last by Etta James" });
     });
     await expect(card.getByText("All changes saved")).toBeVisible();
     const entry = people.getByTestId("entry-row").filter({ hasText: "Alex & Taylor" });
-    await expect(entry).toContainText("Song: Couple entrance, Couple: At Last by Etta James");
+    await expect(entry).toContainText("Song: Couple: At Last by Etta James");
 
     // Linked from Processional: Couple entrance won't remove it, and says where the link is.
     const song = couple.getByTestId("song-row").filter({ hasText: "At Last" });
@@ -178,13 +211,32 @@ test.describe.serial("people in planning", () => {
     await couple.getByRole("button", { name: 'Edit "At Last"' }).click();
     await song.getByLabel("Title", { exact: true }).fill("At Last (Live)");
     await expect(couple.getByText("All changes saved")).toBeVisible();
-    await expect(entry).toContainText("Song: Couple entrance, Couple: At Last (Live) by Etta James");
+    await expect(entry).toContainText("Song: Couple: At Last (Live) by Etta James");
 
     const processional = (await answers(eventId, "processional"))!;
     const coupleSongs = (await answers(eventId, "couple_entrance"))!.songs!;
     expect(coupleSongs.map((s) => s.title)).toEqual(["At Last (Live)"]);
-    expect(processional.songs!.map((s) => s.title)).toEqual(["Canon in D", "A Thousand Years (Piano)"]);
+    expect(processional.songs!.map((s) => s.title)).toEqual(["Canon in D", "A Thousand Years", "Here Comes the Sun"]);
     expect(processional.participants!.find((p) => p.names === "Alex & Taylor")!.song_id).toBe(coupleSongs[0].id);
+  });
+
+  test("an older pronunciation guide in Processional is kept and shown to staff, never asked of the client", async () => {
+    const { data: plan } = await must(admin.from("event_plans").select("event_plan_items(id, key)").eq("event_id", eventId).single());
+    const itemId = plan!.event_plan_items.find((i) => i.key === "processional")!.id;
+    const stored = (await answers(eventId, "processional"))!;
+    await must(admin.from("event_plan_responses").update({
+      answers: { ...stored, participants: stored.participants!.map((p, i) => (i === 0 ? { ...p, pronunciation: "GROOM-ee" } : p)) },
+    }).eq("item_id", itemId));
+    await client.reload();
+    const card = await openMoment(client, "ceremony", "processional");
+    const groom = card.getByTestId("entry-row").filter({ hasText: "Groom and his mother" });
+    await expect(groom).not.toContainText("GROOM-ee");
+    await card.getByRole("button", { name: 'Edit "Groom and his mother"' }).click();
+    await groom.getByLabel("Instructions for the DJ (optional)").fill("Wait for the doors");
+    await expect.poll(async () => (await answers(eventId, "processional"))!.participants![0]).toMatchObject({ pronunciation: "GROOM-ee", notes: "Wait for the doors" });
+    await staff.goto(staffPlanningUrl);
+    const staffCard = await openMoment(staff, "ceremony", "processional");
+    await expect(staffCard.getByTestId("entry-row").filter({ hasText: "Groom and his mother" })).toContainText("(say: GROOM-ee)");
   });
 
   test("introductions share Entrance music songs by link; linked songs can't be removed, even from a stale tab", async () => {

@@ -117,7 +117,7 @@ test.describe.serial("planning", () => {
     await expect(staff.getByTestId("planning-template-row")).toHaveCount(2);
     await expect(staff.getByTestId("starter-offer")).toHaveCount(0);
     expect((await admin.from("planning_templates").select("id").eq("tenant_id", tenant.id)).data).toHaveLength(2);
-    await expect(staff.getByTestId("planning-template-row").filter({ hasText: "Wedding" })).toContainText("3 general sections · 7 stages · 29 moments");
+    await expect(staff.getByTestId("planning-template-row").filter({ hasText: "Wedding" })).toContainText("3 general sections · 7 stages · 28 moments");
 
     await staff.getByRole("link", { name: "Wedding", exact: true }).click();
     await staff.waitForURL(/planning-templates\/[0-9a-f-]{36}$/);
@@ -347,7 +347,7 @@ test.describe.serial("planning", () => {
     await expect(apply.getByRole("alert")).toContainText("Check the box to confirm replacing the structure.");
     await apply.getByLabel(/I understand this replaces/).check();
     await apply.getByRole("button", { name: "Apply template" }).click();
-    await expect(apply.getByText("Template applied: 1 kept, 37 added, 0 hidden. No answers were removed.")).toBeVisible();
+    await expect(apply.getByText("Template applied: 1 kept, 36 added, 0 hidden. No answers were removed.")).toBeVisible();
     // The staff overview lists what still needs attention, in plan order, and opens it.
     await openPlanSection(staff, null);
     const attention = staff.getByTestId("plan-attention");
@@ -364,7 +364,9 @@ test.describe.serial("planning", () => {
       /1\. Ceremony/, /2\. Cocktail/, /3\. Reception entrance/, /4\. Dinner/, /5\. Special dances/, /6\. Dance party/, /7\. Last dance/,
     ]);
     const ceremony = await openPlanSection(client, "ceremony");
-    await expect(ceremony).toContainText("Processional participants");
+    await expect(ceremony).toContainText("Processional");
+    // Everyone walks in through Processional: no separate Couple entrance in a new Wedding plan.
+    await expect(ceremony.getByTestId("moment-couple_entrance")).toHaveCount(0);
     // Every moment has an editor now: nothing says it isn't open yet.
     await expect(client.getByText(/Not open for planning yet|Not available yet/)).toHaveCount(0);
     await expect(client.getByTestId("section-picker").getByTestId("nav-contacts_vendors")).toContainText("Not started");
@@ -383,7 +385,7 @@ test.describe.serial("planning", () => {
     await expect(client.locator("#plan-panel-contacts_vendors")).toBeVisible();
   });
 
-  test("the client fills ceremony details on a phone: venue reuse, discuss with DJ, completion and a persisted reload", async () => {
+  test("the client fills ceremony details on a phone: venue reuse, discuss with DJ, guest arrival needed, completion and a persisted reload", async () => {
     const card = await openPlanSection(client, "ceremony");
     const details = card.getByTestId("details-ceremony");
     const status = card.getByTestId("details-status");
@@ -398,17 +400,23 @@ test.describe.serial("planning", () => {
     await expect(card.getByTestId("section-status")).toContainText("1 to discuss");
     await expect(client.getByTestId("section-picker").getByTestId("nav-ceremony")).toContainText("1 to discuss");
     await expect(details.getByText("Equipment answers are planning information for your DJ to review.", { exact: false })).toBeVisible();
-    // Optional fields don't block completion.
     await details.getByLabel("Needed", { exact: true }).check();
+    // The guest arrival time is needed too; no time is assumed.
+    await expect(details.getByRole("list", { name: "What Ceremony details needs" })).toContainText(/Guest arrival time\s*Not answered yet/);
+    await expect(status).toContainText("In progress");
+    await expect(details.getByRole("checkbox", { name: /Guest arrival: next day/ })).toHaveCount(0);
+    // Optional fields don't block completion.
+    await details.getByLabel("Guest arrival (needed)").fill("15:30");
     await expect(details.getByText("Ceremony details is complete.")).toBeVisible();
     await expect(status).toContainText("Complete");
-    expect((await stageRow(eventId, "ceremony"))!.answers).toEqual({ location_source: "event_venue", start_time: "16:00", microphones: "needed" });
+    await expect.poll(async () => (await stageRow(eventId, "ceremony"))!.answers).toEqual({ location_source: "event_venue", guest_arrival_time: "15:30", start_time: "16:00", microphones: "needed" });
 
     // A refresh reopens the same section, with the saved answers.
     await client.reload();
     await expect(client.locator("#plan-panel-ceremony")).toBeVisible();
     const again = client.getByTestId("details-ceremony");
     await expect(again.getByLabel("Ceremony start (needed)")).toHaveValue("16:00");
+    await expect(again.getByLabel("Guest arrival (needed)")).toHaveValue("15:30");
     await expect(again.getByLabel("Needed", { exact: true })).toBeChecked();
     await expect(again.getByLabel(/Same as the event venue/)).toBeChecked();
     expect(await noSideways(client)).toBeLessThanOrEqual(0);
@@ -684,10 +692,10 @@ test.describe.serial("planning", () => {
     await client.reload();
     await expect(client.getByRole("heading", { name: "Planning isn't available" })).toBeVisible();
     await staff.goto(staffPlanningUrl);
-    // Event basics, contacts, preferences, the six stage editors, the 17 song moments (Processional included), MC,
-    // introductions, speeches, music styles and both activities (this trimmed template has no Dedications) are read-only
-    // while archived.
-    await expect(staff.getByText("Unarchive the event to edit planning.")).toHaveCount(32);
+    // Event basics, contacts, preferences, the six stage editors, the 16 song moments (Processional included; no separate
+    // Couple entrance), MC, introductions, speeches, music styles and both activities (this trimmed template has no
+    // Dedications) are read-only while archived.
+    await expect(staff.getByText("Unarchive the event to edit planning.")).toHaveCount(31);
     await expect(staff.locator("#ceremony-start_time")).toBeDisabled();
     expect((await basicsRow(eventId))!.answers).toMatchObject({ guest_count: 175 });
 

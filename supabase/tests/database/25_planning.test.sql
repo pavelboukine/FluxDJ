@@ -143,8 +143,8 @@ select id as party from public.planning_templates where starter_key = 'simple_pa
 select set_config('tests.wedding', :'tpl_wedding', true), set_config('tests.party', :'tpl_party', true);
 
 select is((select array[count(*) filter (where kind = 'general'), count(*) filter (where kind = 'stage'), count(*) filter (where kind = 'moment')]::int[]
-           from public.planning_template_items where template_id = :'tpl_wedding'), array[3, 7, 29],
-  'Wedding: three general sections, seven stages, 29 moments');
+           from public.planning_template_items where template_id = :'tpl_wedding'), array[3, 7, 28],
+  'Wedding: three general sections, seven stages, 28 moments (no separate Couple entrance)');
 select is((select array_agg(key order by position) from public.planning_template_items where template_id = :'tpl_wedding' and kind = 'stage'),
   array['ceremony', 'cocktail', 'reception_entrance', 'dinner', 'special_dances', 'party', 'closing'], 'Wedding stages follow the day');
 select is((select array_agg(i.key order by i.position) from public.planning_template_items i join public.planning_template_items p on p.id = i.parent_id
@@ -463,7 +463,7 @@ select throws_like(format('select public.apply_event_plan_template(%L, %L, %s, f
 select throws_ok(format('select public.apply_event_plan_template(%L, %L, %s, true)', tests.id('pl_wed'), :'tpl_party', :rep_v - 1), 'PT409', null,
   'and the current structure version');
 select is(public.apply_event_plan_template(tests.id('pl_wed'), :'tpl_party', :rep_v, true) - 'structure_version',
-  '{"status":"applied","kept":4,"added":0,"hidden":35}'::jsonb, 'applying Simple Party keeps four items and hides the rest');
+  '{"status":"applied","kept":4,"added":0,"hidden":34}'::jsonb, 'applying Simple Party keeps four items and hides the rest');
 select is(array[tests.item('pl_wed', 'basics'), tests.item('pl_wed', 'party')], array[:'rep_basics', :'rep_party']::uuid[], 'kept items keep their ids');
 select is((select array[revision::text, answers ->> 'guest_count'] from public.event_plan_responses where item_id = :'rep_basics'), array['2', '125'],
   'Event basics answers are untouched');

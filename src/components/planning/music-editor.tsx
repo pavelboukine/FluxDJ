@@ -214,7 +214,7 @@ export function MusicSection(props: {
   return (
     <div className="grid gap-3">
       <fieldset disabled={readOnly} className="grid gap-1">
-        <legend className="mb-1 text-sm font-medium">{props.editor === "moment_songs" && props.momentKey === "processional" ? "Songs (needed)" : "Your answer (needed)"}</legend>
+        <legend className="mb-1 text-sm font-medium">{props.editor === "moment_songs" && props.momentKey === "processional" ? "Music for the processional (needed)" : "Your answer (needed)"}</legend>
         {(["", ...rules.choices] as (MusicChoice | "")[]).map((choice) => {
           const blocked = choice !== "" && choice !== "discuss" && form.songs.length > 0;
           const text = choice === "" ? LIST_CHOICE_LABEL[props.editor] : CHOICE_LABELS[props.editor][choice]!.replace("the DJ", dj);
