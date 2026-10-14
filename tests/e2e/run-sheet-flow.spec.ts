@@ -82,11 +82,14 @@ test.describe.serial("DJ run sheet", () => {
       { id: randomUUID(), names: "Bridesmaids", song_id: thousand.id },
       { id: randomUUID(), names: "Bride and her father", song_id: canon.id, notes: "Restart from the beginning" },
     ] });
-    await saveItem("entrance_music", { songs: [parents, couple] });
-    await saveItem("introductions", { entries: [
+    // The grand entrance: planned, with guest entry separate; the order holds its own songs.
+    await saveItem("reception_entrance", { guest_entry_time: "17:45", location_area: "Grande salle", grand_entrance: "planned", entrance_time: "18:15" });
+    await saveItem("introductions", { songs: [parents, couple], entries: [
       { id: randomUUID(), names: "Parents de la mariée", song_id: parents.id },
       { id: randomUUID(), names: "Parents du marié", pronunciation: "lay-VESK", song_id: parents.id },
       { id: randomUUID(), names: "Chloé Gagnon et François Lévesque", pronunciation: "klo-AY gah-NYON", wording: "Pour la première fois, M. et Mme Lévesque-Gagnon!", song_id: couple.id },
+      { id: randomUUID(), names: "Les grands-parents", music: "dj_choice" },
+      { id: randomUUID(), names: "Les témoins" },
     ] });
     await saveItem("speeches", { entries: [{ id: randomUUID(), speaker: "Olivier Lévesque", pronunciation: "oh-lee-VYAY", role: "Best man", timing: "cue", cue: "After the main course" }] });
     await saveItem("must_play", { songs: Array.from({ length: 80 }, (_, i) => song(`Chanson ${i + 1}`, `Artiste ${i + 1}`)) });
@@ -121,6 +124,17 @@ test.describe.serial("DJ run sheet", () => {
     await expect(entrance).toContainText("Chloé Gagnon et François Lévesque [klo-AY gah-NYON]");
     await expect(entrance).toContainText("Announce: “Pour la première fois, M. et Mme Lévesque-Gagnon!”");
     await expect(entrance.getByText("September", { exact: true })).toHaveCount(1); // shared by both parents' entries, shown once
+    // Guest entry and the grand entrance, separately; the order numbered; the area as given.
+    await expect(entrance).toContainText("Guest entry");
+    await expect(entrance).toContainText("17:45");
+    await expect(entrance).toContainText("Grand entrance");
+    await expect(entrance).toContainText("18:15");
+    await expect(entrance).toContainText("Grande salle");
+    await expect(entrance).toContainText("3. Chloé Gagnon et François Lévesque");
+    // Music decided explicitly: the DJ's choice said as such; an undecided entry flagged, never as the DJ's choice.
+    await expect(entrance.getByTestId("run-row").filter({ hasText: "4. Les grands-parents" })).toContainText("DJ's choice");
+    await expect(entrance.getByTestId("run-row").filter({ hasText: "5. Les témoins" })).toContainText("Music not decided yet");
+    await expect(entrance.getByTestId("run-row").filter({ hasText: "5. Les témoins" })).not.toContainText("DJ's choice");
     await expect(staff.getByTestId("run-stage-dinner")).toContainText("Cue: After the main course");
     await expect(staff.getByTestId("run-stage-ceremony")).toContainText("No music during the vows.");
     // The processional in walking order, numbered, with each person's song; a repeat is said as a fact, the instruction as given.
@@ -160,7 +174,7 @@ test.describe.serial("DJ run sheet", () => {
     }
     const text = pages.join("\n");
     expect(pages[0]).toContain(`Revision ${firstRevision}`);
-    for (const expected of ["Gig overview", "1. Groom and his mother", "3. Bride and her father", "Same song as 1. Groom and his mother", "Chloé Gagnon et François Lévesque [klo-AY gah-NYON]", "Cue: After the main course", "Loading dock at the back, door 4.", "DO NOT PLAY", "Chanson 80", "01:00 (next day, Sun, Aug 15)"]) {
+    for (const expected of ["Gig overview", "1. Groom and his mother", "3. Bride and her father", "Same song as 1. Groom and his mother", "3. Chloé Gagnon et François Lévesque [klo-AY gah-NYON]", "Guest entry", "Grand entrance", "4. Les grands-parents", "DJ's choice", "5. Les témoins", "Music not decided yet", "Cue: After the main course", "Loading dock at the back, door 4.", "DO NOT PLAY", "Chanson 80", "01:00 (next day, Sun, Aug 15)"]) {
       expect(text).toContain(expected);
     }
     for (const bad of ["E2E INTERNAL NOTE", "E2E-PAYMENT-REF", "undefined", "null", "[object", tenant.ownerEmail, clientEmail]) expect(text).not.toContain(bad);

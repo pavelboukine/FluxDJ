@@ -20,7 +20,7 @@ const NEW = "new";
  * when the entry is added, or with "Use this song" (`onUseDraft`) for an
  * entry already listed. Nothing is saved half-linked.
  */
-export function SongPicker({ id, label, value, groups, draft, onSelect, onDraft, onUseDraft, sharedWith, errorFor, missingText, hint }: {
+export function SongPicker({ id, label, value, groups, draft, onSelect, onDraft, onUseDraft, sharedWith, sharedText = "Also walking to this song", errorFor, missingText, hint }: {
   id: string;
   label: string;
   /** The linked song id, or "". */
@@ -33,6 +33,8 @@ export function SongPicker({ id, label, value, groups, draft, onSelect, onDraft,
   onUseDraft?: () => void;
   /** Other entries linked to the chosen song. */
   sharedWith: string[];
+  /** How sharing reads: "Also walking to this song", "Also entering to this song". */
+  sharedText?: string;
   errorFor: (field: "song_id" | "song_title" | "song_artist" | "song_notes") => string | null;
   missingText: string;
   hint?: string;
@@ -66,7 +68,7 @@ export function SongPicker({ id, label, value, groups, draft, onSelect, onDraft,
         </select>
       </FieldBox>
       {!draft && value && sharedWith.length > 0 ? (
-        <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">Also walking to this song: {sharedWith.join(", ")}.</p>
+        <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{sharedText}: {sharedWith.join(", ")}.</p>
       ) : null}
       {draft ? (
         <fieldset className="grid gap-3 rounded-lg border bg-muted/20 p-3 sm:grid-cols-2">

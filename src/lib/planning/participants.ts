@@ -1,5 +1,5 @@
 import { UUID_RE } from "@/lib/forms";
-import { MUSIC_RULES, SONG_LIMITS, emptySong, musicAnswersFromForm, type MusicAnswers, type MusicForm, type SongForm } from "./music";
+import { MUSIC_RULES, SONG_LIMITS, emptySong, musicAnswersFromForm, type MusicAnswers, type MusicForm, type Song, type SongForm } from "./music";
 
 /**
  * Participants, MC and speeches. The database (private.normalize_plan_*,
@@ -27,17 +27,38 @@ export const entryField = (id: string, field: string) => `entry:${id}:${field}`;
 // ---------------------------------------------------------------------------
 
 export const PERSON_LIMITS = { names: 300, role: 120, pronunciation: 300, wording: 500, notes: 500 } as const;
-export type Person = { id: string; names: string; role?: string; pronunciation?: string; wording?: string; notes?: string; song_id?: string };
-export type PersonForm = { id: string; names: string; role: string; pronunciation: string; wording: string; notes: string; song_id: string };
+export type Person = { id: string; names: string; role?: string; pronunciation?: string; wording?: string; notes?: string; song_id?: string; music?: "dj_choice" };
+/**
+ * An entry's music, where it is asked explicitly (the grand entrance order): a
+ * song, the DJ's choice, or not decided yet. Stored as song_id, "music":
+ * "dj_choice", or neither; an entry without a song is never the DJ's choice.
+ */
+export type EntryMusic = "song" | "dj_choice" | "undecided";
+export type PersonForm = { id: string; names: string; role: string; pronunciation: string; wording: string; notes: string; song_id: string; music: EntryMusic };
 
 export function emptyPerson(id: string): PersonForm {
-  return { id, names: "", role: "", pronunciation: "", wording: "", notes: "", song_id: "" };
+  return { id, names: "", role: "", pronunciation: "", wording: "", notes: "", song_id: "", music: "undecided" };
 }
 export function personForm(p: Person): PersonForm {
-  return { ...emptyPerson(p.id), ...p };
+  const { music, ...rest } = p;
+  return { ...emptyPerson(p.id), ...rest, music: p.song_id ? "song" : music === "dj_choice" ? "dj_choice" : "undecided" };
 }
 
-function parsePeople(people: PersonForm[], opts: { max: number; wording: boolean }): Parsed<Person[]> {
+/**
+ * Changing an entry's music. A song set aside for the DJ's choice or "not
+ * decided" is kept on the form only (`kept_song_id`, never saved or shown as
+ * chosen) and comes back with "Choose a song" while it's still listed. The
+ * song itself stays in the list for anyone else using it.
+ */
+export function withMusic<P extends SongPersonForm>(p: P, music: EntryMusic, listed: (songId: string) => boolean): P {
+  if (music === "song") {
+    const kept = p.kept_song_id && listed(p.kept_song_id) ? p.kept_song_id : "";
+    return { ...p, music, song_id: p.song_id || kept, kept_song_id: "" };
+  }
+  return { ...p, music, song_id: "", kept_song_id: p.song_id || p.kept_song_id || "", new_song: null };
+}
+
+function parsePeople(people: PersonForm[], opts: { max: number; wording: boolean; music?: boolean }): Parsed<Person[]> {
   if (people.length > opts.max) return { ok: false, field: "entries", message: `Keep this to ${opts.max} entries or fewer.` };
   const ids = new Set<string>();
   const out: Person[] = [];
@@ -53,10 +74,10 @@ function parsePeople(people: PersonForm[], opts: { max: number; wording: boolean
     }
     if (!o.names) return { ok: false, field: entryField(p.id, "names"), message: "Enter the name or names." };
     if (p.song_id) {
-      // Linked songs may live in another moment (Couple entrance, Entrance music): the server checks them there.
+      // Linked songs may live in another moment (Couple entrance, older Entrance music): the server checks them there.
       if (!UUID_RE.test(p.song_id)) return { ok: false, field: entryField(p.id, "song_id"), message: "Reload the page and try again." };
       o.song_id = p.song_id;
-    }
+    } else if (opts.music && p.music === "dj_choice") o.music = "dj_choice";
     out.push(o);
   }
   return { ok: true, answers: out };
@@ -72,12 +93,17 @@ export type ProcessionalAnswers = MusicAnswers & { participants?: Person[]; part
  * when `use` is set on a person already listed. Never saved on its own.
  */
 export type NewSongForm = { id: string; title: string; artist: string; notes: string; use?: boolean };
-export type ProcessionalPersonForm = PersonForm & { new_song?: NewSongForm | null };
+/** A person or group with a song chosen, or typed in, right with them (Processional, grand entrance). */
+export type SongPersonForm = PersonForm & { new_song?: NewSongForm | null; kept_song_id?: string };
+export type ProcessionalPersonForm = SongPersonForm;
 export type ProcessionalForm = MusicForm & { participants: ProcessionalPersonForm[]; participants_choice: "" | "discuss" };
+
+const songForms = (songs: Song[] | undefined): SongForm[] =>
+  (songs ?? []).map((s) => ({ id: s.id, title: s.title, artist: s.artist, version: s.version ?? "", link: s.link ?? "", notes: s.notes ?? "", cue: s.cue ?? "" }));
 
 export function processionalForm(a: ProcessionalAnswers): ProcessionalForm {
   return {
-    songs: (a.songs ?? []).map((s) => ({ id: s.id, title: s.title, artist: s.artist, version: s.version ?? "", link: s.link ?? "", notes: s.notes ?? "", cue: s.cue ?? "" })),
+    songs: songForms(a.songs),
     choice: a.choice ?? "",
     participants: (a.participants ?? []).map(personForm),
     participants_choice: a.participants_choice ?? "",
@@ -90,15 +116,15 @@ export function emptyNewSong(id: string): NewSongForm {
 
 const blankSong = (s: NewSongForm) => !s.title.trim() && !s.artist.trim() && !s.notes.trim();
 
-/** Why a person's new song can't join the list yet (field of the person), or null. `room`: songs the list can still take. */
-export function newSongProblem(s: NewSongForm | null | undefined, room: number): { field: string; message: string } | null {
+/** Why a person's new song can't join the list yet (field of the person), or null. `room`: songs the list can still take; `list`: what it's called. */
+export function newSongProblem(s: NewSongForm | null | undefined, room: number, list = "The processional"): { field: string; message: string } | null {
   if (!s || blankSong(s)) return null;
   if (!s.title.trim()) return { field: "song_title", message: "Enter the song's title and artist, or choose \"No song yet\"." };
   if (!s.artist.trim()) return { field: "song_artist", message: "Enter the song's title and artist, or choose \"No song yet\"." };
   if (s.title.trim().length > SONG_LIMITS.title) return { field: "song_title", message: `Keep this under ${SONG_LIMITS.title} characters.` };
   if (s.artist.trim().length > SONG_LIMITS.artist) return { field: "song_artist", message: `Keep this under ${SONG_LIMITS.artist} characters.` };
   if (s.notes.trim().length > SONG_LIMITS.notes) return { field: "song_notes", message: `Keep this under ${SONG_LIMITS.notes} characters.` };
-  if (room <= 0) return { field: "song_title", message: `The processional has the maximum of ${MUSIC_RULES.moment_songs.maxSongs} songs: choose one of them.` };
+  if (room <= 0) return { field: "song_title", message: `${list} has the maximum of ${MUSIC_RULES.moment_songs.maxSongs} songs: choose one of them.` };
   return null;
 }
 
@@ -109,9 +135,15 @@ export function newSongProblem(s: NewSongForm | null | undefined, room: number):
  * already in the list are never added twice (a doubled click finds them).
  */
 export function withNewSongs(form: Pick<ProcessionalForm, "songs" | "participants">, participants: ProcessionalPersonForm[]): { songs: SongForm[]; participants: ProcessionalPersonForm[] } {
-  const known = new Set(form.participants.map((p) => p.id));
-  const songs = [...form.songs];
-  const out = participants.map((p) => {
+  const next = addNewSongs(form.songs, form.participants, participants);
+  return { songs: next.songs, participants: next.people };
+}
+
+/** withNewSongs for any list of people with songs: `before` is the list as it was, `people` as it becomes. */
+export function addNewSongs<P extends SongPersonForm>(current: SongForm[], before: { id: string }[], people: P[]): { songs: SongForm[]; people: P[] } {
+  const known = new Set(before.map((p) => p.id));
+  const songs = [...current];
+  const out = people.map((p) => {
     const s = p.new_song;
     if (!s || !(s.use || !known.has(p.id))) return p;
     if (blankSong(s)) return { ...p, new_song: null };
@@ -119,9 +151,9 @@ export function withNewSongs(form: Pick<ProcessionalForm, "songs" | "participant
     if (!songs.some((x) => x.id === s.id)) {
       songs.push({ ...emptySong(s.id), title: s.title.trim(), artist: s.artist.trim(), notes: s.notes.trim() });
     }
-    return { ...p, song_id: s.id, new_song: null };
+    return { ...p, song_id: s.id, music: "song" as const, new_song: null };
   });
-  return { songs, participants: out };
+  return { songs, people: out };
 }
 
 export function processionalAnswersFromForm(form: ProcessionalForm): Parsed<ProcessionalAnswers> {
@@ -140,19 +172,25 @@ export function processionalAnswersFromForm(form: ProcessionalForm): Parsed<Proc
   return { ok: true, answers };
 }
 
-// Introductions: {entries, choice}.
+// Introductions (the grand entrance order): {entries, choice, songs}. Each
+// entry may link to one of the grand entrance's own songs (entered right with
+// the entry, as in the Processional) or, in older plans, to Entrance music.
 export type ListChoice = "none" | "discuss";
-export type IntroductionsAnswers = { entries?: Person[]; choice?: ListChoice };
-export type IntroductionsForm = { entries: PersonForm[]; choice: ListChoice | "" };
+export type IntroductionsAnswers = { entries?: Person[]; choice?: ListChoice; songs?: Song[] };
+export type IntroductionsForm = { entries: SongPersonForm[]; choice: ListChoice | ""; songs: SongForm[] };
 
 export function introductionsForm(a: IntroductionsAnswers): IntroductionsForm {
-  return { entries: (a.entries ?? []).map(personForm), choice: a.choice ?? "" };
+  return { entries: (a.entries ?? []).map(personForm), choice: a.choice ?? "", songs: songForms(a.songs) };
 }
 
 export function introductionsAnswersFromForm(form: IntroductionsForm): Parsed<IntroductionsAnswers> {
-  const people = parsePeople(form.entries, { max: 40, wording: true });
+  const music = musicAnswersFromForm("moment_songs", { songs: form.songs, choice: "" });
+  if (!music.ok) return music;
+  const people = parsePeople(form.entries, { max: 40, wording: true, music: true });
   if (!people.ok) return people;
-  return withChoice(people.answers, form.choice);
+  const answers = withChoice(people.answers, form.choice);
+  if (answers.ok && music.answers.songs) return { ok: true, answers: { ...answers.answers, songs: music.answers.songs } };
+  return answers;
 }
 
 function withChoice<E>(entries: E[], choice: ListChoice | ""): Parsed<{ entries?: E[]; choice?: ListChoice }> {

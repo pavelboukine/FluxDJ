@@ -7,9 +7,13 @@
  *     partner included), each with a song chosen or typed right there;
  *     shared songs, changes, reordering and removals; no pronunciation guide
  *     (older ones kept for staff); plans with a Couple entrance still link it;
- *   - Introductions are the one reception participant editor; entries share
- *     Entrance music songs by link, titles follow edits, linked songs can't
- *     be removed (also from a stale tab), hidden songs are shown as such;
+ *   - the reception's grand entrance: a Yes / No / Not sure decision that
+ *     shows or sets aside its time and order without clearing them; guest
+ *     entry stays separate; the order lists who is introduced, with an
+ *     optional pronunciation and announcement and a song chosen or typed
+ *     right there (shared, changed, reordered, removed safely); older plans'
+ *     Entrance music still links, and a linked song can't be removed (also
+ *     from a stale tab);
  *   - the MC and speeches (exact time with next day, cue, undecided);
  *   - pending, failed and stale saves keep entries;
  *   - staff edit the same entries on a phone; nothing contractual changes.
@@ -53,7 +57,7 @@ async function answers(eventId: string, key: string) {
   const item = data!.event_plan_items.find((i) => i.key === key)!;
   return ((await admin.from("event_plan_responses").select("answers").eq("item_id", item.id).maybeSingle()).data?.answers ?? null) as Record<string, unknown> & {
     songs?: { id: string; title: string }[]; participants?: { id: string; names: string; song_id?: string; pronunciation?: string }[];
-    entries?: { id: string; names?: string; speaker?: string; song_id?: string; timing?: string; time?: string; next_day?: boolean; cue?: string }[];
+    entries?: { id: string; names?: string; speaker?: string; song_id?: string; music?: string; timing?: string; time?: string; next_day?: boolean; cue?: string }[];
   } | null;
 }
 
@@ -239,76 +243,201 @@ test.describe.serial("people in planning", () => {
     await expect(staffCard.getByTestId("entry-row").filter({ hasText: "Groom and his mother" })).toContainText("(say: GROOM-ee)");
   });
 
-  test("introductions share Entrance music songs by link; linked songs can't be removed, even from a stale tab", async () => {
-    const reception = client.getByTestId("stage-reception_entrance");
+  test("the grand entrance decision: Yes shows its time and order, No and Not sure set them aside keeping everything; guest entry stays separate", async () => {
+    const reception = await openPlanSection(client, "reception_entrance");
+    const details = reception.getByTestId("details-reception_entrance");
+    const order = reception.getByTestId("moment-introductions");
+    // Nothing decided yet: the order waits for the decision; the old Participants and Entrance music aren't in new Wedding plans.
+    await expect(order).toBeHidden();
+    await expect(reception.getByTestId("moment-entrance_music")).toHaveCount(0);
+    await expect(reception).not.toContainText("Participants and names");
+    await expect(details.getByLabel("Planned grand entrance time (needed)")).toHaveCount(0);
+    await expect(details).toContainText("Formal grand entrance");
+    // Guest entry and the reception area are independent, and optional.
+    await details.getByLabel("When will guests enter the reception space? (needed)").fill("17:45");
+    await expect(details.getByLabel("Where will the reception take place? (optional)")).toHaveAttribute("placeholder", "Main hall, tent, or dinner area");
+
+    await details.getByLabel("Yes, we're planning a grand entrance").check();
+    await expect(order).toBeVisible();
+    await details.getByLabel("Planned grand entrance time (needed)").fill("18:15");
+    await expect(reception.getByText("All changes saved").first()).toBeVisible();
+    await expect.poll(async () => answers(eventId, "reception_entrance")).toEqual({ guest_entry_time: "17:45", grand_entrance: "planned", entrance_time: "18:15" });
+    await expect(details).toContainText("Formal grand entrance");
+    await expect(details).toContainText("Planned grand entrance time");
+
+    // No: the time and the order step aside; what was entered is kept.
+    await details.getByLabel("No, we'll skip the formal entrance").check();
+    await expect(order).toBeHidden();
+    await expect(details.getByLabel("Planned grand entrance time (needed)")).toHaveCount(0);
+    await expect(details.getByTestId("grand-entrance-kept")).toBeVisible();
+    await expect.poll(async () => answers(eventId, "reception_entrance")).toEqual({ guest_entry_time: "17:45", grand_entrance: "none", entrance_time: "18:15" });
+    await expect(reception.getByTestId("details-status")).toContainText("Complete");
+    // Not sure yet: stays open, never treated as yes or no.
+    await details.getByLabel("We're not sure yet").check();
+    await expect(order).toBeHidden();
+    await expect(details).toContainText("Not decided yet");
+    await expect.poll(async () => (await answers(eventId, "reception_entrance"))!.grand_entrance).toBe("undecided");
+    // Yes again: the time is back as entered.
+    await details.getByLabel("Yes, we're planning a grand entrance").check();
+    await expect(details.getByLabel("Planned grand entrance time (needed)")).toHaveValue("18:15");
+    await expect(order).toBeVisible();
+    await expect.poll(async () => (await answers(eventId, "reception_entrance"))!.grand_entrance).toBe("planned");
+    await client.reload();
+    const again = await openPlanSection(client, "reception_entrance");
+    await expect(again.getByTestId("details-reception_entrance").getByLabel("Yes, we're planning a grand entrance")).toBeChecked();
+    await expect(again.getByTestId("details-reception_entrance").getByLabel("Planned grand entrance time (needed)")).toHaveValue("18:15");
+    await expect(again.getByTestId("details-reception_entrance").getByLabel("When will guests enter the reception space? (needed)")).toHaveValue("17:45");
+    expect(await noSideways(client)).toBeLessThanOrEqual(0);
+  });
+
+  test("the grand entrance order: each person or group with how to announce them and a song chosen or typed right there; shared, changed, reordered, removed", async () => {
+    let intros = await openMoment(client, "reception_entrance", "introductions");
+    await expect(intros).toContainText("Grand entrance order");
+    await addEntry(intros, "introductions-entries-add", async (form) => {
+      await form.getByLabel("Names exactly as announced").fill("Bridesmaids");
+      await form.getByLabel("How should they be announced? (optional)").fill("Let's welcome the bridesmaids!");
+      // Music is decided explicitly: new entries start as "Not decided yet".
+      await expect(form.getByLabel("Not decided yet")).toBeChecked();
+      await expect(form.getByLabel("Song they enter to")).toHaveCount(0);
+      await form.getByLabel("Choose a song").check();
+      await form.getByLabel("Song they enter to").selectOption({ label: "Enter a new song…" });
+      await form.getByLabel("Song title").fill("Man! I Feel Like a Woman!");
+      await form.getByLabel("Artist", { exact: true }).fill("Shania Twain");
+      await form.getByLabel("Playback instructions (optional)").fill("Start at the chorus");
+    });
+    await addEntry(intros, "introductions-entries-add", async (form) => {
+      await form.getByLabel("Names exactly as announced").fill("The wedding party");
+      await form.getByLabel("Choose a song").check();
+      await form.getByLabel("Song they enter to").selectOption({ label: "Man! I Feel Like a Woman! by Shania Twain" });
+      await expect(form).toContainText("Also entering to this song: Bridesmaids.");
+      await form.getByLabel("Instructions for the DJ or MC (optional)").fill("Keep the same song playing");
+    });
+    await addEntry(intros, "introductions-entries-add", async (form) => {
+      await form.getByLabel("Names exactly as announced").fill("Alex and Taylor Nguyen-Roy");
+      await form.getByLabel("Name pronunciation (optional)").fill("NWEN-rwah");
+      await form.getByLabel("How should they be announced? (optional)").fill("For the first time as a married couple");
+      await form.getByLabel("Choose a song").check();
+      await form.getByLabel("Song they enter to").selectOption({ label: "Enter a new song…" });
+      await form.getByLabel("Song title").fill("Feel So Close");
+      await form.getByLabel("Artist", { exact: true }).fill("Calvin Harris");
+    });
+    // A doubled click on Add adds nothing twice.
+    await addEntry(intros, "introductions-entries-add", async (form) => {
+      await form.getByLabel("Names exactly as announced").fill("Our parents");
+      await form.getByRole("button", { name: "Add", exact: true }).click();
+    });
+    await expect(intros.getByText("All changes saved")).toBeVisible();
+    let rows = intros.getByTestId("entry-row");
+    await expect(rows).toHaveText([
+      /1\. Bridesmaids.*Announcement: Let's welcome the bridesmaids!.*Song: Man! I Feel Like a Woman! by Shania Twain/,
+      /2\. The wedding party.*Same song as the entry above: Man! I Feel Like a Woman!.*Keep the same song playing/,
+      /3\. Alex and Taylor Nguyen-Roy \(say: NWEN-rwah\).*Song: Feel So Close by Calvin Harris/,
+      /4\. Our parents.*Music not decided yet/,
+    ]);
+    let saved = (await answers(eventId, "introductions"))!;
+    expect(saved.songs!.map((s) => s.title)).toEqual(["Man! I Feel Like a Woman!", "Feel So Close"]);
+    expect(saved.entries!.map((e) => e.song_id ?? null)).toEqual([saved.songs![0].id, saved.songs![0].id, saved.songs![1].id, null]);
+    // Not decided yet stays open; the DJ's choice resolves it, stored and kept on reload.
+    await expect(client.getByTestId("moment-introductions")).toContainText("In progress");
+    await expect(intros).toContainText("Someone's music isn't decided yet");
+    await intros.getByRole("button", { name: 'Edit "Our parents"' }).click();
+    await rows.filter({ hasText: "Our parents" }).getByLabel("DJ's choice").check();
+    await expect(rows.filter({ hasText: "Our parents" })).toContainText("Music: DJ's choice");
+    await expect.poll(async () => (await answers(eventId, "introductions"))!.entries![3]).toEqual({ id: saved.entries![3].id, names: "Our parents", music: "dj_choice" });
+    await expect(client.getByTestId("moment-introductions")).toContainText("Complete");
+    await client.reload();
+    intros = await openMoment(client, "reception_entrance", "introductions");
+    rows = intros.getByTestId("entry-row");
+    await expect(rows.filter({ hasText: "Our parents" })).toContainText("Music: DJ's choice");
+    await intros.getByRole("button", { name: 'Edit "Our parents"' }).click();
+    await expect(rows.filter({ hasText: "Our parents" }).getByLabel("DJ's choice")).toBeChecked();
+    await intros.getByRole("button", { name: 'Done editing "Our parents"' }).click();
+    // Song -> DJ's choice -> Not decided -> Song: the shared song stays with the others, and comes back.
+    await intros.getByRole("button", { name: 'Edit "The wedding party"' }).click();
+    const party = rows.filter({ hasText: "The wedding party" });
+    await party.getByLabel("DJ's choice").check();
+    await expect(party).toContainText("Music: DJ's choice");
+    await expect(intros.getByTestId("music-introductions").getByTestId("song-row").filter({ hasText: "Man! I Feel Like a Woman!" })).toContainText("Linked to: Bridesmaids");
+    await party.getByLabel("Not decided yet").check();
+    await expect(party).toContainText("Music not decided yet");
+    await party.getByLabel("Choose a song").check();
+    await expect(party.getByLabel("Song they enter to")).toHaveValue(saved.songs![0].id);
+    await expect.poll(async () => (await answers(eventId, "introductions"))!.entries![1].song_id).toBe(saved.songs![0].id);
+    await intros.getByRole("button", { name: 'Done editing "The wedding party"' }).click();
+    // Linked songs list who enters to them and can't be removed.
+    const shania = intros.getByTestId("music-introductions").getByTestId("song-row").filter({ hasText: "Man! I Feel Like a Woman!" });
+    await expect(shania).toContainText("Linked to: Bridesmaids, The wedding party");
+    await expect(shania.getByRole("button", { name: 'Remove "Man! I Feel Like a Woman!"' })).toBeDisabled();
+
+    // A listed entry gets a new song with "Use this song", and pronunciation is edited in place.
+    await intros.getByRole("button", { name: 'Edit "Our parents"' }).click();
+    const parents = rows.filter({ hasText: "Our parents" });
+    await parents.getByLabel("Name pronunciation (optional)").fill("our PAIR-ents");
+    await parents.getByLabel("Choose a song").check(); // DJ's choice -> a new song
+    await parents.getByLabel("Song they enter to").selectOption({ label: "Enter a new song…" });
+    await parents.getByLabel("Song title").fill("September");
+    await parents.getByLabel("Artist", { exact: true }).fill("Earth, Wind & Fire");
+    await parents.getByRole("button", { name: "Use this song" }).click();
+    await parents.getByRole("button", { name: "Use this song" }).click({ timeout: 1000 }).catch(() => {}); // a doubled click
+    await expect(parents).toContainText("Song: September by Earth, Wind & Fire");
+    // Changing a song keeps it for everyone else; reorder and remove.
+    await intros.getByRole("button", { name: 'Edit "The wedding party"' }).click();
+    await rows.filter({ hasText: "The wedding party" }).getByLabel("Song they enter to").selectOption({ label: "Feel So Close by Calvin Harris" });
+    await intros.getByRole("button", { name: 'Move "Our parents" up' }).click();
+    await intros.getByRole("button", { name: 'Remove "Bridesmaids"' }).click();
+    await expect(intros.getByText("All changes saved")).toBeVisible();
+
+    await client.reload();
+    const again = await openMoment(client, "reception_entrance", "introductions");
+    await expect(again.getByTestId("entry-row")).toHaveText([
+      /1\. The wedding party.*Feel So Close/, /2\. Our parents \(say: our PAIR-ents\).*September/, /3\. Alex and Taylor Nguyen-Roy.*Song: Feel So Close/,
+    ]);
+    saved = (await answers(eventId, "introductions"))!;
+    // Each song once, none lost or doubled; the removed entry's song stays listed (now removable).
+    expect(saved.songs!.map((s) => s.title)).toEqual(["Man! I Feel Like a Woman!", "Feel So Close", "September"]);
+    expect(saved.entries!.map((e) => [e.names, saved.songs!.find((s) => s.id === e.song_id)?.title])).toEqual([
+      ["The wedding party", "Feel So Close"], ["Our parents", "September"], ["Alex and Taylor Nguyen-Roy", "Feel So Close"],
+    ]);
+    await expect(again.getByTestId("music-introductions").getByTestId("song-row").filter({ hasText: "Man! I Feel Like a Woman!" })
+      .getByRole("button", { name: 'Remove "Man! I Feel Like a Woman!"' })).toBeEnabled();
+    expect(await noSideways(client)).toBeLessThanOrEqual(0);
+  });
+
+  test("plans with Entrance music (older ones, or added by staff) still link to it; a linked song can't be removed, even from a stale tab", async () => {
+    const staffDb = await sessionFor(tenant.ownerEmail);
+    const { data: plan } = await must(admin.from("event_plans").select("structure_version").eq("event_id", eventId).single());
+    await must(staffDb.rpc("add_event_plan_item", { p_event_id: eventId, p_expected_version: plan!.structure_version, p_key: "entrance_music", p_parent_key: "reception_entrance" }));
+    await client.reload();
     const entrance = await openMoment(client, "reception_entrance", "entrance_music");
-    await addSong(entrance, { cue: "Wedding party", title: "Uptown Funk", artist: "Mark Ronson" });
     await addSong(entrance, { cue: "Couple", title: "Signed, Sealed, Delivered", artist: "Stevie Wonder" });
     await expect(entrance.getByText("All changes saved")).toBeVisible();
-    await expect(reception).toContainText("Participants and names");
-    await expect(reception).toContainText("Included in Introductions");
-
-    // A second tab opened before any link exists.
+    // A second tab opened before the link exists.
     const stale = await clientContext.newPage();
     await stale.goto(planningUrl);
     const staleEntrance = await openMoment(stale, "reception_entrance", "entrance_music");
 
     const intros = await openMoment(client, "reception_entrance", "introductions");
-    for (const [names, songLabel] of [["Sam and Jo", "Wedding party: Uptown Funk by Mark Ronson"], ["The wedding party", "Wedding party: Uptown Funk by Mark Ronson"], ["Alex and Taylor Nguyen-Roy", "Couple: Signed, Sealed, Delivered by Stevie Wonder"]]) {
-      await addEntry(intros, "introductions-entries-add", async (form) => {
-        await form.getByLabel("Names exactly as announced").fill(names);
-        if (names.startsWith("Alex")) {
-          await form.getByLabel("Pronunciation guide (optional)").fill("NWEN-rwah");
-          await form.getByLabel("Introduction wording (optional)").fill("For the first time as a married couple");
-        }
-        await form.getByLabel("Song (optional)").selectOption({ label: songLabel });
-      });
-    }
+    await intros.getByRole("button", { name: 'Edit "Alex and Taylor Nguyen-Roy"' }).click();
+    await intros.getByTestId("entry-row").filter({ hasText: "Alex and Taylor" }).getByLabel("Song they enter to").selectOption({ label: "Couple: Signed, Sealed, Delivered by Stevie Wonder" });
     await expect(intros.getByText("All changes saved")).toBeVisible();
-    await expect(intros.getByTestId("entry-row").nth(2)).toContainText("Alex and Taylor Nguyen-Roy (say: NWEN-rwah)");
-    await expect(intros.getByTestId("entry-row").nth(0)).toContainText("Song: Wedding party: Uptown Funk by Mark Ronson");
-    const saved = (await answers(eventId, "introductions"))!;
-    const songs = (await answers(eventId, "entrance_music"))!.songs!;
-    expect(saved.entries!.map((e) => e.song_id)).toEqual([songs[0].id, songs[0].id, songs[1].id]);
+    const music = (await answers(eventId, "entrance_music"))!.songs!;
+    expect((await answers(eventId, "introductions"))!.entries![2].song_id).toBe(music[0].id);
 
-    // This tab knows the links once saved: the song can't be removed here.
-    await client.reload();
-    const entranceAgain = await openMoment(client, "reception_entrance", "entrance_music");
-    const funk = entranceAgain.getByTestId("song-row").filter({ hasText: "Uptown Funk" });
-    await expect(funk).toContainText("Linked to: Sam and Jo, The wedding party");
-    await expect(funk.getByRole("button", { name: 'Remove "Uptown Funk"' })).toBeDisabled();
-    // The stale tab didn't know: the server refuses, naming the introductions.
-    await staleEntrance.getByRole("button", { name: 'Remove "Uptown Funk"' }).click();
+    await staleEntrance.getByRole("button", { name: 'Remove "Signed, Sealed, Delivered"' }).click();
     await expect(staleEntrance.getByRole("alert").filter({ hasText: "linked to introductions" })).toHaveText(
-      '"Uptown Funk" is linked to introductions (Sam and Jo, The wedding party). Change those introductions first. Use Undo to put the song back.',
+      '"Signed, Sealed, Delivered" is linked to introductions (Alex and Taylor Nguyen-Roy). Change those introductions first. Use Undo to put the song back.',
     );
     await staleEntrance.getByRole("button", { name: "Undo" }).click();
     await expect(staleEntrance.getByText("All changes saved")).toBeVisible();
-    expect((await answers(eventId, "entrance_music"))!.songs!.map((s) => s.title)).toEqual(["Uptown Funk", "Signed, Sealed, Delivered"]);
     await stale.close();
-
-    // Renaming a song shows in the introductions through the link.
-    await entranceAgain.getByRole("button", { name: 'Edit "Uptown Funk"' }).click();
-    await entranceAgain.getByTestId("song-row").filter({ hasText: "Uptown Funk" }).getByLabel("Title", { exact: true }).fill("Uptown Funk (Radio edit)");
-    await expect(entranceAgain.getByText("All changes saved")).toBeVisible();
-    const introsAgain = await openMoment(client, "reception_entrance", "introductions");
-    await expect(introsAgain.getByTestId("entry-row").nth(1)).toContainText("Song: Wedding party: Uptown Funk (Radio edit) by Mark Ronson");
-    expect((await answers(eventId, "introductions"))!.entries!.map((e) => e.names)).toEqual(["Sam and Jo", "The wedding party", "Alex and Taylor Nguyen-Roy"]);
-  });
-
-  test("a hidden Entrance music keeps the links, shown as not in the active plan", async () => {
-    await staff.goto(staffPlanningUrl);
-    await openPlanSection(staff, "plan-structure");
-    await staff.getByRole("button", { name: "Hide Entrance music from the client", exact: true }).click();
-    await expect(staff.getByRole("button", { name: "Restore Entrance music", exact: true })).toBeVisible();
-    await client.reload();
-    const intros = await openMoment(client, "reception_entrance", "introductions");
-    await expect(intros.getByTestId("entry-row").first()).toContainText("isn't in the active plan (Entrance music is hidden)");
-    await staff.getByRole("button", { name: "Restore Entrance music", exact: true }).click();
-    await expect(staff.getByRole("button", { name: "Hide Entrance music from the client", exact: true })).toBeVisible();
-    await client.reload();
-    const back = await openMoment(client, "reception_entrance", "introductions");
-    await expect(back.getByTestId("entry-row").first()).toContainText("Song: Wedding party: Uptown Funk (Radio edit) by Mark Ronson");
+    expect((await answers(eventId, "entrance_music"))!.songs!.map((s) => s.title)).toEqual(["Signed, Sealed, Delivered"]);
+    // Choosing No hides Entrance music as well; Yes brings both back as saved.
+    const details = (await openPlanSection(client, "reception_entrance")).getByTestId("details-reception_entrance");
+    await details.getByLabel("No, we'll skip the formal entrance").check();
+    await expect(client.getByTestId("moment-entrance_music")).toBeHidden();
+    await details.getByLabel("Yes, we're planning a grand entrance").check();
+    await expect(client.getByTestId("moment-entrance_music")).toBeVisible();
+    await expect.poll(async () => (await answers(eventId, "reception_entrance"))!.grand_entrance).toBe("planned");
   });
 
   test("the MC: someone else with a name and pronunciation; the DJ keeps no one else's details", async () => {
@@ -407,9 +536,9 @@ test.describe.serial("people in planning", () => {
     await expect(staff.getByTestId("staff-plan-overview")).toBeVisible();
     const intros = await openMoment(staff, "reception_entrance", "introductions");
     await intros.getByRole("button", { name: 'Edit "The wedding party"' }).click();
-    await intros.getByTestId("entry-row").filter({ hasText: "The wedding party" }).getByLabel("Pronunciation guide (optional)").fill("the WED-ding PAR-tee");
+    await intros.getByTestId("entry-row").filter({ hasText: "The wedding party" }).getByLabel("Name pronunciation (optional)").fill("the WED-ding PAR-tee");
     await expect(intros.getByText("All changes saved")).toBeVisible();
-    await expect.poll(async () => (await answers(eventId, "introductions"))!.entries![1]).toMatchObject({ names: "The wedding party", pronunciation: "the WED-ding PAR-tee" });
+    await expect.poll(async () => (await answers(eventId, "introductions"))!.entries![0]).toMatchObject({ names: "The wedding party", pronunciation: "the WED-ding PAR-tee" });
     expect(await noSideways(staff)).toBeLessThanOrEqual(0);
 
     await client.reload();

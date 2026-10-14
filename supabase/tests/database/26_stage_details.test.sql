@@ -10,7 +10,7 @@ begin;
 \ir _catalog_fixtures.psql
 \ir _offer_fixtures.psql
 \ir _contract_fixtures.psql
-select plan(66);
+select plan(78);
 
 alter function tests.id(text) rename to id_base;
 create function tests.id(name text) returns uuid language sql immutable as $$
@@ -43,6 +43,9 @@ create function tests.version(event text) returns int language sql stable as $$
 $$;
 create function tests.rev(event text, item_key text) returns int language sql stable as $$
   select coalesce((select revision from public.event_plan_responses where item_id = tests.item(event, item_key)), 0);
+$$;
+create function tests.stored(event text, item_key text) returns jsonb language sql stable as $$
+  select answers from public.event_plan_responses where item_id = tests.item(event, item_key);
 $$;
 -- Client save (client Y) with the current revision.
 create function tests.save(event text, item_key text, answers jsonb, who text default 'client_y') returns jsonb language plpgsql as $$
@@ -187,7 +190,24 @@ select is(tests.reqs(tests.save('sd_wed', 'cocktail', '{"location_source":"other
 select is(tests.save('sd_wed', 'reception_entrance', '{"entrance_time":"19:00","entrance_none":true}') ->> 'field', 'entrance_time',
   'an entrance time and "no formal entrance" together are refused');
 select is(tests.reqs(tests.save('sd_wed', 'reception_entrance', '{"guest_entry_time":"18:45","entrance_none":true}'), 'reception_entrance'),
-  array['entrance:not_applicable'], '"no formal entrance" is not applicable, which completes it');
+  array['guest_entry:answered', 'grand_entrance:not_applicable'], 'an older "no formal entrance" reads as no grand entrance: not applicable, which completes it');
+-- The grand entrance decision (Batch 4C). Older answers keep their meaning; nothing is rewritten.
+select is(tests.reqs(tests.view('sd_wed'), 'reception_entrance'), array['guest_entry:answered', 'grand_entrance:not_applicable'], 'older answers stay as saved');
+select is(tests.save('sd_wed', 'reception_entrance', '{"grand_entrance":"none","entrance_none":true}') ->> 'status', 'invalid',
+  'the decision and the older mark are never stored together');
+select is(tests.save('sd_wed', 'reception_entrance', '{"grand_entrance":"maybe"}') ->> 'field', 'grand_entrance', 'only yes, no or not sure');
+select is(tests.reqs(tests.save('sd_wed', 'reception_entrance', '{"guest_entry_time":"18:45"}'), 'reception_entrance'),
+  array['guest_entry:answered', 'grand_entrance:unanswered'], 'guest entry is needed on its own; the decision stays open');
+select is(tests.reqs(tests.save('sd_wed', 'reception_entrance', '{"grand_entrance":"planned","location_area":"  Main hall "}'), 'reception_entrance'),
+  array['guest_entry:unanswered', 'grand_entrance:answered', 'entrance:unanswered'], 'a planned grand entrance needs its time and guest entry; the reception area is optional');
+select is(tests.stored('sd_wed', 'reception_entrance'), '{"grand_entrance":"planned","location_area":"Main hall"}'::jsonb, 'the area is trimmed and kept');
+select is(tests.reqs(tests.save('sd_wed', 'reception_entrance', '{"grand_entrance":"none","entrance_time":"23:30","entrance_next_day":true}'), 'reception_entrance'),
+  array['guest_entry:unanswered', 'grand_entrance:not_applicable'], 'skipping it keeps an earlier time (and its next-day mark) without counting it');
+select is(tests.stored('sd_wed', 'reception_entrance'), '{"grand_entrance":"none","entrance_time":"23:30","entrance_next_day":true}'::jsonb, 'kept as sent');
+select is(tests.reqs(tests.save('sd_wed', 'reception_entrance', '{"grand_entrance":"undecided"}'), 'reception_entrance'),
+  array['guest_entry:unanswered', 'grand_entrance:unanswered:not_decided'], 'not sure yet stays open, shown as not decided; guest entry is still needed');
+select is(tests.reqs(tests.save('sd_wed', 'reception_entrance', '{"entrance_time":"19:00"}'), 'reception_entrance'),
+  array['guest_entry:unanswered', 'grand_entrance:answered', 'entrance:answered'], 'an older entrance time without a decision reads as a planned grand entrance');
 
 select is(tests.save('sd_wed', 'dinner', '{"guest_count_source":"number","guest_count":0}') ->> 'message', 'Enter a whole number from 1 to 5,000.',
   'guest counts are bounded');
@@ -215,6 +235,10 @@ select is(tests.warnings(tests.save('sd_wed', 'cocktail', '{"location_source":"e
   array['Guest arrival is after the ceremony starts.', 'Cocktail starts before Ceremony ends.'], 'conflicts are flagged, not refused');
 select tests.save('sd_wed', 'ceremony', '{"location_source":"event_venue","start_time":"16:00","end_time":"17:00","guest_arrival_time":"15:30","microphones":"not_needed"}');
 select tests.save('sd_wed', 'cocktail', '{"location_source":"event_venue","start_time":"17:00","end_time":"18:30"}');
+select is(tests.warnings(tests.save('sd_wed', 'reception_entrance', '{"guest_entry_time":"18:45","entrance_time":"18:30","grand_entrance":"none"}')), '{}'::text[],
+  'a time kept while the grand entrance is skipped isn''t on the timeline');
+select is(tests.warnings(tests.save('sd_wed', 'reception_entrance', '{"guest_entry_time":"18:45","entrance_time":"18:30","grand_entrance":"planned"}')),
+  array['The grand entrance is before guests enter.'], 'a planned one before guests enter is flagged');
 select tests.save('sd_wed', 'reception_entrance', '{"guest_entry_time":"18:45","entrance_time":"19:15"}');
 select is(tests.warnings(tests.view('sd_wed')), '{}'::text[], 'an ordered evening crossing midnight (party until 01:00 next day, closing at Event basics'' 01:00) has no warnings');
 select tests.save('sd_wed', 'closing', '{"finish_source":"time","finish_time":"00:30","finish_next_day":true}');

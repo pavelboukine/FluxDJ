@@ -2,7 +2,7 @@ import { ANNOUNCEMENT_LANGUAGES, BASICS_REQUIREMENT_LABELS, endsAfterMidnight, t
 import { GENRES, INTERACTION, LYRICS, REQUESTS, SLOW_SONGS, roleLabel, type ContactsAnswers, type EventContact, type MusicStyleAnswers, type PreferencesAnswers } from "@/lib/planning/contacts";
 import { isMusicEditor, matchKey, type MusicAnswers, type MusicEditor, type Song } from "@/lib/planning/music";
 import type { IntroductionsAnswers, McAnswers, Person, ProcessionalAnswers, Speech, SpeechesAnswers } from "@/lib/planning/participants";
-import { nextDayLabel, REQUIREMENT_NOTES, STAGE_REQUIREMENT_LABELS } from "@/lib/planning/stages";
+import { GRAND_ENTRANCE_MOMENTS, grandEntranceOf, grandEntranceOpen, nextDayLabel, REQUIREMENT_NOTES, STAGE_REQUIREMENT_LABELS } from "@/lib/planning/stages";
 import type { ArrivalAnswers, TimedAnswers, TimedEntry } from "@/lib/planning/timed";
 import { formatInstant } from "@/lib/planning/cutoff";
 import { formatEventDate, formatImportedAnswer, type StaffPlanningView } from "@/lib/planning/view";
@@ -238,7 +238,16 @@ export function buildRunSheet(input: RunSheetInput): RunSheet {
 
   // -- Stages ----------------------------------------------------------------
   const introductions = moment("introductions");
-  const introEntries = ((introductions ? (answersOf(introductions.id) as IntroductionsAnswers).entries : undefined) ?? []).filter((e) => str(e.names));
+  const introAnswers = (introductions ? answersOf(introductions.id) : {}) as IntroductionsAnswers;
+  const introEntries = (introAnswers.entries ?? []).filter((e) => str(e.names));
+  // The grand entrance decision: its moments are shown only while it's planned
+  // (or, before any decision, when they already hold answers), as on the planning pages.
+  const entranceStage = stages.find((x) => x.editor === "stage_entrance");
+  const grandEntrance = entranceStage ? grandEntranceOf((view.stage_details[entranceStage.id]?.answers ?? {}) as Answers) : null;
+  const entranceSaved = Boolean(entranceStage?.moments.some((m) => GRAND_ENTRANCE_MOMENTS.includes(m.key) && Object.keys(answersOf(m.id)).length > 0));
+  const entranceOpen = grandEntranceOpen(grandEntrance, entranceSaved);
+  // Entrance order, numbered wherever the people are shown.
+  const introOrder = new Map(introEntries.map((e, i) => [e.id, i + 1]));
   const processional = moment("processional");
   const processionalAnswers = (processional ? answersOf(processional.id) : {}) as ProcessionalAnswers;
   const procPeople = (processionalAnswers.participants ?? []).filter((p) => str(p.names));
@@ -248,6 +257,8 @@ export function buildRunSheet(input: RunSheetInput): RunSheet {
   const coupleSongIds = new Set(((coupleEntrance ? (answersOf(coupleEntrance.id) as MusicAnswers).songs : undefined) ?? []).map((s) => s.id));
   const entranceMusic = stages.flatMap((s) => s.moments).find((m) => m.key === "entrance_music");
   const entranceSongs = new Map(((entranceMusic ? (answersOf(entranceMusic.id) as MusicAnswers).songs : undefined) ?? []).map((s) => [s.id, s]));
+  // The grand entrance's own songs (entered with each introduction) come first; older plans link to Entrance music.
+  for (const x of introAnswers.songs ?? []) entranceSongs.set(x.id, x);
 
   for (const s of stages) {
     const a = (view.stage_details[s.id]?.answers ?? {}) as Answers;
@@ -279,10 +290,13 @@ export function buildRunSheet(input: RunSheetInput): RunSheet {
         if (str(a.instructions)) sheet.instructions.push({ label: "Instructions", value: str(a.instructions)! });
         break;
       case "stage_entrance":
-        time("Guests enter the room", "guest_entry", false);
-        if (a.entrance_none === true) sheet.times.push({ label: "Entrance", when: { kind: "sequence" } });
-        else time("Entrance", "entrance", true);
-        if (a.entrance_none === true) sheet.instructions.push({ label: "Entrance", value: "No formal entrance" });
+        // A grand entrance time kept while the entrance is skipped or undecided is never shown as planned.
+        time("Guest entry", "guest_entry", true);
+        if (grandEntrance === "planned" || grandEntrance === null) time("Grand entrance", "entrance", true);
+        else if (grandEntrance === "undecided") sheet.times.push({ label: "Grand entrance", when: { kind: "undecided" } });
+        if (str(a.location_area)) sheet.location = str(a.location_area)!;
+        if (grandEntrance === "none") sheet.instructions.push({ label: "Grand entrance", value: "No formal grand entrance" });
+        else if (grandEntrance === "undecided") sheet.instructions.push({ label: "Grand entrance", value: "Not decided yet (still open)" });
         break;
       case "stage_dinner":
         time("Start", "start", true);
@@ -312,6 +326,8 @@ export function buildRunSheet(input: RunSheetInput): RunSheet {
       const ans = answersOf(m.id);
       const rows = sheet.rows;
       const editor = m.editor === "processional" ? "processional" : m.editor;
+      // The grand entrance's moments when it's skipped or undecided: nothing to run (answers are kept).
+      if (GRAND_ENTRANCE_MOMENTS.includes(m.key) && s.editor === "stage_entrance" && !entranceOpen) continue;
       if (editor && isMusicEditor(editor)) {
         rows.push(...musicRows(m, editor, ans as MusicAnswers, s.label, base.musicLists, {
           // Processional people walking to a Couple entrance song are shown here, with it.
@@ -361,11 +377,24 @@ export function buildRunSheet(input: RunSheetInput): RunSheet {
               status: a2.choice === "none" ? { tone: "none", text: "No introductions" } : a2.choice === "discuss" ? MOMENT_CHOICE.discuss : UNANSWERED });
             break;
           }
-          groupBySong(introEntries).forEach((g, i) => {
+          // In entrance order; a song already played for earlier entries is said as a fact, never as a restart or continuation.
+          const firstWith = new Map<string, PersonLine[]>();
+          groupBySong(introEntries, introOrder).forEach((g, i) => {
             const linked = g.songId ? entranceSongs.get(g.songId) : undefined;
+            const earlier = g.songId ? firstWith.get(g.songId) : undefined;
+            if (g.songId && !earlier) firstWith.set(g.songId, g.people);
+            // Music decided explicitly: a song, or the DJ's choice (never a made-up track). Neither is still open.
+            const djChoice = !g.songId && g.entries[0]?.music === "dj_choice";
             rows.push({ id: `${m.id}:${i}`, when: { kind: "sequence" }, title: i === 0 ? m.label : `${m.label} (continued)`, people: g.people,
-              songs: linked ? [song(linked)!].filter(Boolean) : [], notes: g.notes, status: null, warning: linked ? undefined : "No entrance song linked" });
+              songs: linked ? [song(linked)!].filter(Boolean) : [],
+              notes: [...(earlier ? [`Same song as ${earlier.map(numbered).join(", ")}`] : []), ...g.notes],
+              status: djChoice ? { tone: "choice", text: "DJ's choice" } : null,
+              warning: linked || djChoice ? undefined : g.songId ? "Linked song not found" : "Music not decided yet" });
           });
+          // Grand entrance songs no entry uses yet.
+          const used = new Set(introEntries.flatMap((e) => (e.song_id ? [e.song_id] : [])));
+          const rest = (introAnswers.songs ?? []).filter((x) => !used.has(x.id));
+          if (rest.length > 0) rows.push({ id: `${m.id}:songs`, when: { kind: "sequence" }, title: `${m.label}: other songs`, people: [], songs: songs(rest), notes: [], status: null });
           if (a2.choice === "discuss") rows.push({ id: `${m.id}:discuss`, when: { kind: "sequence" }, title: m.label, people: [], songs: [], notes: [], status: MOMENT_CHOICE.discuss });
           break;
         }
@@ -544,8 +573,8 @@ export function buildRunSheet(input: RunSheetInput): RunSheet {
 const numbered = (p: PersonLine) => (p.order ? `${p.order}. ${p.names}` : p.names);
 
 /** Consecutive people sharing one linked song become one group, so the song is shown once. `order` numbers them. */
-function groupBySong(entries: Person[], order?: Map<string, number>): { songId: string | undefined; people: PersonLine[]; notes: string[] }[] {
-  const groups: { songId: string | undefined; people: PersonLine[]; notes: string[] }[] = [];
+function groupBySong(entries: Person[], order?: Map<string, number>): { songId: string | undefined; people: PersonLine[]; notes: string[]; entries: Person[] }[] {
+  const groups: { songId: string | undefined; people: PersonLine[]; notes: string[]; entries: Person[] }[] = [];
   for (const e of entries) {
     const found = person(e);
     if (!found) continue;
@@ -555,7 +584,8 @@ function groupBySong(entries: Person[], order?: Map<string, number>): { songId: 
     if (last && e.song_id && last.songId === e.song_id) {
       last.people.push(p);
       last.notes.push(...notes);
-    } else groups.push({ songId: e.song_id, people: [p], notes });
+      last.entries.push(e);
+    } else groups.push({ songId: e.song_id, people: [p], notes, entries: [e] });
   }
   return groups;
 }

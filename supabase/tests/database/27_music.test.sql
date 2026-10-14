@@ -145,7 +145,7 @@ select is((select array_agg(key || ':' || editor order by library_order) from pr
 select is((select array_agg(coalesce(editor, 'none') order by library_order) from private.planning_library() where key in ('introductions', 'entrance_participants', 'entrance_music')),
   array['introductions', 'included', 'moment_songs'], 'reception entrance songs have one source: Entrance music');
 select tests.view('mu_wed') as v \gset v0_
-select is((select count(*)::int from jsonb_object_keys(:'v0_v'::jsonb -> 'music')), 16, 'the client view lists the 16 visible music moments of a wedding (no separate Couple entrance)');
+select is((select count(*)::int from jsonb_object_keys(:'v0_v'::jsonb -> 'music')), 15, 'the client view lists the 15 visible music moments of a wedding (no separate Couple entrance or Entrance music)');
 select is(tests.reqs(:'v0_v'::jsonb, 'must_play'), array['songs:unanswered'], 'an empty list is unanswered');
 select is(tests.state(:'v0_v'::jsonb, 'must_play'), 'not_started', 'and not started');
 
@@ -212,7 +212,7 @@ select is(tests.reqs(tests.save('mu_wed', 'final_song', jsonb_build_object('choi
   array['songs:unanswered:discuss'], 'even with a tentative song');
 
 -- Several cue songs with instructions, in order.
-select tests.save('mu_wed', 'entrance_music', jsonb_build_object('songs', jsonb_build_array(
+select tests.save('mu_wed', 'last_dances', jsonb_build_object('songs', jsonb_build_array(
   tests.song('e1', 'Uptown Funk', 'Mark Ronson', '{"cue":"Wedding party","notes":"Start at 0:45"}'),
   tests.song('e2', 'Signed, Sealed, Delivered', 'Stevie Wonder', '{"cue":"Couple","version":"Live","notes":"Fade after the first chorus"}')))) as s \gset e1_
 select is((select array_agg((s ->> 'cue') || '|' || (s ->> 'notes') order by o) from jsonb_array_elements(:'e1_s'::jsonb -> 'answers' -> 'songs') with ordinality x(s, o)),

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { STAGE_LAYOUT, STAGE_FIELDS, STAGE_EDITORS, minutesOf, nextDayLabel, offersNextDay, stageAnswersFromForm, stageFormFromAnswers } from "@/lib/planning/stages";
+import { STAGE_LAYOUT, STAGE_FIELDS, STAGE_EDITORS, grandEntranceOf, grandEntranceOpen, minutesOf, nextDayLabel, offersNextDay, stageAnswersFromForm, stageFormFromAnswers } from "@/lib/planning/stages";
 
 describe("stage detail validation (mirrors the database)", () => {
   it("normalizes partial answers: trims text, drops blanks and a next-day mark without its time", () => {
@@ -23,8 +23,33 @@ describe("stage detail validation (mirrors the database)", () => {
     expect(f("stage_ceremony", { microphones: "maybe" })).toMatchObject({ ok: false, field: "microphones" });
     expect(f("stage_dinner", { guest_count: "0" })).toMatchObject({ ok: false, field: "guest_count" });
     expect(f("stage_party", { evening_guests: "0" })).toEqual({ ok: true, answers: { evening_guests: 0 } });
-    expect(f("stage_entrance", { entrance_time: "19:00", entrance_none: true })).toMatchObject({ ok: false, field: "entrance_time" });
+    expect(f("stage_entrance", { grand_entrance: "maybe" })).toMatchObject({ ok: false, field: "grand_entrance" });
     expect(f("stage_cocktail", { atmosphere: "x".repeat(1001) })).toMatchObject({ ok: false, field: "atmosphere" });
+  });
+
+  it("reads the grand entrance decision from older answers without rewriting them, and keeps a hidden time", () => {
+    expect(grandEntranceOf({ entrance_none: true })).toBe("none");
+    expect(grandEntranceOf({ entrance_time: "19:00" })).toBe("planned");
+    expect(grandEntranceOf({ grand_entrance: "undecided", entrance_time: "19:00" })).toBe("undecided");
+    expect(grandEntranceOf({ guest_entry_time: "17:45" })).toBeNull();
+    // Older "No formal entrance": shown as No; saved again only as the decision.
+    const legacy = stageFormFromAnswers("stage_entrance", { entrance_none: true, guest_entry_time: "17:45" });
+    expect(legacy.grand_entrance).toBe("none");
+    expect(stageAnswersFromForm("stage_entrance", legacy)).toEqual({ ok: true, answers: { guest_entry_time: "17:45", grand_entrance: "none" } });
+    // Yes -> No -> Yes: the time stays saved throughout.
+    const planned = { grand_entrance: "planned", entrance_time: "18:15", guest_entry_time: "17:45", location_area: "Main hall" };
+    const no = stageAnswersFromForm("stage_entrance", { ...stageFormFromAnswers("stage_entrance", planned), grand_entrance: "none" });
+    expect(no).toEqual({ ok: true, answers: { ...planned, grand_entrance: "none" } });
+    const yes = stageAnswersFromForm("stage_entrance", { ...stageFormFromAnswers("stage_entrance", no.ok ? no.answers : {}), grand_entrance: "planned" });
+    expect(yes).toEqual({ ok: true, answers: planned });
+  });
+
+  it("offers the grand entrance's moments only while it's planned, or before a decision when they hold answers", () => {
+    expect(grandEntranceOpen("planned", false)).toBe(true);
+    expect(grandEntranceOpen("none", true)).toBe(false);
+    expect(grandEntranceOpen("undecided", true)).toBe(false);
+    expect(grandEntranceOpen(null, false)).toBe(false);
+    expect(grandEntranceOpen(null, true)).toBe(true);
   });
 
   it("round-trips saved answers through the form", () => {

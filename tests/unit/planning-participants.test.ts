@@ -2,9 +2,13 @@ import { describe, expect, it } from "vitest";
 import { answersKey } from "@/lib/planning/basics";
 import { emptySong } from "@/lib/planning/music";
 import {
+  addNewSongs,
+  emptyNewSong,
+  withMusic,
   emptyPerson,
   emptySpeech,
   introductionsAnswersFromForm,
+  introductionsForm,
   linksBySong,
   mcAnswersFromForm,
   newSongProblem,
@@ -16,6 +20,7 @@ import {
   speechesForm,
   withNewSongs,
   type ProcessionalForm,
+  type SongPersonForm,
 } from "@/lib/planning/participants";
 
 const S1 = "11111111-1111-4111-8111-111111111111";
@@ -55,14 +60,68 @@ describe("Processional (mirror of private.normalize_plan_processional)", () => {
 });
 
 describe("Introductions", () => {
-  it("lets several entries share a song id; the server checks it against Entrance music", () => {
-    const r = introductionsAnswersFromForm({ entries: [person(P1, "Sam and Jo", { song_id: S1 }), person(P2, "The wedding party", { song_id: S1, wording: "Please welcome" })], choice: "" });
+  it("lets several entries share a song id; the server checks it against the grand entrance's songs and Entrance music", () => {
+    const r = introductionsAnswersFromForm({ entries: [person(P1, "Sam and Jo", { song_id: S1 }), person(P2, "The wedding party", { song_id: S1, wording: "Please welcome" })], choice: "", songs: [] });
     expect(r.ok && r.answers.entries!.map((e) => e.song_id)).toEqual([S1, S1]);
     expect(r.ok && r.answers.entries![1].wording).toBe("Please welcome");
   });
   it('refuses "No introductions" while entries exist', () => {
-    expect(introductionsAnswersFromForm({ entries: [person(P1, "Sam")], choice: "none" })).toMatchObject({ ok: false, field: "choice" });
-    expect(introductionsAnswersFromForm({ entries: [], choice: "none" })).toEqual({ ok: true, answers: { choice: "none" } });
+    expect(introductionsAnswersFromForm({ entries: [person(P1, "Sam")], choice: "none", songs: [] })).toMatchObject({ ok: false, field: "choice" });
+    expect(introductionsAnswersFromForm({ entries: [], choice: "none", songs: [] })).toEqual({ ok: true, answers: { choice: "none" } });
+  });
+  it("keeps pronunciation and announcement wording, both optional", () => {
+    const r = introductionsAnswersFromForm({ entries: [person(P1, "Siobhan", { pronunciation: " shi-VAWN ", wording: "Let's welcome the bridesmaids!" }), person(P2, "Groomsmen")], choice: "", songs: [] });
+    expect(r.ok && r.answers.entries).toEqual([
+      { id: P1, names: "Siobhan", pronunciation: "shi-VAWN", wording: "Let's welcome the bridesmaids!" },
+      { id: P2, names: "Groomsmen" },
+    ]);
+  });
+  it("saves a new song typed with an entry together with its link, once, and shares it", () => {
+    const sam = { ...person(P1, "Bridesmaids"), new_song: { ...emptyNewSong(S1), title: "Man! I Feel Like a Woman!", artist: "Shania Twain", notes: "Start at the chorus" } };
+    const added = addNewSongs([], [], [sam]);
+    expect(added.people[0]).toMatchObject({ song_id: S1, new_song: null });
+    expect(added.songs.map((s) => [s.id, s.title, s.artist, s.notes])).toEqual([[S1, "Man! I Feel Like a Woman!", "Shania Twain", "Start at the chorus"]]);
+    // A doubled click: the same draft id again adds nothing twice.
+    expect(addNewSongs(added.songs, [], [sam]).songs).toHaveLength(1);
+    const r = introductionsAnswersFromForm({ entries: [...added.people, person(P2, "Groomsmen", { song_id: S1 })], choice: "", songs: added.songs });
+    expect(r.ok && r.answers).toEqual({
+      entries: [{ id: P1, names: "Bridesmaids", song_id: S1 }, { id: P2, names: "Groomsmen", song_id: S1 }],
+      songs: [{ id: S1, title: "Man! I Feel Like a Woman!", artist: "Shania Twain", notes: "Start at the chorus" }],
+    });
+  });
+  it("keeps each entry's music explicit: a song, the DJ's choice, or not decided; never inferred", () => {
+    // Legacy: a song shows as "Choose a song"; no song stays undecided (never the DJ's choice).
+    expect(introductionsForm({ entries: [{ id: P1, names: "A", song_id: S1 }, { id: P2, names: "B" }] }).entries.map((e) => e.music)).toEqual(["song", "undecided"]);
+    expect(emptyPerson(P1).music).toBe("undecided");
+    const saved = { entries: [{ id: P1, names: "Groomsmen", music: "dj_choice" as const, notes: "Upbeat" }] };
+    const again = introductionsAnswersFromForm(introductionsForm(saved));
+    expect(again.ok && answersKey(again.answers)).toBe(answersKey(saved));
+    // Song -> DJ's choice -> Not decided -> Song: the song is set aside on the form only, then restored while listed.
+    const listed = (id: string) => id === S1;
+    const withSong: SongPersonForm = { ...person(P1, "Groomsmen", { song_id: S1, music: "song" }), new_song: null };
+    const dj = withMusic(withSong, "dj_choice", listed);
+    expect([dj.song_id, dj.kept_song_id, dj.music]).toEqual(["", S1, "dj_choice"]);
+    const songs = [{ ...song(S1, "Shared"), artist: "Artist" }];
+    expect(introductionsAnswersFromForm({ entries: [dj, person(P2, "Bridesmaids", { song_id: S1, music: "song" })], choice: "", songs })).toEqual({ ok: true, answers: {
+      entries: [{ id: P1, names: "Groomsmen", music: "dj_choice" }, { id: P2, names: "Bridesmaids", song_id: S1 }],
+      songs: [{ id: S1, title: "Shared", artist: "Artist" }],
+    } });
+    const undecided = withMusic(dj, "undecided", listed);
+    expect(introductionsAnswersFromForm({ entries: [undecided], choice: "", songs: [] })).toEqual({ ok: true, answers: { entries: [{ id: P1, names: "Groomsmen" }] } });
+    expect(withMusic(undecided, "song", listed)).toMatchObject({ music: "song", song_id: S1, kept_song_id: "" });
+    expect(withMusic(undecided, "song", () => false)).toMatchObject({ music: "song", song_id: "" });
+    // Processional entries never carry the DJ's choice.
+    const proc = processionalAnswersFromForm({ ...processionalForm({}), participants: [{ ...person(P1, "Sam"), music: "dj_choice", new_song: null }] });
+    expect(proc.ok && proc.answers.participants).toEqual([{ id: P1, names: "Sam" }]);
+  });
+  it("names the grand entrance when its songs are full", () => {
+    const draft = { ...emptyNewSong(S1), title: "Feel So Close", artist: "Calvin Harris" };
+    expect(newSongProblem(draft, 0, "The grand entrance")?.message).toMatch(/^The grand entrance has the maximum of 12 songs/);
+  });
+  it("round-trips saved answers unchanged", () => {
+    const saved = { entries: [{ id: P1, names: "Sam", pronunciation: "sam", song_id: S1 }], choice: "discuss" as const, songs: [{ id: S1, title: "Feel So Close", artist: "Calvin Harris" }] };
+    const again = introductionsAnswersFromForm(introductionsForm(saved));
+    expect(again.ok && answersKey(again.answers)).toBe(answersKey(saved));
   });
 });
 

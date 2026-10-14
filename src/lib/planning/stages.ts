@@ -41,7 +41,13 @@ export const STAGE_FIELDS: Record<StageEditor, Record<string, Stored>> = {
     ...instructions,
   },
   stage_cocktail: { ...location, ...time("start"), ...time("end"), atmosphere: { kind: "text", max: 1000 }, ...instructions },
-  stage_entrance: { ...time("guest_entry"), ...time("entrance"), entrance_none: { kind: "flag" } },
+  // "entrance_none" (older answers) is read as grand_entrance "none" and never written again.
+  stage_entrance: {
+    ...time("guest_entry"),
+    location_area: { kind: "text", max: 200 },
+    grand_entrance: { kind: "choice", choices: ["planned", "none", "undecided"] },
+    ...time("entrance"),
+  },
   stage_dinner: {
     ...location, ...time("start"), ...time("end"),
     meal_style: { kind: "choice", choices: ["plated", "buffet", "family_style", "stations", "other"] },
@@ -65,7 +71,39 @@ export function stageFormFromAnswers(editor: StageEditor, answers: StageAnswers)
     const value = answers[field];
     form[field] = def.kind === "flag" || def.kind === "next_day" ? value === true : value === undefined ? "" : String(value);
   }
+  if (editor === "stage_entrance") form.grand_entrance = grandEntranceOf(answers) ?? "";
   return form;
+}
+
+// ---------------------------------------------------------------------------
+// The grand entrance decision (Reception entrance)
+// ---------------------------------------------------------------------------
+
+export type GrandEntrance = "planned" | "none" | "undecided";
+
+/**
+ * The grand entrance decision as saved, older answers included (mirrors
+ * private.plan_grand_entrance): the explicit choice; else "No formal
+ * entrance" means none and an entrance time means planned; else null.
+ */
+export function grandEntranceOf(a: Record<string, unknown>): GrandEntrance | null {
+  const g = a.grand_entrance;
+  if (g === "planned" || g === "none" || g === "undecided") return g;
+  if (a.entrance_none === true) return "none";
+  if (typeof a.entrance_time === "string") return "planned";
+  return null;
+}
+
+/** Moments that belong to the grand entrance: shown and counted only while it's planned. */
+export const GRAND_ENTRANCE_MOMENTS = ["introductions", "entrance_music"];
+
+/**
+ * Whether the grand entrance's moments are offered (mirrors private.plan_progress):
+ * while it's planned, or before any decision when they already hold answers
+ * (plans started before the question existed).
+ */
+export function grandEntranceOpen(decision: GrandEntrance | null, saved: boolean): boolean {
+  return decision === "planned" || (decision === null && saved);
 }
 
 const TIME = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
@@ -112,9 +150,6 @@ export function stageAnswersFromForm(editor: StageEditor, form: StageForm): { ok
   if (start !== null && end !== null && end <= start) {
     return { ok: false, field: "end_time", message: 'The end must be after the start. If it ends after midnight, check "Next day".' };
   }
-  if (answers.entrance_none && answers.entrance_time) {
-    return { ok: false, field: "entrance_time", message: 'Remove the entrance time or uncheck "No formal entrance", not both.' };
-  }
   return { ok: true, answers };
 }
 
@@ -125,12 +160,13 @@ export function stageAnswersFromForm(editor: StageEditor, form: StageForm): { ok
 export type Block =
   | { type: "location"; label: string }
   | { type: "time"; prefix: string; label: string; hint?: string }
-  | { type: "text"; field: string; label: string; rows?: number; hint?: string }
+  | { type: "text"; field: string; label: string; rows?: number; hint?: string; placeholder?: string }
   | { type: "choice"; field: string; label: string; options: [string, string][]; hint?: string }
   | { type: "int"; field: string; label: string; hint?: string }
   | { type: "flag"; field: string; label: string }
   | { type: "guest_count" }
   | { type: "finish" }
+  | { type: "grand_entrance" }
   | { type: "note"; text: string };
 
 export const EQUIPMENT_NOTE =
@@ -162,10 +198,15 @@ export const STAGE_LAYOUT: Record<StageEditor, Block[]> = {
     instructionsBlock,
   ],
   stage_entrance: [
-    { type: "time", prefix: "guest_entry", label: "Guests enter the reception room (optional)" },
-    { type: "time", prefix: "entrance", label: "Planned entrance time (needed)" },
-    { type: "flag", field: "entrance_none", label: "No formal entrance" },
-    { type: "note", text: "Who enters and how to announce them go under Introductions below; their songs under Entrance music." },
+    {
+      type: "time", prefix: "guest_entry", label: "When will guests enter the reception space? (needed)",
+      hint: "Approximately when guests will be invited into the room or area where the reception takes place.",
+    },
+    {
+      type: "text", field: "location_area", label: "Where will the reception take place? (optional)",
+      placeholder: "Main hall, tent, or dinner area", hint: "No need for a formal room name.",
+    },
+    { type: "grand_entrance" },
   ],
   stage_dinner: [
     { type: "location", label: "Where is dinner?" },
@@ -194,13 +235,16 @@ export const STAGE_REQUIREMENT_LABELS: Record<string, string> = {
   guest_arrival: "Guest arrival time",
   start_time: "Start time",
   microphones: "Microphone needs",
-  entrance: "Entrance time",
+  guest_entry: "Guest entry time",
+  grand_entrance: "Formal grand entrance",
+  entrance: "Planned grand entrance time",
   guest_count: "Guest count",
   finish: "Finish time",
   songs: "Songs or a choice",
   participants: "Who walks in",
   mc: "MC",
-  introductions: "Introductions or a choice",
+  introductions: "Who is introduced, or a choice",
+  entry_music: "A song or DJ's choice for everyone introduced",
   speeches: "Speeches or a choice",
   day_of: "Day-of contact with a phone",
   vendors: "Vendor contacts, or none",
@@ -226,6 +270,7 @@ export const REQUIREMENT_NOTES: Record<string, string> = {
   ceremony_missing: "Not in the Ceremony details yet",
   entry_timing_open: "An entry has no time or moment yet",
   dedication_open: "A dedication still needs a song or timing",
+  music_open: "Someone's music isn't decided yet",
 };
 
 /** Times before this are often after midnight, so the next-day mark is offered for them. */

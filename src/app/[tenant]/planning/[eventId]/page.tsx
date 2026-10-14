@@ -17,7 +17,8 @@ import {
   UnsavedElsewhere,
 } from "@/components/planning/plan-navigation";
 import { AlreadyProvided } from "@/components/planning/plan-overview";
-import { ceremonyDetails, generalEditor, knownPeople, momentEditor, savedIntroductions, savedProcessionalPeople } from "@/components/planning/moment-editor";
+import { ceremonyDetails, generalEditor, grandEntranceState, knownPeople, momentEditor, savedIntroductions, savedProcessionalPeople } from "@/components/planning/moment-editor";
+import { GrandEntranceGate, GrandEntranceProvider } from "@/components/planning/grand-entrance";
 import { MusicListsProvider } from "@/components/planning/music-editor";
 import { EditingNotice, ItemStatus, PlanProgressProvider } from "@/components/planning/progress";
 import { SaveRegistryProvider, SaveScope } from "@/components/planning/save-registry";
@@ -164,114 +165,116 @@ export default async function ClientPlanningPage({ params }: PageProps<"/[tenant
                     introductions={savedIntroductions(view.structure.stages, view.moments)}
                     processionalPeople={savedProcessionalPeople(view.structure.stages, view.moments)}
                   >
-                    <PlanPanel view={null} testId="plan-overview">
-                      <PlanOverview djName={dj} providedCount={providedCount} />
-                    </PlanPanel>
+                    <GrandEntranceProvider state={grandEntranceState(view.structure.stages, view.stage_details, view.moments, view.music)}>
+                      <PlanPanel view={null} testId="plan-overview">
+                        <PlanOverview djName={dj} providedCount={providedCount} />
+                      </PlanPanel>
 
-                    {sections.map((s, index) => {
-                      if (s.kind === "general") {
-                        const g = general.get(s.id)!;
-                        const editor =
-                          g.key === "basics" ? (
-                            <BasicsEditor
-                              itemId={view.basics.item_id}
-                              initialAnswers={view.basics.answers}
-                              initialRevision={view.basics.revision}
-                              eventVenue={{ name: view.event.venue_name, address: view.event.venue_address }}
-                              djName={dj}
-                              audience="client"
-                              save={save(view.basics.item_id)}
-                              languageInPreferences={languageAskedInPreferences(view.structure)}
-                            />
-                          ) : (
-                            generalEditor(g, { moments: view.moments, eventContacts: view.event_contacts, known, djName: dj, audience: "client", save })
+                      {sections.map((s, index) => {
+                        if (s.kind === "general") {
+                          const g = general.get(s.id)!;
+                          const editor =
+                            g.key === "basics" ? (
+                              <BasicsEditor
+                                itemId={view.basics.item_id}
+                                initialAnswers={view.basics.answers}
+                                initialRevision={view.basics.revision}
+                                eventVenue={{ name: view.event.venue_name, address: view.event.venue_address }}
+                                djName={dj}
+                                audience="client"
+                                save={save(view.basics.item_id)}
+                                languageInPreferences={languageAskedInPreferences(view.structure)}
+                              />
+                            ) : (
+                              generalEditor(g, { moments: view.moments, eventContacts: view.event_contacts, known, djName: dj, audience: "client", save })
+                            );
+                          return (
+                            <PlanPanel key={s.key} view={s.key} testId={`section-${s.key}`}>
+                              <section aria-labelledby={headingId(s.key)} className={card}>
+                                <SectionHeader sectionKey={s.key} eyebrow="Event details" />
+                                <div data-plan-item={s.id} tabIndex={-1} className="grid gap-3 text-sm outline-none">
+                                  <SaveScope item={s.id}>{editor}</SaveScope>
+                                </div>
+                                <SectionPager view={s.key} />
+                              </section>
+                            </PlanPanel>
                           );
+                        }
+                        const stageNumber = index - (sections.length - stageCount) + 1;
+                        const single = !s.stageEditor && s.moments.length === 1;
                         return (
-                          <PlanPanel key={s.key} view={s.key} testId={`section-${s.key}`}>
+                          <PlanPanel key={s.key} view={s.key} testId={`stage-${s.key}`}>
                             <section aria-labelledby={headingId(s.key)} className={card}>
-                              <SectionHeader sectionKey={s.key} eyebrow="Event details" />
-                              <div data-plan-item={s.id} tabIndex={-1} className="grid gap-3 text-sm outline-none">
-                                <SaveScope item={s.id}>{editor}</SaveScope>
-                              </div>
+                              <SectionHeader sectionKey={s.key} eyebrow={`Part ${stageNumber} of ${stageCount} of your event`} />
+                              {s.stageEditor ? (
+                                <section data-plan-item={s.id} tabIndex={-1} aria-labelledby={`details-heading-${s.key}`} className="grid gap-3 text-sm outline-none">
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <h3 id={`details-heading-${s.key}`} className="text-base font-semibold [overflow-wrap:anywhere]">
+                                      {s.detailsLabel ?? `${s.label} details`}
+                                    </h3>
+                                    <span data-testid="details-status"><ItemStatus itemId={s.id} /></span>
+                                  </div>
+                                  <SaveScope item={s.id}>
+                                    <StageDetailsEditor
+                                      itemId={s.id}
+                                      stageKey={s.key}
+                                      stageLabel={s.label}
+                                      editor={s.stageEditor as StageEditor}
+                                      initialAnswers={view.stage_details[s.id]?.answers ?? {}}
+                                      initialRevision={view.stage_details[s.id]?.revision ?? 0}
+                                      event={event}
+                                      djName={dj}
+                                      audience="client"
+                                      save={save(s.id)}
+                                    />
+                                  </SaveScope>
+                                </section>
+                              ) : null}
+                              {s.moments.length > 0 ? (
+                                <div className="grid gap-2">
+                                  {single ? null : (
+                                    <div className="grid gap-0.5">
+                                      <h3 className="text-base font-semibold">In this part of the event</h3>
+                                      <p className="text-xs text-muted-foreground">Open each one to fill it in. They stay in the order of your event.</p>
+                                    </div>
+                                  )}
+                                  <ul className="grid gap-2" aria-label={`Moments in ${s.label}`}>
+                                    {s.moments.map((m) => (
+                                      <GrandEntranceGate key={m.id} momentKey={m.key}>
+                                        <PlanMoment moment={m} defaultOpen={single}>
+                                          {momentEditor(moments.get(m.id)!, { music: view.music, moments: view.moments, djName: dj, audience: "client", event, ceremony, save })}
+                                        </PlanMoment>
+                                      </GrandEntranceGate>
+                                    ))}
+                                  </ul>
+                                </div>
+                              ) : null}
+                              {s.covered.map((c) => (
+                                <p key={c.label} className="text-xs text-muted-foreground">
+                                  {c.label}: {c.by ? `Included in ${c.by}` : "Included in another part of your plan"}.
+                                </p>
+                              ))}
+                              {s.unavailable.length > 0 ? (
+                                <p className="text-xs text-muted-foreground">
+                                  Not open for planning yet, and not counted in progress: {s.unavailable.join(", ")}.
+                                </p>
+                              ) : null}
                               <SectionPager view={s.key} />
                             </section>
                           </PlanPanel>
                         );
-                      }
-                      const stageNumber = index - (sections.length - stageCount) + 1;
-                      const single = !s.stageEditor && s.moments.length === 1;
-                      return (
-                        <PlanPanel key={s.key} view={s.key} testId={`stage-${s.key}`}>
-                          <section aria-labelledby={headingId(s.key)} className={card}>
-                            <SectionHeader sectionKey={s.key} eyebrow={`Part ${stageNumber} of ${stageCount} of your event`} />
-                            {s.stageEditor ? (
-                              <section data-plan-item={s.id} tabIndex={-1} aria-labelledby={`details-heading-${s.key}`} className="grid gap-3 text-sm outline-none">
-                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <h3 id={`details-heading-${s.key}`} className="text-base font-semibold [overflow-wrap:anywhere]">
-                                    {s.detailsLabel ?? `${s.label} details`}
-                                  </h3>
-                                  <span data-testid="details-status"><ItemStatus itemId={s.id} /></span>
-                                </div>
-                                <SaveScope item={s.id}>
-                                  <StageDetailsEditor
-                                    itemId={s.id}
-                                    stageKey={s.key}
-                                    stageLabel={s.label}
-                                    editor={s.stageEditor as StageEditor}
-                                    initialAnswers={view.stage_details[s.id]?.answers ?? {}}
-                                    initialRevision={view.stage_details[s.id]?.revision ?? 0}
-                                    event={event}
-                                    djName={dj}
-                                    audience="client"
-                                    save={save(s.id)}
-                                  />
-                                </SaveScope>
-                              </section>
-                            ) : null}
-                            {s.moments.length > 0 ? (
-                              <div className="grid gap-2">
-                                {single ? null : (
-                                  <div className="grid gap-0.5">
-                                    <h3 className="text-base font-semibold">In this part of the event</h3>
-                                    <p className="text-xs text-muted-foreground">Open each one to fill it in. They stay in the order of your event.</p>
-                                  </div>
-                                )}
-                                <ul className="grid gap-2" aria-label={`Moments in ${s.label}`}>
-                                  {s.moments.map((m) => (
-                                    <li key={m.id}>
-                                      <PlanMoment moment={m} defaultOpen={single}>
-                                        {momentEditor(moments.get(m.id)!, { music: view.music, moments: view.moments, djName: dj, audience: "client", event, ceremony, save })}
-                                      </PlanMoment>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            ) : null}
-                            {s.covered.map((c) => (
-                              <p key={c.label} className="text-xs text-muted-foreground">
-                                {c.label}: {c.by ? `Included in ${c.by}` : "Included in another part of your plan"}.
-                              </p>
-                            ))}
-                            {s.unavailable.length > 0 ? (
-                              <p className="text-xs text-muted-foreground">
-                                Not open for planning yet, and not counted in progress: {s.unavailable.join(", ")}.
-                              </p>
-                            ) : null}
-                            <SectionPager view={s.key} />
+                      })}
+
+                      {providedCount > 0 ? (
+                        <PlanPanel view={PROVIDED_SECTION} testId="already-provided">
+                          <section aria-labelledby={headingId(PROVIDED_SECTION)} className={card}>
+                            <PanelHeading view={PROVIDED_SECTION}>Already provided</PanelHeading>
+                            <AlreadyProvided imported={view.imported} djName={dj} audience="client" />
+                            <SectionPager view={PROVIDED_SECTION} />
                           </section>
                         </PlanPanel>
-                      );
-                    })}
-
-                    {providedCount > 0 ? (
-                      <PlanPanel view={PROVIDED_SECTION} testId="already-provided">
-                        <section aria-labelledby={headingId(PROVIDED_SECTION)} className={card}>
-                          <PanelHeading view={PROVIDED_SECTION}>Already provided</PanelHeading>
-                          <AlreadyProvided imported={view.imported} djName={dj} audience="client" />
-                          <SectionPager view={PROVIDED_SECTION} />
-                        </section>
-                      </PlanPanel>
-                    ) : null}
+                      ) : null}
+                    </GrandEntranceProvider>
                   </MusicListsProvider>
                 </div>
               </div>

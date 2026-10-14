@@ -138,7 +138,7 @@ export function MusicEditor(props: Props) {
         djName={props.djName}
         audience={props.audience}
         linked={linked}
-        linkedWhere={props.momentKey === "couple_entrance" ? "Processional (who walks in)" : "Introductions"}
+        linkedWhere={props.momentKey === "couple_entrance" ? "Processional (who walks in)" : "the grand entrance order"}
       />
       {!readOnly || saveState === "locked" ? <SaveStatus saveState={saveState} message={message} retry={retry} /> : null}
     </div>
@@ -165,13 +165,16 @@ export function MusicSection(props: {
   linked: Map<string, string[]>;
   /** Where linked entries live, for the explanation ("introductions", "who walks in"). */
   linkedWhere: string;
+  /** False for a list without a choice of its own (the grand entrance's songs). */
+  choices?: boolean;
 }) {
   const { form, update, fieldError, readOnly } = props;
+  const choices = props.choices ?? true;
   const rules = MUSIC_RULES[props.editor];
   const lists = useContext(ListsContext);
   const [editing, setEditing] = useState<string | null>(null);
   const [removed, setRemoved] = useState<{ song: SongForm; index: number } | null>(null);
-  const exclusive = form.choice !== "" && form.choice !== "discuss";
+  const exclusive = choices && form.choice !== "" && form.choice !== "discuss";
   const dupes = duplicateIds(form.songs);
   const conflicts = lists ? conflictsFor(props.itemId, props.editor, form.songs, lists.lists) : new Map<string, string[]>();
   const errorFor = (id: string, field: string) => (fieldError?.field === songField(id, field) ? fieldError.message : null);
@@ -213,7 +216,7 @@ export function MusicSection(props: {
 
   return (
     <div className="grid gap-3">
-      <fieldset disabled={readOnly} className="grid gap-1">
+      {choices ? <fieldset disabled={readOnly} className="grid gap-1">
         <legend className="mb-1 text-sm font-medium">{props.editor === "moment_songs" && props.momentKey === "processional" ? "Music for the processional (needed)" : "Your answer (needed)"}</legend>
         {(["", ...rules.choices] as (MusicChoice | "")[]).map((choice) => {
           const blocked = choice !== "" && choice !== "discuss" && form.songs.length > 0;
@@ -239,7 +242,7 @@ export function MusicSection(props: {
         {form.choice === "not_applicable" ? (
           <p className="text-xs text-muted-foreground">The moment stays in your plan; only {props.djName} can remove it.</p>
         ) : null}
-      </fieldset>
+      </fieldset> : null}
 
       {form.songs.length > 0 ? (
         <ol className="grid gap-2" aria-label={`Songs: ${props.label}`}>

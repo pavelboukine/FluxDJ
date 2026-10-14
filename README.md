@@ -338,7 +338,7 @@ in the details above". Fields are a fixed typed list
 |---|---|---|
 | Ceremony | location (same as the event venue, or another place) and room/outdoor area; guest arrival, start, end; officiant name and contact; microphones (not needed / needed / not sure, discuss with DJ) and who speaks; instructions | location, guest arrival time, start time, microphone needs ("discuss" stays open) |
 | Cocktail | location and area; start, end; atmosphere or music style; instructions | location, start time |
-| Reception entrance | guests enter; planned entrance time; "No formal entrance" | entrance time, or no formal entrance (not applicable) |
+| Reception entrance | when guests enter the reception space; where the reception takes place (free text, optional); "Are you planning a formal grand entrance?" (yes / no / not sure yet); while yes, the planned grand entrance time | guest entry time (whatever the decision); the decision; while yes, the grand entrance time. No is not applicable; not sure stays open ("Not decided yet") |
 | Dinner | location and area; start, end; meal style; guest count (Event basics' count, or another number) | location, start time, guest count |
 | Party | location and area; start, end; additional evening guests | location, start time |
 | Closing | finish (a time, Event basics' end time, or discuss with DJ); closing instructions | finish time ("discuss" stays open) |
@@ -425,9 +425,11 @@ How it works:
   title and artist within a list, and the same song in a play list and in
   Do not play. Matching ignores case and spacing only: without a music
   service, recordings can't be identified.
-- **Reception entrance.** **Entrance music** is the one place for its songs,
-  with a cue per group ("Wedding party", "Couple"). **Introductions** link to
-  them by entry id (see People below), so nothing is entered twice.
+- **Reception entrance.** Since 2026-11-12 (`20261112000100`) the grand
+  entrance order (**Introductions**) holds its own songs, chosen or typed
+  with each person or group like the Processional (see People below). Plans
+  and templates with an **Entrance music** list keep it; entries can still
+  link to its songs, and a linked one can't be removed there.
 - **Hidden moments and stages** keep their songs. They are left out of the
   views and progress until restored. Archived events are read-only.
   Planning writes never touch contracts, prices, payments, booking or
@@ -441,7 +443,7 @@ synthesis). Each editor opens as a card inside its stage, like songs.
 | Moment | Editor | Each entry | Alternatives |
 |---|---|---|---|
 | Processional (Ceremony) | Who walks in, in order, either partner included, each with their song; then the processional's songs, each once | Name or names (a person, a pair or a group, for example "Alex with their mother Dana"); role or relationship, a song (one already listed, one typed in right there, or none yet), instructions for the DJ (all optional). No pronunciation guide: nobody is announced while walking in (older guides are kept and shown to staff) | Discuss with DJ; the moment's "not applicable" covers both |
-| Introductions (Reception entrance) | Everyone announced, in order | Names exactly as announced; role, pronunciation, introduction wording, instructions, an Entrance music song (all optional) | No introductions; discuss with DJ |
+| Grand entrance order (Introductions, Reception entrance) | Everyone introduced, in order, each with their song; then the grand entrance songs, each once. Shown and counted only while a grand entrance is planned | Names exactly as announced; role, name pronunciation, how to announce them, instructions for the DJ or MC (all optional); music (needed): **Choose a song** (one already listed, an older plan's Entrance music song, or one typed in right there), **DJ's choice**, or **Not decided yet** (the default; stays open). Stored as `song_id`, `"music": "dj_choice"` or neither; an entry without a song is never read as the DJ's choice (`20261113000100`) | Nobody introduced; discuss with DJ |
 | MC (Reception entrance) | The DJ, someone else, no MC, discuss | Someone else: name (needed), pronunciation, phone or email, instructions | |
 | Speeches and toasts (Dinner, Program or Party) | Speakers in order | Speaker; role, pronunciation; timing: an exact time, a moment ("After the main course") or not decided; minutes, microphone/AV notes, instructions (all optional) | No speeches; discuss with DJ |
 
@@ -451,7 +453,9 @@ from the list), and change a listed person's song with **Use this song**. In **R
 entrance**, add songs to **Entrance music**, then **Add introduction** and pick
 one of them (two introductions can share a song). Try **Remove** on a linked
 song (it's disabled, naming who uses it), rename it, and see the introduction
-follow. Set the **MC**, and in **Dinner → Speeches and toasts** add speakers
+follow. (New Wedding plans: choose **Yes, we're planning a grand entrance**,
+then add people to the **Grand entrance order** with **Enter a new song…**;
+**No** or **We're not sure yet** set the order aside, keeping it.) Set the **MC**, and in **Dinner → Speeches and toasts** add speakers
 with a time (tick **Next day** after midnight), a moment, or "Not decided yet".
 
 How it works:
@@ -471,13 +475,16 @@ How it works:
   share a song by linking the same one. The Wedding starter has no separate
   Couple entrance since 2026-11-11 (`20261111000100`); plans and templates
   that have one keep it, and the couple's Processional entry can still link
-  its song. At the reception,
-  **Introductions** is the participant editor: **Participants and names**
-  shows "Included in Introductions", saves nothing and isn't counted. The MC's
+  its song. At the reception, the grand entrance order (**Introductions**)
+  is the participant editor and works the same way (`addNewSongs`), with an
+  optional name pronunciation and announcement; the Wedding starter has no
+  separate **Participants and names** or **Entrance music** since 2026-11-12.
+  In older plans, Participants and names shows "Included in Introductions",
+  saves nothing and isn't counted. The MC's
   contact stays with the MC; a later contacts editor can read it from there.
 - **Song links.** An entry stores only `song_id`. Processional entries can
   point at Processional's or Couple entrance's songs (same ceremony, same
-  plan); introductions at Entrance music's.
+  plan); introductions at their own songs or an older plan's Entrance music.
   Titles, cues and order are read through the link, so renaming or
   reordering songs never rewrites names. On every save, under the plan row
   lock all plan saves take, the database refuses a link to anything else
@@ -706,7 +713,11 @@ on gig night:
   a Couple entrance song); consecutive people sharing a song are one row, a
   song reused later says "Same song as 1. …" (a fact; how to play it is only
   ever the client's instruction), and a person without a song says "No song
-  linked". A Ceremony's guest arrival shows "Not set" until answered.
+  linked". A Ceremony's guest arrival shows "Not set" until answered. The
+  reception shows guest entry and the grand entrance separately, and the
+  grand entrance order numbered the same way. With no formal grand entrance
+  it says so once, with no order, song warnings or entrance time; not
+  decided yet is shown as open, with nothing fabricated.
 - **Music lists** collapsed by default so long playlists don't bury the
   cues; **Do not play** is linked from the top and open.
 
@@ -1008,9 +1019,9 @@ in every relevant relationship.
 | `20_contract_signing` | Only the service role signs. Wrong signer, other event's client, staff, stranger, no identity, wrong tenant, unverified or changed email, revoked access, archived event. Consent, consent version, displayed hash, typed name, never-stored, wrong-size, non-PNG, oversized and out-of-folder images. The atomic signed state and evidence, one audit event, no booking. Replays return the first signature to the signer only. Immutable evidence and content; void, resend, regeneration and revisions refused. Client and staff reads, Storage visibility, orphans. Archiving keeps evidence. Void and superseded contracts can't be signed |
 | `22_client_use_signing` | Usage is required when publishing; legacy can't be chosen. Client use is owner-only, needs the current statement, and stores the exact statement, owner and database time; staff publish DEMO only; other tenants get nothing. Published usage and confirmation are immutable; drafts carry none; a new version copies text, not usage. Contracts freeze mode and consent, immutably. Signing with `client-v1` (the DEMO consent is refused) and exact evidence; `demo-v1` unchanged. Legacy versions can't generate; `none` contracts can't be sent or signed and the review explains how to regenerate. Signed-copy senders are frozen when queued and at the first attempt, never change, keep older rows' first values, ignore sent rows and are service-role only |
 | `23_manual_payments` | Owner and staff record; other tenants, clients and anon can't, and no role writes rows directly. Amount, date, reference validation. Idempotent replays, reused keys, duplicate confirmation, exact cents. Invalidation with reasons, preserved history, immutability, audit. Drafts give no terms; sent terms; void and replacement without double counting; signed terms frozen after business, tax and catalog changes; overpayment as credit; zero-percent deposit. Client summary fields, other clients, void contracts, staff and anon. HTTPS invoice links, stale versions, unsafe URLs. Archiving blocks writes and the client view. No email, status, booking or contract change |
-| `26_stage_details` | Library editors and covered moments; validation (times, explicit next day, impossible and equal intervals, choices, limits, unknown fields, conflicting entrance answers); partial answers and normalization; completion (a Ceremony needs its guest arrival time) with venue and Event basics reuse, not applicable and "discuss with DJ"; overnight party and closing; chronology warnings in staff order without reordering; hidden stages keep answers; covered moments; Simple Party; other clients, other events' items, other businesses, anon and archived events; staff saves; no staff identity, payment references or notes for clients; contract, booking, payments, proposal and imports untouched; the Event basics entry point kept |
+| `26_stage_details` | Library editors and covered moments; validation (times, explicit next day, impossible and equal intervals, choices, limits, unknown fields, conflicting entrance answers); partial answers and normalization; completion (a Ceremony needs its guest arrival time; the Reception entrance needs its grand entrance decision, and its time only while planned, with older "no formal entrance" and entrance-time answers read as before, a time kept while skipped and left off the timeline) with venue and Event basics reuse, not applicable and "discuss with DJ"; overnight party and closing; chronology warnings in staff order without reordering; hidden stages keep answers; covered moments; Simple Party; other clients, other events' items, other businesses, anon and archived events; staff saves; no staff identity, payment references or notes for clients; contract, booking, payments, proposal and imports untouched; the Event basics entry point kept |
 | `27_music` | Music editors by moment key and Entrance music as the single source for reception entrance songs. Song validation: title and artist needed, limits, https links without credentials, unknown fields, cues on moment songs only, repeated or malformed ids, list and moment limits. Choices per editor; alternatives refused while songs exist. Completion: songs, DJ's choice, No requests, Nothing to exclude, not applicable without changing the structure, discuss with DJ open even with songs. Order kept by id. An identical retried import is saved once; a stale different list conflicts; a concurrent identical first save is the same save; stage details keep strict revisions. Hidden lists and stages keep their songs and leave views and progress. Other clients, other events' items, other businesses, anon and archived events; staff edits. Contract, booking, payments, proposal and imports untouched |
-| `28_participants` | Editors by moment key and Participants and names covered by Introductions (not saved, not counted); speeches wherever the library allows. Wedding starter plans without a separate Couple entrance (added by staff where wanted). Processional people saved with its songs: individual, pair and group entries without fixed labels, trimmed names and pronunciation in order, links to its own or Couple entrance songs only (another stage's or another event's refused), linked songs not removable from either (also from a stale revision), Couple entrance renames and hiding keeping links, not applicable refused while people exist, renamed and reordered songs leaving people untouched, discuss open. Introductions sharing Entrance music songs; links to another moment, another event or malformed ids refused; removing a linked song refused naming the entries, also from a stale revision; renames, reorders and unlinked removals allowed; hidden Entrance music keeping valid links; No introductions and discuss. MC choices, details kept only for someone else. Speech timing (exact time, next day, cue, undecided), bounds, completion. Retried adds saved once; hidden moments; other clients, other events, other businesses, anon and archived events; staff edits; contract, booking, payments, proposal and imports untouched |
+| `28_participants` | Editors by moment key and Participants and names covered by Introductions (not saved, not counted); speeches wherever the library allows. Wedding starter plans without a separate Couple entrance (added by staff where wanted). Processional people saved with its songs: individual, pair and group entries without fixed labels, trimmed names and pronunciation in order, links to its own or Couple entrance songs only (another stage's or another event's refused), linked songs not removable from either (also from a stale revision), Couple entrance renames and hiding keeping links, not applicable refused while people exist, renamed and reordered songs leaving people untouched, discuss open. The grand entrance order with its own songs (shared, retried once, not removable while linked) and counted only while planned (none and not sure leave it out, keeping it); introductions sharing Entrance music songs; links to another moment, another event or malformed ids refused; removing a linked song refused naming the entries, also from a stale revision; renames, reorders and unlinked removals allowed; hidden Entrance music keeping valid links; No introductions and discuss. MC choices, details kept only for someone else. Speech timing (exact time, next day, cue, undecided), bounds, completion. Retried adds saved once; hidden moments; other clients, other events, other businesses, anon and archived events; staff edits; contract, booking, payments, proposal and imports untouched |
 | `29_contacts_preferences` | Editors on their sections; this event's contacts in the view with name and phone only. Day-of contact: not decided (open), someone else needing a phone, phone checks, an event contact by id only (no copy), a phone for the day without changing the client, contacts of another event or business and names refused, a contact leaving the event (kept, unavailable, not resaved). Vendors: name or business, roles, phone and email checks, a phone or an email needed (new vendors and vendors that had one; older vendors without either kept, renamed and never blocking other answers; staff saves too), order, none refused while listed, retried adds once, stale conflicts. Preferences: no language copy, language from Event basics, discuss open, unknown questions refused. Music styles: list order once, unknown styles, DJ's choice exclusive, other style, slow songs. Hidden sections, other clients, events and businesses, anon, archived events, staff edits; no staff ids, notes, payment references or signing evidence; clients, event contacts and contractual records untouched |
 | `30_remaining_editors` | Editors in their library places (Dinner and Party sharing one); only moment-holding stages without an editor; nothing "not available". Arrival: ceremony reuse storing no copy, open while the Ceremony lacks it or is hidden, other place with overnight times and next day, event venue unknown, "no separate arrangements" refused with details and alone not applicable. Program: own times, agenda with exact, overnight, cue and undecided timings, titles needed, "No formal program" refused with entries. Activities: songs need title and artist and safe links, custom names, Party counted separately, stale tabs, unknown fields. Dedications: unfinished kept without invented songs, any time, songs needed, no durations, "No dedications". Retried adds once, stale conflicts, hidden stages, other clients, events and businesses, anon, archived events, staff edits, stage order unchanged; contractual records untouched |
 | `33_platform_invitations` | Only the database owner grants platform administration (not the app, the API or the service role), only to one verified identity, audited. Tenant owners, staff, clients, strangers, anon and unverified administrators can't invite, list, resend or revoke; administrators see no business, client, event or email. Normalized addresses, one open invitation per address (also enforced by a unique index), hashed tokens only, emails with no tenant and only the link id. The tenant worker never claims them. Resend limits, link rotation, cancelled queued emails, audit. Verification requests: service role only, old and malformed links, masked address, 3 per 15 minutes, invited address only. Wrong, unverified, revoked and expired accounts and invitations. Names, reserved and malformed addresses, existing businesses (untouched, invitation still open). One business and one owner membership for the signed-in user, defaults, an empty workspace, replays returning the same workspace, final accepted invitations, no deletes. Existing clients and staff keep their access; other owners see nothing. Archived businesses keep their address and a retry never creates another |
@@ -1190,9 +1201,12 @@ signed-out browser:
   refused, a listed person's new song with **Use this song**, a changed song,
   reordering, removal and reload (linked songs can't be removed); no
   pronunciation field, older guides kept for staff; a plan with a Couple
-  entrance (added by staff) still linking the couple's entry. Introductions sharing
-  Entrance music songs, a stale tab's refused removal and Undo, a hidden
-  Entrance music. The MC, and speeches with an exact time, next day, a cue
+  entrance (added by staff) still linking the couple's entry. The grand
+  entrance decision (yes, no, not sure, yes again, keeping its time and
+  order), guest entry kept separate; the grand entrance order with songs
+  typed in or shared, pronunciation and announcements, Use this song,
+  reordering and removal; an older plan's Entrance music linked, with a
+  stale tab's refused removal and Undo. The MC, and speeches with an exact time, next day, a cue
   and undecided timing, with pending, failed and stale saves and Undo. Staff
   edit on a phone; contract, payments and booking stay unchanged.
 - `tests/e2e/music-flow.spec.ts`: on a phone, the client adds, edits,

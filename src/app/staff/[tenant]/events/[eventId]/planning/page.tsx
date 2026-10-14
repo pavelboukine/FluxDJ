@@ -7,7 +7,8 @@ import { ActionForm } from "@/components/app/action-form";
 import { DraftVersionProvider } from "@/components/app/draft-version";
 import { CheckboxField, PageHeader, SelectField } from "@/components/app/fields";
 import { BasicsEditor } from "@/components/planning/basics-editor";
-import { ceremonyDetails, generalEditor, knownPeople, momentEditor, savedIntroductions, savedProcessionalPeople } from "@/components/planning/moment-editor";
+import { ceremonyDetails, generalEditor, grandEntranceState, knownPeople, momentEditor, savedIntroductions, savedProcessionalPeople } from "@/components/planning/moment-editor";
+import { GrandEntranceGate, GrandEntranceProvider } from "@/components/planning/grand-entrance";
 import { MusicListsProvider } from "@/components/planning/music-editor";
 import { AlreadyProvided } from "@/components/planning/plan-overview";
 import {
@@ -231,245 +232,247 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
             introductions={savedIntroductions(view.structure.stages, view.moments)}
             processionalPeople={savedProcessionalPeople(view.structure.stages, view.moments)}
           >
-            <PlanPanel view={null} testId="staff-plan-overview">
-              <StaffPlanOverview />
-              <section aria-labelledby="plan-facts-h" className="grid gap-3 rounded-xl border bg-card p-4 text-sm sm:p-5">
-                <h3 id="plan-facts-h" className="text-sm font-semibold">Client and plan</h3>
-                {clients.length > 0 ? (
-                  <ul className="grid gap-1.5">
-                    {clients.map((c) => (
-                      <li key={c.email} className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
-                        <span className="font-medium [overflow-wrap:anywhere]">{c.name}</span>
-                        {c.primary ? <Badge variant="outline">Primary</Badge> : null}
-                        <a className="text-muted-foreground underline-offset-4 [overflow-wrap:anywhere] hover:underline" href={`mailto:${c.email}`}>{c.email}</a>
-                        {c.phone ? (
-                          <a className="inline-flex items-center gap-1 underline underline-offset-4" href={`tel:${c.phone.replace(/[^+0-9]/g, "")}`}>
-                            <Phone aria-hidden className="size-3.5" />{c.phone}
-                          </a>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                ) : <p className="text-muted-foreground">No client on this event yet.</p>}
-                <p className="text-muted-foreground" data-testid="client-access">
-                  {booked
-                    ? archived
-                      ? "The event is booked, but archived: client planning is closed."
-                      : awaitingSetup
-                        ? "The event is booked. Until you set planning up, the client sees that you're setting it up and can't edit it."
-                        : "The event is booked: the client (with verified access to this event) can open planning from their contract page and /my."
-                    : "The client can open planning once the event is booked. Until then, only staff see it."}
-                </p>
-                <p className="text-muted-foreground">
-                  {plan.origin === "template" ? (
-                    <>
-                      Copied from the template{" "}
-                      {plan.source_template_id ? (
-                        <Link className="underline" href={`/staff/${slug}/planning-templates/${plan.source_template_id}`}>{plan.source_template_name}</Link>
-                      ) : (
-                        `"${plan.source_template_name}"`
-                      )}
-                      . This event has its own copy: later edits to that template don&apos;t change it.
-                    </>
-                  ) : (
-                    "Created with Event basics only, because no template was chosen."
-                  )}{" "}
-                  {plan.initialized_via === "booking" ? "Set up when the event was booked." : plan.initialized_via === "backfill" ? "Set up for an event booked before planning existed." : "Set up by staff."}
-                </p>
-                {plan.origin === "fallback" && !awaitingSetup ? (
-                  <p className="text-muted-foreground">
-                    To add a template&apos;s stages and moments, apply one in{" "}
-                    <NavLink view={STRUCTURE_SECTION} className="underline underline-offset-4">Structure and template</NavLink>. Event basics
-                    answers are kept.
+            <GrandEntranceProvider state={grandEntranceState(view.structure.stages, view.stage_details, view.moments, view.music)}>
+              <PlanPanel view={null} testId="staff-plan-overview">
+                <StaffPlanOverview />
+                <section aria-labelledby="plan-facts-h" className="grid gap-3 rounded-xl border bg-card p-4 text-sm sm:p-5">
+                  <h3 id="plan-facts-h" className="text-sm font-semibold">Client and plan</h3>
+                  {clients.length > 0 ? (
+                    <ul className="grid gap-1.5">
+                      {clients.map((c) => (
+                        <li key={c.email} className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                          <span className="font-medium [overflow-wrap:anywhere]">{c.name}</span>
+                          {c.primary ? <Badge variant="outline">Primary</Badge> : null}
+                          <a className="text-muted-foreground underline-offset-4 [overflow-wrap:anywhere] hover:underline" href={`mailto:${c.email}`}>{c.email}</a>
+                          {c.phone ? (
+                            <a className="inline-flex items-center gap-1 underline underline-offset-4" href={`tel:${c.phone.replace(/[^+0-9]/g, "")}`}>
+                              <Phone aria-hidden className="size-3.5" />{c.phone}
+                            </a>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : <p className="text-muted-foreground">No client on this event yet.</p>}
+                  <p className="text-muted-foreground" data-testid="client-access">
+                    {booked
+                      ? archived
+                        ? "The event is booked, but archived: client planning is closed."
+                        : awaitingSetup
+                          ? "The event is booked. Until you set planning up, the client sees that you're setting it up and can't edit it."
+                          : "The event is booked: the client (with verified access to this event) can open planning from their contract page and /my."
+                      : "The client can open planning once the event is booked. Until then, only staff see it."}
                   </p>
-                ) : null}
-              </section>
-            </PlanPanel>
+                  <p className="text-muted-foreground">
+                    {plan.origin === "template" ? (
+                      <>
+                        Copied from the template{" "}
+                        {plan.source_template_id ? (
+                          <Link className="underline" href={`/staff/${slug}/planning-templates/${plan.source_template_id}`}>{plan.source_template_name}</Link>
+                        ) : (
+                          `"${plan.source_template_name}"`
+                        )}
+                        . This event has its own copy: later edits to that template don&apos;t change it.
+                      </>
+                    ) : (
+                      "Created with Event basics only, because no template was chosen."
+                    )}{" "}
+                    {plan.initialized_via === "booking" ? "Set up when the event was booked." : plan.initialized_via === "backfill" ? "Set up for an event booked before planning existed." : "Set up by staff."}
+                  </p>
+                  {plan.origin === "fallback" && !awaitingSetup ? (
+                    <p className="text-muted-foreground">
+                      To add a template&apos;s stages and moments, apply one in{" "}
+                      <NavLink view={STRUCTURE_SECTION} className="underline underline-offset-4">Structure and template</NavLink>. Event basics
+                      answers are kept.
+                    </p>
+                  ) : null}
+                </section>
+              </PlanPanel>
 
-            {sections.map((s, index) => {
-              if (s.kind === "general") {
-                const g = general.get(s.id)!;
-                const editor =
-                  g.key === "basics" ? (
-                    <BasicsEditor
-                      itemId={view.basics.item_id}
-                      initialAnswers={view.basics.answers}
-                      initialRevision={view.basics.revision}
-                      eventVenue={{ name: ev.venue_name, address: ev.venue_address }}
-                      djName={dj}
-                      audience="staff"
-                      save={save(view.basics.item_id)}
-                      languageInPreferences={languageAskedInPreferences(view.structure)}
-                      disabledReason={lockedReason}
-                    />
-                  ) : (
-                    generalEditor(g, { moments: view.moments, eventContacts: view.event_contacts, known, djName: dj, audience: "staff", save, disabledReason: lockedReason })
+              {sections.map((s, index) => {
+                if (s.kind === "general") {
+                  const g = general.get(s.id)!;
+                  const editor =
+                    g.key === "basics" ? (
+                      <BasicsEditor
+                        itemId={view.basics.item_id}
+                        initialAnswers={view.basics.answers}
+                        initialRevision={view.basics.revision}
+                        eventVenue={{ name: ev.venue_name, address: ev.venue_address }}
+                        djName={dj}
+                        audience="staff"
+                        save={save(view.basics.item_id)}
+                        languageInPreferences={languageAskedInPreferences(view.structure)}
+                        disabledReason={lockedReason}
+                      />
+                    ) : (
+                      generalEditor(g, { moments: view.moments, eventContacts: view.event_contacts, known, djName: dj, audience: "staff", save, disabledReason: lockedReason })
+                    );
+                  return (
+                    <PlanPanel key={s.key} view={s.key} testId={`staff-section-${s.key}`}>
+                      <section aria-labelledby={headingId(s.key)} className={card}>
+                        <SectionHeader sectionKey={s.key} eyebrow="Event details" />
+                        {g.key === "basics" ? (
+                          <p className="text-xs text-muted-foreground">
+                            Shared with the client, who can edit it too. Date and venue come from the event details.
+                            {view.basics.updated_by ? ` Last saved by ${view.basics.updated_by === "client" ? "the client" : "staff"}.` : ""}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">Shared with the client, who can edit it too. Notes here are visible to the client.</p>
+                        )}
+                        <div data-plan-item={s.id} tabIndex={-1} className="grid gap-3 text-sm outline-none">
+                          <SaveScope item={s.id}>{editor}</SaveScope>
+                        </div>
+                        <SectionPager view={s.key} />
+                      </section>
+                    </PlanPanel>
                   );
+                }
+                const stageNumber = index - (sections.length - stageCount) + 1;
+                const single = !s.stageEditor && s.moments.length === 1;
                 return (
-                  <PlanPanel key={s.key} view={s.key} testId={`staff-section-${s.key}`}>
+                  <PlanPanel key={s.key} view={s.key} testId={`staff-stage-${s.key}`}>
                     <section aria-labelledby={headingId(s.key)} className={card}>
-                      <SectionHeader sectionKey={s.key} eyebrow="Event details" />
-                      {g.key === "basics" ? (
-                        <p className="text-xs text-muted-foreground">
-                          Shared with the client, who can edit it too. Date and venue come from the event details.
-                          {view.basics.updated_by ? ` Last saved by ${view.basics.updated_by === "client" ? "the client" : "staff"}.` : ""}
-                        </p>
-                      ) : (
-                        <p className="text-xs text-muted-foreground">Shared with the client, who can edit it too. Notes here are visible to the client.</p>
-                      )}
-                      <div data-plan-item={s.id} tabIndex={-1} className="grid gap-3 text-sm outline-none">
-                        <SaveScope item={s.id}>{editor}</SaveScope>
-                      </div>
+                      <SectionHeader sectionKey={s.key} eyebrow={`Stage ${stageNumber} of ${stageCount}`} />
+                      {s.stageEditor ? (
+                        <section data-plan-item={s.id} tabIndex={-1} aria-labelledby={`details-heading-${s.key}`} className="grid gap-3 text-sm outline-none">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <h3 id={`details-heading-${s.key}`} className="text-base font-semibold [overflow-wrap:anywhere]">{s.detailsLabel ?? `${s.label} details`}</h3>
+                            <span data-testid="details-status"><ItemStatus itemId={s.id} /></span>
+                          </div>
+                          <SaveScope item={s.id}>
+                            <StageDetailsEditor
+                              itemId={s.id}
+                              stageKey={s.key}
+                              stageLabel={s.label}
+                              editor={s.stageEditor as StageEditor}
+                              initialAnswers={view.stage_details[s.id]?.answers ?? {}}
+                              initialRevision={view.stage_details[s.id]?.revision ?? 0}
+                              event={eventInfo}
+                              djName={dj}
+                              audience="staff"
+                              save={save(s.id)}
+                              disabledReason={lockedReason}
+                            />
+                          </SaveScope>
+                        </section>
+                      ) : null}
+                      {s.moments.length > 0 ? (
+                        <ul className="grid gap-2" aria-label={`Moments in ${s.label}`}>
+                          {s.moments.map((m) => (
+                            <GrandEntranceGate key={m.id} momentKey={m.key}>
+                              <PlanMoment moment={m} defaultOpen={single}>
+                                {momentEditor(moments.get(m.id)!, { music: view.music, moments: view.moments, djName: dj, audience: "staff", event: eventInfo, ceremony, save, disabledReason: lockedReason })}
+                              </PlanMoment>
+                            </GrandEntranceGate>
+                          ))}
+                        </ul>
+                      ) : null}
+                      {s.covered.map((c) => (
+                        <p key={c.label} className="text-xs text-muted-foreground">{c.label}: {c.by ? `Included in ${c.by}` : "Included in another part of the plan"}.</p>
+                      ))}
+                      {s.unavailable.length > 0 ? (
+                        <p className="text-xs text-muted-foreground">No editor yet, not counted in progress: {s.unavailable.join(", ")}.</p>
+                      ) : null}
                       <SectionPager view={s.key} />
                     </section>
                   </PlanPanel>
                 );
-              }
-              const stageNumber = index - (sections.length - stageCount) + 1;
-              const single = !s.stageEditor && s.moments.length === 1;
-              return (
-                <PlanPanel key={s.key} view={s.key} testId={`staff-stage-${s.key}`}>
-                  <section aria-labelledby={headingId(s.key)} className={card}>
-                    <SectionHeader sectionKey={s.key} eyebrow={`Stage ${stageNumber} of ${stageCount}`} />
-                    {s.stageEditor ? (
-                      <section data-plan-item={s.id} tabIndex={-1} aria-labelledby={`details-heading-${s.key}`} className="grid gap-3 text-sm outline-none">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <h3 id={`details-heading-${s.key}`} className="text-base font-semibold [overflow-wrap:anywhere]">{s.detailsLabel ?? `${s.label} details`}</h3>
-                          <span data-testid="details-status"><ItemStatus itemId={s.id} /></span>
-                        </div>
-                        <SaveScope item={s.id}>
-                          <StageDetailsEditor
-                            itemId={s.id}
-                            stageKey={s.key}
-                            stageLabel={s.label}
-                            editor={s.stageEditor as StageEditor}
-                            initialAnswers={view.stage_details[s.id]?.answers ?? {}}
-                            initialRevision={view.stage_details[s.id]?.revision ?? 0}
-                            event={eventInfo}
-                            djName={dj}
-                            audience="staff"
-                            save={save(s.id)}
-                            disabledReason={lockedReason}
-                          />
-                        </SaveScope>
-                      </section>
-                    ) : null}
-                    {s.moments.length > 0 ? (
-                      <ul className="grid gap-2" aria-label={`Moments in ${s.label}`}>
-                        {s.moments.map((m) => (
-                          <li key={m.id}>
-                            <PlanMoment moment={m} defaultOpen={single}>
-                              {momentEditor(moments.get(m.id)!, { music: view.music, moments: view.moments, djName: dj, audience: "staff", event: eventInfo, ceremony, save, disabledReason: lockedReason })}
-                            </PlanMoment>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
-                    {s.covered.map((c) => (
-                      <p key={c.label} className="text-xs text-muted-foreground">{c.label}: {c.by ? `Included in ${c.by}` : "Included in another part of the plan"}.</p>
-                    ))}
-                    {s.unavailable.length > 0 ? (
-                      <p className="text-xs text-muted-foreground">No editor yet, not counted in progress: {s.unavailable.join(", ")}.</p>
-                    ) : null}
-                    <SectionPager view={s.key} />
-                  </section>
+              })}
+
+              {view.editing ? (
+                <PlanPanel view={CLIENT_EDITING_SECTION} testId="staff-client-editing">
+                  <ClientEditingCard slug={slug} eventId={ev.id} editing={view.editing} archived={archived} booked={booked} notSetUp={awaitingSetup} />
+                  <SectionPager view={CLIENT_EDITING_SECTION} />
                 </PlanPanel>
-              );
-            })}
+              ) : null}
 
-            {view.editing ? (
-              <PlanPanel view={CLIENT_EDITING_SECTION} testId="staff-client-editing">
-                <ClientEditingCard slug={slug} eventId={ev.id} editing={view.editing} archived={archived} booked={booked} notSetUp={awaitingSetup} />
-                <SectionPager view={CLIENT_EDITING_SECTION} />
+              <PlanPanel view={PROVIDED_SECTION} testId="staff-provided">
+                <PanelHeading view={PROVIDED_SECTION}>Event and proposal details</PanelHeading>
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>From the event details</CardTitle>
+                      <CardDescription>Staff-entered and shown to the client read-only. <Link className="underline" href={base}>Edit on the event page</Link>.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <dl className="grid gap-1 text-sm">
+                        <div className="flex flex-wrap justify-between gap-2"><dt className="text-muted-foreground">Type</dt><dd>{typeLabel}</dd></div>
+                        <div className="flex flex-wrap justify-between gap-2"><dt className="text-muted-foreground">Date</dt><dd>{formatEventDate(ev.event_date)}</dd></div>
+                        <div className="flex flex-wrap justify-between gap-2"><dt className="text-muted-foreground">Venue</dt><dd className="text-right">{ev.venue_name ?? "Not entered"}{ev.venue_address ? `, ${ev.venue_address}` : ""}</dd></div>
+                      </dl>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>From the signed contract (frozen)</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <AlreadyProvided imported={view.imported} djName={dj} audience="staff" />
+                    </CardContent>
+                  </Card>
+                </div>
+                <SectionPager view={PROVIDED_SECTION} />
               </PlanPanel>
-            ) : null}
 
-            <PlanPanel view={PROVIDED_SECTION} testId="staff-provided">
-              <PanelHeading view={PROVIDED_SECTION}>Event and proposal details</PanelHeading>
-              <div className="grid gap-4 lg:grid-cols-2">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>From the event details</CardTitle>
-                    <CardDescription>Staff-entered and shown to the client read-only. <Link className="underline" href={base}>Edit on the event page</Link>.</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <dl className="grid gap-1 text-sm">
-                      <div className="flex flex-wrap justify-between gap-2"><dt className="text-muted-foreground">Type</dt><dd>{typeLabel}</dd></div>
-                      <div className="flex flex-wrap justify-between gap-2"><dt className="text-muted-foreground">Date</dt><dd>{formatEventDate(ev.event_date)}</dd></div>
-                      <div className="flex flex-wrap justify-between gap-2"><dt className="text-muted-foreground">Venue</dt><dd className="text-right">{ev.venue_name ?? "Not entered"}{ev.venue_address ? `, ${ev.venue_address}` : ""}</dd></div>
-                    </dl>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader>
-                    <CardTitle>From the signed contract (frozen)</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <AlreadyProvided imported={view.imported} djName={dj} audience="staff" />
-                  </CardContent>
-                </Card>
-              </div>
-              <SectionPager view={PROVIDED_SECTION} />
-            </PlanPanel>
-
-            <PlanPanel view={STRUCTURE_SECTION} testId="staff-structure">
-              <PanelHeading view={STRUCTURE_SECTION}>Structure and template</PanelHeading>
-              <DraftVersionProvider version={plan.structure_version}>
-          <Card>
-            <CardHeader>
-              <CardTitle>Structure</CardTitle>
-              <CardDescription>
-                Only this event changes: its template and other events are untouched. Hiding keeps saved answers and can be undone with
-                Restore; hiding a stage hides its moments. Hiding or adding sections never changes the proposal, contract, price, required
-                gear or booking. The client can&apos;t change the structure.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <StructureEditor
-                general={view.structure.general}
-                stages={view.structure.stages.map((s) => ({ ...s, editor: null, removable: true, moments: s.moments.map((m) => ({ ...m, removable: true })) }))}
-                version={plan.structure_version}
-                itemAction={planItemAction.bind(null, slug, ev.id)}
-                addAction={addPlanItem.bind(null, slug, ev.id)}
-                library={library ?? []}
-                readOnly={archived}
-              />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Replace the structure with a template</CardTitle>
-              <CardDescription>
-                Applying a template is non-destructive: sections in both keep their answers and take the template&apos;s labels and order;
-                new sections are added; sections the template doesn&apos;t have are hidden, not deleted, and can be restored. Your custom
-                labels on this event are replaced.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {templateOptions.length > 0 ? (
-                <ActionForm
-                  action={applyPlanningTemplate.bind(null, slug, ev.id)}
-                  submitLabel="Apply template"
-                  pendingLabel="Applying…"
+              <PlanPanel view={STRUCTURE_SECTION} testId="staff-structure">
+                <PanelHeading view={STRUCTURE_SECTION}>Structure and template</PanelHeading>
+                <DraftVersionProvider version={plan.structure_version}>
+            <Card>
+              <CardHeader>
+                <CardTitle>Structure</CardTitle>
+                <CardDescription>
+                  Only this event changes: its template and other events are untouched. Hiding keeps saved answers and can be undone with
+                  Restore; hiding a stage hides its moments. Hiding or adding sections never changes the proposal, contract, price, required
+                  gear or booking. The client can&apos;t change the structure.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <StructureEditor
+                  general={view.structure.general}
+                  stages={view.structure.stages.map((s) => ({ ...s, editor: null, removable: true, moments: s.moments.map((m) => ({ ...m, removable: true })) }))}
                   version={plan.structure_version}
-                  variant="outline"
-                >
-                  <fieldset disabled={archived} className="grid gap-3">
-                    <SelectField label="Template" name="template_id" options={templateOptions} placeholder="— choose —" required className="max-w-sm" />
-                    <CheckboxField name="confirm" label="I understand this replaces the event's structure (answers are kept, other sections are hidden)." />
-                  </fieldset>
-                </ActionForm>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  No active planning templates. <Link className="underline" href={`/staff/${slug}/planning-templates`}>Manage planning templates</Link>.
-                </p>
-              )}
-            </CardContent>
-          </Card>
-              </DraftVersionProvider>
-              <SectionPager view={STRUCTURE_SECTION} />
-            </PlanPanel>
+                  itemAction={planItemAction.bind(null, slug, ev.id)}
+                  addAction={addPlanItem.bind(null, slug, ev.id)}
+                  library={library ?? []}
+                  readOnly={archived}
+                />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Replace the structure with a template</CardTitle>
+                <CardDescription>
+                  Applying a template is non-destructive: sections in both keep their answers and take the template&apos;s labels and order;
+                  new sections are added; sections the template doesn&apos;t have are hidden, not deleted, and can be restored. Your custom
+                  labels on this event are replaced.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {templateOptions.length > 0 ? (
+                  <ActionForm
+                    action={applyPlanningTemplate.bind(null, slug, ev.id)}
+                    submitLabel="Apply template"
+                    pendingLabel="Applying…"
+                    version={plan.structure_version}
+                    variant="outline"
+                  >
+                    <fieldset disabled={archived} className="grid gap-3">
+                      <SelectField label="Template" name="template_id" options={templateOptions} placeholder="— choose —" required className="max-w-sm" />
+                      <CheckboxField name="confirm" label="I understand this replaces the event's structure (answers are kept, other sections are hidden)." />
+                    </fieldset>
+                  </ActionForm>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No active planning templates. <Link className="underline" href={`/staff/${slug}/planning-templates`}>Manage planning templates</Link>.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+                </DraftVersionProvider>
+                <SectionPager view={STRUCTURE_SECTION} />
+              </PlanPanel>
+            </GrandEntranceProvider>
           </MusicListsProvider>
         </div>
       </div>

@@ -241,8 +241,18 @@ test.describe.serial("songs in planning", () => {
   });
 
   test("moment songs keep cue labels, instructions and order", async () => {
+    // New Wedding plans keep entrance songs with the grand entrance order; Entrance music is added here as older plans have it.
+    const staffDb = await sessionFor(tenant.ownerEmail);
+    const { data: plan } = await must(admin.from("event_plans").select("structure_version").eq("event_id", eventId).single());
+    await must(staffDb.rpc("add_event_plan_item", { p_event_id: eventId, p_expected_version: plan!.structure_version, p_key: "entrance_music", p_parent_key: "reception_entrance" }));
+    // It belongs to the grand entrance, offered once one is planned.
+    const { data: items } = await must(admin.from("event_plans").select("event_plan_items(id, key)").eq("event_id", eventId).single());
+    const stage = items!.event_plan_items.find((i: { key: string }) => i.key === "reception_entrance")!;
+    const { data: saved } = await must(staffDb.rpc("staff_save_plan_item", { p_event_id: eventId, p_item_id: stage.id, p_expected_revision: 0, p_answers: { grand_entrance: "planned" } }));
+    expect((saved as { status: string }).status).toBe("saved");
+    await client.reload();
     const entrance = await openMoment(client, "reception_entrance", "entrance_music");
-    await expect(entrance).toContainText("The one place for reception entrance songs.");
+    await expect(entrance).toContainText("Songs for the reception entrance.");
     await addSong(entrance, { cue: "Wedding party", title: "Uptown Funk", artist: "Mark Ronson ft. Bruno Mars", notes: "Start at 0:45" });
     await addSong(entrance, { cue: "Couple", title: "Signed, Sealed, Delivered", artist: "Stevie Wonder", version: "Live", notes: "Fade after the first chorus" });
     await expect(entrance.getByText("All changes saved")).toBeVisible();

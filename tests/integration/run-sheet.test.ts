@@ -71,25 +71,30 @@ describe("run sheet (local Supabase)", () => {
     const a = song("September", "Earth, Wind & Fire", { cue: "Parents" });
     const b = song("Crazy in Love", "Beyoncé", { cue: "Couple" });
     await save("basics", { guest_count: 120, start_time: "16:00", end_time: "00:30", access_notes: "Door 4" });
-    await save("entrance_music", { songs: [a, b] });
-    await save("introductions", { entries: [
+    await save("reception_entrance", { guest_entry_time: "17:45", grand_entrance: "planned", entrance_time: "18:15" });
+    await save("introductions", { songs: [a, b], entries: [
       { id: randomUUID(), names: "Parents", song_id: a.id }, { id: randomUUID(), names: "Grandparents", song_id: a.id },
       { id: randomUUID(), names: "Chloé et François", pronunciation: "klo-AY", song_id: b.id },
     ] });
     await save("do_not_play", { songs: [song("Macarena", "Los del Río")] });
     const loaded = (await loadRunSheet(owner, tenantRow(), eventId))!;
     const entrance = loaded.sheet.stages.find((s) => s.key === "reception_entrance")!;
-    expect(entrance.rows.filter((r) => r.title.startsWith("Introductions")).map((r) => [r.people.map((p) => p.names), r.songs.map((s) => s.title)])).toEqual([
-      [["Parents", "Grandparents"], ["September"]],
-      [["Chloé et François"], ["Crazy in Love"]],
+    expect(entrance.rows.filter((r) => r.title.startsWith("Grand entrance order")).map((r) => [r.people.map((p) => `${p.order}. ${p.names}`), r.songs.map((s) => s.title)])).toEqual([
+      [["1. Parents", "2. Grandparents"], ["September"]],
+      [["3. Chloé et François"], ["Crazy in Love"]],
     ]);
+    expect(entrance.times.map((t) => t.label)).toEqual(["Guest entry", "Grand entrance"]);
     expect(loaded.sheet.times[0].value).toBe("16:00 – 00:30 (next day, Sun, Jul 11)");
     const json = JSON.stringify(loaded.sheet);
     for (const secret of ["IT INTERNAL NOTE", "@example.test", "IT-REF", "reason", "updated_by"]) expect(json).not.toContain(secret);
     expect(loaded.revision).toMatch(/^[0-9A-F]{8}$/);
   });
 
-  it("reads one consistent snapshot while links are rewritten concurrently", async () => {
+  it("reads one consistent snapshot while links into another item (an older plan's Entrance music) are rewritten concurrently", async () => {
+    const { data: structure } = await must(admin.from("event_plans").select("structure_version").eq("event_id", eventId).single());
+    await must(owner.rpc("add_event_plan_item", { p_event_id: eventId, p_expected_version: structure!.structure_version, p_key: "entrance_music", p_parent_key: "reception_entrance" }));
+    const { data: plan } = await must(admin.from("event_plans").select("event_plan_items(id, key)").eq("event_id", eventId).single());
+    for (const i of plan!.event_plan_items) items.set(i.key, i.id);
     let current = song("Song 0", "Artist");
     // Unlink first: the database refuses to remove songs introductions still point at.
     await save("introductions", { entries: [{ id: randomUUID(), names: "Wedding party" }] });
@@ -117,7 +122,7 @@ describe("run sheet (local Supabase)", () => {
         const links = ((view.moments[items.get("introductions")!]?.answers.entries ?? []) as { song_id?: string }[]).map((e) => e.song_id);
         for (const l of links) expect(songs).toContain(l);
         const sheet = (await loadRunSheet(owner, tenantRow(), eventId))!.sheet;
-        const rows = sheet.stages.find((s) => s.key === "reception_entrance")!.rows.filter((r) => r.title.startsWith("Introductions"));
+        const rows = sheet.stages.find((s) => s.key === "reception_entrance")!.rows.filter((r) => r.title.startsWith("Grand entrance order"));
         expect(rows.every((r) => r.songs.length === 1 && !r.warning)).toBe(true);
         reads++;
       }

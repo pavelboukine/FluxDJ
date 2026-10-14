@@ -117,7 +117,7 @@ test.describe.serial("planning", () => {
     await expect(staff.getByTestId("planning-template-row")).toHaveCount(2);
     await expect(staff.getByTestId("starter-offer")).toHaveCount(0);
     expect((await admin.from("planning_templates").select("id").eq("tenant_id", tenant.id)).data).toHaveLength(2);
-    await expect(staff.getByTestId("planning-template-row").filter({ hasText: "Wedding" })).toContainText("3 general sections · 7 stages · 28 moments");
+    await expect(staff.getByTestId("planning-template-row").filter({ hasText: "Wedding" })).toContainText("3 general sections · 7 stages · 26 moments");
 
     await staff.getByRole("link", { name: "Wedding", exact: true }).click();
     await staff.waitForURL(/planning-templates\/[0-9a-f-]{36}$/);
@@ -180,7 +180,9 @@ test.describe.serial("planning", () => {
       "Event basics", "Contacts and vendors", "DJ expectations and overall preferences",
       "Ceremony", "Cocktail", "Reception entrance", "Dinner", "Special dances", "Dance party", "Last dance",
     ]);
-    await expect(staff.getByTestId("preview-reception_entrance")).toContainText("Participants and names: included in Introductions");
+    // The grand entrance order holds who is introduced and their songs: no separate Participants and names or Entrance music.
+    await expect(staff.getByTestId("preview-reception_entrance")).toContainText("Grand entrance order");
+    await expect(staff.getByTestId("preview-reception_entrance")).not.toContainText(/Participants and names|Entrance music/);
     await expect(staff.getByTestId("preview-party")).not.toContainText("Dedications");
     expect((await admin.from("event_plans").select("id").eq("tenant_id", tenant.id)).data!.length).toBe(plansBefore);
     await staff.getByRole("link", { name: "Back to the template" }).click();
@@ -347,13 +349,13 @@ test.describe.serial("planning", () => {
     await expect(apply.getByRole("alert")).toContainText("Check the box to confirm replacing the structure.");
     await apply.getByLabel(/I understand this replaces/).check();
     await apply.getByRole("button", { name: "Apply template" }).click();
-    await expect(apply.getByText("Template applied: 1 kept, 36 added, 0 hidden. No answers were removed.")).toBeVisible();
+    await expect(apply.getByText("Template applied: 1 kept, 34 added, 0 hidden. No answers were removed.")).toBeVisible();
     // The staff overview lists what still needs attention, in plan order, and opens it.
     await openPlanSection(staff, null);
     const attention = staff.getByTestId("plan-attention");
     await expect(attention.getByRole("link").first()).toContainText("Contacts and vendors");
-    await expect(staff.getByTestId("progress-headline")).toHaveText("5 of 48 required answers");
-    await expect(staff.getByTestId("progress-percent")).toHaveText("10% complete");
+    await expect(staff.getByTestId("progress-headline")).toHaveText("5 of 47 required answers");
+    await expect(staff.getByTestId("progress-percent")).toHaveText("11% complete");
     await attention.getByRole("link", { name: /Ceremony/ }).click();
     await expect(staff.locator("#plan-panel-ceremony")).toBeVisible();
     expect(new URL(staff.url()).searchParams.get("section")).toBe("ceremony");
@@ -370,11 +372,11 @@ test.describe.serial("planning", () => {
     // Every moment has an editor now: nothing says it isn't open yet.
     await expect(client.getByText(/Not open for planning yet|Not available yet/)).toHaveCount(0);
     await expect(client.getByTestId("section-picker").getByTestId("nav-contacts_vendors")).toContainText("Not started");
-    // Event basics (5 of 5), the six stage editors' 12 requirements, the 17 song moments, who walks in, MC,
-    // introductions and speeches, contacts (2), preferences (4), music styles (2), and the activities and dedications this
-    // trimmed template kept (2), none answered yet.
-    await expect(client.getByTestId("progress-headline")).toHaveText("5 of 48 required answers");
-    await expect(client.getByTestId("progress-percent")).toHaveText("10% complete");
+    // Event basics (5 of 5), the six stage editors' 13 requirements (guest entry and the grand entrance decision among them), the 16 song
+    // moments, who walks in, MC and speeches (the grand entrance order waits for its decision), contacts (2),
+    // preferences (4), music styles (2), and the activities and dedications this trimmed template kept (2), none answered yet.
+    await expect(client.getByTestId("progress-headline")).toHaveText("5 of 47 required answers");
+    await expect(client.getByTestId("progress-percent")).toHaveText("11% complete");
     expect(await noSideways(client)).toBeLessThanOrEqual(0);
     // Continue planning opens the first section, in plan order, with answers still needed.
     await openPlanSection(client, null);
@@ -692,10 +694,10 @@ test.describe.serial("planning", () => {
     await client.reload();
     await expect(client.getByRole("heading", { name: "Planning isn't available" })).toBeVisible();
     await staff.goto(staffPlanningUrl);
-    // Event basics, contacts, preferences, the six stage editors, the 16 song moments (Processional included; no separate
-    // Couple entrance), MC, introductions, speeches, music styles and both activities (this trimmed template has no
-    // Dedications) are read-only while archived.
-    await expect(staff.getByText("Unarchive the event to edit planning.")).toHaveCount(31);
+    // Event basics, contacts, preferences, the six stage editors, the 15 song moments (Processional included; no separate
+    // Couple entrance or Entrance music), MC, introductions (set aside until a grand entrance is planned, still read-only),
+    // speeches, music styles and both activities (this trimmed template has no Dedications) are read-only while archived.
+    await expect(staff.getByText("Unarchive the event to edit planning.")).toHaveCount(30);
     await expect(staff.locator("#ceremony-start_time")).toBeDisabled();
     expect((await basicsRow(eventId))!.answers).toMatchObject({ guest_count: 175 });
 

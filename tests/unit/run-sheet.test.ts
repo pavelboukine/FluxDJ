@@ -273,7 +273,9 @@ describe("run sheet model", () => {
     const ceremony = i.stages[0];
     expect(whenText(ceremony.times[0].when, "2027-08-14")).toBe("Not set");
     expect(ceremony.rows.map((r) => [r.title, r.status?.text])).toEqual([["Processional: songs", "Not answered yet"], ["Processional: who walks in", "Discuss with DJ (still open)"]]);
-    expect(i.stages[1].rows.map((r) => r.status?.text)).toEqual(["Discuss with DJ (still open)", "Not answered yet"]);
+    // No grand entrance decision yet and nothing in Introductions: only the MC; the entrance time shows as not set.
+    expect(i.stages[1].rows.map((r) => r.status?.text)).toEqual(["Discuss with DJ (still open)"]);
+    expect(i.stages[1].times.map((t) => [t.label, whenText(t.when, "2027-08-14")])).toEqual([["Guest entry", "Not set"], ["Grand entrance", "Not set"]]);
     expect(i.stages[2].rows[0]).toMatchObject({ warning: "Still needs: timing and song" });
   });
 
@@ -302,6 +304,70 @@ describe("run sheet model", () => {
       [["5. Ushers"], [], [], "No song linked"],
     ]);
     expect(ceremony.rows.some((r) => r.title.includes("Couple entrance"))).toBe(false);
+  });
+
+  describe("grand entrance", () => {
+    const a = song("Man! I Feel Like a Woman!", "Shania Twain", { notes: "Start at the chorus" });
+    const b = song("Feel So Close", "Calvin Harris");
+    const maids = id(); const groomsmen = id(); const couple = id(); const parents = id();
+    const entrance = (answers: Record<string, unknown>, intro: Record<string, unknown>) => buildRunSheet(input(planView({
+      basics: { guest_count: 120 },
+      stages: [{ key: "reception_entrance", editor: "stage_entrance", label: "Reception entrance", answers, moments: [
+        { key: "mc", editor: "mc", label: "MC", answers: { mc: "dj" } },
+        { key: "introductions", editor: "introductions", label: "Grand entrance order", answers: intro },
+      ] }],
+    }))).stages[0];
+    const order = { songs: [a, b], entries: [
+      { id: maids, names: "Bridesmaids", wording: "Let's welcome the bridesmaids!", song_id: a.id },
+      { id: groomsmen, names: "Groomsmen", song_id: a.id, notes: "Keep the same song playing" },
+      { id: parents, names: "Parents", music: "dj_choice" as const, notes: "Something upbeat" },
+      { id: couple, names: "Siobhan and Alex", pronunciation: "shi-VAWN", song_id: a.id },
+    ] };
+
+    it("planned: guest entry and grand entrance times, the order numbered with songs, pronunciation and repeats as facts", () => {
+      const st = entrance({ grand_entrance: "planned", guest_entry_time: "17:45", entrance_time: "18:15", location_area: "Main hall" }, order);
+      expect(st.times.map((t) => [t.label, whenText(t.when, "2027-08-14")])).toEqual([["Guest entry", "17:45"], ["Grand entrance", "18:15"]]);
+      expect(st.location).toBe("Main hall");
+      const rows = st.rows.filter((r) => r.title.startsWith("Grand entrance order"));
+      expect(rows.map((r) => [r.people.map((p) => `${p.order}. ${p.names}`), r.songs.map((x) => `${x.title} | ${x.artist}`), r.notes, r.warning ?? null])).toEqual([
+        [["1. Bridesmaids", "2. Groomsmen"], ["Man! I Feel Like a Woman! | Shania Twain"], ["Groomsmen: Keep the same song playing"], null],
+        [["3. Parents"], [], ["Parents: Something upbeat"], null],
+        [["4. Siobhan and Alex"], ["Man! I Feel Like a Woman! | Shania Twain"], ["Same song as 1. Bridesmaids, 2. Groomsmen"], null],
+        [[], ["Feel So Close | Calvin Harris"], [], null],
+      ]);
+      // The DJ's choice is said as such, never as a missing song and never as a made-up track.
+      expect(rows[1].status).toEqual({ tone: "choice", text: "DJ's choice" });
+      expect(rows.filter((r) => r.status?.text === "DJ's choice")).toHaveLength(1);
+      expect(rows[0].people[0].wording).toBe("Let's welcome the bridesmaids!");
+      expect(rows[0].songs[0].notes).toBe("Start at the chorus");
+      expect(rows[2].people[0].pronunciation).toBe("shi-VAWN");
+    });
+
+    it("music not decided yet: a warning, never the DJ's choice", () => {
+      const st = entrance({ grand_entrance: "planned", guest_entry_time: "17:45", entrance_time: "18:15" }, { entries: [{ id: maids, names: "Bridesmaids" }, { id: couple, names: "Newlyweds", music: "dj_choice" }] });
+      const rows = st.rows.filter((r) => r.title.startsWith("Grand entrance order"));
+      expect(rows.map((r) => [r.people[0].names, r.status?.text ?? null, r.warning ?? null])).toEqual([
+        ["Bridesmaids", null, "Music not decided yet"],
+        ["Newlyweds", "DJ's choice", null],
+      ]);
+    });
+
+    it("no formal entrance: said once, no order, no song warnings, no entrance time; guest entry still shown", () => {
+      const st = entrance({ grand_entrance: "none", guest_entry_time: "17:45", entrance_time: "18:15" }, order);
+      expect(st.times.map((t) => t.label)).toEqual(["Guest entry"]);
+      expect(st.instructions).toEqual([{ label: "Grand entrance", value: "No formal grand entrance" }]);
+      expect(st.rows.map((r) => r.title)).toEqual(["MC"]);
+      expect(st.rows.some((r) => r.warning)).toBe(false);
+      // Older "No formal entrance" answers read the same.
+      expect(entrance({ entrance_none: true }, {}).instructions).toEqual([{ label: "Grand entrance", value: "No formal grand entrance" }]);
+    });
+
+    it("not decided yet: shown as open, nothing fabricated", () => {
+      const st = entrance({ grand_entrance: "undecided", entrance_time: "18:15" }, order);
+      expect(st.times.map((t) => [t.label, whenText(t.when, "2027-08-14")])).toEqual([["Guest entry", "Not set"], ["Grand entrance", "Time not decided yet"]]);
+      expect(st.instructions).toEqual([{ label: "Grand entrance", value: "Not decided yet (still open)" }]);
+      expect(st.rows.map((r) => r.title)).toEqual(["MC"]);
+    });
   });
 
   it("names the download safely", () => {

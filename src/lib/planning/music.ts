@@ -193,7 +193,7 @@ export const LIST_CHOICE_LABEL: Record<MusicEditor, string> = {
 /** A short explanation shown at the top of each editor, by moment key. */
 export const MUSIC_HINTS: Record<string, string> = {
   couple_entrance: "The song for the couple's entrance at the ceremony.",
-  entrance_music: "The one place for reception entrance songs. Use a cue label per group, for example \"Wedding party\" or \"Couple\". Who is introduced to which song goes under Introductions.",
+  entrance_music: "Songs for the reception entrance. Each person or group in the grand entrance order can use one of these, or a song entered right there.",
   first_dance: "Add a second song if it's a medley, with instructions such as \"start at 0:45\" or \"fade after the chorus\".",
   family_dances: "One song per dance, with a cue label such as \"Dance with grandmother\".",
   other_dances: "One song per dance, with a cue label.",

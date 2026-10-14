@@ -1,6 +1,7 @@
 -- Participants, pronunciation guides, MC and speeches: library placement
 -- and the covered placeholder; Processional people saved with its songs;
--- song links (own songs, Entrance music, shared, renamed, reordered, hidden)
+-- song links (own songs, Entrance music, shared, renamed, reordered, hidden);
+-- the grand entrance order's own songs and its counting by the decision
 -- and refused removals of linked songs; wrong-moment, cross-event and
 -- unknown links; speech timing (exact time with next day, cue, undecided);
 -- MC choices; completion and explicit alternatives; retries; hidden moments;
@@ -10,7 +11,7 @@ begin;
 \ir _catalog_fixtures.psql
 \ir _offer_fixtures.psql
 \ir _contract_fixtures.psql
-select plan(79);
+select plan(97);
 
 alter function tests.id(text) rename to id_base;
 create function tests.id(name text) returns uuid language sql immutable as $$
@@ -233,48 +234,84 @@ select tests.save('pe_wed', 'processional', (tests.stored('pe_wed', 'processiona
 select is(tests.save('pe_wed', 'couple_entrance', '{"choice":"dj_choice"}') ->> 'status', 'saved', 'once unlinked, it can be removed');
 
 -- ===========================================================================
--- Introductions: links into Entrance music
+-- Introductions: the grand entrance order, with its own songs
 -- ===========================================================================
-select tests.save('pe_wed', 'entrance_music', jsonb_build_object('songs', jsonb_build_array(
-  tests.song('funk', 'Uptown Funk', 'Mark Ronson', '{"cue":"Wedding party"}'), tests.song('sealed', 'Signed, Sealed, Delivered', 'Stevie Wonder', '{"cue":"Couple"}'))));
-select tests.save('pe_wed', 'introductions', jsonb_build_object('entries', jsonb_build_array(
-  tests.person('i1', 'Sam and Jo', jsonb_build_object('role', 'Best friends', 'song_id', tests.sid('funk'))),
-  tests.person('i2', 'The wedding party', jsonb_build_object('song_id', tests.sid('funk'))),
-  tests.person('i3', 'Alex and Taylor Nguyen-Roy', jsonb_build_object('pronunciation', 'NWEN-rwah', 'wording', 'For the first time as a married couple', 'song_id', tests.sid('sealed')))))) as s \gset i1_
-select is(array[:'i1_s'::jsonb ->> 'status', tests.reqs(:'i1_s'::jsonb, 'introductions')::text], array['saved', '{introductions:answered}'],
-  'introductions save, two sharing one Entrance music song');
+select is((select array_agg(i.key order by i.position) from public.event_plan_items i join public.event_plans p on p.id = i.plan_id
+           join public.event_plan_items s on s.id = i.parent_id
+           where p.event_id = tests.id('pe_wed') and s.key = 'reception_entrance'), array['mc', 'introductions'],
+  'a Wedding plan from the starter: MC and the grand entrance order, without separate Participants and names or Entrance music');
+select is((select label from public.event_plan_items i join public.event_plans p on p.id = i.plan_id where p.event_id = tests.id('pe_wed') and i.key = 'introductions'),
+  'Grand entrance order', 'labelled as the grand entrance order');
+select is(tests.state(tests.view('pe_wed'), 'introductions'), null, 'before any grand entrance decision, an empty order isn''t counted');
+-- Songs entered with the entries are saved with them, in one answer; two entries share one.
+select tests.save('pe_wed', 'introductions', jsonb_build_object(
+  'songs', jsonb_build_array(tests.song('funk', 'Uptown Funk', 'Mark Ronson', '{"notes":"Start at 0:45"}'), tests.song('sealed', 'Signed, Sealed, Delivered', 'Stevie Wonder')),
+  'entries', jsonb_build_array(
+    tests.person('i1', 'Sam and Jo', jsonb_build_object('role', 'Best friends', 'song_id', tests.sid('funk'))),
+    tests.person('i2', 'The wedding party', jsonb_build_object('song_id', tests.sid('funk'))),
+    tests.person('i3', 'Alex and Taylor Nguyen-Roy', jsonb_build_object('pronunciation', ' NWEN-rwah ', 'wording', 'For the first time as a married couple', 'song_id', tests.sid('sealed')))))) as s \gset i1_
+select is(array[:'i1_s'::jsonb ->> 'status', tests.reqs(:'i1_s'::jsonb, 'introductions')::text], array['saved', '{introductions:answered,entry_music:answered}'],
+  'the order saves with its own songs, two entries sharing one; once it holds answers it counts');
+select is(array[tests.titles(tests.stored('pe_wed', 'introductions'))::text, tests.stored('pe_wed', 'introductions') -> 'entries' -> 2 ->> 'pronunciation',
+                tests.stored('pe_wed', 'introductions') -> 'entries' -> 2 ->> 'wording', tests.stored('pe_wed', 'introductions') -> 'songs' -> 0 ->> 'notes'],
+  array['{"Uptown Funk","Signed, Sealed, Delivered"}', 'NWEN-rwah', 'For the first time as a married couple', 'Start at 0:45'],
+  'each song once with its playback instructions; pronunciation (trimmed) and announcement wording kept');
+select tests.rev('pe_wed', 'introductions') as i_rev \gset
+select is(array[tests.save('pe_wed', 'introductions', tests.stored('pe_wed', 'introductions'), 'client_y', :i_rev - 1) ->> 'status',
+                tests.rev('pe_wed', 'introductions')::text, jsonb_array_length(tests.stored('pe_wed', 'introductions') -> 'songs')::text],
+  array['saved', :'i_rev', '2'], 'a retried identical save (a doubled click) is the same save: no duplicate songs');
+select is(tests.save('pe_wed', 'introductions', jsonb_set(tests.stored('pe_wed', 'introductions'), '{songs}', jsonb_build_array(tests.song('sealed', 'Signed, Sealed, Delivered', 'Stevie Wonder')))) ->> 'field',
+  'entry:' || tests.id('person-i1') || ':song_id', 'a song can''t be removed from under the entries entering to it');
 select is(tests.save('pe_wed', 'introductions', jsonb_build_object('entries', jsonb_build_array(
   tests.person('i1', 'Sam and Jo', jsonb_build_object('song_id', tests.sid('canon')))))) ->> 'message',
-  'That song is no longer in Entrance music. Choose another song or none.', 'a song from another moment (Processional) is refused');
-select tests.save('pe_other', 'entrance_music', jsonb_build_object('songs', jsonb_build_array(tests.song('foreign', 'Other', 'Event'))));
+  'That song is no longer in the grand entrance songs or Entrance music. Choose another song or none.', 'a song from another moment (Processional) is refused');
+select tests.save('pe_other', 'introductions', jsonb_build_object('songs', jsonb_build_array(tests.song('foreign', 'Other', 'Event'))));
 select is(tests.save('pe_wed', 'introductions', jsonb_build_object('entries', jsonb_build_array(
   tests.person('i1', 'Sam and Jo', jsonb_build_object('song_id', tests.sid('foreign')))))) ->> 'status', 'invalid', 'a song of another event is refused');
 select is(tests.save('pe_wed', 'introductions', jsonb_build_object('entries', jsonb_build_array(
   tests.person('i1', 'Sam and Jo', '{"song_id":"not-a-song"}')))) ->> 'message', 'Reload the page and try again.', 'malformed links are refused');
 select is(jsonb_array_length(tests.stored('pe_wed', 'introductions') -> 'entries'), 3, 'nothing invalid was stored');
--- Removing a linked song from Entrance music is refused, naming who uses it.
-select is(tests.save('pe_wed', 'entrance_music', jsonb_build_object('songs', jsonb_build_array(tests.song('sealed', 'Signed, Sealed, Delivered', 'Stevie Wonder')))) ->> 'message',
-  '"Uptown Funk" is linked to introductions (Sam and Jo, The wedding party). Change those introductions first.', 'a linked song can''t be removed');
-select is(tests.titles(tests.stored('pe_wed', 'entrance_music')), array['Uptown Funk', 'Signed, Sealed, Delivered'], 'and stays');
--- Even from a stale tab: links are checked before the revision.
-select is(tests.save('pe_wed', 'entrance_music', jsonb_build_object('songs', jsonb_build_array(tests.song('sealed', 'x', 'y'))), 'client_y', 1) ->> 'status', 'invalid',
-  'a stale removal is refused for the link, not overwritten');
--- Rename and reorder: introductions read through the link and are untouched.
+select is(tests.save('pe_wed', 'introductions', jsonb_set(tests.stored('pe_wed', 'introductions'), '{songs}', jsonb_build_array(
+    tests.song('sealed', 'Signed, Sealed, Delivered (Live)', 'Stevie Wonder'), tests.song('funk', 'Uptown Funk', 'Mark Ronson', '{"notes":"Start at 0:45"}'))))
+    -> 'answers' -> 'entries' -> 0 ->> 'song_id', tests.sid('funk'), 'renaming or reordering its songs keeps every link');
+
+-- Each entry's music is explicit: a song, or the DJ's choice; neither is still open, never read as the DJ's choice.
+select tests.save('pe_wed', 'introductions', jsonb_set(tests.stored('pe_wed', 'introductions'), '{entries}',
+  (tests.stored('pe_wed', 'introductions') -> 'entries') || jsonb_build_array(tests.person('i5', 'Our parents')))) as s \gset m1_
+select is(tests.reqs(:'m1_s'::jsonb, 'introductions'), array['introductions:answered', 'entry_music:unanswered:music_open'],
+  'an entry without a song or the DJ''s choice leaves the music open');
+select tests.save('pe_wed', 'introductions', jsonb_set(tests.stored('pe_wed', 'introductions'), '{entries,3}', tests.person('i5', 'Our parents', '{"music":"dj_choice","notes":"Something upbeat"}'))) as s \gset m2_
+select is(array[tests.reqs(:'m2_s'::jsonb, 'introductions')::text, tests.stored('pe_wed', 'introductions') -> 'entries' -> 3 ->> 'music', tests.stored('pe_wed', 'introductions') -> 'entries' -> 3 ->> 'notes'],
+  array['{introductions:answered,entry_music:answered}', 'dj_choice', 'Something upbeat'], 'the DJ''s choice is stored, resolves it and keeps instructions');
+select is(tests.save('pe_wed', 'introductions', jsonb_set(tests.stored('pe_wed', 'introductions'), '{entries,3}',
+  tests.person('i5', 'Our parents', jsonb_build_object('music', 'dj_choice', 'song_id', tests.sid('funk'))))) ->> 'field',
+  'entry:' || tests.id('person-i5') || ':music', 'a song and the DJ''s choice together are refused');
+select is(tests.save('pe_wed', 'introductions', jsonb_set(tests.stored('pe_wed', 'introductions'), '{entries,3}', tests.person('i5', 'Our parents', '{"music":"surprise"}'))) ->> 'status',
+  'invalid', 'only the DJ''s choice is a music decision of its own');
+select is(tests.save('pe_wed', 'processional', tests.stored('pe_wed', 'processional') || jsonb_build_object('participants', jsonb_build_array(
+  tests.person('pair', 'Sam & Jo', '{"music":"dj_choice"}')))) ->> 'status', 'invalid', 'the Processional is unchanged: no DJ''s choice per person');
+-- DJ's choice -> a song shared with others: the shared song stays, linked by both.
+select is(tests.save('pe_wed', 'introductions', jsonb_set(tests.stored('pe_wed', 'introductions'), '{entries,3}', tests.person('i5', 'Our parents', jsonb_build_object('song_id', tests.sid('funk')))))
+  -> 'answers' -> 'entries' -> 0 ->> 'song_id', tests.sid('funk'), 'switching to a shared song keeps it for everyone using it');
+select tests.save('pe_wed', 'introductions', jsonb_set(tests.stored('pe_wed', 'introductions'), '{entries}', (tests.stored('pe_wed', 'introductions') -> 'entries') - 3));
+
+-- Plans with an Entrance music list (set up earlier, or added by staff) keep working: entries may link to it.
+select tests.login_as(tests.id('staff_a'));
+select public.add_event_plan_item(tests.id('pe_wed'), tests.version('pe_wed'), 'entrance_music', 'reception_entrance');
+select tests.su();
+select tests.save('pe_wed', 'entrance_music', jsonb_build_object('songs', jsonb_build_array(
+  tests.song('sept', 'September', 'Earth, Wind & Fire', '{"cue":"Parents"}'), tests.song('extra', 'Celebration', 'Kool & The Gang'))));
+select is(tests.save('pe_wed', 'introductions', jsonb_set(tests.stored('pe_wed', 'introductions'), '{entries}',
+  (tests.stored('pe_wed', 'introductions') -> 'entries') || jsonb_build_array(tests.person('i4', 'Our parents', jsonb_build_object('song_id', tests.sid('sept')))))) ->> 'status',
+  'saved', 'an entry can link to an Entrance music song, beside the order''s own songs');
+select is(tests.save('pe_wed', 'entrance_music', jsonb_build_object('songs', jsonb_build_array(tests.song('extra', 'Celebration', 'Kool & The Gang')))) ->> 'message',
+  '"September" is linked to introductions (Our parents). Change those introductions first.', 'a linked Entrance music song can''t be removed, naming who uses it');
+select is(tests.titles(tests.stored('pe_wed', 'entrance_music')), array['September', 'Celebration'], 'and stays');
+select is(tests.save('pe_wed', 'entrance_music', '{"songs":[]}', 'client_y', 1) ->> 'status', 'invalid', 'a stale removal is refused for the link, not overwritten');
 select tests.rev('pe_wed', 'introductions') as intro_rev \gset
-select is(tests.save('pe_wed', 'entrance_music', jsonb_build_object('songs', jsonb_build_array(
-  tests.song('sealed', 'Signed, Sealed, Delivered (Live)', 'Stevie Wonder', '{"cue":"Couple"}'), tests.song('funk', 'Uptown Funk', 'Mark Ronson', '{"cue":"Wedding party"}'),
-  tests.song('extra', 'September', 'Earth, Wind & Fire')))) ->> 'status', 'saved', 'linked songs can be renamed, reordered and joined by others');
+select is(tests.save('pe_wed', 'entrance_music', jsonb_build_object('songs', jsonb_build_array(tests.song('sept', 'September (Live)', 'Earth, Wind & Fire')))) ->> 'status',
+  'saved', 'renames and unlinked removals save; links to the order''s own songs never block Entrance music');
 select is(tests.rev('pe_wed', 'introductions'), :intro_rev, 'without touching the introductions');
-select is(tests.save('pe_wed', 'entrance_music', jsonb_build_object('songs', jsonb_build_array(
-  tests.song('sealed', 'Signed, Sealed, Delivered (Live)', 'Stevie Wonder', '{"cue":"Couple"}'), tests.song('funk', 'Uptown Funk', 'Mark Ronson', '{"cue":"Wedding party"}')))) ->> 'status',
-  'saved', 'an unlinked song can be removed');
--- After the links change, the song can go.
-select tests.save('pe_wed', 'introductions', jsonb_build_object('entries', jsonb_build_array(
-  tests.person('i1', 'Sam and Jo', jsonb_build_object('role', 'Best friends', 'song_id', tests.sid('sealed'))),
-  tests.person('i2', 'The wedding party'),
-  tests.person('i3', 'Alex and Taylor Nguyen-Roy', jsonb_build_object('pronunciation', 'NWEN-rwah', 'wording', 'For the first time as a married couple', 'song_id', tests.sid('sealed'))))));
-select is(tests.save('pe_wed', 'entrance_music', jsonb_build_object('songs', jsonb_build_array(tests.song('sealed', 'Signed, Sealed, Delivered (Live)', 'Stevie Wonder', '{"cue":"Couple"}')))) ->> 'status',
-  'saved', 'once unlinked, it can be removed');
 -- A hidden Entrance music keeps its songs, and links to them stay valid.
 select tests.login_as(tests.id('staff_a'));
 select public.set_event_plan_item_enabled(tests.item('pe_wed', 'entrance_music'), tests.version('pe_wed'), false);
@@ -285,10 +322,24 @@ select is(tests.save('pe_wed', 'introductions', tests.stored('pe_wed', 'introduc
 select tests.login_as(tests.id('staff_a'));
 select public.set_event_plan_item_enabled(tests.item('pe_wed', 'entrance_music'), tests.version('pe_wed'), true);
 select tests.su();
-select is(tests.reqs(tests.view('pe_wed'), 'introductions'), array['introductions:unanswered:discuss'], '"discuss" keeps introductions open, even with entries');
+select is(tests.reqs(tests.view('pe_wed'), 'introductions'), array['introductions:unanswered:discuss', 'entry_music:answered'], '"discuss" keeps introductions open, even with entries');
 select is(tests.save('pe_wed', 'introductions', tests.stored('pe_wed', 'introductions') || '{"choice":"none"}') ->> 'field', 'choice',
   '"No introductions" is refused while entries exist');
 select is(tests.reqs(tests.save('pe_other', 'introductions', '{"choice":"none"}'), 'introductions'), array['introductions:not_applicable'], '"No introductions" alone is not applicable');
+
+-- The grand entrance decision decides whether the order and its music count. Nothing is cleared.
+select tests.save('pe_wed', 'reception_entrance', '{"grand_entrance":"none","entrance_time":"18:15","guest_entry_time":"17:45"}') as s \gset g1_
+select is(array[:'g1_s'::jsonb ->> 'status', tests.reqs(:'g1_s'::jsonb, 'reception_entrance')::text,
+                coalesce(tests.state(:'g1_s'::jsonb, 'introductions'), 'left out'), coalesce(tests.state(:'g1_s'::jsonb, 'entrance_music'), 'left out')],
+  array['saved', '{guest_entry:answered,grand_entrance:not_applicable}', 'left out', 'left out'], 'no formal entrance: its time is kept, the order and its music aren''t counted');
+select is(array[jsonb_array_length(tests.stored('pe_wed', 'introductions') -> 'entries'), jsonb_array_length(tests.stored('pe_wed', 'entrance_music') -> 'songs')],
+  array[4, 1], 'and everything saved in them is kept');
+select tests.save('pe_wed', 'reception_entrance', '{"grand_entrance":"undecided","entrance_time":"18:15","guest_entry_time":"17:45"}') as s \gset g2_
+select is(array[tests.reqs(:'g2_s'::jsonb, 'reception_entrance')::text, coalesce(tests.state(:'g2_s'::jsonb, 'introductions'), 'left out')],
+  array['{guest_entry:answered,grand_entrance:unanswered:not_decided}', 'left out'], 'not sure yet: the decision stays open; nothing hidden is counted');
+select tests.save('pe_wed', 'reception_entrance', '{"grand_entrance":"planned","entrance_time":"18:15","guest_entry_time":"17:45"}') as s \gset g3_
+select is(array[tests.reqs(:'g3_s'::jsonb, 'reception_entrance')::text, tests.reqs(:'g3_s'::jsonb, 'introductions')::text, tests.reqs(:'g3_s'::jsonb, 'entrance_music')::text],
+  array['{guest_entry:answered,grand_entrance:answered,entrance:answered}', '{introductions:unanswered:discuss,entry_music:answered}', '{songs:answered}'], 'planned again: the order and its music count, as saved');
 
 -- ===========================================================================
 -- MC
@@ -350,6 +401,8 @@ select tests.login_as(tests.id('staff_a'));
 select public.set_event_plan_item_enabled(tests.item('pe_wed', 'mc'), tests.version('pe_wed'), true);
 select tests.su();
 select is(tests.save('pe_wed', 'speeches', '{"choice":"none"}', 'client_x') ->> 'status', 'unavailable', 'another client can''t save');
+select is(tests.save('pe_wed', 'introductions', jsonb_build_object('songs', jsonb_build_array(tests.song('stale', 'Stale', 'Tab'))), 'client_y', 1) ->> 'status', 'conflict',
+  'a stale tab''s different grand entrance order conflicts instead of overwriting newer answers');
 select tests.item('pe_other', 'introductions') as other_intro \gset it_
 select tests.login_as(tests.id('client_y'));
 select is(public.client_save_plan_item(tests.id('pe_wed'), 'test-bouprod', :'it_other_intro', 1, '{"choice":"discuss"}') ->> 'status', 'unavailable',
@@ -370,6 +423,8 @@ select throws_like(format('select public.staff_save_plan_item(%L, %L, %s, %L)', 
   '%archived%', 'archived events refuse staff edits');
 select tests.su();
 select is(tests.save('pe_wed', 'speeches', '{"choice":"discuss"}') ->> 'status', 'unavailable', 'and client edits');
+select is(tests.save('pe_wed', 'introductions', jsonb_build_object('songs', jsonb_build_array(tests.song('late', 'Late', 'Song')))) ->> 'status', 'unavailable',
+  'including new grand entrance songs');
 select tests.login_as(tests.id('staff_a'));
 select public.set_event_archived(tests.id('pe_wed'), false);
 select tests.su();

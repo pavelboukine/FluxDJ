@@ -9,12 +9,14 @@ import {
   stageAnswersFromForm,
   stageFormFromAnswers,
   type Block,
+  type GrandEntrance,
   type StageAnswers,
   type StageEditor,
   type StageForm,
 } from "@/lib/planning/stages";
 import type { SaveItemResult } from "@/lib/planning/view";
 import { FieldBox, describedBy } from "./basics-editor";
+import { useGrandEntrance } from "./grand-entrance";
 import { ItemChecklist, ItemWarnings, useEditingClosed, usePlanProgress } from "./progress";
 import { TimeField } from "./time-field";
 import { SaveStatus, useAutosave } from "./use-autosave";
@@ -57,6 +59,7 @@ export function StageDetailsEditor(props: Props) {
   const plan = usePlanProgress();
   const basics = plan?.basics ?? {};
   const readOnly = useEditingClosed(props.disabledReason);
+  const entrance = useGrandEntrance();
   const { form, update, saveState, message, fieldError, retry } = useAutosave<StageForm, StageAnswers>({
     initialForm: stageFormFromAnswers(props.editor, props.initialAnswers),
     initialAnswers: props.initialAnswers,
@@ -137,7 +140,7 @@ export function StageDetailsEditor(props: Props) {
               <Textarea id={id(b.field)} rows={b.rows} value={str(b.field)} onChange={(e) => update({ [b.field]: e.target.value } as Partial<StageForm>)}
                 aria-invalid={Boolean(errorFor(b.field))} aria-describedby={describedBy(id(b.field), errorFor(b.field), b.hint)} />
             ) : (
-              <Input id={id(b.field)} value={str(b.field)} onChange={(e) => update({ [b.field]: e.target.value } as Partial<StageForm>)}
+              <Input id={id(b.field)} value={str(b.field)} placeholder={b.placeholder} onChange={(e) => update({ [b.field]: e.target.value } as Partial<StageForm>)}
                 aria-invalid={Boolean(errorFor(b.field))} aria-describedby={describedBy(id(b.field), errorFor(b.field), b.hint)} />
             )}
           </FieldBox>
@@ -189,6 +192,42 @@ export function StageDetailsEditor(props: Props) {
             {form.finish_source === "time" ? timeField("finish", "Finish time") : null}
             {radio("finish_source", "basics_end", `Same as the event end time in Event basics${basicsEnd ? ` (${basicsEnd})` : " (not entered yet)"}`)}
             {radio("finish_source", "discuss", `Not sure yet, discuss with ${props.audience === "client" ? props.djName : "the DJ"}`)}
+          </fieldset>
+        );
+      }
+      case "grand_entrance": {
+        const decision = str("grand_entrance") as GrandEntrance | "";
+        const choose = (value: GrandEntrance) => {
+          update({ grand_entrance: value }, ["entrance_time"]);
+          entrance?.set(value);
+        };
+        // Answers kept while the entrance is skipped or undecided (never cleared).
+        const kept = (decision === "none" || decision === "undecided") && (str("entrance_time") !== "" || Boolean(entrance?.saved));
+        return (
+          <fieldset key="grand_entrance" className="grid gap-1.5 col-span-full" data-testid="grand-entrance">
+            <legend className="mb-1 text-sm font-medium">Are you planning a formal grand entrance? (needed)</legend>
+            {([["planned", "Yes, we're planning a grand entrance"], ["none", "No, we'll skip the formal entrance"], ["undecided", "We're not sure yet"]] as [GrandEntrance, string][]).map(([value, label]) => (
+              <label key={value} className="flex min-h-9 items-start gap-2 text-sm">
+                <input type="radio" name={id("grand_entrance")} className="mt-0.5 size-4 accent-primary" checked={decision === value} onChange={() => choose(value)} />
+                <span>{label}</span>
+              </label>
+            ))}
+            {fieldError_("grand_entrance")}
+            {decision === "planned" ? (
+              <div className="mt-2 grid gap-2 border-l-2 pl-4">
+                {timeField("entrance", "Planned grand entrance time (needed)", "When should the DJ or MC begin introducing the wedding party and/or couple?")}
+                <p className="text-xs text-muted-foreground">Who is introduced, how to announce them and the song for each go in the grand entrance order below.</p>
+              </div>
+            ) : decision === "none" ? (
+              <p className="text-xs text-muted-foreground">Nothing else is needed for an entrance. The guest entry time above still helps the DJ plan.</p>
+            ) : decision === "undecided" ? (
+              <p className="text-xs text-muted-foreground">That&apos;s fine: keep planning the other sections and come back to this when you know.</p>
+            ) : null}
+            {kept ? (
+              <p className="text-xs text-muted-foreground" data-testid="grand-entrance-kept">
+                What you already entered for the grand entrance is kept, and comes back if you choose &ldquo;Yes&rdquo;.
+              </p>
+            ) : null}
           </fieldset>
         );
       }

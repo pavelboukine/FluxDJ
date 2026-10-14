@@ -4,6 +4,7 @@ import type { IntroductionsAnswers, McAnswers, ProcessionalAnswers, SpeechesAnsw
 import type { ContactsAnswers, EventContact, MusicStyleAnswers, PreferencesAnswers } from "@/lib/planning/contacts";
 import type { MomentAnswers, MusicLists, PlanStage, PlanStructure, SaveItemResult, StageDetails } from "@/lib/planning/view";
 import type { ArrivalAnswers, TimedAnswers } from "@/lib/planning/timed";
+import { GRAND_ENTRANCE_MOMENTS, grandEntranceOf, type GrandEntrance } from "@/lib/planning/stages";
 import { ContactsEditor, MusicStyleEditor, PreferencesEditor, type KnownPeople } from "./general-editors";
 import { ArrivalEditor, ProgramEditor, TimedEditorCard } from "./timed-editors";
 import { MusicEditor } from "./music-editor";
@@ -113,4 +114,17 @@ export function generalEditor(g: General, opts: {
 export function ceremonyDetails(stages: PlanStage[], stageDetails: StageDetails): Record<string, unknown> | null {
   const ceremony = stages.find((s) => !s.disabled && s.editor === "stage_ceremony");
   return ceremony ? (stageDetails[ceremony.id]?.answers ?? null) : null;
+}
+
+/**
+ * The visible Reception entrance's grand entrance decision (older answers
+ * included), and whether its moments already hold answers: what decides,
+ * before any change on the page, whether those moments are shown.
+ */
+export function grandEntranceState(stages: PlanStage[], stageDetails: StageDetails, moments: MomentAnswers, music: MusicLists): { decision: GrandEntrance | null; saved: boolean } {
+  const stage = stages.find((s) => !s.disabled && s.editor === "stage_entrance");
+  if (!stage) return { decision: null, saved: false };
+  const saved = stage.moments.some((m) => !m.disabled && GRAND_ENTRANCE_MOMENTS.includes(m.key)
+    && Object.keys((moments[m.id] ?? music[m.id])?.answers ?? {}).length > 0);
+  return { decision: grandEntranceOf(stageDetails[stage.id]?.answers ?? {}), saved };
 }

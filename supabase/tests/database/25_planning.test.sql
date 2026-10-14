@@ -143,8 +143,8 @@ select id as party from public.planning_templates where starter_key = 'simple_pa
 select set_config('tests.wedding', :'tpl_wedding', true), set_config('tests.party', :'tpl_party', true);
 
 select is((select array[count(*) filter (where kind = 'general'), count(*) filter (where kind = 'stage'), count(*) filter (where kind = 'moment')]::int[]
-           from public.planning_template_items where template_id = :'tpl_wedding'), array[3, 7, 28],
-  'Wedding: three general sections, seven stages, 28 moments (no separate Couple entrance)');
+           from public.planning_template_items where template_id = :'tpl_wedding'), array[3, 7, 26],
+  'Wedding: three general sections, seven stages, 26 moments (no separate Couple entrance, Participants and names or Entrance music)');
 select is((select array_agg(key order by position) from public.planning_template_items where template_id = :'tpl_wedding' and kind = 'stage'),
   array['ceremony', 'cocktail', 'reception_entrance', 'dinner', 'special_dances', 'party', 'closing'], 'Wedding stages follow the day');
 select is((select array_agg(i.key order by i.position) from public.planning_template_items i join public.planning_template_items p on p.id = i.parent_id
@@ -368,8 +368,8 @@ select is((:'save1_s'::jsonb -> 'progress' -> 'items' -> 0 -> 'requirements'),
   '[{"key":"guest_count","state":"answered"},{"key":"start_time","state":"answered"},{"key":"end_time","state":"answered"},{"key":"venue","state":"unanswered"},{"key":"access","state":"not_applicable"}]'::jsonb,
   '"no special instructions" is recorded as not applicable, distinct from unanswered');
 select is(array[(:'save1_s'::jsonb -> 'progress' ->> 'requirements_met'), (:'save1_s'::jsonb -> 'progress' ->> 'requirements_total'),
-                (:'save1_s'::jsonb -> 'progress' ->> 'percent')], array['4', '49', '8'],
-  'progress counts validated saved answers (Event basics 4 of 5; the six stage editors, 12; the 17 song moments; who walks in, MC, introductions and speeches; contacts 2, preferences 4, music styles 2; activities 2 and dedications 1, unanswered)');
+                (:'save1_s'::jsonb -> 'progress' ->> 'percent')], array['4', '48', '8'],
+  'progress counts validated saved answers (Event basics 4 of 5; the six stage editors, 13 (guest entry included); the 16 song moments; who walks in, MC and speeches (the grand entrance order waits for its decision); contacts 2, preferences 4, music styles 2; activities 2 and dedications 1, unanswered)');
 select is(:'save1_s'::jsonb -> 'progress' ->> 'scope', 'available_sections_only', 'and says it covers available sections only');
 select is((:'save1_s'::jsonb -> 'progress' ->> 'unavailable_sections')::int, 0, 'every section of a wedding has an editor; stages that only hold moments aren''t counted');
 select is((select count(*)::int from jsonb_array_elements(:'save1_s'::jsonb -> 'progress' -> 'items') x
@@ -463,7 +463,7 @@ select throws_like(format('select public.apply_event_plan_template(%L, %L, %s, f
 select throws_ok(format('select public.apply_event_plan_template(%L, %L, %s, true)', tests.id('pl_wed'), :'tpl_party', :rep_v - 1), 'PT409', null,
   'and the current structure version');
 select is(public.apply_event_plan_template(tests.id('pl_wed'), :'tpl_party', :rep_v, true) - 'structure_version',
-  '{"status":"applied","kept":4,"added":0,"hidden":34}'::jsonb, 'applying Simple Party keeps four items and hides the rest');
+  '{"status":"applied","kept":4,"added":0,"hidden":32}'::jsonb, 'applying Simple Party keeps four items and hides the rest');
 select is(array[tests.item('pl_wed', 'basics'), tests.item('pl_wed', 'party')], array[:'rep_basics', :'rep_party']::uuid[], 'kept items keep their ids');
 select is((select array[revision::text, answers ->> 'guest_count'] from public.event_plan_responses where item_id = :'rep_basics'), array['2', '125'],
   'Event basics answers are untouched');
