@@ -9,6 +9,8 @@
  * after the start once next-day marks apply.
  */
 
+import { MUSIC_RULES, isMusicEditor } from "./music";
+
 export const STAGE_EDITORS = ["stage_ceremony", "stage_cocktail", "stage_entrance", "stage_dinner", "stage_party", "stage_closing"] as const;
 export type StageEditor = (typeof STAGE_EDITORS)[number];
 export function isStageEditor(editor: string | null | undefined): editor is StageEditor {
@@ -259,6 +261,16 @@ export const STAGE_REQUIREMENT_LABELS: Record<string, string> = {
   activities: "Activities, or a choice",
   dedications: "Dedications, or a choice",
 };
+
+/**
+ * How a requirement reads in checklists and run-sheet notes. The music lists
+ * that take playlists (MUSIC_RULES) say so; song moments keep "Songs or a
+ * choice". `editor` is the item's editor, when known.
+ */
+export function requirementLabel(key: string, editor?: string | null): string | undefined {
+  if (key === "songs" && isMusicEditor(editor) && MUSIC_RULES[editor].playlists) return "Songs, playlists or a choice";
+  return STAGE_REQUIREMENT_LABELS[key];
+}
 
 export const REQUIREMENT_NOTES: Record<string, string> = {
   venue_unknown: "No event venue yet",

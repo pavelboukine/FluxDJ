@@ -2,7 +2,7 @@ import Link from "next/link";
 import { PdfDownloadLink } from "@/components/app/pwa";
 import { Badge } from "@/components/ui/badge";
 import { formatInstant } from "@/lib/planning/cutoff";
-import { whenText, type PersonLine, type Row, type RunSheet, type SongLine, type StageSheet } from "@/lib/run-sheet/model";
+import { listCount, whenText, type PersonLine, type PlaylistLine, type Row, type RunSheet, type SongLine, type StageSheet } from "@/lib/run-sheet/model";
 import { cn } from "@/lib/utils";
 
 /**
@@ -35,6 +35,25 @@ function Song({ s }: { s: SongLine }) {
       {s.version ? <span className="text-muted-foreground"> ({s.version})</span> : null}
       {s.notes ? <span className="block text-sm">{s.notes}</span> : null}
     </p>
+  );
+}
+
+/** A client's playlist: its service and name, and a short link to open it (never the raw URL). */
+function PlaylistItem({ p }: { p: PlaylistLine }) {
+  return (
+    <li className="grid gap-0.5 [overflow-wrap:anywhere]" data-testid="run-playlist">
+      <p>
+        <span className="font-medium">{p.kind}</span>
+        {p.label ? <>: {p.label}</> : null}
+      </p>
+      <p className="flex flex-wrap items-center gap-x-2">
+        <a className="font-medium underline underline-offset-4" href={p.url} target="_blank" rel="noopener noreferrer nofollow" aria-label={`Open playlist: ${p.label ?? p.kind}`}>
+          Open playlist
+        </a>
+        <span className="text-xs text-muted-foreground">{p.host}</span>
+      </p>
+      {p.notes ? <p className="whitespace-pre-line text-muted-foreground">Notes: {p.notes}</p> : null}
+    </li>
   );
 }
 
@@ -115,7 +134,7 @@ export function RunSheetView({ sheet, revision, pdfHref, planningHref, refreshHr
   const { event } = sheet;
   const tz = event.timezone;
   const doNotPlay = sheet.musicLists.filter((l) => l.kind === "exclusions");
-  const doNotPlayCount = doNotPlay.reduce((n, l) => n + l.songs.length, 0);
+  const doNotPlayCount = doNotPlay.reduce((n, l) => n + l.songs.length + l.playlists.length, 0);
   // Timing problems and song contradictions always show; unanswered details fold away under a count.
   const urgent = sheet.warnings.filter((w) => w.kind !== "unresolved");
   const open = sheet.warnings.filter((w) => w.kind === "unresolved");
@@ -204,12 +223,17 @@ export function RunSheetView({ sheet, revision, pdfHref, planningHref, refreshHr
                         <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
                           <span className={cn("font-medium", exclusions && "text-red-700 dark:text-red-400")}>
                             {exclusions ? "Do not play" : `${l.stageLabel} · ${l.label}`}
-                            {l.songs.length ? ` (${l.songs.length})` : ""}
+                            {l.songs.length || l.playlists.length ? ` (${listCount(l)})` : ""}
                           </span>
                           <span aria-hidden className="text-muted-foreground transition-transform group-open:rotate-90">›</span>
                         </summary>
-                        <div className="border-t px-4 py-3 text-sm">
-                          {l.songs.length === 0 ? <p className="text-muted-foreground">{l.status?.text ?? "No songs"}</p> : (
+                        <div className="grid gap-3 border-t px-4 py-3 text-sm">
+                          {l.playlists.length ? (
+                            <ul className="grid gap-2" aria-label={`Playlists: ${l.label}`}>
+                              {l.playlists.map((p, i) => <PlaylistItem key={i} p={p} />)}
+                            </ul>
+                          ) : null}
+                          {l.songs.length === 0 ? (l.playlists.length ? null : <p className="text-muted-foreground">{l.status?.text ?? "No songs"}</p>) : (
                             <ol className="grid list-decimal gap-1 pl-6">
                               {l.songs.map((s, i) => (
                                 <li key={i} className="[overflow-wrap:anywhere]">

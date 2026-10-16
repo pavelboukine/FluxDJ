@@ -98,10 +98,15 @@ const songSchema = z.object({
   notes: z.string().optional(),
   cue: z.string().optional(),
 });
-/** Songs of visible music moments, keyed by item id. Optional: a database without music editors omits it. */
+const playlistSchema = z.object({ id: z.string(), url: z.string(), label: z.string().optional(), notes: z.string().optional() });
+/** Songs (and the lists' playlist links) of visible music moments, keyed by item id. Optional: a database without music editors omits it. */
 const musicSchema = z
   .record(z.string(), z.object({
-    answers: z.object({ songs: z.array(songSchema).optional(), choice: z.enum(["dj_choice", "none", "not_applicable", "discuss"]).optional() }),
+    answers: z.object({
+      songs: z.array(songSchema).optional(),
+      playlists: z.array(playlistSchema).optional(),
+      choice: z.enum(["dj_choice", "none", "not_applicable", "discuss"]).optional(),
+    }),
     revision: z.number().int(),
   }))
   .optional()

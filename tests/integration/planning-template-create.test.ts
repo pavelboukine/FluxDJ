@@ -9,7 +9,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { adminClient, archiveTestTenants, createEvent, createTenantWithCatalog, must, signedInUser, type Catalog, type Db } from "./support/fixtures";
-import { sqlInBackground, uuid } from "./support/sql";
+import { sql, sqlInBackground, uuid } from "./support/sql";
 
 let admin: Db;
 let catalog: Catalog;
@@ -29,6 +29,8 @@ const create = (db: Db, tenantId: string, id: string, start: string, name: strin
   });
 const templatesWithId = async (id: string) => (await must(admin.from("planning_templates").select("id, name").eq("id", id))).data!;
 const itemCount = async (id: string) => (await must(admin.from("planning_template_items").select("id").eq("template_id", id))).data!.length;
+/** The Wedding starter's current outline size (it changes as planning evolves; a copy must match it exactly, never twice). */
+const weddingStarterItems = () => Number(sql("select count(*) from private.starter_planning_items('wedding');"));
 
 describe("planning template creation (local Supabase)", () => {
   beforeAll(async () => {
@@ -49,7 +51,7 @@ describe("planning template creation (local Supabase)", () => {
     const id = randomUUID();
     const first = await must(create(owner.db, catalog.tenantId, id, "wedding", "Wedding (French)"));
     expect(first.data).toEqual({ id, replayed: false });
-    expect(await itemCount(id)).toBe(39);
+    expect(await itemCount(id)).toBe(weddingStarterItems());
     // The response was lost; the browser sends the same form again (or the button was clicked twice).
     const retry = await must(create(owner.db, catalog.tenantId, id, "wedding", "Wedding (French)"));
     expect(retry.data).toEqual({ id, replayed: true });
@@ -57,7 +59,7 @@ describe("planning template creation (local Supabase)", () => {
     const changed = await must(create(owner.db, catalog.tenantId, id, "basics", "Something else"));
     expect(changed.data).toEqual({ id, replayed: true });
     expect(await templatesWithId(id)).toEqual([{ id, name: "Wedding (French)" }]);
-    expect(await itemCount(id)).toBe(39);
+    expect(await itemCount(id)).toBe(weddingStarterItems());
   });
 
   it("ten identical requests at the same moment create one template", async () => {

@@ -30,6 +30,17 @@ export async function pdfPageTexts(bytes: Buffer): Promise<string[]> {
   return pages;
 }
 
+/** The web addresses of the PDF's clickable links, page by page in reading order. */
+export async function pdfLinks(bytes: Buffer): Promise<string[]> {
+  const doc = await open(bytes);
+  const urls: string[] = [];
+  for (let i = 1; i <= doc.numPages; i++) {
+    for (const a of await (await doc.getPage(i)).getAnnotations()) if (a.subtype === "Link" && typeof a.url === "string") urls.push(a.url);
+  }
+  await doc.cleanup();
+  return urls;
+}
+
 /** Writes page-N.png files (for visual inspection) and returns their paths. */
 export async function rasterizePdf(bytes: Buffer, outDir: string, scale = 1.6): Promise<string[]> {
   mkdirSync(outDir, { recursive: true });

@@ -1,9 +1,9 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { buildRunSheet, whenText, type RunSheet } from "@/lib/run-sheet/model";
+import { buildRunSheet, listCount, whenText, type RunSheet } from "@/lib/run-sheet/model";
 import { renderRunSheetPdf } from "@/lib/run-sheet/render.server";
 import { runSheetFileName } from "@/lib/run-sheet/load.server";
-import { pdfPageTexts, rasterizePdf } from "../support/pdf";
+import { pdfLinks, pdfPageTexts, rasterizePdf } from "../support/pdf";
 import { id, input, planView, song } from "./fixtures/run-sheet";
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
@@ -376,6 +376,91 @@ describe("run sheet model", () => {
   it("names the download safely", () => {
     expect(runSheetFileName("Mariage Gagnon–Lévesque", "2027-08-14")).toBe("run-sheet-mariage-gagnon-levesque-2027-08-14.pdf");
     expect(runSheetFileName("", "x")).toBe("run-sheet-event-undated.pdf");
+  });
+});
+
+// Playlist links next to songs, on lists only; legacy lists unchanged.
+const SPOTIFY = "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M?si=0f2e";
+const APPLE = "https://music.apple.com/ca/playlist/souper/pl.u-8aAVZ0lCNr4mD";
+const OTHER = "https://playlists.example.org/mine/dont-play";
+const playlistPlan = planView({
+  stages: [
+    { key: "cocktail", editor: "stage_cocktail", label: "Cocktail", moments: [
+      { key: "cocktail_music", editor: "music_background", label: "Background music", answers: { playlists: [{ id: id(), url: SPOTIFY, label: "Cocktail Hour", notes: "Relaxed indie and acoustic" }] } },
+    ] },
+    { key: "dinner", editor: "stage_dinner", label: "Dinner", moments: [
+      { key: "dinner_music", editor: "music_background", label: "Background music", answers: { songs: [song("La Mer", "Charles Trenet")], playlists: [{ id: id(), url: APPLE }] } },
+    ] },
+    { key: "special_dances", editor: null, label: "Special dances", moments: [
+      { key: "first_dance", editor: "moment_songs", label: "First dance", answers: { songs: [song("Better Together", "Jack Johnson", { notes: "Fade out after second chorus", link: "https://open.spotify.com/track/1" })] } },
+    ] },
+    { key: "party", editor: "stage_party", label: "Party", moments: [
+      { key: "must_play", editor: "music_requests", label: "Must play", answers: { songs: [song("September", "Earth, Wind & Fire")] } },
+      { key: "do_not_play", editor: "music_exclusions", label: "Do not play", answers: { playlists: [{ id: id(), url: OTHER, label: "Please avoid" }] } },
+    ] },
+  ],
+});
+
+describe("playlist links in the run sheet", () => {
+  const sheet = buildRunSheet(input(playlistPlan, { title: "Playlists" }));
+  const list = (key: string) => sheet.musicLists.find((l) => l.key === key)!;
+
+  it("lists playlists with their service, name, host and notes, and a playlist alone answers the list", () => {
+    expect(list("cocktail_music")).toMatchObject({ status: null, songs: [], playlists: [
+      { url: SPOTIFY, kind: "Spotify playlist", host: "open.spotify.com", label: "Cocktail Hour", notes: "Relaxed indie and acoustic" },
+    ] });
+    expect(list("dinner_music").playlists).toEqual([{ url: APPLE, kind: "Apple Music playlist", host: "music.apple.com", label: undefined, notes: undefined }]);
+    expect(list("do_not_play").playlists[0]).toMatchObject({ kind: "Playlist link", host: "playlists.example.org", label: "Please avoid" });
+    expect(sheet.warnings.map((w) => w.text).join(" ")).not.toMatch(/Background music|Do not play/);
+  });
+
+  it("counts playlists and songs on the timeline instead of saying nothing was given", () => {
+    const row = (stage: string) => sheet.stages.find((s) => s.key === stage)!.rows.find((r) => r.title === "Background music")!;
+    expect(row("cocktail")).toMatchObject({ status: null, notes: ["1 playlist: see the full list in Music lists"] });
+    expect(row("dinner").notes).toEqual(["1 playlist and 1 song: see the full list in Music lists"]);
+    expect(listCount(list("must_play"))).toBe("1 song");
+  });
+
+  it("leaves song moments and legacy lists as they were", () => {
+    const first = sheet.stages.find((s) => s.key === "special_dances")!.rows[0];
+    expect(first.songs).toEqual([{ title: "Better Together", artist: "Jack Johnson", notes: "Fade out after second chorus", version: undefined, cue: undefined }]);
+    expect(list("must_play").playlists).toEqual([]);
+    expect(buildRunSheet(input(wedding, { title: "Legacy" })).musicLists.every((l) => l.playlists.length === 0)).toBe(true);
+  });
+
+  it("names an open list's requirement by what the list takes", () => {
+    const open = planView({
+      stages: [{ key: "party", editor: "stage_party", label: "Party", moments: [
+        { key: "must_play", editor: "music_requests", label: "Must play" },
+        { key: "last_dances", editor: "moment_songs", label: "Last dances" },
+      ] }],
+      unanswered: [{ stageKey: "must_play", key: "songs" }, { stageKey: "last_dances", key: "songs" }],
+    });
+    const texts = buildRunSheet(input(open)).warnings.filter((w) => w.kind === "unresolved").map((w) => w.text);
+    expect(texts).toEqual(["Party · Must play: Songs, playlists or a choice", "Party · Last dances: Songs or a choice"]);
+  });
+
+  it("skips a stored link that isn't a safe https address rather than showing it", () => {
+    const bad = planView({ stages: [{ key: "party", editor: "stage_party", label: "Party", moments: [
+      { key: "must_play", editor: "music_requests", label: "Must play", answers: { playlists: [{ id: id(), url: "javascript:alert(1)" }] } },
+    ] }] });
+    expect(buildRunSheet(input(bad)).musicLists[0].playlists).toEqual([]);
+  });
+
+  it("puts clickable playlist labels in the PDF, never the raw links", async () => {
+    const bytes = await renderRunSheetPdf(sheet, "PL000001");
+    const text = (await pdfPageTexts(bytes)).join("\n");
+    await rasterizePdf(bytes, "review-samples/run-sheet/playlists");
+    writeFileSync("review-samples/run-sheet/playlists.pdf", bytes);
+    expect(text).toContain("Spotify playlist: Cocktail Hour");
+    expect(text).toContain("Relaxed indie and acoustic");
+    expect(text).toContain("Apple Music playlist");
+    expect(text).toContain("Playlist link: Please avoid");
+    expect(text).toContain("Background music (1 playlist and 1 song)");
+    expect(text).not.toContain("37i9dQZF1DXcBWIGoYBM5M");
+    // Each playlist links its label and its host.
+    const links = await pdfLinks(bytes);
+    for (const url of [SPOTIFY, APPLE, OTHER]) expect(links.filter((l) => l === url)).toHaveLength(2);
   });
 });
 

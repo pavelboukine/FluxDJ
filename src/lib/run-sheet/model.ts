@@ -1,8 +1,8 @@
 import { ANNOUNCEMENT_LANGUAGES, BASICS_REQUIREMENT_LABELS, endsAfterMidnight, type BasicsAnswers } from "@/lib/planning/basics";
 import { GENRES, INTERACTION, LYRICS, REQUESTS, SLOW_SONGS, roleLabel, type ContactsAnswers, type EventContact, type MusicStyleAnswers, type PreferencesAnswers } from "@/lib/planning/contacts";
-import { isMusicEditor, matchKey, type MusicAnswers, type MusicEditor, type Song } from "@/lib/planning/music";
+import { isMusicEditor, isPlaylistUrl, matchKey, playlistKind, type MusicAnswers, type MusicEditor, type Playlist, type Song } from "@/lib/planning/music";
 import type { IntroductionsAnswers, McAnswers, Person, ProcessionalAnswers, Speech, SpeechesAnswers } from "@/lib/planning/participants";
-import { GRAND_ENTRANCE_MOMENTS, grandEntranceOf, grandEntranceOpen, nextDayLabel, REQUIREMENT_NOTES, STAGE_REQUIREMENT_LABELS } from "@/lib/planning/stages";
+import { GRAND_ENTRANCE_MOMENTS, grandEntranceOf, grandEntranceOpen, nextDayLabel, REQUIREMENT_NOTES, requirementLabel } from "@/lib/planning/stages";
 import type { ArrivalAnswers, TimedAnswers, TimedEntry } from "@/lib/planning/timed";
 import { formatInstant } from "@/lib/planning/cutoff";
 import { formatEventDate, formatImportedAnswer, type StaffPlanningView } from "@/lib/planning/view";
@@ -73,7 +73,13 @@ export type StageSheet = {
 };
 
 export type MusicListKind = "background" | "requests" | "exclusions";
-export type MusicList = { id: string; key: string; label: string; stageLabel: string; kind: MusicListKind; status: Status | null; songs: SongLine[] };
+/**
+ * A playlist link as the client saved it: `kind` is "Spotify playlist" (or
+ * "Playlist link" for a service not recognized) and `host` the link's host,
+ * for a short clickable label instead of the raw URL. Never fetched.
+ */
+export type PlaylistLine = { url: string; kind: string; host: string; label?: string; notes?: string };
+export type MusicList = { id: string; key: string; label: string; stageLabel: string; kind: MusicListKind; status: Status | null; songs: SongLine[]; playlists: PlaylistLine[] };
 
 export type Warning = { kind: "timing" | "conflict" | "unresolved" | "schedule"; text: string };
 
@@ -157,6 +163,19 @@ function song(s: Partial<Song> | undefined): SongLine | null {
 }
 const songs = (list: unknown): SongLine[] => (Array.isArray(list) ? list.map((s) => song(s as Song)).filter((s): s is SongLine => s !== null) : []);
 
+function playlist(p: Partial<Playlist> | undefined): PlaylistLine | null {
+  const url = str(p?.url);
+  if (!url || !isPlaylistUrl(url)) return null;
+  return { url, kind: playlistKind(url), host: new URL(url).hostname, label: str(p?.label), notes: str(p?.notes) };
+}
+const playlists = (list: unknown): PlaylistLine[] => (Array.isArray(list) ? list.map((p) => playlist(p as Playlist)).filter((p): p is PlaylistLine => p !== null) : []);
+
+/** "2 playlists and 3 songs", "1 playlist", "4 songs". */
+export function listCount(l: { songs: unknown[]; playlists: unknown[] }): string {
+  const n = (count: number, one: string) => (count ? [`${count} ${count === 1 ? one : `${one}s`}`] : []);
+  return [...n(l.playlists.length, "playlist"), ...n(l.songs.length, "song")].join(" and ");
+}
+
 function person(p: Partial<Person>): PersonLine | null {
   const names = str(p.names);
   return names ? { names, pronunciation: str(p.pronunciation), role: str(p.role), wording: str(p.wording) } : null;
@@ -207,10 +226,14 @@ export function buildRunSheet(input: RunSheetInput): RunSheet {
   const general = view.structure.general.filter((g) => !g.disabled);
   const stages = view.structure.stages.filter((s) => !s.disabled).map((s) => ({ ...s, moments: s.moments.filter((m) => !m.disabled) }));
   const labelById = new Map<string, string>();
+  const editorById = new Map<string, string | null>();
   for (const g of general) labelById.set(g.id, g.label);
   for (const s of stages) {
     labelById.set(s.id, s.label);
-    for (const m of s.moments) labelById.set(m.id, `${s.label} · ${m.label}`);
+    for (const m of s.moments) {
+      labelById.set(m.id, `${s.label} · ${m.label}`);
+      editorById.set(m.id, m.editor);
+    }
   }
   const answersOf = (id: string): Answers => (view.moments[id]?.answers ?? view.music[id]?.answers ?? {}) as Answers;
   const moment = (editor: string) => stages.flatMap((s) => s.moments).find((m) => m.editor === editor);
@@ -552,7 +575,7 @@ export function buildRunSheet(input: RunSheetInput): RunSheet {
   // Open answers, one line per section: "Ceremony: Start time; Microphone needs (discuss with DJ)".
   for (const item of view.progress.items) {
     const open = item.requirements.filter((r) => r.state === "unanswered").map((r) => {
-      const what = (item.key === "basics" ? BASICS_REQUIREMENT_LABELS[r.key] : undefined) ?? STAGE_REQUIREMENT_LABELS[r.key] ?? "Detail";
+      const what = (item.key === "basics" ? BASICS_REQUIREMENT_LABELS[r.key] : undefined) ?? requirementLabel(r.key, editorById.get(item.item_id)) ?? "Detail";
       const why = r.discuss ? "discuss with DJ" : r.note ? REQUIREMENT_NOTES[r.note]?.toLowerCase() : undefined;
       return why ? `${what} (${why})` : what;
     });
@@ -605,14 +628,16 @@ function musicRows(m: { id: string; key: string; label: string }, editor: MusicE
   const choice = a.choice;
   if (editor === "music_background" || editor === "music_requests" || editor === "music_exclusions") {
     const kind: MusicListKind = editor === "music_background" ? "background" : editor === "music_requests" ? "requests" : "exclusions";
-    const status: Status | null = list.length ? null
+    const links = playlists(a.playlists);
+    const status: Status | null = list.length || links.length ? null
       : choice === "dj_choice" ? { tone: "choice", text: "DJ's choice: no suggestions" }
       : choice === "none" ? { tone: "none", text: kind === "exclusions" ? "Nothing to exclude" : "No requests" }
       : UNANSWERED;
-    lists.push({ id: m.id, key: m.key, label: m.label, stageLabel, kind, status, songs: list });
+    const entry: MusicList = { id: m.id, key: m.key, label: m.label, stageLabel, kind, status, songs: list, playlists: links };
+    lists.push(entry);
     return [{
       id: m.id, when: { kind: "sequence" }, title: m.label, people: [], songs: [],
-      notes: list.length ? [`${list.length} ${list.length === 1 ? "song" : "songs"}: see ${kind === "exclusions" ? "Do not play" : "the full list"} in Music lists`] : [],
+      notes: list.length || links.length ? [`${listCount(entry)}: see ${kind === "exclusions" ? "Do not play" : "the full list"} in Music lists`] : [],
       status,
     }];
   }

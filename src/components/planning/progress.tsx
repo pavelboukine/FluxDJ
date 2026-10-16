@@ -4,7 +4,7 @@ import { createContext, useContext, useMemo, useState, type ReactNode } from "re
 import { Badge } from "@/components/ui/badge";
 import { BASICS_REQUIREMENT_LABELS, type BasicsAnswers } from "@/lib/planning/basics";
 import { clientEditingText, formatInstant, type ClientEditing } from "@/lib/planning/cutoff";
-import { REQUIREMENT_NOTES, STAGE_REQUIREMENT_LABELS } from "@/lib/planning/stages";
+import { REQUIREMENT_NOTES, requirementLabel } from "@/lib/planning/stages";
 import { cn } from "@/lib/utils";
 import { itemProgress, progressHeadline, progressPercent, progressPercentText, progressScopeNote, type PlanProgress, type Requirement, type TimelineWarning } from "@/lib/planning/view";
 import type { SaveState } from "./use-autosave";
@@ -193,7 +193,7 @@ function stateText(r: Requirement, dj: string, audience: "client" | "staff"): st
 }
 
 /** What one item still needs, from the server's progress. */
-export function ItemChecklist({ itemId, title, djName, audience }: { itemId: string; title: string; djName: string; audience: "client" | "staff" }) {
+export function ItemChecklist({ itemId, title, djName, audience, editor }: { itemId: string; title: string; djName: string; audience: "client" | "staff"; editor?: string }) {
   const ctx = usePlanProgress();
   const item = ctx ? itemProgress(ctx.progress, itemId) : null;
   if (!item || item.total === 0) return null;
@@ -203,7 +203,7 @@ export function ItemChecklist({ itemId, title, djName, audience }: { itemId: str
       <ul aria-label={`What ${title} needs`} className="grid gap-0.5">
         {item.requirements.map((r) => (
           <li key={r.key} className="flex flex-wrap justify-between gap-2">
-            <span>{BASICS_REQUIREMENT_LABELS[r.key] && item.key === "basics" ? BASICS_REQUIREMENT_LABELS[r.key] : STAGE_REQUIREMENT_LABELS[r.key] ?? r.key}</span>
+            <span>{BASICS_REQUIREMENT_LABELS[r.key] && item.key === "basics" ? BASICS_REQUIREMENT_LABELS[r.key] : requirementLabel(r.key, editor) ?? r.key}</span>
             <span className={r.state === "unanswered" ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground"}>{stateText(r, djName, audience)}</span>
           </li>
         ))}

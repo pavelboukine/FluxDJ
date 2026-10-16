@@ -8,6 +8,7 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
+import { transparentPng } from "../support/logo-fixtures";
 import { expectLinkRequested } from "./support";
 import { archiveTestTenant, createTestTenant, type TestTenant } from "./tenant";
 
@@ -26,8 +27,6 @@ let tenant: TestTenant;
 let otherTenant: TestTenant;
 const run = randomUUID().slice(0, 6);
 
-// A valid 1x1 PNG.
-const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
 
 async function latestMagicLink(email: string, after: number): Promise<string> {
   for (let attempt = 0; attempt < 30; attempt++) {
@@ -213,7 +212,7 @@ test.describe.serial("staff interface", () => {
     const { data: saved } = await admin.from("gear_items").select("id, default_price_cents").eq("name", gearName).single();
     expect(saved!.default_price_cents).toBe(9550);
 
-    await page.getByLabel("Photo or video", { exact: true }).setInputFiles({ name: "fog.png", mimeType: "image/png", buffer: PNG });
+    await page.getByLabel("Photo or video", { exact: true }).setInputFiles({ name: "fog.png", mimeType: "image/png", buffer: await transparentPng(1600, 1200) }); // at the recommended photo size
     await page.getByLabel("Description (alt text, optional)").fill("Fog machine on stage");
     await page.getByRole("button", { name: "Upload" }).click();
     await expect(page.getByRole("status").filter({ hasText: "Added fog.png." })).toBeVisible();

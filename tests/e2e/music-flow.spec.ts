@@ -103,7 +103,7 @@ test.describe.serial("songs in planning", () => {
   test("the client adds, edits, reorders and removes songs on a phone; a reload keeps the order", async () => {
     const mustPlay = await openMoment(client, "party", "must_play");
     await expect(client.getByTestId("moment-must_play")).toContainText("Not started");
-    await expect(mustPlay).toContainText("Songs or a choice");
+    await expect(mustPlay).toContainText("Songs, playlists or a choice");
 
     // The add form checks a song before it joins the list.
     await addSong(mustPlay, { title: "One More Time", artist: "", link: "" });
@@ -215,7 +215,8 @@ test.describe.serial("songs in planning", () => {
     await cocktail.getByLabel("DJ's choice: no suggestions").check();
     await expect(cocktail.getByText("All changes saved")).toBeVisible();
     await expect(client.getByTestId("moment-cocktail_music")).toContainText("Complete");
-    await expect(cocktail.getByText(/To add songs, choose/)).toBeVisible();
+    await expect(cocktail.getByText(/To add songs or playlists, choose/)).toBeVisible();
+    await expect(cocktail.getByTestId(/-add-playlist$/)).toHaveCount(0);
 
     const cake = await openMoment(client, "dinner", "cake_cutting");
     await cake.getByLabel("Not applicable: this moment won't happen").check();

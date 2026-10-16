@@ -1,6 +1,6 @@
-import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
+import { Document, Link, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import { formatInstant } from "@/lib/planning/cutoff";
-import { whenText, type PersonLine, type Row, type RunSheet, type SongLine, type StageSheet } from "./model";
+import { listCount, whenText, type PersonLine, type Row, type RunSheet, type SongLine, type StageSheet } from "./model";
 
 /**
  * The DJ run sheet as a PDF, from the same projection as the live view.
@@ -57,6 +57,7 @@ const s = StyleSheet.create({
   listNo: { width: 22, fontSize: 8.5, lineHeight: 1.3, color: MUTED },
   listBody: { flex: 1, fontSize: 8.5, lineHeight: 1.3 },
   note: { fontSize: 8.5, lineHeight: 1.35, color: MUTED },
+  link: { color: "#1d4ed8", textDecoration: "underline" },
 });
 
 function Pairs({ items }: { items: { label: string; value: string; warn?: boolean }[] }) {
@@ -200,7 +201,7 @@ export function RunSheetDocument({ sheet, revision }: { sheet: RunSheet; revisio
                 <Pairs items={sheet.preferences} />
                 <Pairs items={sheet.musicLists.filter((l) => l.kind === "exclusions").map((l) => ({
                   label: l.label,
-                  value: l.songs.length ? `${l.songs.length} ${l.songs.length === 1 ? "song" : "songs"}: see Music lists` : (l.status?.text ?? ""),
+                  value: l.songs.length || l.playlists.length ? `${listCount(l)}: see Music lists` : (l.status?.text ?? ""),
                 }))} />
               </View>
             </View>
@@ -260,9 +261,21 @@ export function RunSheetDocument({ sheet, revision }: { sheet: RunSheet; revisio
           {lists.map((l) => (
             <View key={l.id}>
               <Text style={[s.listHead, l.kind === "exclusions" ? { color: "#b91c1c" } : {}]} minPresenceAhead={30}>
-                {`${l.kind === "exclusions" ? "DO NOT PLAY · " : ""}${l.stageLabel} · ${l.label}${l.songs.length ? ` (${l.songs.length})` : ""}`}
+                {`${l.kind === "exclusions" ? "DO NOT PLAY · " : ""}${l.stageLabel} · ${l.label}${l.songs.length || l.playlists.length ? ` (${listCount(l)})` : ""}`}
               </Text>
-              {l.songs.length === 0 ? <Text style={s.note}>{l.status?.text ?? "No songs"}</Text> : null}
+              {l.songs.length === 0 && l.playlists.length === 0 ? <Text style={s.note}>{l.status?.text ?? "No songs"}</Text> : null}
+              {/* Playlists first, each a short clickable label (the service and name, then the host), never the raw link. */}
+              {l.playlists.map((p, i) => (
+                <View key={`p${i}`} style={s.listRow} wrap={false}>
+                  <Text style={s.listNo}>{"♫"}</Text>
+                  <Text style={s.listBody}>
+                    <Link src={p.url} style={s.link}>{`${p.kind}${p.label ? `: ${p.label}` : ""}`}</Link>
+                    <Text style={s.muted}>{" · "}</Text>
+                    <Link src={p.url} style={[s.link, s.muted]}>{p.host}</Link>
+                    {p.notes ? <Text style={s.muted}>{` · ${p.notes}`}</Text> : null}
+                  </Text>
+                </View>
+              ))}
               {l.songs.map((song, i) => (
                 <View key={i} style={s.listRow} wrap={false}>
                   <Text style={s.listNo}>{`${i + 1}.`}</Text>

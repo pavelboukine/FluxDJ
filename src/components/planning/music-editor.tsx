@@ -1,29 +1,41 @@
 "use client";
 
 import { createContext, useContext, useRef, useState, type ReactNode } from "react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { isHttpsUrl, linkHost } from "@/lib/payments";
 import {
   CHOICE_LABELS,
   LIST_CHOICE_LABEL,
+  MAX_PLAYLISTS,
   MUSIC_HINTS,
   MUSIC_RULES,
   PASTE_MAX_LINES,
+  PLAYLIST_INTROS,
+  PLAYLIST_INTRO_DEFAULT,
+  checkPlaylist,
   conflictsFor,
   duplicateIds,
+  emptyPlaylist,
   emptySong,
+  isPlaylistUrl,
   musicAnswersFromForm,
   musicFormFromAnswers,
   parsePastedList,
   pastedRowProblem,
+  playlistField,
+  playlistKind,
+  playlistProvider,
+  playlistUrlKey,
   songField,
   type MusicAnswers,
   type MusicChoice,
   type MusicEditor as MusicEditorKind,
   type MusicForm,
   type PastedRow,
+  type PlaylistForm,
   type SavedList,
   type Song,
   type SongForm,
@@ -121,7 +133,7 @@ export function MusicEditor(props: Props) {
 
   return (
     <div className="grid gap-3" data-testid={`music-${props.momentKey}`}>
-      <ItemChecklist itemId={props.itemId} title={props.label} djName={props.djName} audience={props.audience} />
+      <ItemChecklist itemId={props.itemId} title={props.label} djName={props.djName} audience={props.audience} editor={props.editor} />
       {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
       {props.disabledReason ? (
         <p role="status" className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm">{props.disabledReason}</p>
@@ -175,6 +187,8 @@ export function MusicSection(props: {
   const [editing, setEditing] = useState<string | null>(null);
   const [removed, setRemoved] = useState<{ song: SongForm; index: number } | null>(null);
   const exclusive = choices && form.choice !== "" && form.choice !== "discuss";
+  const playlists = form.playlists ?? [];
+  const filled = form.songs.length > 0 || playlists.length > 0;
   const dupes = duplicateIds(form.songs);
   const conflicts = lists ? conflictsFor(props.itemId, props.editor, form.songs, lists.lists) : new Map<string, string[]>();
   const errorFor = (id: string, field: string) => (fieldError?.field === songField(id, field) ? fieldError.message : null);
@@ -219,7 +233,7 @@ export function MusicSection(props: {
       {choices ? <fieldset disabled={readOnly} className="grid gap-1">
         <legend className="mb-1 text-sm font-medium">{props.editor === "moment_songs" && props.momentKey === "processional" ? "Music for the processional (needed)" : "Your answer (needed)"}</legend>
         {(["", ...rules.choices] as (MusicChoice | "")[]).map((choice) => {
-          const blocked = choice !== "" && choice !== "discuss" && form.songs.length > 0;
+          const blocked = choice !== "" && choice !== "discuss" && filled;
           const text = choice === "" ? LIST_CHOICE_LABEL[props.editor] : CHOICE_LABELS[props.editor][choice]!.replace("the DJ", dj);
           return (
             <label key={choice || "list"} className="flex min-h-9 items-start gap-2 text-sm">
@@ -233,7 +247,7 @@ export function MusicSection(props: {
               />
               <span>
                 {text}
-                {blocked ? <span className="block text-xs text-muted-foreground">Remove the songs to choose this.</span> : null}
+                {blocked ? <span className="block text-xs text-muted-foreground">{rules.playlists ? "Remove the songs and playlists to choose this." : "Remove the songs to choose this."}</span> : null}
               </span>
             </label>
           );
@@ -243,6 +257,20 @@ export function MusicSection(props: {
           <p className="text-xs text-muted-foreground">The moment stays in your plan; only {props.djName} can remove it.</p>
         ) : null}
       </fieldset> : null}
+
+      {rules.playlists ? (
+        <PlaylistSection
+          base={base}
+          intro={PLAYLIST_INTROS[props.momentKey] ?? PLAYLIST_INTRO_DEFAULT}
+          label={props.label}
+          playlists={playlists}
+          canAdd={!exclusive}
+          readOnly={readOnly}
+          dj={dj}
+          fieldError={fieldError}
+          onChange={(next, clears) => update({ playlists: next }, clears)}
+        />
+      ) : null}
 
       {form.songs.length > 0 ? (
         <ol className="grid gap-2" aria-label={`Songs: ${props.label}`}>
@@ -311,7 +339,7 @@ export function MusicSection(props: {
       ) : null}
 
       {readOnly ? null : exclusive ? (
-        <p className="text-xs text-muted-foreground">To add songs, choose &ldquo;{LIST_CHOICE_LABEL[props.editor]}&rdquo; above.</p>
+        <p className="text-xs text-muted-foreground">To add {rules.playlists ? "songs or playlists" : "songs"}, choose &ldquo;{LIST_CHOICE_LABEL[props.editor]}&rdquo; above.</p>
       ) : form.songs.length >= rules.maxSongs ? (
         <p className="text-xs text-muted-foreground">This list has the maximum of {rules.maxSongs} songs.</p>
       ) : (
@@ -325,6 +353,188 @@ export function MusicSection(props: {
       {fieldError?.field.endsWith(":linked") && !form.songs.some((s) => fieldError.field === songField(s.id, "linked")) ? (
         <p role="alert" className="text-sm text-destructive">{fieldError.message} {removed ? "Use Undo to put the song back." : "Reload to see it again."}</p>
       ) : null}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Playlist links (list editors only)
+// ---------------------------------------------------------------------------
+
+/**
+ * Playlists the client made in another app, shared by link: add, edit and
+ * remove (with undo), in the order added. Links are never opened or checked
+ * here; the service name comes from the link's host name, for display only.
+ * Changes go through the same form and autosave as the songs.
+ */
+function PlaylistSection({ base, intro, label, playlists, canAdd, readOnly, dj, fieldError, onChange }: {
+  base: string;
+  intro: string;
+  label: string;
+  playlists: PlaylistForm[];
+  canAdd: boolean;
+  readOnly: boolean;
+  dj: string;
+  fieldError: { field: string; message: string } | null;
+  onChange: (playlists: PlaylistForm[], clears: string[]) => void;
+}) {
+  const [editing, setEditing] = useState<string | null>(null);
+  const [removed, setRemoved] = useState<{ playlist: PlaylistForm; index: number } | null>(null);
+  const errorFor = (id: string, field: string) => (fieldError?.field === playlistField(id, field) ? fieldError.message : null);
+  const clears = (id: string) => ["playlists", ...["url", "label", "notes"].map((f) => playlistField(id, f))];
+  const hasError = (id: string) => fieldError?.field.startsWith(`playlist:${id}:`) ?? false;
+
+  function edit(id: string, changes: Partial<PlaylistForm>) {
+    onChange(playlists.map((p) => (p.id === id ? { ...p, ...changes } : p)), clears(id));
+  }
+  function remove(index: number) {
+    const playlist = playlists[index];
+    onChange(playlists.filter((_, i) => i !== index), clears(playlist.id));
+    setRemoved({ playlist, index });
+    if (editing === playlist.id) setEditing(null);
+  }
+  function undoRemove() {
+    if (!removed || playlists.some((p) => p.id === removed.playlist.id) || playlists.length >= MAX_PLAYLISTS) return setRemoved(null);
+    const next = [...playlists];
+    next.splice(Math.min(removed.index, next.length), 0, removed.playlist);
+    onChange(next, []);
+    setRemoved(null);
+  }
+
+  if (readOnly && playlists.length === 0) return null;
+  return (
+    <div className="grid gap-2" data-testid={`${base}-playlists`}>
+      {!readOnly && canAdd ? <p className="text-sm text-muted-foreground">{intro}</p> : null}
+      {playlists.length > 0 ? (
+        <ul className="grid gap-2" aria-label={`Playlists: ${label}`}>
+          {playlists.map((p, index) => {
+            const url = p.url.trim();
+            const valid = isPlaylistUrl(url);
+            const provider = valid ? playlistProvider(url) : null;
+            const name = p.label.trim() || playlistKind(url);
+            return (
+              <li key={p.id} className="grid gap-2 rounded-lg border p-3" data-testid="playlist-row">
+                <div className="grid min-w-0 gap-0.5">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground [overflow-wrap:anywhere]">
+                    {playlistKind(url)}
+                    {valid && !provider ? <span className="font-normal normal-case tracking-normal"> · {new URL(url).hostname}</span> : null}
+                  </p>
+                  {p.label.trim() ? <p className="font-medium [overflow-wrap:anywhere]">{p.label}</p> : null}
+                  {p.notes.trim() ? <p className="whitespace-pre-line text-xs [overflow-wrap:anywhere]">Notes: {p.notes}</p> : null}
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {valid ? (
+                    <a
+                      className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer nofollow"
+                      aria-label={`Open playlist "${name}" (opens ${provider ?? new URL(url).hostname})`}
+                    >
+                      Open playlist
+                    </a>
+                  ) : null}
+                  {!readOnly ? (
+                    <>
+                      <Button type="button" size="sm" variant="outline" onClick={() => setEditing(editing === p.id ? null : p.id)} aria-expanded={editing === p.id} aria-label={`${editing === p.id ? "Done editing" : "Edit"} playlist "${name}"`}>
+                        {editing === p.id ? "Done" : "Edit"}
+                      </Button>
+                      <Button type="button" size="sm" variant="outline" onClick={() => remove(index)} aria-label={`Remove playlist "${name}"`}>Remove</Button>
+                    </>
+                  ) : null}
+                </div>
+                {!readOnly && (editing === p.id || hasError(p.id)) ? (
+                  <PlaylistFields idPrefix={`${base}-${p.id}`} playlist={p} dj={dj} errorFor={(field) => errorFor(p.id, field)} onChange={(changes) => edit(p.id, changes)} />
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+      {removed ? (
+        <p role="status" className="flex flex-wrap items-center gap-2 text-sm">
+          Removed &ldquo;{removed.playlist.label.trim() || playlistKind(removed.playlist.url.trim())}&rdquo;.
+          <Button type="button" size="sm" variant="outline" onClick={undoRemove}>Undo</Button>
+        </p>
+      ) : null}
+      {fieldError?.field === "playlists" ? <p role="alert" className="text-xs text-destructive">{fieldError.message}</p> : null}
+      {readOnly || !canAdd ? null : playlists.length >= MAX_PLAYLISTS ? (
+        <p className="text-xs text-muted-foreground">This list has the maximum of {MAX_PLAYLISTS} playlists.</p>
+      ) : (
+        <AddPlaylist base={base} dj={dj} playlists={playlists} onAdd={(playlist) => { onChange([...playlists, playlist], ["playlists"]); setRemoved(null); }} />
+      )}
+    </div>
+  );
+}
+
+function PlaylistFields({ idPrefix, playlist, dj, errorFor, onChange }: {
+  idPrefix: string;
+  playlist: PlaylistForm;
+  dj: string;
+  errorFor: (field: string) => string | null;
+  onChange: (changes: Partial<PlaylistForm>) => void;
+}) {
+  const id = (f: string) => `${idPrefix}-playlist-${f}`;
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      <FieldBox id={id("url")} label="Playlist link" error={errorFor("url")} hint={`Make sure it's shared or public so ${dj} can open it.`} className="col-span-full">
+        <Input id={id("url")} type="url" inputMode="url" autoComplete="off" value={playlist.url} onChange={(e) => onChange({ url: e.target.value })}
+          aria-invalid={Boolean(errorFor("url"))} aria-describedby={describedBy(id("url"), errorFor("url"), "hint")} />
+      </FieldBox>
+      <FieldBox id={id("label")} label="Playlist name (optional)" error={errorFor("label")} className="col-span-full">
+        <Input id={id("label")} value={playlist.label} onChange={(e) => onChange({ label: e.target.value })}
+          aria-invalid={Boolean(errorFor("label"))} aria-describedby={describedBy(id("label"), errorFor("label"))} />
+      </FieldBox>
+      <FieldBox id={id("notes")} label="Playlist notes (optional)" error={errorFor("notes")} className="col-span-full" hint="For example the mood, or which songs matter most.">
+        <Textarea id={id("notes")} rows={2} value={playlist.notes} onChange={(e) => onChange({ notes: e.target.value })}
+          aria-invalid={Boolean(errorFor("notes"))} aria-describedby={describedBy(id("notes"), errorFor("notes"), "hint")} />
+      </FieldBox>
+    </div>
+  );
+}
+
+/** A playlist joins the list only once its link is complete, so the list never holds half-typed links. */
+function AddPlaylist({ base, dj, playlists, onAdd }: { base: string; dj: string; playlists: PlaylistForm[]; onAdd: (playlist: PlaylistForm) => void }) {
+  const [draft, setDraft] = useState<PlaylistForm>(() => emptyPlaylist(newId()));
+  const [error, setError] = useState<{ field: string; message: string } | null>(null);
+  const urlRef = useRef<HTMLInputElement>(null);
+  const id = (f: string) => `${base}-new-playlist-${f}`;
+  const errorFor = (field: string) => (error?.field === field ? error.message : null);
+  function add() {
+    const checked = checkPlaylist(draft);
+    if (!checked.ok) {
+      setError({ field: checked.field.split(":").pop() ?? "", message: checked.message });
+      return;
+    }
+    const key = playlistUrlKey(checked.playlist.url);
+    if (playlists.some((p) => playlistUrlKey(p.url) === key)) {
+      setError({ field: "url", message: "This playlist is already added here." });
+      return;
+    }
+    onAdd({ ...draft, url: checked.playlist.url, label: checked.playlist.label ?? "", notes: "" });
+    setDraft(emptyPlaylist(newId()));
+    setError(null);
+    urlRef.current?.focus();
+  }
+  return (
+    <div className="grid gap-3 rounded-lg border border-dashed p-3" data-testid={`${base}-add-playlist`}>
+      <p className="text-sm font-medium">Add a playlist</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <FieldBox id={id("url")} label="Playlist link" error={errorFor("url")} className="col-span-full"
+          hint={`Paste a link from Spotify, Apple Music or your favourite music app. Make sure it's shared or public so ${dj} can open it.`}>
+          <Input ref={urlRef} id={id("url")} type="url" inputMode="url" autoComplete="off" placeholder="https://" value={draft.url}
+            onChange={(e) => { setDraft((d) => ({ ...d, url: e.target.value })); setError(null); }}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
+            aria-invalid={Boolean(errorFor("url"))} aria-describedby={describedBy(id("url"), errorFor("url"), "hint")} />
+        </FieldBox>
+        <FieldBox id={id("label")} label="Playlist name (optional)" error={errorFor("label")} className="col-span-full" hint="Notes can be added after, with Edit.">
+          <Input id={id("label")} value={draft.label}
+            onChange={(e) => { setDraft((d) => ({ ...d, label: e.target.value })); setError(null); }}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
+            aria-invalid={Boolean(errorFor("label"))} aria-describedby={describedBy(id("label"), errorFor("label"), "hint")} />
+        </FieldBox>
+      </div>
+      <Button type="button" size="sm" className="w-fit" onClick={add}>Add playlist</Button>
     </div>
   );
 }
