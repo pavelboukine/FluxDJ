@@ -161,6 +161,16 @@ test.describe.serial("playlist links in planning", () => {
     await expect(mustPlay.getByTestId("song-row")).toHaveCount(1);
     await expect(mustPlay.getByText("All changes saved")).toBeVisible();
     await expect(client.getByTestId("moment-must_play")).toContainText("Complete");
+    // On a phone every song and playlist action, and the "Add a song" disclosure itself (its <summary>,
+    // not the card around it), is a 44px touch target, and no two overlap.
+    const addSongToggle = mustPlay.getByTestId(/-add$/).locator("summary");
+    await expect(addSongToggle).toHaveText("Add a song");
+    const boxes = await Promise.all((await mustPlay.locator("[data-testid=song-row] button, [data-testid=playlist-row] a, [data-testid=playlist-row] button").all()).map((b) => b.boundingBox()));
+    expect(boxes.length).toBeGreaterThanOrEqual(7);
+    boxes.push(await addSongToggle.boundingBox());
+    for (const b of boxes) expect(Math.min(b!.width, b!.height)).toBeGreaterThanOrEqual(44);
+    const overlaps = boxes.some((a, i) => boxes.some((b, j) => i < j && a!.x < b!.x + b!.width && b!.x < a!.x + a!.width && a!.y < b!.y + b!.height && b!.y < a!.y + a!.height));
+    expect(overlaps).toBe(false);
 
     // Do not play: a YouTube Music playlist alone answers it.
     const dnp = await openMoment(client, "party", "do_not_play");

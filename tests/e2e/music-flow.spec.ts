@@ -5,8 +5,7 @@
  * goes through the UI:
  *   - the client (phone-sized) adds, edits, reorders and removes songs, with
  *     undo, and a reload keeps the order;
- *   - "Paste a list" previews, flags ambiguous lines, lets them be corrected
- *     and imports once, whatever the clicks;
+ *   - several songs are added one by one; there is no bulk "Paste a list";
  *   - likely duplicates and play / do-not-play contradictions are flagged and
  *     nothing is moved;
  *   - DJ's choice, no requests, not applicable and discuss with DJ, with
@@ -158,33 +157,19 @@ test.describe.serial("songs in planning", () => {
     expect(await noSideways(client)).toBeLessThanOrEqual(0);
   });
 
-  test("paste a list: preview, correct flagged lines, then import exactly once", async () => {
+  test("several songs are added one by one, each with its own id; there is no bulk paste", async () => {
     const list = await openMoment(client, "party", "play_if_possible");
-    const paste = list.getByTestId(/-paste$/);
-    await paste.locator("summary").click();
-    await paste.getByLabel("One song per line, as Artist - Title").fill("1. Queen - Don't Stop Me Now\n\nWonderwall\nJay-Z - Song - Remix\n• Chic – Le Freak");
-    await paste.getByRole("button", { name: "Preview" }).click();
-    const preview = paste.getByTestId("paste-row");
-    await expect(preview).toHaveCount(4);
-    await expect(preview.nth(1)).toContainText('No " - " found: add the artist.');
-    await expect(preview.nth(2)).toContainText("More than one dash");
-    const importButton = paste.getByRole("button", { name: "Import 4 songs" });
-    await expect(importButton).toBeDisabled();
-    await expect(paste.getByRole("alert")).toContainText("Complete or untick 2 lines before importing.");
-    expect(await responses(eventId, "play_if_possible")).toBeNull();
-
-    await preview.nth(1).getByLabel("Artist").fill("Oasis");
-    await preview.nth(2).getByLabel("Looks right").check();
-    await expect(importButton).toBeEnabled();
-    // A double click imports once: the preview closes with the first.
-    await importButton.dblclick();
-    await expect(paste.getByRole("status")).toHaveText("Imported 4 songs. They save automatically.");
+    // Only "Add a playlist" and "Add a song": no bulk entry, anywhere on the page.
+    await expect(list.getByTestId(/-paste$/)).toHaveCount(0);
+    await expect(client.getByText(/Paste a list|One song per line/)).toHaveCount(0);
+    for (const [title, artist] of [["Don't Stop Me Now", "Queen"], ["Wonderwall", "Oasis"], ["Song - Remix", "Jay-Z"], ["Le Freak", "Chic"]]) {
+      await addSong(list, { title, artist });
+    }
     await expect(rows(list)).toHaveText([/Don't Stop Me Now by Queen/, /Wonderwall by Oasis/, /Song - Remix by Jay-Z/, /Le Freak by Chic/]);
     await expect(list.getByText("All changes saved")).toBeVisible();
     const saved = (await responses(eventId, "play_if_possible"))!;
     expect(saved.answers.songs!.map((s) => `${s.artist} / ${s.title}`)).toEqual(["Queen / Don't Stop Me Now", "Oasis / Wonderwall", "Jay-Z / Song - Remix", "Chic / Le Freak"]);
     expect(new Set(saved.answers.songs!.map((s) => s.id)).size).toBe(4);
-    expect(saved.revision).toBe(1);
   });
 
   test("likely duplicates and play / do-not-play contradictions are flagged; nothing is moved", async () => {
@@ -320,6 +305,12 @@ test.describe.serial("songs in planning", () => {
     await rows(first).filter({ hasText: "At Last" }).getByLabel("Instructions (optional)").fill("Second half only");
     await expect(first.getByText("All changes saved")).toBeVisible();
     expect((await responses(eventId, "first_dance"))!).toMatchObject({ updated_by_actor: "staff" });
+    // Staff edit lists the same way: songs one by one (or playlists), never a bulk paste.
+    const staffList = await openMoment(staff, "party", "play_if_possible");
+    await expect(rows(staffList)).toHaveCount(4);
+    await expect(staffList.getByTestId(/-add$/)).toHaveCount(1);
+    await expect(staffList.getByTestId(/-paste$/)).toHaveCount(0);
+    await expect(staff.getByText(/Paste a list/)).toHaveCount(0);
 
     // Hide Must play: it leaves the client's plan with its songs kept; Restore brings them back.
     await openPlanSection(staff, "plan-structure");

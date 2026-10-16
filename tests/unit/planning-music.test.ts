@@ -8,8 +8,6 @@ import {
   emptySong,
   musicAnswersFromForm,
   musicFormFromAnswers,
-  parsePastedList,
-  pastedRowProblem,
   playlistKind,
   playlistProvider,
   playlistUrlKey,
@@ -70,38 +68,6 @@ describe("music answers (mirror of private.normalize_plan_music)", () => {
   it("compares answers whatever the key order of nested songs (as returned by Postgres)", () => {
     expect(answersKey({ songs: [{ title: "One", id: A, artist: "X" }] })).toBe(answersKey({ songs: [{ id: A, artist: "X", title: "One" }] }));
     expect(answersKey({ songs: [{ id: A }, { id: B }] })).not.toBe(answersKey({ songs: [{ id: B }, { id: A }] }));
-  });
-});
-
-describe("paste a list", () => {
-  it("reads Artist - Title with hyphen, en or em dash; skips blanks and numbering", () => {
-    const rows = parsePastedList("1. Daft Punk - One More Time\n\n- ABBA – Dancing Queen\nQueen — Don't Stop Me Now\n", ids);
-    expect(rows.map((r) => [r.artist, r.title, r.flag])).toEqual([
-      ["Daft Punk", "One More Time", null],
-      ["ABBA", "Dancing Queen", null],
-      ["Queen", "Don't Stop Me Now", null],
-    ]);
-    expect(rows.map((r) => r.line)).toEqual([1, 3, 4]);
-    expect(rows.every((r) => pastedRowProblem(r) === null)).toBe(true);
-  });
-
-  it("flags ambiguous lines instead of guessing, until corrected or confirmed", () => {
-    const [noDash, twoDashes, hyphenated] = parsePastedList("Wonderwall\nJay-Z - Song - Remix\nAnti-Hero", ids);
-    expect(noDash).toMatchObject({ artist: "", title: "Wonderwall" });
-    expect(noDash.flag).toMatch(/add the artist/);
-    expect(pastedRowProblem(noDash)).toBe('No " - " found: add the artist.');
-    expect(pastedRowProblem({ ...noDash, checked: true })).toBe("Enter the artist.");
-    expect(pastedRowProblem({ ...noDash, artist: "Oasis", checked: true })).toBeNull();
-    expect(twoDashes).toMatchObject({ artist: "Jay-Z", title: "Song - Remix" });
-    expect(pastedRowProblem(twoDashes)).toMatch(/Looks right/);
-    expect(pastedRowProblem({ ...twoDashes, checked: true })).toBeNull();
-    // A hyphen inside a word is not a separator.
-    expect(hyphenated).toMatchObject({ artist: "", title: "Anti-Hero" });
-  });
-
-  it("gives every row its own id up front, so a repeated import reuses the same ids", () => {
-    const rows = parsePastedList("A - One\nB - Two", ids);
-    expect(new Set(rows.map((r) => r.id)).size).toBe(2);
   });
 });
 

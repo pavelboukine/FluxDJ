@@ -19,11 +19,11 @@ export function isMusicEditor(editor: string | null | undefined): editor is Musi
 export type MusicChoice = "dj_choice" | "none" | "not_applicable" | "discuss";
 
 /** `playlists`: whether the list takes playlist links (the list editors only, never song moments). */
-export const MUSIC_RULES: Record<MusicEditor, { choices: MusicChoice[]; maxSongs: number; cue: boolean; paste: boolean; playlists: boolean }> = {
-  music_background: { choices: ["dj_choice"], maxSongs: 150, cue: false, paste: true, playlists: true },
-  music_requests: { choices: ["none"], maxSongs: 150, cue: false, paste: true, playlists: true },
-  music_exclusions: { choices: ["none"], maxSongs: 150, cue: false, paste: true, playlists: true },
-  moment_songs: { choices: ["dj_choice", "not_applicable", "discuss"], maxSongs: 12, cue: true, paste: false, playlists: false },
+export const MUSIC_RULES: Record<MusicEditor, { choices: MusicChoice[]; maxSongs: number; cue: boolean; playlists: boolean }> = {
+  music_background: { choices: ["dj_choice"], maxSongs: 150, cue: false, playlists: true },
+  music_requests: { choices: ["none"], maxSongs: 150, cue: false, playlists: true },
+  music_exclusions: { choices: ["none"], maxSongs: 150, cue: false, playlists: true },
+  moment_songs: { choices: ["dj_choice", "not_applicable", "discuss"], maxSongs: 12, cue: true, playlists: false },
 };
 
 export const SONG_LIMITS = { title: 200, artist: 200, version: 100, cue: 80, notes: 500, link: 1000 } as const;
@@ -239,56 +239,6 @@ export function conflictsFor(itemId: string, editor: MusicEditor, songs: { id: s
     if (labels.length > 0) out.set(s.id, labels);
   }
   return out;
-}
-
-// ---------------------------------------------------------------------------
-// "Paste a list": one song per line, "Artist - Title"
-// ---------------------------------------------------------------------------
-
-export const PASTE_MAX_LINES = 150;
-
-/** `checked`: the user edited the row or confirmed a flagged guess. */
-export type PastedRow = { id: string; line: number; text: string; artist: string; title: string; include: boolean; flag: string | null; checked: boolean };
-
-const SEPARATOR = /\s+[-–—]\s+/;
-
-/**
- * One song per line as "Artist - Title" (a hyphen, en dash or em dash with
- * spaces around it). Blank lines are skipped, and a leading "1." or bullet is
- * dropped. A line without exactly one separator is flagged and can't be
- * imported until the user corrects it or confirms the split shown.
- */
-export function parsePastedList(text: string, newId: () => string): PastedRow[] {
-  const rows: PastedRow[] = [];
-  text.split(/\r?\n/).forEach((raw, index) => {
-    const line = raw.replace(/^\s*(?:\d{1,3}[.)]|[-*•])\s+/, "").trim();
-    if (!line) return;
-    const parts = line.split(SEPARATOR);
-    let artist = "";
-    let title = line;
-    let flag: string | null = null;
-    if (parts.length === 2 && parts[0] && parts[1]) {
-      [artist, title] = parts.map((p) => p.trim());
-    } else if (parts.length > 2) {
-      artist = parts[0].trim();
-      title = parts.slice(1).join(" - ").trim();
-      flag = "More than one dash: check which part is the artist.";
-    } else {
-      flag = 'No " - " found: add the artist.';
-    }
-    if (artist.length > SONG_LIMITS.artist || title.length > SONG_LIMITS.title) flag = "Too long: shorten the artist or title.";
-    rows.push({ id: newId(), line: index + 1, text: line, artist, title, include: true, flag, checked: false });
-  });
-  return rows;
-}
-
-/** Why an included pasted row can't be imported yet, or null. */
-export function pastedRowProblem(row: PastedRow): string | null {
-  if (!row.title.trim()) return "Enter the title.";
-  if (!row.artist.trim()) return row.flag && !row.checked ? row.flag : "Enter the artist.";
-  if (row.title.trim().length > SONG_LIMITS.title || row.artist.trim().length > SONG_LIMITS.artist) return "Too long: shorten the artist or title.";
-  if (row.flag && !row.checked) return `${row.flag} Correct it, or tick "Looks right".`;
-  return null;
 }
 
 // ---------------------------------------------------------------------------

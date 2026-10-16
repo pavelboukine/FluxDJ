@@ -12,7 +12,6 @@ import {
   MAX_PLAYLISTS,
   MUSIC_HINTS,
   MUSIC_RULES,
-  PASTE_MAX_LINES,
   PLAYLIST_INTROS,
   PLAYLIST_INTRO_DEFAULT,
   checkPlaylist,
@@ -23,8 +22,6 @@ import {
   isPlaylistUrl,
   musicAnswersFromForm,
   musicFormFromAnswers,
-  parsePastedList,
-  pastedRowProblem,
   playlistField,
   playlistKind,
   playlistProvider,
@@ -34,7 +31,6 @@ import {
   type MusicChoice,
   type MusicEditor as MusicEditorKind,
   type MusicForm,
-  type PastedRow,
   type PlaylistForm,
   type SavedList,
   type Song,
@@ -106,6 +102,13 @@ type Props = {
 };
 
 const newId = () => crypto.randomUUID();
+
+/**
+ * Song and playlist actions: compact on wider screens, 44px touch targets on
+ * phones (with ACTION_ROW's wider gap, so neighbouring targets never touch).
+ */
+const ACTION = "max-sm:h-11 max-sm:min-w-11 max-sm:px-3 max-sm:text-sm";
+const ACTION_ROW = "flex flex-wrap gap-1 max-sm:gap-2";
 
 /**
  * Songs for one moment or list, typed in by hand, with autosave. Entries keep
@@ -289,7 +292,7 @@ export function MusicSection(props: {
                   {s.version.trim() ? <p className="text-xs [overflow-wrap:anywhere]">Version: {s.version}</p> : null}
                   {s.notes.trim() ? <p className="whitespace-pre-line text-xs [overflow-wrap:anywhere]">{notesLabel}: {s.notes}</p> : null}
                   {s.link.trim() && isHttpsUrl(s.link.trim()) ? (
-                    <a className="w-fit text-xs underline" href={s.link.trim()} target="_blank" rel="noopener noreferrer nofollow">
+                    <a className="w-fit text-xs underline max-sm:inline-flex max-sm:min-h-11 max-sm:items-center" href={s.link.trim()} target="_blank" rel="noopener noreferrer nofollow">
                       Open link ({linkHost(s.link.trim())})
                     </a>
                   ) : null}
@@ -304,13 +307,13 @@ export function MusicSection(props: {
                   {errorFor(s.id, "linked") ? <p role="alert" className="text-xs text-destructive">{errorFor(s.id, "linked")}</p> : null}
                 </div>
                 {!readOnly ? (
-                  <div className="flex flex-wrap gap-1">
-                    <Button type="button" size="sm" variant="outline" disabled={index === 0} onClick={() => move(index, -1)} aria-label={`Move "${name}" up`}>Move up</Button>
-                    <Button type="button" size="sm" variant="outline" disabled={index === form.songs.length - 1} onClick={() => move(index, 1)} aria-label={`Move "${name}" down`}>Move down</Button>
-                    <Button type="button" size="sm" variant="outline" onClick={() => setEditing(editing === s.id ? null : s.id)} aria-expanded={editing === s.id} aria-label={`${editing === s.id ? "Done editing" : "Edit"} "${name}"`}>
+                  <div className={ACTION_ROW}>
+                    <Button type="button" size="sm" variant="outline" className={ACTION} disabled={index === 0} onClick={() => move(index, -1)} aria-label={`Move "${name}" up`}>Move up</Button>
+                    <Button type="button" size="sm" variant="outline" className={ACTION} disabled={index === form.songs.length - 1} onClick={() => move(index, 1)} aria-label={`Move "${name}" down`}>Move down</Button>
+                    <Button type="button" size="sm" variant="outline" className={ACTION} onClick={() => setEditing(editing === s.id ? null : s.id)} aria-expanded={editing === s.id} aria-label={`${editing === s.id ? "Done editing" : "Edit"} "${name}"`}>
                       {editing === s.id ? "Done" : "Edit"}
                     </Button>
-                    <Button type="button" size="sm" variant="outline" disabled={Boolean(linkedTo)} onClick={() => remove(index)} aria-label={`Remove "${name}"`}>Remove</Button>
+                    <Button type="button" size="sm" variant="outline" className={ACTION} disabled={Boolean(linkedTo)} onClick={() => remove(index)} aria-label={`Remove "${name}"`}>Remove</Button>
                   </div>
                 ) : null}
                 {linkedTo && !readOnly ? (
@@ -334,7 +337,7 @@ export function MusicSection(props: {
       {removed ? (
         <p role="status" className="flex flex-wrap items-center gap-2 text-sm">
           Removed &ldquo;{removed.song.title || "Untitled song"}&rdquo;.
-          <Button type="button" size="sm" variant="outline" onClick={undoRemove}>Undo</Button>
+          <Button type="button" size="sm" variant="outline" className={ACTION} onClick={undoRemove}>Undo</Button>
         </p>
       ) : null}
 
@@ -343,10 +346,7 @@ export function MusicSection(props: {
       ) : form.songs.length >= rules.maxSongs ? (
         <p className="text-xs text-muted-foreground">This list has the maximum of {rules.maxSongs} songs.</p>
       ) : (
-        <>
-          <AddSong base={base} editor={props.editor} notesLabel={notesLabel} onAdd={(song) => { append([song]); setRemoved(null); }} />
-          {rules.paste ? <PasteList base={base} room={rules.maxSongs - form.songs.length} onImport={(songs) => { append(songs); setRemoved(null); }} /> : null}
-        </>
+        <AddSong base={base} editor={props.editor} notesLabel={notesLabel} onAdd={(song) => { append([song]); setRemoved(null); }} />
       )}
       {fieldError?.field === "songs" ? <p role="alert" className="text-xs text-destructive">{fieldError.message}</p> : null}
       {/* A removal the server refused for a link (another tab linked it): the song is no longer listed here to show it on. */}
@@ -422,10 +422,10 @@ function PlaylistSection({ base, intro, label, playlists, canAdd, readOnly, dj, 
                   {p.label.trim() ? <p className="font-medium [overflow-wrap:anywhere]">{p.label}</p> : null}
                   {p.notes.trim() ? <p className="whitespace-pre-line text-xs [overflow-wrap:anywhere]">Notes: {p.notes}</p> : null}
                 </div>
-                <div className="flex flex-wrap gap-1">
+                <div className={ACTION_ROW}>
                   {valid ? (
                     <a
-                      className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+                      className={cn(buttonVariants({ variant: "outline", size: "sm" }), ACTION)}
                       href={url}
                       target="_blank"
                       rel="noopener noreferrer nofollow"
@@ -436,10 +436,10 @@ function PlaylistSection({ base, intro, label, playlists, canAdd, readOnly, dj, 
                   ) : null}
                   {!readOnly ? (
                     <>
-                      <Button type="button" size="sm" variant="outline" onClick={() => setEditing(editing === p.id ? null : p.id)} aria-expanded={editing === p.id} aria-label={`${editing === p.id ? "Done editing" : "Edit"} playlist "${name}"`}>
+                      <Button type="button" size="sm" variant="outline" className={ACTION} onClick={() => setEditing(editing === p.id ? null : p.id)} aria-expanded={editing === p.id} aria-label={`${editing === p.id ? "Done editing" : "Edit"} playlist "${name}"`}>
                         {editing === p.id ? "Done" : "Edit"}
                       </Button>
-                      <Button type="button" size="sm" variant="outline" onClick={() => remove(index)} aria-label={`Remove playlist "${name}"`}>Remove</Button>
+                      <Button type="button" size="sm" variant="outline" className={ACTION} onClick={() => remove(index)} aria-label={`Remove playlist "${name}"`}>Remove</Button>
                     </>
                   ) : null}
                 </div>
@@ -454,7 +454,7 @@ function PlaylistSection({ base, intro, label, playlists, canAdd, readOnly, dj, 
       {removed ? (
         <p role="status" className="flex flex-wrap items-center gap-2 text-sm">
           Removed &ldquo;{removed.playlist.label.trim() || playlistKind(removed.playlist.url.trim())}&rdquo;.
-          <Button type="button" size="sm" variant="outline" onClick={undoRemove}>Undo</Button>
+          <Button type="button" size="sm" variant="outline" className={ACTION} onClick={undoRemove}>Undo</Button>
         </p>
       ) : null}
       {fieldError?.field === "playlists" ? <p role="alert" className="text-xs text-destructive">{fieldError.message}</p> : null}
@@ -534,7 +534,7 @@ function AddPlaylist({ base, dj, playlists, onAdd }: { base: string; dj: string;
             aria-invalid={Boolean(errorFor("label"))} aria-describedby={describedBy(id("label"), errorFor("label"), "hint")} />
         </FieldBox>
       </div>
-      <Button type="button" size="sm" className="w-fit" onClick={add}>Add playlist</Button>
+      <Button type="button" size="sm" className={cn("w-fit", ACTION)} onClick={add}>Add playlist</Button>
     </div>
   );
 }
@@ -591,7 +591,8 @@ function AddSong({ base, editor, notesLabel, onAdd }: { base: string; editor: Mu
   }
   return (
     <details className="rounded-lg border p-3" data-testid={`${base}-add`}>
-      <summary className="cursor-pointer text-sm font-medium">Add a song</summary>
+      {/* On phones the summary fills the card's padding: the whole row is a 44px target, the card no taller. */}
+      <summary className="cursor-pointer text-sm font-medium max-sm:-m-3 max-sm:min-h-11 max-sm:rounded-lg max-sm:p-3">Add a song</summary>
       <div ref={titleRef} className="mt-3 grid gap-3">
         <SongFields
           idPrefix={`${base}-new`}
@@ -604,93 +605,7 @@ function AddSong({ base, editor, notesLabel, onAdd }: { base: string; editor: Mu
             setError(null);
           }}
         />
-        <Button type="button" size="sm" className="w-fit" onClick={add}>Add song</Button>
-      </div>
-    </details>
-  );
-}
-
-/** "Paste a list": preview, correct, then import through the same validation and save as typed entries. */
-function PasteList({ base, room, onImport }: { base: string; room: number; onImport: (songs: SongForm[]) => void }) {
-  const [text, setText] = useState("");
-  const [rows, setRows] = useState<PastedRow[] | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const included = rows?.filter((r) => r.include) ?? [];
-  const problems = included.filter((r) => pastedRowProblem(r) !== null).length;
-  const tooMany = included.length > room;
-
-  function preview() {
-    const lines = text.split(/\r?\n/).filter((l) => l.trim()).length;
-    if (lines > PASTE_MAX_LINES) {
-      setNotice(`Paste ${PASTE_MAX_LINES} lines or fewer at a time.`);
-      return;
-    }
-    const parsed = parsePastedList(text, newId);
-    setRows(parsed.length ? parsed : null);
-    setNotice(parsed.length ? null : "Nothing to import: paste one song per line.");
-  }
-  function setRow(id: string, changes: Partial<PastedRow>) {
-    setRows((all) => all?.map((r) => (r.id === id ? { ...r, ...changes } : r)) ?? null);
-  }
-  function importRows() {
-    if (!rows || problems > 0 || tooMany || included.length === 0) return;
-    // The preview's ids go into the list, then the preview closes: a second click has nothing left to add.
-    onImport(included.map((r) => ({ ...emptySong(r.id), title: r.title.trim(), artist: r.artist.trim() })));
-    setRows(null);
-    setText("");
-    setNotice(`Imported ${included.length} ${included.length === 1 ? "song" : "songs"}. They save automatically.`);
-  }
-
-  return (
-    <details className="rounded-lg border p-3" data-testid={`${base}-paste`}>
-      <summary className="cursor-pointer text-sm font-medium">Paste a list</summary>
-      <div className="mt-3 grid gap-3">
-        <FieldBox id={`${base}-paste-text`} label="One song per line, as Artist - Title" error={null} hint='For example "Daft Punk - One More Time". Lines without " - " are flagged for you to complete.'>
-          <Textarea id={`${base}-paste-text`} rows={5} value={text} onChange={(e) => setText(e.target.value)} />
-        </FieldBox>
-        <Button type="button" size="sm" variant="outline" className="w-fit" onClick={preview} disabled={!text.trim()}>Preview</Button>
-        {notice ? <p role="status" className="text-sm">{notice}</p> : null}
-        {rows ? (
-          <div className="grid gap-2">
-            <p className="text-sm font-medium">Check before importing: {included.length} of {rows.length} lines selected.</p>
-            <ol className="grid gap-2" aria-label="Pasted songs to check">
-              {rows.map((r) => {
-                const problem = r.include ? pastedRowProblem(r) : null;
-                return (
-                  <li key={r.id} className="grid gap-2 rounded-md border p-2" data-testid="paste-row">
-                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <input type="checkbox" className="size-4 accent-primary" checked={r.include} onChange={(e) => setRow(r.id, { include: e.target.checked })} />
-                      Line {r.line}: <span className="[overflow-wrap:anywhere]">{r.text}</span>
-                    </label>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <FieldBox id={`${base}-paste-${r.id}-artist`} label="Artist" error={null}>
-                        <Input id={`${base}-paste-${r.id}-artist`} value={r.artist} onChange={(e) => setRow(r.id, { artist: e.target.value, checked: true })} />
-                      </FieldBox>
-                      <FieldBox id={`${base}-paste-${r.id}-title`} label="Title" error={null}>
-                        <Input id={`${base}-paste-${r.id}-title`} value={r.title} onChange={(e) => setRow(r.id, { title: e.target.value, checked: true })} />
-                      </FieldBox>
-                    </div>
-                    {problem ? <p className="text-xs text-amber-700 dark:text-amber-400">{problem}</p> : null}
-                    {r.flag && r.include && r.artist.trim() && r.title.trim() ? (
-                      <label className="flex items-center gap-2 text-xs">
-                        <input type="checkbox" className="size-4 accent-primary" checked={r.checked} onChange={(e) => setRow(r.id, { checked: e.target.checked })} />
-                        Looks right
-                      </label>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ol>
-            {problems > 0 ? <p role="alert" className="text-sm text-destructive">Complete or untick {problems === 1 ? "1 line" : `${problems} lines`} before importing.</p> : null}
-            {tooMany ? <p role="alert" className="text-sm text-destructive">Only {room} more {room === 1 ? "song fits" : "songs fit"} in this list.</p> : null}
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" size="sm" onClick={importRows} disabled={problems > 0 || tooMany || included.length === 0}>
-                Import {included.length} {included.length === 1 ? "song" : "songs"}
-              </Button>
-              <Button type="button" size="sm" variant="outline" onClick={() => setRows(null)}>Cancel</Button>
-            </div>
-          </div>
-        ) : null}
+        <Button type="button" size="sm" className={cn("w-fit", ACTION)} onClick={add}>Add song</Button>
       </div>
     </details>
   );

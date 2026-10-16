@@ -74,7 +74,7 @@ export default async function Home() {
           </p>
           <div className="flex flex-wrap gap-2">
             {isStaff ? <Link className={buttonVariants({ size: "sm" })} href="/staff">DJ dashboard</Link> : null}
-            {hasEvents || !isStaff ? <Link className={buttonVariants({ size: "sm", variant: isStaff ? "outline" : "default" })} href="/my">Your events</Link> : null}
+            {hasEvents || !isStaff ? <Link className={cn(buttonVariants({ size: "sm", variant: isStaff ? "outline" : "default" }))} href="/my">Your events</Link> : null}
           </div>
         </section>
       ) : null}
