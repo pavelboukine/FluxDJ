@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { Camera, Check, ChevronDown, Minus, Plus } from "lucide-react";
+import { Camera, Check, ChevronDown, Minus, Plus, Tag } from "lucide-react";
 import { BrandLogo } from "@/components/app/brand-logo";
 import { Button } from "@/components/ui/button";
-import { priceSelection, recommendedSelection, type AnswerValue, type OfferSnapshot, type PricedSelection, type PricingResult, type ProposalSelectionState } from "@/lib/pricing";
+import { discountRateLabel, priceSelection, recommendedSelection, type AnswerValue, type OfferSnapshot, type PricedSelection, type PricingResult, type ProposalSelectionState } from "@/lib/pricing";
 import { brandStyle } from "@/lib/branding/colors";
 import { shortDate } from "@/lib/dates";
 import { groupByCategory } from "@/lib/catalog/categories";
@@ -112,6 +112,18 @@ export function ProposalView(props: ViewProps) {
                 Choose your package
               </H2>
               <p className="text-muted-foreground">Each package has one price. Everything listed in a package is included at no extra charge.</p>
+              {offer.discount ? (
+                <p className="mt-1 flex w-fit max-w-full items-start gap-1.5 rounded-lg bg-emerald-600/10 px-3 py-1.5 text-emerald-900 dark:text-emerald-200" data-testid="offer-discount">
+                  <Tag aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+                  <span className="[overflow-wrap:anywhere]">
+                    <span className="font-medium">{offer.discount.label}:</span>{" "}
+                    {offer.discount.type === "percent"
+                      ? `${discountRateLabel(offer.discount.percent_basis_points)} off your total`
+                      : `${formatCents(offer.discount.amount_cents, offer.currency)} off your total`}
+                    , applied before taxes.
+                  </span>
+                </p>
+              ) : null}
             </div>
             <div role="radiogroup" aria-labelledby="pkg-heading" className="grid grid-cols-3 gap-2 pt-2 @md/proposal:gap-3 @4xl/proposal:gap-5 @4xl/proposal:pt-0">
               {offer.packages.map((p) => (

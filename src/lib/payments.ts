@@ -1,3 +1,5 @@
+import { discountDescription } from "@/lib/pricing/discount";
+
 /**
  * Manual payment tracking. Payments are received elsewhere (Wave, e-transfer,
  * cash...) and recorded by staff; Flux DJ never processes or verifies them.
@@ -50,7 +52,44 @@ export type ClientPaymentSummary = {
   credit_cents: number | null;
   invoice_url: string | null;
   booking_status: "booked" | "awaiting_deposit" | null;
+  /** Only for a contract generated from a discounted proposal: its frozen price breakdown (see discountBreakdown). */
+  pricing?: unknown;
 };
+
+/**
+ * A discounted contract's frozen price breakdown, as shown with its payment
+ * summary: subtotal before the discount, the discount, the subtotal after
+ * it, each tax and the total. Read from the contract's commercial snapshot
+ * (or client_payment_summary's "pricing", the same fields); never
+ * recalculated. Null when the contract has no discount.
+ */
+export type DiscountBreakdown = {
+  subtotalCents: number;
+  discount: { description: string; amountCents: number };
+  discountedSubtotalCents: number;
+  taxes: { label: string; ratePpm: number; amountCents: number }[];
+  totalCents: number;
+};
+
+const isCents = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0;
+
+export function discountBreakdown(frozen: unknown): DiscountBreakdown | null {
+  if (!frozen || typeof frozen !== "object") return null;
+  const f = frozen as Record<string, unknown>;
+  const d = f.discount as Record<string, unknown> | undefined;
+  if (!d || typeof d !== "object" || typeof d.label !== "string" || !isCents(d.amount_cents)) return null;
+  if (!isCents(f.subtotal_cents) || !isCents(f.discounted_subtotal_cents) || !isCents(f.total_cents) || !Array.isArray(f.tax_breakdown)) return null;
+  const bp = typeof d.percent_basis_points === "number" ? d.percent_basis_points : undefined;
+  return {
+    subtotalCents: f.subtotal_cents,
+    discount: { description: discountDescription({ type: String(d.type), label: d.label, percent_basis_points: bp }), amountCents: d.amount_cents },
+    discountedSubtotalCents: f.discounted_subtotal_cents,
+    taxes: (f.tax_breakdown as Record<string, unknown>[])
+      .filter((t) => isCents(t.amount_cents) && (t.amount_cents as number) > 0)
+      .map((t) => ({ label: String(t.label), ratePpm: Number(t.rate_ppm), amountCents: t.amount_cents as number })),
+    totalCents: f.total_cents,
+  };
+}
 
 /**
  * An absolute https:// address with a dotted host name and no credentials,

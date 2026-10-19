@@ -1,6 +1,7 @@
 import { shortDate } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
-import { linkHost } from "@/lib/payments";
+import { taxRateLabel } from "@/components/proposal/price-summary";
+import { linkHost, type DiscountBreakdown } from "@/lib/payments";
 
 /** The figures both staff and clients see; computed in the database. */
 export type SummaryFigures = {
@@ -14,6 +15,8 @@ export type SummaryFigures = {
   depositOutstandingCents: number | null;
   remainingBalanceCents: number | null;
   creditCents: number | null;
+  /** The contract's frozen price breakdown, only when its proposal had a discount (already in totalCents). */
+  discount?: DiscountBreakdown | null;
 };
 
 function Row({ label, children, strong }: { label: string; children: React.ReactNode; strong?: boolean }) {
@@ -49,7 +52,8 @@ export function PaymentFigures({ s, audience }: { s: SummaryFigures; audience: "
       <dl className="grid gap-1">
         {hasTerms ? (
           <>
-            <Row label="Total, including taxes">{money(s.totalCents!)}</Row>
+            {s.discount ? <DiscountRows b={s.discount} currency={s.currency} /> : null}
+            <Row label={s.discount ? "Agreed total, including taxes" : "Total, including taxes"}>{money(s.totalCents!)}</Row>
             <Row label={s.depositCents ? `Deposit required (${s.depositPercent}%)` : "Deposit required"}>
               {s.depositCents ? money(s.depositCents) : "No deposit required"}
             </Row>
@@ -70,6 +74,31 @@ export function PaymentFigures({ s, audience }: { s: SummaryFigures; audience: "
         ) : null}
       </dl>
     </div>
+  );
+}
+
+/**
+ * A discounted contract's agreed price, before its total row: the subtotal
+ * before the discount, the discount and the saving, the subtotal after it and
+ * each tax. Staff and clients see the same rows, from the frozen contract.
+ */
+export function DiscountRows({ b, currency }: { b: DiscountBreakdown; currency: string }) {
+  const money = (cents: number) => formatCents(cents, currency);
+  return (
+    <>
+      <Row label="Original subtotal">{money(b.subtotalCents)}</Row>
+      <div className="flex justify-between gap-3 font-medium text-emerald-800 dark:text-emerald-300" data-testid="payment-discount">
+        <dt className="min-w-0 [overflow-wrap:anywhere]">{b.discount.description}</dt>
+        <dd className="text-right tabular-nums">−{money(b.discount.amountCents)}</dd>
+      </div>
+      <Row label="Subtotal after discount">{money(b.discountedSubtotalCents)}</Row>
+      {b.taxes.map((t) => (
+        <div key={t.label} className="flex justify-between gap-3 text-muted-foreground">
+          <dt>{t.label} ({taxRateLabel(t.ratePpm)})</dt>
+          <dd className="text-right tabular-nums">{money(t.amountCents)}</dd>
+        </div>
+      ))}
+    </>
   );
 }
 

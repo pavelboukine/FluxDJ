@@ -10,7 +10,8 @@ import { requireStaff } from "@/lib/auth/staff";
 import { describeDbError } from "@/lib/db-errors";
 import { fail, int, ok, optionalText, text, UUID_RE, type ActionState } from "@/lib/forms";
 import { parseMoneyToCents } from "@/lib/money";
-import { parseOfferSnapshot, type OfferSnapshot } from "@/lib/pricing";
+import { offerSnapshotSchema, parseOfferSnapshot, type OfferSnapshot } from "@/lib/pricing";
+import { minimumSelectionSubtotal, readDiscount, type DraftDiscount } from "@/lib/pricing/discount";
 import { frozenOfferLogo, type BrandLogo } from "@/lib/branding/logo.server";
 import type { Json } from "@/lib/supabase/database.types";
 
@@ -77,6 +78,9 @@ export async function saveDraft(slug: string, proposalId: string, _state: Action
   const questionIds = form.getAll("question").filter((v): v is string => typeof v === "string" && UUID_RE.test(v));
   const prices = readPriceOverrides(form, packages.map((p) => p.package_id));
   if (!prices.ok) return fail(prices.error);
+  // The database checks it again (and the lowest package price) when the offer is built.
+  const discount = readDiscount({ kind: text(form, "discount_type"), value: text(form, "discount_value"), label: text(form, "discount_label") }, parseMoneyToCents);
+  if (!discount.ok) return fail(discount.error);
 
   const previous = (current.draft_offer ?? {}) as { template_id?: string | null };
   const draft: Json = {
@@ -88,6 +92,7 @@ export async function saveDraft(slug: string, proposalId: string, _state: Action
     question_ids: questionIds,
     // Only when set, so drafts without custom prices keep their old shape.
     ...(prices.overrides.length > 0 ? { price_overrides: prices.overrides } : {}),
+    ...(discount.discount ? { discount: discount.discount } : {}),
   };
   const { data: version, error } = await supabase.rpc("update_proposal_draft", { p_proposal_id: proposalId, p_expected_version: expectedVersion, p_offer: draft });
   if (error) return fail(describeDbError(error));
@@ -99,7 +104,7 @@ export async function saveDraft(slug: string, proposalId: string, _state: Action
  * Replaces the draft's contents with a template's (packages, add-ons,
  * questions, intro, expiry). Custom prices are kept for the packages the
  * template also offers and the gear it still charges for (its add-ons and the
- * gear its questions' rules require).
+ * gear its questions' rules require). The discount is kept.
  */
 export async function applyTemplate(slug: string, proposalId: string, _state: ActionState, form: FormData): Promise<ActionState> {
   const { supabase, tenant } = await requireStaff(slug);
@@ -113,8 +118,9 @@ export async function applyTemplate(slug: string, proposalId: string, _state: Ac
   ]);
   if (templateError || !input) return fail("Template not found.");
   const offer = input as { packages?: { package_id: string }[]; addons?: { gear_item_id: string }[]; question_ids?: string[] } & Record<string, Json>;
-  const kept = await keptPriceOverrides(supabase, tenant.id, (current?.draft_offer ?? {}) as { price_overrides?: PriceOverride[] }, offer);
-  const next: Json = kept.length > 0 ? { ...offer, price_overrides: kept } : offer;
+  const previous = (current?.draft_offer ?? {}) as { price_overrides?: PriceOverride[]; discount?: DraftDiscount };
+  const kept = await keptPriceOverrides(supabase, tenant.id, previous, offer);
+  const next: Json = { ...offer, ...(kept.length > 0 ? { price_overrides: kept } : {}), ...(previous.discount ? { discount: previous.discount } : {}) };
   const { data: version, error } = await supabase.rpc("update_proposal_draft", { p_proposal_id: proposalId, p_expected_version: expectedVersion, p_offer: next });
   if (error) return fail(describeDbError(error));
   revalidatePath(`/staff/${slug}/proposals/${proposalId}`);
@@ -147,7 +153,10 @@ async function keptPriceOverrides(
   return overrides.filter((o) => ("package_id" in o ? offered.has(o.package_id) : charged.has(o.gear_item_id)));
 }
 
-export type DraftPreview = { ok: true; offer: OfferSnapshot; logo: BrandLogo | null } | { ok: false; message: string };
+export type DraftPreview =
+  | { ok: true; offer: OfferSnapshot; logo: BrandLogo | null }
+  /** minimumSubtotalCents: the offer's lowest possible subtotal, when only its discount was refused. */
+  | { ok: false; message: string; minimumSubtotalCents?: number };
 
 /**
  * The client preview of edits that aren't saved yet: preview_proposal_draft
@@ -159,7 +168,16 @@ export async function previewDraftOffer(slug: string, proposalId: string, offer:
   const { supabase } = await requireStaff(slug);
   if (!UUID_RE.test(proposalId) || !offer || typeof offer !== "object" || Array.isArray(offer)) return { ok: false, message: "Reload the page and try again." };
   const { data, error } = await supabase.rpc("preview_proposal_draft", { p_proposal_id: proposalId, p_offer: offer as Json });
-  if (error) return { ok: false, message: describeDbError(error) };
+  if (error) {
+    // Refused with a discount: the same offer without it gives the current limit for the editor.
+    if ("discount" in offer) {
+      const rest = Object.fromEntries(Object.entries(offer).filter(([key]) => key !== "discount"));
+      const { data: plain } = await supabase.rpc("preview_proposal_draft", { p_proposal_id: proposalId, p_offer: rest as Json });
+      const parsed = plain ? offerSnapshotSchema.safeParse(plain) : null;
+      if (parsed?.success) return { ok: false, message: describeDbError(error), minimumSubtotalCents: minimumSelectionSubtotal(parsed.data) };
+    }
+    return { ok: false, message: describeDbError(error) };
+  }
   const snapshot = parseOfferSnapshot(data);
   return { ok: true, offer: snapshot, logo: await frozenOfferLogo(snapshot) };
 }

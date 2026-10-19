@@ -85,6 +85,20 @@ const taxRateSchema = z.strictObject({
   rate_ppm: z.number().int().min(0).max(1_000_000),
 });
 
+/**
+ * A discount on the whole proposal, frozen only when staff set one (absent in
+ * older offers and offers without one). Percent is in basis points (1000 =
+ * 10%); a fixed amount never exceeds the offer's lowest possible subtotal
+ * (minimumSelectionSubtotal), so no selection can cost less than nothing.
+ */
+export const DISCOUNT_LABEL_MAX = 80;
+const discountLabel = z.string().min(1).max(DISCOUNT_LABEL_MAX).refine((v) => v === v.trim(), "label must be trimmed");
+export const offerDiscountSchema = z.discriminatedUnion("type", [
+  z.strictObject({ type: z.literal("percent"), percent_basis_points: z.number().int().min(1).max(10_000), label: discountLabel }),
+  z.strictObject({ type: z.literal("fixed"), amount_cents: z.number().int().min(1).max(100_000_000), label: discountLabel }),
+]);
+export type OfferDiscount = z.infer<typeof offerDiscountSchema>;
+
 export const offerSnapshotSchema = z
   .strictObject({
     schema_version: z.literal(1),
@@ -114,6 +128,7 @@ export const offerSnapshotSchema = z
     ),
     questions: z.array(questionSchema),
     rules: z.array(ruleSchema),
+    discount: offerDiscountSchema.optional(),
   })
   .superRefine((offer, ctx) => {
     const issue = (message: string, path: (string | number)[] = []) => ctx.addIssue({ code: "custom", message, path });
@@ -147,6 +162,8 @@ export const offerSnapshotSchema = z
     offer.addons.forEach((a, i) => {
       if (!hasGear(a.gear_key)) issue(`addon gear ${a.gear_key} missing`, ["addons", i]);
     });
+    // A fixed discount's limit (the lowest possible subtotal) is enforced when the
+    // database builds the offer; pricing never takes off more than the subtotal.
 
     const questions = new Map(offer.questions.map((q) => [q.key, q]));
     offer.questions.forEach((q, i) => {

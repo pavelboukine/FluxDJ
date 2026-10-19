@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { OfferQuestion, OfferSnapshot, RuleCondition } from "./offer-snapshot";
+import { allocateDiscount, discountCents } from "./discount";
 import { computeTaxBreakdown, type TaxBreakdownEntry } from "./tax";
 
 /**
@@ -54,6 +55,17 @@ export interface PricedLine {
   required_quantity: number;
   required_reasons: string[];
   tax_category: string;
+  /** This line's share of the proposal discount (only when the offer has one). */
+  discount_cents?: number;
+}
+
+/** The offer's discount as applied to this selection (only when the offer has one). */
+export interface AppliedDiscount {
+  type: "percent" | "fixed";
+  label: string;
+  percent_basis_points?: number;
+  /** The fixed amount as offered (the applied amount is discount_cents). */
+  fixed_amount_cents?: number;
 }
 
 export interface GearRequirement {
@@ -74,7 +86,11 @@ export interface PricedSelection {
   logistics_answers: Record<string, AnswerValue>;
   requirements: GearRequirement[];
   lines: PricedLine[];
+  /** Sum of line totals, before any discount. */
   subtotal_cents: number;
+  /** Present with discount_cents only when the offer has a discount. */
+  discount?: AppliedDiscount;
+  discount_cents?: number;
   tax_breakdown: TaxBreakdownEntry[];
   tax_cents: number;
   total_cents: number;
@@ -235,10 +251,29 @@ export function priceSelection(offer: OfferSnapshot, rawInput: unknown): Pricing
     });
   }
 
-  // 8. Taxes from the frozen configuration with the documented rounding policy.
+  // 8. The proposal discount (lib/pricing/discount.ts), allocated to lines,
+  // then taxes on the discounted amounts with the documented rounding policy.
   const subtotal = safeSum(lines.map((l) => l.line_total_cents));
-  const taxBreakdown = computeTaxBreakdown(lines, offer.tax);
+  const discount = discountCents(subtotal, offer.discount);
+  if (offer.discount) {
+    const shares = allocateDiscount(lines.map((l) => l.line_total_cents), discount);
+    lines.forEach((l, i) => (l.discount_cents = shares[i]));
+  }
+  const taxBreakdown = computeTaxBreakdown(
+    lines.map((l) => ({ line_total_cents: l.line_total_cents - (l.discount_cents ?? 0), tax_category: l.tax_category })),
+    offer.tax,
+  );
   const tax = safeSum(taxBreakdown.map((t) => t.amount_cents));
+  const applied: Pick<PricedSelection, "discount" | "discount_cents"> = offer.discount
+    ? {
+        discount: {
+          type: offer.discount.type,
+          label: offer.discount.label,
+          ...(offer.discount.type === "percent" ? { percent_basis_points: offer.discount.percent_basis_points } : { fixed_amount_cents: offer.discount.amount_cents }),
+        },
+        discount_cents: discount,
+      }
+    : {};
 
   return {
     ok: true,
@@ -258,9 +293,10 @@ export function priceSelection(offer: OfferSnapshot, rawInput: unknown): Pricing
       requirements,
       lines,
       subtotal_cents: subtotal,
+      ...applied,
       tax_breakdown: taxBreakdown,
       tax_cents: tax,
-      total_cents: safeSum([subtotal, tax]),
+      total_cents: safeSum([subtotal - discount, tax]),
     },
   };
 }

@@ -7,7 +7,7 @@ import { PdfDownloadLink } from "@/components/app/pwa";
 import { BrandLogo } from "@/components/app/brand-logo";
 import { ClientHeader } from "@/components/app/client-header";
 import { ContractDocument } from "@/components/contract/contract-document";
-import { InvoiceLink } from "@/components/payments/payment-summary";
+import { DiscountRows, InvoiceLink } from "@/components/payments/payment-summary";
 import { signOut } from "@/app/auth/confirm/actions";
 import { renderedContentSchema } from "@/lib/contracts/content";
 import { SIGNATURE_BUCKET } from "@/lib/contracts/signing";
@@ -15,7 +15,7 @@ import { brandStyle } from "@/lib/branding/colors";
 import { liveBrand } from "@/lib/branding/logo.server";
 import { UUID_RE } from "@/lib/forms";
 import { formatCents } from "@/lib/money";
-import type { ClientPaymentSummary } from "@/lib/payments";
+import { discountBreakdown, type ClientPaymentSummary } from "@/lib/payments";
 import { formatEventDate } from "@/lib/planning/view";
 import { SLUG_PATTERN } from "@/lib/proposals/client-session.server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -125,6 +125,8 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
     supabase.rpc("my_events"),
   ]);
   const payments = paymentData as ClientPaymentSummary | null;
+  // This contract's frozen breakdown, only when its proposal had a discount.
+  const discount = discountBreakdown(payments?.pricing ?? null);
   // Planning opens once the booking is confirmed; the database decides.
   const plan = (plans ?? []).find((p) => p.contract_id === contractId);
   // The event's venue and time zone, from the client's own event list.
@@ -162,7 +164,8 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
         <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{signing.signed ? "Agreed terms" : "Terms in this contract"}</p>
         <p className="text-muted-foreground">{signing.signed ? "Terms of the signed contract. They don't change." : "Terms of the contract sent to you. It isn't signed yet."}</p>
         <dl className="grid gap-1">
-          <Row label="Total, including taxes" strong>{money(c.total_cents)}</Row>
+          {discount ? <DiscountRows b={discount} currency={c.currency} /> : null}
+          <Row label={discount ? "Agreed total, including taxes" : "Total, including taxes"} strong>{money(c.total_cents)}</Row>
           <Row label={`Deposit on signing (${c.deposit_percent}%)`}>{c.deposit_cents ? money(c.deposit_cents) : "No deposit required"}</Row>
           <Row label="Balance">{money(c.balance_cents)}</Row>
           <Row label="Balance due">{c.balance_due_date ? formatEventDate(c.balance_due_date) : "Not specified in the contract"}</Row>

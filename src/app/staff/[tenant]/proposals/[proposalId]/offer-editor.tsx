@@ -14,6 +14,7 @@ import { ProposalPreview } from "@/components/proposal/proposal-preview";
 import { perUnitText } from "@/lib/catalog/quantity";
 import type { GearChoice } from "@/lib/catalog/gear-choices.server";
 import { centsToInputValue, formatCents, parseMoneyToCents } from "@/lib/money";
+import { basisPointsToInputValue, minimumSelectionSubtotal, readDiscount, type DiscountKind, type DraftDiscount } from "@/lib/pricing/discount";
 import { cn } from "@/lib/utils";
 import { previewDraftOffer, type DraftPreview } from "../actions";
 
@@ -30,17 +31,24 @@ export type DraftOfferInput = {
   addons: { gear_item_id: string; recommended_quantity: number; max_quantity: number }[];
   question_ids: string[];
   price_overrides?: PriceOverride[];
+  /** One discount on the whole proposal; absent when there is none. */
+  discount?: DraftDiscount;
 };
 
 /** This proposal's price for a gear item, or a package's base price (by stable id). */
 export type PriceOverride = { gear_item_id: string; unit_price_cents: number } | { package_id: string; unit_price_cents: number };
 
 type Shared = { offer: DraftOfferInput | null; problem: string | null };
-const DraftOfferContext = createContext<{ value: Shared; set: (v: Shared) => void } | null>(null);
+/**
+ * The draft (from the editor) and, from the preview, the offer's lowest
+ * possible subtotal: the largest fixed discount it allows (null until known).
+ */
+const DraftOfferContext = createContext<{ value: Shared; set: (v: Shared) => void; minimum: number | null; setMinimum: (cents: number | null) => void } | null>(null);
 
 export function DraftOfferProvider({ children }: { children: ReactNode }) {
   const [value, set] = useState<Shared>({ offer: null, problem: null });
-  const context = useMemo(() => ({ value, set }), [value]);
+  const [minimum, setMinimum] = useState<number | null>(null);
+  const context = useMemo(() => ({ value, set, minimum, setMinimum }), [value, minimum]);
   return <DraftOfferContext.Provider value={context}>{children}</DraftOfferContext.Provider>;
 }
 
@@ -63,7 +71,9 @@ const gearUnit = (g: GearChoice) => ({ name: g.name, unit_label: g.unitLabel, pi
  * it. Each offered package and each charged item shows its standard price
  * and can have a price for this proposal only ("package_price:<package id>",
  * "price:<gear id>"); the catalog never changes. Every change is shared with
- * the live preview, which shows it before saving.
+ * the live preview, which shows it before saving. One optional discount
+ * (a percentage or a fixed amount, with a description) applies to the whole
+ * proposal after every package, add-on and custom price.
  */
 export function OfferEditor({
   currency,
@@ -97,6 +107,18 @@ export function OfferEditor({
     Object.fromEntries((initial.price_overrides ?? []).flatMap((o) => ("package_id" in o ? [[o.package_id, centsToInputValue(o.unit_price_cents)]] : []))),
   );
   const packageById = useMemo(() => new Map(packages.map((p) => [p.id, p])), [packages]);
+  const [discountKind, setDiscountKind] = useState<DiscountKind>(() => initial.discount?.type ?? "none");
+  const [discountValue, setDiscountValue] = useState(() =>
+    !initial.discount ? "" : initial.discount.type === "percent" ? basisPointsToInputValue(initial.discount.percent_basis_points) : centsToInputValue(initial.discount.amount_cents),
+  );
+  const [discountLabel, setDiscountLabel] = useState(() => initial.discount?.label ?? "");
+  // The offer's lowest possible subtotal (from the preview, recalculated as packages,
+  // prices and questions change): a fixed discount can't exceed it. The database checks it again.
+  const minimumSubtotal = shared?.minimum ?? null;
+  // The shape decides what the draft holds; the limit is shown here but doesn't pause the preview,
+  // which recalculates it (the database refuses an amount over it when previewing or sending).
+  const discountRead = readDiscount({ kind: discountKind, value: discountValue, label: discountLabel }, parseMoneyToCents);
+  const discountLimit = readDiscount({ kind: discountKind, value: discountValue, label: discountLabel }, parseMoneyToCents, minimumSubtotal);
 
   const gearById = useMemo(() => new Map(gear.map((g) => [g.id, g])), [gear]);
   const chosenAddons = new Set(addons.map((a) => a.id));
@@ -125,6 +147,7 @@ export function OfferEditor({
       if (cents === undefined) return { offer: null, problem: "enter custom prices like 200 or 200.00" };
       if (cents !== null) overrides.push({ gear_item_id: id, unit_price_cents: cents });
     }
+    if (!discountRead.ok) return { offer: null, problem: discountRead.error.charAt(0).toLowerCase() + discountRead.error.slice(1, -1) };
     const offer: DraftOfferInput = {
       template_id: initial.template_id,
       intro: intro.trim() || null,
@@ -133,9 +156,10 @@ export function OfferEditor({
       addons: addonInput,
       question_ids: asked,
       ...(overrides.length > 0 ? { price_overrides: overrides } : {}),
+      ...(discountRead.discount ? { discount: discountRead.discount } : {}),
     };
     return { offer, problem: null };
-  }, [slots, popular, addons, asked, expiry, intro, prices, packagePrices, initial.template_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [slots, popular, addons, asked, expiry, intro, prices, packagePrices, initial.template_id, discountKind, discountValue, discountLabel]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const draftKey = JSON.stringify(draft);
   useEffect(() => {
@@ -342,9 +366,108 @@ export function OfferEditor({
         </fieldset>
       ) : null}
 
+      <DiscountEditor
+        currency={currency}
+        kind={discountKind}
+        value={discountValue}
+        label={discountLabel}
+        minimumSubtotal={minimumSubtotal}
+        error={discountRead.ok ? (discountLimit.ok ? null : discountLimit.error) : discountRead.error}
+        onKind={(k) => {
+          setDiscountKind(k);
+          if (k === "none") setDiscountValue("");
+        }}
+        onValue={setDiscountValue}
+        onLabel={setDiscountLabel}
+      />
+
       <TextField label="Offer valid for (days after sending)" name="expiry_days" type="number" min={1} max={365} value={expiry} onChange={(e) => setExpiry(e.target.value)} />
       <TextAreaField label="Intro shown to the client" name="intro" rows={4} maxLength={10000} value={intro} onChange={(e) => setIntro(e.target.value)} />
     </div>
+  );
+}
+
+/**
+ * The proposal's one discount: none, a percentage or a fixed amount, with an
+ * optional description shown to the client ("Discount" when empty). It comes
+ * off the subtotal after packages, add-ons and custom prices, before taxes.
+ */
+function DiscountEditor({
+  currency,
+  kind,
+  value,
+  label,
+  minimumSubtotal,
+  error,
+  onKind,
+  onValue,
+  onLabel,
+}: {
+  currency: string;
+  kind: DiscountKind;
+  value: string;
+  label: string;
+  minimumSubtotal: number | null;
+  error: string | null;
+  onKind: (kind: DiscountKind) => void;
+  onValue: (value: string) => void;
+  onLabel: (label: string) => void;
+}) {
+  const kinds: [DiscountKind, string][] = [["none", "No discount"], ["percent", "Percentage"], ["fixed", "Fixed amount"]];
+  return (
+    <fieldset className="grid gap-3 rounded-lg border p-3" data-testid="discount-editor">
+      <legend className="grid gap-0.5 px-1">
+        <span className="text-sm font-medium">Discount</span>
+        <span className="text-xs font-normal text-muted-foreground">
+          One discount on the whole proposal, taken off the subtotal (packages, add-ons and custom prices) before taxes. The client sees it in their price.
+        </span>
+      </legend>
+      <div role="radiogroup" aria-label="Discount type" className="flex flex-wrap gap-x-4 gap-y-2">
+        {kinds.map(([k, text]) => (
+          <label key={k} className="flex items-center gap-1.5 text-sm">
+            <input type="radio" name="discount_type" value={k} checked={kind === k} onChange={() => onKind(k)} className="size-4 accent-primary" />
+            {text}
+          </label>
+        ))}
+      </div>
+      {kind === "none" ? null : (
+        <div className="grid gap-3 sm:grid-cols-[10rem_minmax(0,1fr)]">
+          <div className="grid gap-1.5">
+            <label htmlFor="discount_value" className="text-sm font-medium">{kind === "percent" ? "Percent off" : `Amount off (${currency})`}</label>
+            <div className="flex items-center gap-1.5">
+              <Input
+                id="discount_value"
+                name="discount_value"
+                inputMode="decimal"
+                value={value}
+                onChange={(e) => onValue(e.target.value)}
+                aria-invalid={error ? true : undefined}
+                aria-describedby="discount_hint"
+                className={cn("w-28", error && "border-destructive")}
+              />
+              {kind === "percent" ? <span className="text-sm text-muted-foreground">%</span> : null}
+            </div>
+          </div>
+          <TextField
+            label="Description (optional)"
+            name="discount_label"
+            value={label}
+            maxLength={80}
+            placeholder="Discount"
+            onChange={(e) => onLabel(e.target.value)}
+          />
+          <p id="discount_hint" className="text-xs text-muted-foreground sm:col-span-2">
+            {kind === "percent"
+              ? "From 0 to 100, like 10 or 12.5. Rounded to the cent."
+              : minimumSubtotal !== null
+                ? `Up to ${formatCents(minimumSubtotal, currency)}, the lowest subtotal a client can choose (the cheapest package with any required gear, before optional add-ons).`
+                : "Up to the lowest subtotal a client can choose."}{" "}
+            Like “Wedding Special” or “Returning Client Discount”.
+          </p>
+          {error ? <p role="alert" className="text-xs text-destructive sm:col-span-2">{error}</p> : null}
+        </div>
+      )}
+    </fieldset>
   );
 }
 
@@ -503,9 +626,15 @@ export function LivePreview({ slug, proposalId, saved, event, mediaBase }: { slu
   }, [wanted, json, slug, proposalId]);
 
   const current = live && live.json === json ? live.result : null;
+  const setMinimum = useContext(DraftOfferContext)?.setMinimum;
   // Saved and no newer edit shown: the page's preview of the saved draft.
   const shown = unsaved ? (current ?? live?.result ?? saved) : (current ?? saved);
   const showsSaved = shown === saved;
+  // The offer's lowest possible subtotal, for the fixed discount's limit; kept while a preview is refused.
+  const minimum = shown.ok ? minimumSelectionSubtotal(shown.offer) : (shown.minimumSubtotalCents ?? null);
+  useEffect(() => {
+    if (minimum !== null) setMinimum?.(minimum);
+  }, [minimum, setMinimum]);
   const status = draft.problem && unsaved
     ? { tone: "warn", text: `Preview paused: ${draft.problem}.` }
     : wanted

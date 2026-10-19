@@ -159,6 +159,39 @@ describe("signed contract PDF", () => {
     await rasterizePdf(bytes, "test-results/pdf-samples/short");
   }, 60_000);
 
+  it("shows an approved proposal discount, with the subtotal after it; without one, no discount rows", async () => {
+    const { contract, signature } = rows({ long: false });
+    const discounted = {
+      ...contract,
+      total_cents: 227651,
+      deposit_cents: 113826,
+      balance_cents: 113825,
+      commercial_snapshot: {
+        ...contract.commercial_snapshot,
+        discount: { type: "percent", label: "Wedding Special", percent_basis_points: 1000, amount_cents: 22000 },
+        discounted_subtotal_cents: 198000,
+        tax_breakdown: [
+          { code: "GST", label: "TPS / GST", rate_ppm: 50000, taxable_cents: 198000, amount_cents: 9900 },
+          { code: "QST", label: "TVQ / QST", rate_ppm: 99750, taxable_cents: 198000, amount_cents: 19751 },
+        ],
+        tax_cents: 29651,
+        total_cents: 227651,
+      },
+    };
+    const data = buildSignedContractPdfData(discounted, signature);
+    expect(data.commercial.discount).toEqual({ description: "Wedding Special (10%)", amountCents: 22000 });
+    const all = (await pdfPageTexts(await renderSignedContractPdf(data, signaturePng()))).join(" ");
+    expect(all).toContain("Wedding Special (10%)");
+    expect(all).toMatch(/-\$220\.00/);
+    expect(all).toContain("Subtotal after discount");
+    expect(all).toMatch(/\$1,980\.00/);
+    expect(all).toMatch(/\$2,276\.51/);
+
+    const plain = await pdfPageTexts(await renderSignedContractPdf(buildSignedContractPdfData(contract, signature), signaturePng()));
+    expect(plain.join(" ")).not.toContain("Subtotal after discount");
+    expect(buildSignedContractPdfData(contract, signature).commercial.discount).toBeNull();
+  }, 60_000);
+
   it("renders a client-use agreement with no DEMO labels, still stating that only the client signed", async () => {
     const { contract, signature } = rows({ long: false, mode: "client_use", title: "Contrat de services DJ pour Mariage Gagnon–Lévesque" });
     const bytes = await renderSignedContractPdf(buildSignedContractPdfData(contract, signature), signaturePng());

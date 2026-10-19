@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { OfferSnapshot, PricedLine, PricedSelection } from "@/lib/pricing";
 import { quantityText } from "@/lib/catalog/quantity";
 import { formatCents } from "@/lib/money";
+import { discountDescription } from "@/lib/pricing/discount";
 import { cn } from "@/lib/utils";
 
 /** "2 × Speaker", or "1 pair of Moving Heads (2 lights)" when the frozen gear holds several pieces. */
@@ -17,8 +18,9 @@ export function taxRateLabel(ratePpm: number): string {
 /**
  * The price of a selection, straight from the shared pricing result: the
  * package's one price, the equipment it includes (never charged), each
- * chargeable addition, subtotal, each tax and the total. Nothing here adds
- * or rounds money itself. With the offer, quantities of multi-piece gear read
+ * chargeable addition, subtotal, the proposal discount (with the discounted
+ * subtotal and the saving), each tax and the total. Nothing here adds or
+ * rounds money itself. With the offer, quantities of multi-piece gear read
  * as "1 pair of Moving Heads (2 lights)".
  */
 export function PriceLines({ priced, offer, className }: { priced: PricedSelection; offer?: OfferSnapshot; className?: string }) {
@@ -28,6 +30,7 @@ export function PriceLines({ priced, offer, className }: { priced: PricedSelecti
   const included = priced.lines.filter((l) => l.source === "included");
   const additions = priced.lines.filter((l) => (l.source === "optional" || l.source === "required") && l.quantity > 0);
   const taxes = priced.tax_breakdown.filter((t) => t.amount_cents > 0);
+  const discount = priced.discount && priced.discount_cents ? { ...priced.discount, cents: priced.discount_cents } : null;
   return (
     <dl className={cn("grid gap-2 text-sm", className)}>
       {pkg ? (
@@ -57,6 +60,18 @@ export function PriceLines({ priced, offer, className }: { priced: PricedSelecti
         <dt>Subtotal</dt>
         <dd className="tabular-nums">{money(priced.subtotal_cents)}</dd>
       </div>
+      {discount ? (
+        <>
+          <div className="flex justify-between gap-3 rounded-md bg-emerald-600/10 px-2 py-1.5 -mx-2 text-emerald-900 dark:text-emerald-200" data-testid="price-discount">
+            <dt className="min-w-0 font-medium [overflow-wrap:anywhere]">{discountDescription(discount)}</dt>
+            <dd className="tabular-nums font-medium">−{money(discount.cents)}</dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt>Subtotal after discount</dt>
+            <dd className="tabular-nums">{money(priced.subtotal_cents - discount.cents)}</dd>
+          </div>
+        </>
+      ) : null}
       {taxes.map((t) => (
         <div key={t.code} className="flex justify-between gap-3 text-muted-foreground">
           <dt>
@@ -69,6 +84,12 @@ export function PriceLines({ priced, offer, className }: { priced: PricedSelecti
         <dt className="text-base font-semibold">Total</dt>
         <dd className="text-lg font-semibold tabular-nums">{money(priced.total_cents)}</dd>
       </div>
+      {discount ? (
+        <div className="flex justify-end text-sm font-medium text-emerald-800 dark:text-emerald-300" data-testid="price-savings">
+          <dt className="sr-only">Your saving</dt>
+          <dd>You save {money(discount.cents)}</dd>
+        </div>
+      ) : null}
     </dl>
   );
 }

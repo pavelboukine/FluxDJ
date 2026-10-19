@@ -978,13 +978,13 @@ isOneToOne: false
                   ]
                 },"proposal_selection_lines": {
                   Row: {
-                    "created_at": string,"description": string | null,"id": string,"item_key": string,"line_no": number,"line_total_cents": number,"name": string,"quantity": number,"required_quantity": number,"required_reasons": (string)[],"selection_id": string,"source": string,"tax_category": string,"tenant_id": string,"unit_price_cents": number
+                    "created_at": string,"description": string | null,"discount_cents": number,"id": string,"item_key": string,"line_no": number,"line_total_cents": number,"name": string,"quantity": number,"required_quantity": number,"required_reasons": (string)[],"selection_id": string,"source": string,"tax_category": string,"tenant_id": string,"unit_price_cents": number
                   }
                   Insert: {
-                    "created_at"?: string,"description"?: string | null,"id"?: string,"item_key": string,"line_no": number,"line_total_cents": number,"name": string,"quantity": number,"required_quantity"?: number,"required_reasons"?: (string)[],"selection_id": string,"source": string,"tax_category": string,"tenant_id": string,"unit_price_cents": number
+                    "created_at"?: string,"description"?: string | null,"discount_cents"?: number,"id"?: string,"item_key": string,"line_no": number,"line_total_cents": number,"name": string,"quantity": number,"required_quantity"?: number,"required_reasons"?: (string)[],"selection_id": string,"source": string,"tax_category": string,"tenant_id": string,"unit_price_cents": number
                   }
                   Update: {
-                    "created_at"?: string,"description"?: string | null,"id"?: string,"item_key"?: string,"line_no"?: number,"line_total_cents"?: number,"name"?: string,"quantity"?: number,"required_quantity"?: number,"required_reasons"?: (string)[],"selection_id"?: string,"source"?: string,"tax_category"?: string,"tenant_id"?: string,"unit_price_cents"?: number
+                    "created_at"?: string,"description"?: string | null,"discount_cents"?: number,"id"?: string,"item_key"?: string,"line_no"?: number,"line_total_cents"?: number,"name"?: string,"quantity"?: number,"required_quantity"?: number,"required_reasons"?: (string)[],"selection_id"?: string,"source"?: string,"tax_category"?: string,"tenant_id"?: string,"unit_price_cents"?: number
                   }
                   Relationships: [
                     {
@@ -1003,13 +1003,13 @@ isOneToOne: false
                   ]
                 },"proposal_selections": {
                   Row: {
-                    "addon_quantities": NonNullable<Json>,"created_at": string,"currency": string,"id": string,"idempotency_key": string | null,"logistics_answers": NonNullable<Json>,"offer_sha256": string,"package_key": string,"pricing_version": string,"proposal_id": string,"selection_snapshot": NonNullable<Json>,"submitted_at": string | null,"subtotal_cents": number,"tax_breakdown": NonNullable<Json>,"tax_cents": number,"tenant_id": string,"total_cents": number,"updated_at": string,"version": number
+                    "addon_quantities": NonNullable<Json>,"created_at": string,"currency": string,"discount_cents": number,"id": string,"idempotency_key": string | null,"logistics_answers": NonNullable<Json>,"offer_sha256": string,"package_key": string,"pricing_version": string,"proposal_id": string,"selection_snapshot": NonNullable<Json>,"submitted_at": string | null,"subtotal_cents": number,"tax_breakdown": NonNullable<Json>,"tax_cents": number,"tenant_id": string,"total_cents": number,"updated_at": string,"version": number
                   }
                   Insert: {
-                    "addon_quantities": NonNullable<Json>,"created_at"?: string,"currency": string,"id"?: string,"idempotency_key"?: string | null,"logistics_answers": NonNullable<Json>,"offer_sha256": string,"package_key": string,"pricing_version": string,"proposal_id": string,"selection_snapshot": NonNullable<Json>,"submitted_at"?: string | null,"subtotal_cents": number,"tax_breakdown": NonNullable<Json>,"tax_cents": number,"tenant_id": string,"total_cents": number,"updated_at"?: string,"version": number
+                    "addon_quantities": NonNullable<Json>,"created_at"?: string,"currency": string,"discount_cents"?: number,"id"?: string,"idempotency_key"?: string | null,"logistics_answers": NonNullable<Json>,"offer_sha256": string,"package_key": string,"pricing_version": string,"proposal_id": string,"selection_snapshot": NonNullable<Json>,"submitted_at"?: string | null,"subtotal_cents": number,"tax_breakdown": NonNullable<Json>,"tax_cents": number,"tenant_id": string,"total_cents": number,"updated_at"?: string,"version": number
                   }
                   Update: {
-                    "addon_quantities"?: NonNullable<Json>,"created_at"?: string,"currency"?: string,"id"?: string,"idempotency_key"?: string | null,"logistics_answers"?: NonNullable<Json>,"offer_sha256"?: string,"package_key"?: string,"pricing_version"?: string,"proposal_id"?: string,"selection_snapshot"?: NonNullable<Json>,"submitted_at"?: string | null,"subtotal_cents"?: number,"tax_breakdown"?: NonNullable<Json>,"tax_cents"?: number,"tenant_id"?: string,"total_cents"?: number,"updated_at"?: string,"version"?: number
+                    "addon_quantities"?: NonNullable<Json>,"created_at"?: string,"currency"?: string,"discount_cents"?: number,"id"?: string,"idempotency_key"?: string | null,"logistics_answers"?: NonNullable<Json>,"offer_sha256"?: string,"package_key"?: string,"pricing_version"?: string,"proposal_id"?: string,"selection_snapshot"?: NonNullable<Json>,"submitted_at"?: string | null,"subtotal_cents"?: number,"tax_breakdown"?: NonNullable<Json>,"tax_cents"?: number,"tenant_id"?: string,"total_cents"?: number,"updated_at"?: string,"version"?: number
                   }
                   Relationships: [
                     {

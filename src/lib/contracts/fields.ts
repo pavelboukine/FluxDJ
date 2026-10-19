@@ -54,6 +54,8 @@ export const EXAMPLE_VALUES: Record<string, string> = {
   "package.price": "2,000.00 CAD",
   "package.included": "- 1 × Main sound system\n- 1 × Wireless microphone",
   "gear.extras": "- 4 × Uplights: 200.00 CAD",
+  "pricing.subtotal_before_discount": "2,200.00 CAD",
+  "pricing.discount": "No discount.",
   "pricing.subtotal": "2,200.00 CAD",
   "pricing.taxes": "- GST (5%): 110.00 CAD\n- QST (9.975%): 219.45 CAD",
   "pricing.tax_total": "329.45 CAD",

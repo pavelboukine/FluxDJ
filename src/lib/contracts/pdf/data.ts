@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { discountDescription } from "@/lib/pricing/discount";
 
 /**
  * Everything a signed-contract PDF shows, built ONLY from the frozen contract
@@ -14,6 +15,8 @@ export type SignedContractPdfData = {
   commercial: {
     lines: { name: string; description: string | null; source: string; quantity: number; unitPriceCents: number; lineTotalCents: number }[];
     subtotalCents: number;
+    /** The approved proposal discount, when it had one ("Wedding Special (10%)"); the total is already after it. */
+    discount: { description: string; amountCents: number } | null;
     taxes: { label: string; ratePpm: number; amountCents: number }[];
     taxCents: number;
     totalCents: number;
@@ -67,6 +70,10 @@ const contractRow = z.object({
       )
       .nullable(),
     subtotal_cents: cents,
+    // Only in contracts generated from a discounted proposal.
+    discount: z
+      .object({ type: text, label: text, percent_basis_points: z.number().int().optional(), amount_cents: cents })
+      .optional(),
     tax_breakdown: z.array(z.object({ label: text, rate_ppm: z.number().int(), amount_cents: cents })),
     tax_cents: cents,
     total_cents: cents,
@@ -146,6 +153,9 @@ export function buildSignedContractPdfData(contract: unknown, signature: unknown
         lineTotalCents: l.line_total_cents,
       })),
       subtotalCents: c.commercial_snapshot.subtotal_cents,
+      discount: c.commercial_snapshot.discount
+        ? { description: discountDescription(c.commercial_snapshot.discount), amountCents: c.commercial_snapshot.discount.amount_cents }
+        : null,
       taxes: c.commercial_snapshot.tax_breakdown.map((t) => ({ label: t.label, ratePpm: t.rate_ppm, amountCents: t.amount_cents })),
       taxCents: c.commercial_snapshot.tax_cents,
       totalCents: c.commercial_snapshot.total_cents,

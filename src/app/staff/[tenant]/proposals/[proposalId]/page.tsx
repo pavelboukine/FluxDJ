@@ -19,7 +19,7 @@ import { SentProposalView } from "./sent-view";
 type DraftOffer = Partial<DraftOfferInput>;
 
 const REPLACES =
-  "Applying a template replaces the packages, add-ons, questions, intro and expiry with the template's. Custom prices stay for the packages and gear the template also offers.";
+  "Applying a template replaces the packages, add-ons, questions, intro and expiry with the template's. Custom prices stay for the packages and gear the template also offers. The discount stays.";
 
 export default async function ProposalBuilder({ params, searchParams }: PageProps<"/staff/[tenant]/proposals/[proposalId]">) {
   const { tenant: slug, proposalId } = await params;
@@ -71,6 +71,7 @@ export default async function ProposalBuilder({ params, searchParams }: PageProp
     addons: draft.addons ?? [],
     question_ids: draft.question_ids ?? [],
     price_overrides: draft.price_overrides ?? [],
+    ...(draft.discount ? { discount: draft.discount } : {}),
   };
   const templateForm = (
     <ActionForm

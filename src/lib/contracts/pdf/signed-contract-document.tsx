@@ -183,6 +183,18 @@ export function SignedContractDocument({ data, signaturePng, generatedAt }: { da
               <Text>Subtotal</Text>
               <Text>{money(commercial.subtotalCents)}</Text>
             </View>
+            {commercial.discount ? (
+              <>
+                <View style={s.totalRow}>
+                  <Text>{commercial.discount.description}</Text>
+                  <Text>-{money(commercial.discount.amountCents)}</Text>
+                </View>
+                <View style={s.totalRow}>
+                  <Text>Subtotal after discount</Text>
+                  <Text>{money(commercial.subtotalCents - commercial.discount.amountCents)}</Text>
+                </View>
+              </>
+            ) : null}
             {commercial.taxes.map((t, i) => (
               <View key={i} style={s.totalRow}>
                 <Text>
