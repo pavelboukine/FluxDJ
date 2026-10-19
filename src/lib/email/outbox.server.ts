@@ -59,7 +59,7 @@ export type OutboxRunResult = { claimed: number; sent: number; failed: number; c
  * a retry is the same request even if Business settings changed meanwhile.
  *
  * DJ invitations (platform emails, no tenant), staff invitations and
- * planning invitations (events booked elsewhere) are claimed separately; see
+ * planning invitations are claimed separately; see
  * deliverPlatformEmails, deliverStaffEmails and deliverPlanningEmails.
  * `tenantId` limits a run to one business's emails, `platformInvitationId`
  * and `staffInvitationId` to one invitation's.
@@ -592,10 +592,10 @@ async function deliverStaffEmails(
 }
 
 /**
- * Planning invitations for events booked outside Flux DJ, sent as
+ * Planning invitations (Flux bookings and events booked elsewhere), sent as
  * "{business} via Flux DJ" with the business's reply-to. Rechecked at claim
- * time (the invitation is still open and unexpired, the event booked
- * elsewhere and not archived, the client still on it, the row addressed to
+ * time (the invitation is still open and unexpired, the event booked for
+ * planning and not archived, the client still its primary contact, the row addressed to
  * the invitation's address) and again right before sending (suspension).
  * "planning_invitation" rebuilds the link from the invitation id, with a
  * provider idempotency key; "planning_sign_in" asks Supabase Auth for a fresh

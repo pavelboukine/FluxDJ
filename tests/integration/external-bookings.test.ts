@@ -102,9 +102,10 @@ describe("events booked elsewhere (local Supabase)", () => {
     expect(await deliver(mail)).toMatchObject({ sent: 1 });
     const invitation = mail.messages[0];
     expect(invitation.to).toBe(clientEmail);
-    expect(invitation.subject).toBe("Plan your event with IT it-external: IT external wedding");
+    expect(invitation.subject).toBe("It's time to plan your event!");
     expect(invitation.idempotencyKey).toMatch(/^flux-planning-invite-/);
-    expect(invitation.text).toContain("Your event is booked.");
+    expect(invitation.text).toContain("We're ready to start planning your event!");
+    expect(invitation.text).toContain("IT external wedding");
     expect(invitation.text).not.toMatch(/proposal|contract|deposit|payment/i);
     const link = new URL(linkIn(invitation, /(https?:\/\/\S+\/planning-invite#\S+)/)!);
     expect(link.pathname).toBe(`/${catalog.slug}/planning-invite`);
@@ -189,9 +190,9 @@ describe("events booked elsewhere (local Supabase)", () => {
     expect(event!.booking_source).toBe("flux");
     await must(owner.from("event_clients").insert({ tenant_id: catalog.tenantId, event_id: event!.id, client_id: clientId, is_primary: true, can_sign: true }));
     await must(owner.rpc("setup_event_plan", { p_event_id: event!.id, p_template_id: null as never }));
-    // Planning invitations are refused for it; access comes from its contract.
+    // Not booked yet: no planning invitation (a booked Flux event can be invited; see flux-planning-invitations).
     const id = randomUUID();
     const refused = await owner.rpc("send_planning_invitation", { p_event_id: event!.id, p_invitation_id: id, p_token_hash: sha256Hex(planningInviteToken(id)) });
-    expect(refused.error?.message).toMatch(/planning_invalid/);
+    expect(refused.error?.message).toMatch(/planning_invalid: the event isn't booked yet/);
   });
 });

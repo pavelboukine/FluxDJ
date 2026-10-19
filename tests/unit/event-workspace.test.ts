@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { bookingSummary, clientAccessSummary, contractChanges, contractSummary, nextAction, paymentOverview, planningLine, planningSummary, proposalSummary, type ContractRecord, type WorkspaceFacts } from "@/lib/events/workspace";
+import { bookingSummary, clientAccessSummary, contractChanges, contractSummary, invitationStatus, nextAction, paymentOverview, planningLine, planningSummary, proposalSummary, type ContractRecord, type WorkspaceFacts } from "@/lib/events/workspace";
+import type { OutboxRow } from "@/lib/email/history";
 import type { PaymentSummary } from "@/lib/payments";
 
 const NOW = new Date("2026-10-07T16:00:00Z");
@@ -324,5 +325,62 @@ describe("events booked elsewhere", () => {
     expect(clientAccessSummary(ext({ planning: ready, planningAccess: { invitation: invitation(), clientHasAccess: false } }), fmt).status).toBe("Invited");
     expect(clientAccessSummary(ext({ planning: ready, planningAccess: { invitation: invitation(), clientHasAccess: true } }), fmt).status).toBe("Client has access");
     expect(planningSummary(ext()).detail).toBe("Set it up from the planning page.");
+  });
+});
+
+describe("planning invitations for Flux bookings", () => {
+  const ready = { exists: true, awaitingSetup: false, progress, editing: editing("open") };
+  const signed = [contract("c1", "signed")];
+  const booked = (over: Partial<WorkspaceFacts> = {}) =>
+    facts({ lifecycle: "booked", contracts: signed, planning: ready, planningAccess: { invitation: null, clientHasAccess: true }, ...over });
+  const invitation = { id: "inv1", email: "noam@example.test", createdAt: "2026-10-06T16:00:00Z", expiresAt: "2026-10-20T16:00:00Z", revoked: false, accepted: false };
+
+  it("a booked event with planning ready offers the invitation next to reviewing planning, never instead of it", () => {
+    expect(pick(booked())).toEqual({ key: "review_planning", primary: "/staff/dj/events/ev/planning", secondary: "#client-access", waiting: false });
+    expect(nextAction(booked()).secondary?.label).toBe("Send planning invitation");
+    // Once invited, the run sheet is the second step again.
+    expect(pick(booked({ planningAccess: { invitation, clientHasAccess: true } })).secondary).toBe("/staff/dj/events/ev/run-sheet");
+    // Not set up yet: setting up comes first.
+    expect(pick(booked({ planning: { ...ready, awaitingSetup: true } })).key).toBe("set_up_planning");
+  });
+
+  it("an unbooked Flux event is never offered a planning invitation", () => {
+    for (const f of [facts(), facts({ lifecycle: "awaiting_deposit", contracts: signed, planning: ready, planningAccess: { invitation: null, clientHasAccess: true } })]) {
+      expect(JSON.stringify(nextAction(f))).not.toMatch(/planning invitation/i);
+    }
+  });
+});
+
+describe("planning invitation status", () => {
+  const NOW_ = new Date("2026-10-07T16:00:00Z");
+  const inv = (over: Partial<NonNullable<NonNullable<WorkspaceFacts["planningAccess"]>["invitation"]>> = {}) => ({
+    id: "inv1", email: "noam@example.test", createdAt: "2026-10-06T16:00:00Z", expiresAt: "2026-10-20T16:00:00Z", revoked: false, accepted: false, ...over,
+  });
+  const row = (over: Partial<OutboxRow> = {}): OutboxRow => ({
+    id: "o1", event_type: "planning_invitation", recipient_email: "noam@example.test", status: "pending", attempts: 0, max_attempts: 5, last_error: null,
+    next_attempt_at: "2026-10-06T16:00:00Z", sent_at: null, created_at: "2026-10-06T16:00:00Z", ...over,
+  });
+  const label = (i: ReturnType<typeof inv> | null, r: OutboxRow | null) => invitationStatus(i, r, NOW_).label;
+
+  it("queued is never reported as sent; sent means the provider accepted it", () => {
+    expect(label(null, null)).toBe("Not invited");
+    expect(label(inv(), null)).toBe("Queued");
+    expect(label(inv(), row())).toBe("Queued");
+    expect(label(inv(), row({ status: "sending", attempts: 1 }))).toBe("Queued (retrying)");
+    expect(label(inv(), row({ status: "sent", sent_at: "2026-10-06T16:01:00Z" }))).toBe("Sent");
+    expect(label(inv(), row({ status: "sent", sent_at: "2026-10-06T16:01:00Z", provider_status: "delivered" }))).toBe("Delivered");
+  });
+
+  it("failures and bounces are never shown as delivered", () => {
+    expect(invitationStatus(inv(), row({ status: "failed", attempts: 5, last_error: "Resend responded 422" }), NOW_)).toEqual({ label: "Failed", tone: "attention" });
+    expect(label(inv(), row({ status: "sent", sent_at: "2026-10-06T16:01:00Z", provider_status: "bounced", provider_detail: "Permanent" }))).toBe("Not delivered (bounced)");
+    expect(label(inv(), row({ status: "cancelled" }))).toBe("Not sent");
+  });
+
+  it("acceptance, replacement, outdated addresses and expiry come from the invitation itself", () => {
+    expect(label(inv({ accepted: true }), row({ status: "sent" }))).toBe("Accepted");
+    expect(label(inv({ revoked: true }), row({ status: "sent" }))).toBe("Replaced or cancelled");
+    expect(label(inv({ stale: true, accepted: true }), null)).toBe("Outdated");
+    expect(label(inv({ expiresAt: "2026-10-01T00:00:00Z" }), row({ status: "sent" }))).toBe("Expired");
   });
 });

@@ -6,7 +6,7 @@ import { deliveryState, emailPurpose, errorSummary, type OutboxRow } from "@/lib
 import { businessBrand, FLUX_BRAND, logoDisplaySize, logoPlateSize } from "@/lib/email/layout";
 import { parseProviderEvent, verifyWebhookSignature } from "@/lib/email/provider-events";
 import { previewEmails } from "@/lib/email/previews";
-import { renderContractEmail, renderEmail, renderPlatformInvitationEmail, renderStaffInvitationEmail } from "@/lib/email/templates";
+import { firstName, renderBookingConfirmedEmail, renderContractEmail, renderEmail, renderPlanningInvitationEmail, renderPlatformInvitationEmail, renderStaffInvitationEmail } from "@/lib/email/templates";
 
 const base = { tenantSlug: "dj", proposalId: "p1", appUrl: "https://app.example" };
 const proposal = (brand = businessBrand("BOUPROD", "#e11d48")) =>
@@ -204,5 +204,50 @@ describe("dashboard delivery problems", () => {
         p("a", "bounced", "Permanent · General"), // the same email twice
       ]),
     ).toEqual({ undelivered: 3, complaints: 1 });
+  });
+});
+
+describe("planning invitation email", () => {
+  const email = renderPlanningInvitationEmail({
+    brand: businessBrand("Northside Sound"),
+    canReply: true,
+    tenantDisplayName: "Northside Sound",
+    clientName: "Riya Patel",
+    eventTitle: "Riya & Sam's wedding",
+    eventDate: "2027-06-12",
+    invitationLink: "https://app.example/northside/planning-invite#token",
+    expiresAt: "2027-01-08T12:00:00Z",
+  });
+
+  it("is the same staff-sent email for every booking source, with the business's name and no booking claims", () => {
+    expect(email.subject).toBe("It's time to plan your event!");
+    expect(email.text).toContain("Hi Riya,");
+    expect(email.text).toContain("We're ready to start planning your event!");
+    expect(email.text).toContain("share your music preferences, important event details, timeline information");
+    expect(email.text).toContain("Open your planning portal");
+    expect(email.text).toContain("https://app.example/northside/planning-invite#token");
+    expect(email.text).toContain("For security, you may be asked to verify your email address before accessing your event.");
+    expect(email.text).toContain("We're looking forward to getting everything ready!");
+    expect(email.text).toContain("Northside Sound");
+    expect(email.text).not.toMatch(/proposal|contract|deposit|payment|registered|your account/i);
+    expect(email.text).not.toMatch(/BOUPROD/);
+    expect(email.html).toContain("Open your planning portal");
+  });
+
+  it("greets by first name, keeping titles and initials whole", () => {
+    expect(firstName("Riya Patel")).toBe("Riya");
+    expect(firstName("Dr. Smith")).toBe("Dr. Smith");
+    expect(firstName("J. Doe")).toBe("J. Doe");
+    expect(firstName("  Noam  ")).toBe("Noam");
+  });
+
+  it("stays separate from the booking confirmation, which never offers planning", () => {
+    const booking = renderBookingConfirmedEmail({
+      tenantDisplayName: "Northside Sound", legalName: "Northside Sound Inc.", contactEmail: null, clientName: "Riya Patel", eventTitle: "Wedding",
+      eventDate: "2027-06-12", currency: "CAD", totalCents: 100_000, depositCents: 30_000, receivedCents: 30_000, remainingCents: 70_000, creditCents: 0,
+      balanceDueDate: null, bookedOn: "2027-01-02",
+    });
+    expect(booking.subject).not.toBe(email.subject);
+    expect(booking.text).not.toMatch(/planning-invite|planning portal/i);
   });
 });

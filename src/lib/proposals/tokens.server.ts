@@ -49,7 +49,7 @@ export function staffInviteToken(linkId: string): string {
 }
 
 /**
- * Planning invitation tokens (events booked elsewhere): same derivation, their
+ * Planning invitation tokens (Flux bookings and events booked elsewhere): same derivation, their
  * own domain prefix. Each send is a new invitation id, so earlier links stop
  * working. The token only lets the invited address ask for a verification email.
  */

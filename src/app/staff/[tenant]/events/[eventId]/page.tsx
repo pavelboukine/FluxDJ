@@ -69,7 +69,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
   const [{ data: event }, { data: templates }, { data: identity }, contracts, payments, planning] = await Promise.all([
     supabase
       .from("events")
-      .select("id, title, event_type, event_date, timezone, venue_name, venue_address, internal_notes, lifecycle_status, booking_source, active_proposal_id, archived_at, event_clients(id, is_primary, can_sign, clients(id, name, email, phone, archived_at)), proposals!proposals_event_fk(id, revision, status, offer_frozen_at, updated_at, expires_at)")
+      .select("id, title, event_type, event_date, timezone, venue_name, venue_address, internal_notes, lifecycle_status, booking_source, booking_confirmed_at, active_proposal_id, archived_at, event_clients(id, is_primary, can_sign, clients(id, name, email, phone, archived_at)), proposals!proposals_event_fk(id, revision, status, offer_frozen_at, updated_at, expires_at)")
       .eq("id", eventId)
       .eq("tenant_id", tenant.id)
       .maybeSingle(),
@@ -82,14 +82,22 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
   if (!event) notFound();
   // Booked elsewhere: planning is the whole workflow; client access comes from a planning invitation.
   const external = event.booking_source === "external";
+  // Booked for planning, as the database decides it (private.event_booked_for_planning).
+  const bookedForPlanning = external || (Boolean(event.booking_confirmed_at) && (event.lifecycle_status === "booked" || event.lifecycle_status === "completed"));
   const primaryClient = event.event_clients.find((c) => c.is_primary)?.clients ?? null;
-  const planningAccess = external ? await loadPlanningAccess(staff, eventId, primaryClient ? { id: primaryClient.id, email: primaryClient.email } : null) : null;
+  const planningAccess = await loadPlanningAccess(staff, eventId, primaryClient ? { id: primaryClient.id, email: primaryClient.email } : null);
   const communications = await loadCommunications(
     staff,
     event.proposals.map((p) => p.id),
     contracts.contracts.map((c) => c.id),
-    planningAccess?.invitationIds ?? [],
+    planningAccess.invitationIds,
   );
+  // Client access is shown once there is planning to invite to (or an invitation's history to show).
+  const showClientAccess = external || bookedForPlanning || planningAccess.invitationIds.length > 0;
+  const latestInvitation = planningAccess.access.invitation;
+  const invitationEmail = latestInvitation
+    ? (communications.rows.find((r) => r.entity_type === "planning_invitation" && r.entity_id === latestInvitation.id && r.event_type === "planning_invitation") ?? null)
+    : null;
   // The current approval, if the active proposal is approved; contracts are generated from it.
   const activeApproved = event.proposals.find((p) => p.id === event.active_proposal_id && p.status === "approved");
   const { data: approval } = activeApproved
@@ -116,7 +124,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
     archived,
     lifecycle: event.lifecycle_status,
     bookingSource: event.booking_source,
-    planningAccess: planningAccess?.access ?? null,
+    planningAccess: planningAccess.access,
     proposals: event.proposals,
     activeProposalId: event.active_proposal_id,
     approvalId: approval?.id ?? null,
@@ -155,7 +163,29 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
   const showPayments = !external;
   const sections: [string, string][] = external
     ? [["#planning", "Planning"], ["#client-access", "Client access"], ["#communications", "Emails"], ["#contacts", "Contacts & details"]]
-    : [["#proposal", "Proposal & contract"], ["#payments", "Payments"], ["#planning", "Planning"], ["#communications", "Emails"], ["#contacts", "Contacts & details"]];
+    : [
+        ["#proposal", "Proposal & contract"],
+        ["#payments", "Payments"],
+        ["#planning", "Planning"],
+        ...(showClientAccess ? ([["#client-access", "Client access"]] as [string, string][]) : []),
+        ["#communications", "Emails"],
+        ["#contacts", "Contacts & details"],
+      ];
+  const clientAccess = showClientAccess ? (
+    <ClientAccessCard
+      slug={slug}
+      eventId={event.id}
+      access={planningAccess.access}
+      email={invitationEmail}
+      booked={bookedForPlanning}
+      planningReady={facts.planning.exists && !facts.planning.awaitingSetup}
+      editingOpen={Boolean(facts.planning.editing && facts.planning.editing.state !== "closed")}
+      primary={primary?.clients ? { id: primary.clients.id, name: primary.clients.name, email: primary.clients.email, archived: Boolean(primary.clients.archived_at) } : null}
+      archived={archived}
+      external={external}
+      fmt={fmtDate}
+    />
+  ) : null;
 
   return (
     <>
@@ -247,15 +277,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
         {external ? (
           <>
             <PlanningCard slug={slug} eventId={event.id} view={planning} archived={archived} external />
-            <ClientAccessCard
-              slug={slug}
-              eventId={event.id}
-              access={planningAccess!.access}
-              planningReady={facts.planning.exists && !facts.planning.awaitingSetup}
-              primary={primary?.clients ? { name: primary.clients.name, email: primary.clients.email, archived: Boolean(primary.clients.archived_at) } : null}
-              archived={archived}
-              fmt={fmtDate}
-            />
+            {clientAccess}
           </>
         ) : (
         <>
@@ -317,6 +339,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
         <PaymentsCard staff={staff} slug={slug} eventId={event.id} archived={archived} data={payments} recordOpen={action.key === "record_payment"} timeZone={event.timezone} />
 
         <PlanningCard slug={slug} eventId={event.id} view={planning} archived={archived} />
+        {clientAccess}
         </>
         )}
 

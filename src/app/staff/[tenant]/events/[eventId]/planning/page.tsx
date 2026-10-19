@@ -36,6 +36,8 @@ import type { StageEditor } from "@/lib/planning/stages";
 import { formatEventDate, planAwaitingSetup, staffPlanningViewSchema } from "@/lib/planning/view";
 import { EVENT_TYPES } from "../../event-form";
 import { addPlanItem, applyPlanningTemplate, planItemAction, saveStaffItemAction, setUpPlanning } from "./actions";
+import { invitationOpen } from "@/lib/events/workspace";
+import { loadPlanningAccess } from "../client-access-card";
 import { ClientEditingCard } from "./client-editing-card";
 import { EditingControl } from "./editing-control";
 
@@ -51,18 +53,21 @@ import { EditingControl } from "./editing-control";
 export default async function StaffPlanningPage({ params }: PageProps<"/staff/[tenant]/events/[eventId]/planning">) {
   const { tenant: slug, eventId } = await params;
   if (!UUID_RE.test(eventId)) notFound();
-  const { supabase, tenant } = await requireStaff(slug);
+  const staff = await requireStaff(slug);
+  const { supabase, tenant } = staff;
   const { data: event } = await supabase
     .from("events")
-    .select("id, title, event_type, event_date, timezone, venue_name, venue_address, lifecycle_status, booking_confirmed_at, booking_source, archived_at, event_clients(is_primary, clients(name, email, phone, archived_at))")
+    .select("id, title, event_type, event_date, timezone, venue_name, venue_address, lifecycle_status, booking_confirmed_at, booking_source, archived_at, event_clients(is_primary, clients(id, name, email, phone, archived_at))")
     .eq("id", eventId)
     .eq("tenant_id", tenant.id)
     .maybeSingle();
   if (!event) notFound();
-  const [{ data: viewData }, { data: templates }, { data: library }] = await Promise.all([
+  const primaryClient = (event.event_clients ?? []).find((ec) => ec.is_primary)?.clients ?? null;
+  const [{ data: viewData }, { data: templates }, { data: library }, { access }] = await Promise.all([
     supabase.rpc("staff_planning_view", { p_event_id: event.id }),
     supabase.from("planning_templates").select("id, name, default_event_type").eq("tenant_id", tenant.id).is("archived_at", null).order("name"),
     supabase.rpc("planning_library"),
+    loadPlanningAccess(staff, event.id, primaryClient ? { id: primaryClient.id, email: primaryClient.email } : null),
   ]);
   const view = staffPlanningViewSchema.parse(viewData);
   const typeLabel = new Map<string, string>(EVENT_TYPES).get(event.event_type) ?? event.event_type;
@@ -161,6 +166,7 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
               ]}
             >
               {awaitingSetup ? setupCard() : view.editing ? <EditingControl slug={slug} eventId={event.id} editing={view.editing} archived={archived} booked={booked} /> : null}
+              {awaitingSetup || archived || !booked ? null : inviteHint()}
               {workspace()}
             </PlanNavigation>
           </SaveRegistryProvider>
@@ -168,6 +174,31 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
       )}
     </>
   );
+
+  /**
+   * Where client access stands, with the way to the invitation (on the event
+   * page). Opening client editing here never emails the client.
+   */
+  function inviteHint() {
+    const i = access.invitation;
+    const open = invitationOpen(i, new Date());
+    return (
+      <p data-testid="planning-invite-hint" className="flex flex-wrap items-baseline gap-x-2 gap-y-1 rounded-xl border bg-card px-4 py-3 text-sm">
+        <span className="min-w-0 [overflow-wrap:anywhere]">
+          {!i
+            ? `${access.clientHasAccess ? "The client can open planning from their account, but hasn't been told it's ready." : "The client hasn't been invited to planning."} Nothing is emailed to them until you send a planning invitation.`
+            : access.clientHasAccess || i.accepted
+              ? "The client has verified access to planning."
+              : open
+                ? `A planning invitation to ${i.email} is waiting for the client to accept it.`
+                : "The last planning invitation no longer works. Send a new one when you're ready."}
+        </span>
+        <Link className="font-medium underline underline-offset-4" href={`${base}#client-access`}>
+          {!i || (!open && !access.clientHasAccess) ? "Send planning invitation" : "Client access"}
+        </Link>
+      </p>
+    );
+  }
 
   /**
    * Booking set planning up with Event basics only: choose the template here
@@ -269,13 +300,13 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
                     {external
                       ? archived
                         ? "Booked externally, but archived: client planning is closed."
-                        : "Booked externally: the client opens planning after you invite them (Client access on the event page) and confirm their email."
+                        : "Booked externally: the client opens planning after you send a planning invitation (Client access on the event page) and they confirm their email."
                       : booked
                       ? archived
                         ? "The event is booked, but archived: client planning is closed."
                         : awaitingSetup
                           ? "The event is booked. Until you set planning up, the client sees that you're setting it up and can't edit it."
-                          : "The event is booked: the client (with verified access to this event) can open planning from their contract page and /my."
+                          : "The event is booked: the client (with verified access to this event) can open planning from their contract page and /my. Send a planning invitation (Client access on the event page) to tell them it's ready."
                       : "The client can open planning once the event is booked. Until then, only staff see it."}
                   </p>
                   <p className="text-muted-foreground">

@@ -9,9 +9,10 @@ import { fail, ok, text, UUID_RE, type ActionState } from "@/lib/forms";
 import { planningInviteToken, sha256Hex } from "@/lib/proposals/tokens.server";
 
 /**
- * Invites the primary contact of an event booked elsewhere to plan it online.
- * send_planning_invitation checks staff, the booking source, planning setup,
- * the contact and archiving again in the database, and replaces any open
+ * Invites the event's primary contact to plan it online (a Flux booking or
+ * an event booked elsewhere). send_planning_invitation checks staff, that the
+ * event is booked for planning, planning setup, open client editing, the
+ * contact and archiving again in the database, and replaces any open
  * invitation. The form's request id is the invitation id, so a retried
  * submission is a replay with no second email. Nothing else sends it.
  */
@@ -29,5 +30,6 @@ export async function sendPlanningInvitation(slug: string, eventId: string, _sta
   const result = data as { recipient_email?: string };
   after(() => processOutboxQuietly(tenant.id));
   revalidatePath(`/staff/${slug}/events/${eventId}`);
-  return ok(`Planning invitation sent to ${result.recipient_email ?? "the client"}.`);
+  // Queued, not yet sent: the card shows its delivery once the outbox has run.
+  return ok(`Planning invitation queued for ${result.recipient_email ?? "the client"}. Its delivery status appears under Client access.`);
 }

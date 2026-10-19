@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ClipboardList } from "lucide-react";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { PublicCard } from "@/components/app/public-shell";
 import { signOut } from "@/app/auth/confirm/actions";
 import { UUID_RE } from "@/lib/forms";
@@ -24,7 +23,7 @@ type Status = {
   intended_email?: string;
 };
 
-/** After email verification: confirm to open planning for an event booked elsewhere. Viewing this page changes nothing. */
+/** After email verification: confirm to open planning for the invited event. Viewing this page changes nothing. */
 export default async function PlanningInvitationPage({ params }: PageProps<"/[tenant]/planning-invitations/[invitationId]">) {
   const { tenant: slug, invitationId } = await params;
   if (!SLUG_PATTERN.test(slug) || !UUID_RE.test(invitationId)) notFound();
@@ -51,7 +50,10 @@ export default async function PlanningInvitationPage({ params }: PageProps<"/[te
       ) : status.state === "accepted" ? (
         <>
           <p>Your planning for <strong>{status.event_title}</strong>{when} is ready.</p>
-          <Link className={buttonVariants({ size: "lg", className: "w-full" })} href={`/${slug}/planning/${status.event_id}`}>Open my planning</Link>
+          {/* Already has access (e.g. from their contract): accepting again only records this invitation's acceptance, then opens planning. */}
+          <form action={acceptPlanningInvitation.bind(null, slug, invitationId)}>
+            <Button type="submit" size="lg" className="w-full">Open my planning</Button>
+          </form>
         </>
       ) : status.state === "wrong_account" ? (
         <>

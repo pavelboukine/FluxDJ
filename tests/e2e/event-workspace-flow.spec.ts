@@ -151,7 +151,8 @@ test.describe.serial("event workspace", () => {
       ["cdraft", "review_contract", `${base}/contracts/${ev.cdraft.contractId}`, null],
       ["csent", "awaiting_signature", null, `${base}/contracts/${ev.csent.contractId}`],
       ["deposit", "record_payment", "#record-payment", null],
-      ["booked", "review_planning", `${base}/events/${ev.booked.id}/planning`, `${base}/events/${ev.booked.id}/run-sheet`],
+      // Not invited to planning yet: the separate planning invitation is offered next to reviewing planning.
+      ["booked", "review_planning", `${base}/events/${ev.booked.id}/planning`, "#client-access"],
       ["legacy", "check_booking", "#payments", null],
       // Booked with Event basics only (no default template): staff choose the template first.
       ["corrected", "set_up_planning", `${base}/events/${ev.corrected.id}/planning`, null],

@@ -9,7 +9,7 @@ import { PlanningInviteRequest } from "./planning-invite-request";
 
 export const metadata: Metadata = { title: "Plan your event", robots: { index: false, follow: false }, referrer: "strict-origin" };
 
-/** The link in a planning invitation (an event booked elsewhere): ask for a verification email. Opening it changes nothing. */
+/** The link in a planning invitation: ask for a verification email (or continue, if already signed in as the invited address). Opening it changes nothing. */
 export default async function PlanningInvitation({ params }: PageProps<"/[tenant]/planning-invite">) {
   const { tenant: slug } = await params;
   if (!SLUG_PATTERN.test(slug)) notFound();

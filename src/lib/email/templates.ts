@@ -430,35 +430,48 @@ export function renderStaffSignInEmail(input: Branding & { tenantDisplayName: st
 }
 
 /**
- * Planning invitation for an event booked outside Flux DJ (outbox event
- * "planning_invitation"). It says the event is booked and planning is ready;
- * it never mentions a proposal, contract, deposit or payment, and never
- * suggests Flux DJ took the booking. The link only lets the invited address
- * ask for a verification email.
+ * "Hi Riya," from "Riya Patel". A name whose first word is a title or an
+ * initial ("Dr. Smith", "J. Doe") is used whole.
+ */
+export function firstName(name: string): string {
+  const trimmed = name.trim();
+  const first = trimmed.split(/\s+/)[0] ?? "";
+  return first.length > 1 && !first.endsWith(".") ? first : trimmed;
+}
+
+/**
+ * Planning invitation (outbox event "planning_invitation"), the same email
+ * for a Flux booking and an event booked elsewhere, sent only when staff
+ * press Send planning invitation. It says planning is ready, never that the
+ * client has registered, and never mentions a proposal, contract, deposit or
+ * payment. The link only lets the invited address ask for a verification
+ * email (or continue, if they're already signed in as that address).
  */
 export function renderPlanningInvitationEmail(
   input: Branding & { tenantDisplayName: string; clientName: string; eventTitle: string; eventDate: string | null; invitationLink: string; expiresAt: string | null },
 ): RenderedEmail {
   const dj = input.tenantDisplayName;
   const expires = formatDate(input.expiresAt);
-  return render(`Plan your event with ${dj}: ${input.eventTitle}`, {
+  return render("It's time to plan your event!", {
     brand: brandOf(input, dj),
-    preheader: `Your event is booked. Let's plan the details of ${input.eventTitle}.`,
-    heading: "Let's plan your event",
-    greeting: `Hi ${input.clientName},`,
+    preheader: `${dj} is ready to start planning ${input.eventTitle} with you.`,
+    heading: "It's time to plan your event!",
+    greeting: `Hi ${firstName(input.clientName) || "there"},`,
     paragraphs: [
-      `Your event is booked. ${dj} uses Flux DJ to plan the details with you: timing, music, people and vendors.`,
-      "To keep your planning private, you'll confirm your email address before you open it. No password is needed.",
+      "We're ready to start planning your event!",
+      "You can now use your planning portal to share your music preferences, important event details, timeline information and anything else we'll need to make your event a success.",
     ],
     details: [
       ["Event", input.eventTitle],
       ["Date", input.eventDate ? formatDay(input.eventDate) : null],
     ],
-    action: { label: "Start planning", href: input.invitationLink },
+    action: { label: "Open your planning portal", href: input.invitationLink },
     notes: [
-      expires ? `This invitation link works until ${expires}. Please don't forward it.` : "Please don't forward this link.",
-      input.canReply ? "Questions? Reply to this email." : "",
-    ].filter(Boolean),
+      "For security, you may be asked to verify your email address before accessing your event.",
+      expires ? `This link works until ${expires}. Please don't forward it.` : "Please don't forward this link.",
+      "We're looking forward to getting everything ready!",
+      dj,
+    ],
     footer: clientFooter(dj, input.canReply),
   });
 }

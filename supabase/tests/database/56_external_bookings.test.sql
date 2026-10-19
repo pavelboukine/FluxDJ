@@ -7,7 +7,7 @@
 -- archived events stay refused.
 begin;
 \ir _fixtures.psql
-select plan(84);
+select plan(86);
 
 -- Events staff create get their id from the database (staff can't choose one); it is recorded here by name.
 create table tests.created (name text primary key, id uuid not null);
@@ -182,7 +182,7 @@ update public.tenants set suspended_at = null where id = tests.id('tenant_a');
 set local session_replication_role = origin;
 
 select lives_ok($$ select tests.as_user('staff_a', format('select public.setup_event_plan(%L, null)', tests.id('flux_new'))) $$, 'a Flux event can set planning up early, as before');
-select throws_ok($$ select tests.invite('flux_new', 'inv_flux') $$, '22023', null, 'but planning invitations are only for events booked elsewhere');
+select throws_ok($$ select tests.invite('flux_new', 'inv_flux') $$, '22023', null, 'but an unbooked Flux event cannot be invited to planning');
 
 select is(tests.invite('ext', 'inv1') ->> 'status', 'sent', 'staff invite the primary contact');
 select is((select array[event_type, entity_type, recipient_email] from public.email_outbox where entity_id = tests.id('inv1')),
@@ -252,6 +252,9 @@ select tests.su();
 -- ===========================================================================
 -- Replacement, archiving, suspension
 -- ===========================================================================
+select throws_like($$ select tests.invite('ext', 'inv_closed') $$, '%client editing is closed%', 'no invitation while client editing is closed');
+select lives_ok($$ select tests.as_user('staff_a', format('select public.reopen_plan_client_editing(%L, %s, null, null)', tests.id('ext'),
+  (select client_cutoff_version from public.event_plans where event_id = tests.id('ext')))) $$, 'staff open client editing again');
 select is(tests.invite('ext', 'inv2') ->> 'status', 'sent', 'a new invitation can be sent');
 select ok((select revoked_at is not null from public.planning_invitations where id = tests.id('inv1')), 'it replaces the previous one');
 select is(tests.sign_in('inv1') ->> 'status', 'invalid', 'whose link stops working');

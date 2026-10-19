@@ -114,6 +114,8 @@ export function CommunicationsCard({ slug, data, timeZone }: { slug: string; dat
                       <p>
                         {row.entity_type === "proposal" ? (
                           <Link className="font-medium text-foreground underline-offset-4 hover:underline" href={`/staff/${slug}/proposals/${row.entity_id}`}>Open the proposal</Link>
+                        ) : row.entity_type === "planning_invitation" ? (
+                          <a className="font-medium text-foreground underline-offset-4 hover:underline" href="#client-access">Client access</a>
                         ) : (
                           <Link className="font-medium text-foreground underline-offset-4 hover:underline" href={`/staff/${slug}/contracts/${row.entity_id}`}>Open the contract</Link>
                         )}

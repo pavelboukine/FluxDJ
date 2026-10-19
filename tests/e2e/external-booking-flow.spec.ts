@@ -77,8 +77,12 @@ test.describe.serial("event booked elsewhere", () => {
     await expect(staff.getByTestId("overview-payments")).toHaveCount(0);
     await expect(staff.locator("#proposal")).toHaveCount(0);
     await expect(staff.locator("main")).not.toContainText(/Create a proposal|Prepare the contract|Record the deposit|Waiting for the client to sign/);
-    await expect(staff.getByTestId("client-access-state")).toHaveText("Not invited yet.");
-    await expect(staff.getByTestId("client-access")).toContainText("Set up planning before inviting the client.");
+    await expect(staff.getByTestId("client-access-state")).toHaveText("Not invited to planning yet.");
+    await expect(staff.getByTestId("client-access-blocker")).toContainText("Set up planning before inviting your client.");
+    await expect(staff.getByTestId("client-access").getByRole("button", { name: "Send planning invitation" })).toHaveCount(0);
+    // The client's email is stored on the primary contact the form created.
+    const { data: primary } = await must(admin.from("event_clients").select("is_primary, clients(name, email)").eq("event_id", eventId).single());
+    expect(primary).toEqual({ is_primary: true, clients: { name: clientName, email: clientEmail } });
   });
 
   test("staff set planning up from a template and invite the client; nothing is sent before", async () => {
@@ -88,21 +92,30 @@ test.describe.serial("event booked elsewhere", () => {
     await expect(staff.getByText("This event was booked outside Flux DJ.")).toBeVisible();
     await staff.getByLabel("Template").selectOption({ label: "Wedding" });
     await staff.getByRole("button", { name: "Set up planning" }).click();
-    await expect(staff.getByTestId("client-access")).toContainText("Booked externally: the client opens planning after you invite them");
+    await expect(staff.getByTestId("client-access")).toContainText("Booked externally: the client opens planning after you send a planning invitation");
+    // Where staff set up and open planning, they're told nothing has been emailed yet.
+    await expect(staff.getByTestId("planning-invite-hint")).toContainText("Nothing is emailed to them until you send a planning invitation.");
+    expect((await admin.from("email_outbox").select("id").eq("recipient_email", clientEmail)).data).toEqual([]);
 
     await staff.goto(eventUrl);
     await expect(staff.getByTestId("next-action")).toHaveAttribute("data-key", "invite_client");
     const sentAfter = Date.now();
     await staff.getByTestId("next-action-primary").click();
     const access = staff.getByTestId("client-access");
-    await access.getByRole("button", { name: `Invite ${clientName}` }).click();
-    await expect(access.getByTestId("client-access-state")).toContainText(`Invitation sent`);
+    await expect(access).toContainText(clientEmail);
+    await access.getByRole("button", { name: "Send planning invitation" }).click();
+    await expect(access.getByTestId("client-access-state")).toContainText(`Planning invitation for ${clientEmail}`);
+    await expect(access.getByTestId("planning-invitation-recipient")).toHaveText(clientEmail);
+    await expect(access.getByTestId("planning-invitation-status")).toHaveText(/^(Queued|Sent)$/);
     await expect(staff.getByTestId("next-action")).toHaveAttribute("data-key", "awaiting_planning_acceptance");
     await expect(staff.getByTestId("overview-client-access")).toContainText("Invited");
 
-    const email = await waitForEmail(clientEmail, { after: sentAfter, subject: /^Plan your event with / });
-    expect(email.subject).toBe(`Plan your event with ${tenant.displayName}: ${title}`);
-    expect(email.text).toContain("Your event is booked.");
+    const email = await waitForEmail(clientEmail, { after: sentAfter, subject: /^It's time to plan your event!/ });
+    expect(email.subject).toBe("It's time to plan your event!");
+    expect(email.text).toContain("We're ready to start planning your event!");
+    expect(email.text).toContain(title);
+    await staff.reload();
+    await expect(access.getByTestId("planning-invitation-status")).toHaveText("Sent");
     expect(email.text).not.toMatch(/proposal|contract|deposit|payment/i);
     const link = /(http\S+\/planning-invite#\S+)/.exec(email.text)![1];
 

@@ -1,6 +1,7 @@
 import type { PaymentSummary } from "@/lib/payments";
 import { formatCents } from "@/lib/money";
 import { shortDate, shortInstant } from "@/lib/dates";
+import { deliveryState, type OutboxRow } from "@/lib/email/history";
 import type { StaffEditing } from "@/lib/planning/cutoff";
 import { progressSummaryLine, type PlanProgress } from "@/lib/planning/view";
 import { BOOKED_EXTERNALLY, BOOKED_EXTERNALLY_DETAIL } from "./status";
@@ -22,9 +23,10 @@ export type ProposalRecord = { id: string; revision: number; status: string; exp
 export type ContractRecord = { id: string; status: string; signing_mode: string; created_at: string; signed_at: string | null; label: string };
 
 /**
- * Client access to an event booked elsewhere: the latest planning invitation
- * (null when none was sent) and whether a client has verified, active access.
- * Having a client record alone never counts as invited.
+ * Client access to planning: the latest planning invitation (null when none
+ * was sent) and whether a client has verified, active access (from a
+ * planning invitation, or for a Flux booking from the contract). Having a
+ * client record alone never counts as invited.
  */
 export type PlanningAccess = {
   invitation: {
@@ -34,6 +36,7 @@ export type PlanningAccess = {
     expiresAt: string;
     revoked: boolean;
     accepted: boolean;
+    acceptedAt?: string | null;
     /** The primary contact, or their email, changed since it was sent: it no longer works (the database checks the same). */
     stale?: boolean;
   } | null;
@@ -48,7 +51,7 @@ export type WorkspaceFacts = {
   lifecycle: string;
   /** events.booking_source: "flux" (default) or "external" (booked elsewhere; planning only). */
   bookingSource?: string;
-  /** Only read for events booked elsewhere. */
+  /** Planning invitation state (events booked for planning, by Flux or elsewhere). */
   planningAccess?: PlanningAccess | null;
   proposals: ProposalRecord[];
   activeProposalId: string | null;
@@ -174,8 +177,10 @@ export function nextAction(f: WorkspaceFacts): NextAction {
           warning,
         };
       }
+      // Planning is ready but the client hasn't been told: inviting is always a separate staff step.
+      const invite: Link | null = f.planningAccess && !f.planningAccess.invitation ? { label: "Send planning invitation", href: "#client-access" } : null;
       return f.planning.exists
-        ? { ...blank, key: "review_planning", title: "Review planning", detail: planningLine(f.planning) ?? "The event is booked.", primary: { label: "Review planning", href: planningHref }, secondary: runSheet, warning }
+        ? { ...blank, key: "review_planning", title: "Review planning", detail: planningLine(f.planning) ?? "The event is booked.", primary: { label: "Review planning", href: planningHref }, secondary: invite ?? runSheet, warning }
         : { ...blank, key: "set_up_planning", title: "Set up planning", detail: "The event is booked but has no plan yet. You choose a template when you set it up.", primary: { label: "Set up planning", href: planningHref }, warning };
     }
     if (f.lifecycle === "awaiting_deposit") {
@@ -305,6 +310,27 @@ export function nextAction(f: WorkspaceFacts): NextAction {
 /** An invitation that still works: not replaced or revoked, not expired. */
 export const invitationOpen = (i: PlanningAccess["invitation"], now: Date) => Boolean(i && !i.revoked && !i.stale && new Date(i.expiresAt) > now);
 
+export type InvitationStatus = { label: string; tone: "normal" | "pending" | "good" | "attention" };
+
+/**
+ * The invitation's state from its records and its email's outbox row: queued
+ * is never shown as sent, and "sent" means the email provider accepted it.
+ */
+export function invitationStatus(i: PlanningAccess["invitation"], email: OutboxRow | null, now: Date): InvitationStatus {
+  if (!i) return { label: "Not invited", tone: "normal" };
+  if (i.revoked) return { label: "Replaced or cancelled", tone: "normal" };
+  if (i.stale) return { label: "Outdated", tone: "attention" };
+  if (i.accepted) return { label: "Accepted", tone: "good" };
+  if (new Date(i.expiresAt) <= now) return { label: "Expired", tone: "attention" };
+  if (!email) return { label: "Queued", tone: "pending" };
+  const state = deliveryState(email, now);
+  if (email.status === "pending" || email.status === "sending") return { label: email.attempts > 0 ? "Queued (retrying)" : "Queued", tone: "pending" };
+  if (email.status === "failed") return { label: "Failed", tone: "attention" };
+  if (email.status === "cancelled") return { label: "Not sent", tone: "attention" };
+  if (state.attention) return { label: `Not delivered (${state.label.toLowerCase()})`, tone: "attention" };
+  return { label: email.provider_status === "delivered" ? "Delivered" : "Sent", tone: state.tone === "good" ? "good" : "normal" };
+}
+
 /** The planning workflow for an event booked elsewhere (no proposal, contract or payment steps). */
 function externalNextAction(
   f: WorkspaceFacts,
@@ -346,7 +372,7 @@ function externalNextAction(
       ...blank,
       key: "awaiting_planning_acceptance",
       title: "Waiting for the client to open planning",
-      detail: `A planning invitation was sent to ${invitation.email}. They haven't confirmed their email yet.`,
+      detail: `The planning invitation to ${invitation.email} hasn't been accepted yet. Its delivery status is under Client access.`,
       primary: null,
       secondary: { label: "Client access", href: "#client-access" },
       waiting: true,
@@ -362,7 +388,7 @@ function externalNextAction(
         ? "The primary contact or their email changed since the last invitation, so it no longer works. Send a new one when you're ready."
         : "The last planning invitation expired or was replaced. Send a new one when you're ready."
       : "Planning is set up. Review it, then invite the client to plan online. Nothing has been sent yet.",
-    primary: contactBlockers.length > 0 ? null : { label: "Invite client", href: "#client-access" },
+    primary: contactBlockers.length > 0 ? null : { label: "Send planning invitation", href: "#client-access" },
     secondary: review,
     blockers: contactBlockers,
   };
@@ -383,7 +409,7 @@ export function clientAccessSummary(f: WorkspaceFacts, fmt: (iso: string) => str
   const link: Link = { label: "Details", href: "#client-access" };
   if (access.clientHasAccess) return { status: "Client has access", detail: "Verified and able to open planning.", link };
   const i = access.invitation;
-  if (i && invitationOpen(i, f.now)) return { status: "Invited", detail: `Sent ${fmt(i.createdAt)} to ${i.email}; not opened yet.`, link };
+  if (i && invitationOpen(i, f.now)) return { status: "Invited", detail: `Invited ${fmt(i.createdAt)} at ${i.email}; not accepted yet.`, link };
   if (i) return { status: i.stale ? "Invitation outdated" : "Invitation expired", detail: "Send a new invitation.", link, attention: !f.archived };
   return { status: "Not invited", detail: f.planning.exists && !f.planning.awaitingSetup ? "Invite the client when planning is ready." : "Set up planning first.", link };
 }
