@@ -46,7 +46,7 @@ import type { SaveItemResult } from "@/lib/planning/view";
 import { FieldBox, describedBy } from "./basics-editor";
 import { TimeField } from "./time-field";
 import { MusicSection, usePlanSongs } from "./music-editor";
-import { SongPicker, type SongGroup } from "./song-picker";
+import { SongPicker, type SongGroup, type SongPickerField } from "./song-picker";
 import { ItemChecklist, useEditingClosed } from "./progress";
 import { discussLabel, djIdentity, djRef } from "@/lib/planning/dj";
 import { SaveStatus, useAutosave } from "./use-autosave";
@@ -314,7 +314,7 @@ function songPersonFields(c: SongPeople) {
   return function renderSongPersonFields(p: SongPersonForm, onChange: (changes: Partial<SongPersonForm>) => void, errorFor: (f: string) => string | null, idPrefix: string) {
     const draft = p.new_song ?? null;
     const pending = draft?.use ? newSongProblem(draft, c.room, c.listName) : null;
-    const songError = (f: "song_id" | "song_title" | "song_artist" | "song_notes") => errorFor(f) ?? (pending?.field === f ? pending.message : null);
+    const songError = (f: SongPickerField) => errorFor(f) ?? (pending?.field === f ? pending.message : null);
     const listed = c.people.some((x) => x.id === p.id);
     return (
       <>

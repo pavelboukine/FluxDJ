@@ -161,10 +161,17 @@ test.describe.serial("remaining planning editors", () => {
       await form.getByLabel("Activity").fill("Shoe game");
       await form.getByLabel("At a moment in the evening").check();
       await form.getByLabel("Moment", { exact: true }).fill("Between courses");
+      // Music is optional and out of the way until asked for.
+      await expect(form.getByRole("group", { name: "Music (optional)" })).toBeVisible();
+      await expect(form.getByLabel("Song title")).toHaveCount(0);
+      await form.getByRole("button", { name: "Add a song" }).click();
+      await expect(form.getByLabel("Song title")).toBeFocused();
       await form.getByLabel("Song title").fill("Shoe");
       await form.getByRole("button", { name: "Add", exact: true }).click();
-      await expect(form).toContainText("Enter the song's title and artist, or clear the song.");
-      await form.getByLabel("Song artist").fill("The Band");
+      await expect(form).toContainText("Enter the song's title and artist, or remove the song.");
+      await form.getByLabel("Artist", { exact: true }).fill("The Band");
+      await form.getByLabel("Version (optional)").fill("Extended remix");
+      await form.getByLabel("Song link (optional)").fill("https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC?si=a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4&context=spotify%3Aplaylist%3A37i9dQZF1DXcBWIGoYBM5M");
     });
     await addEntry(dinner, "dinner_activities-entries-add", async (form) => {
       await form.getByLabel("Activity").fill("Lantern blessing (family tradition)");
@@ -174,8 +181,24 @@ test.describe.serial("remaining planning editors", () => {
       await expect(form.getByLabel("Pronunciation guide (optional)")).toHaveCount(0);
     });
     await expect(dinner.getByText("All changes saved")).toBeVisible();
-    await expect(dinner.getByTestId("entry-row").nth(0)).toContainText("Song: Shoe by The Band");
+    await expect(dinner.getByTestId("entry-row").nth(0)).toContainText("Song: Shoe by The Band (Extended remix) · Open link (open.spotify.com)");
     await expect(client.getByTestId("moment-dinner_activities").locator("summary").first()).toContainText("Complete");
+    expect((await answers(eventId, "dinner_activities"))!.entries![0]).toMatchObject({ song_title: "Shoe", song_artist: "The Band", song_version: "Extended remix", song_link: "https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC?si=a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4&context=spotify%3Aplaylist%3A37i9dQZF1DXcBWIGoYBM5M" });
+    expect(await noSideways(client)).toBeLessThanOrEqual(0);
+    // Editing an activity with a song shows it; removing the song keeps the activity.
+    await client.reload();
+    const reloaded = await openMoment(client, "dinner", "dinner_activities");
+    await reloaded.getByRole("button", { name: 'Edit "Shoe game"' }).click();
+    const shoe = reloaded.getByTestId("entry-row").filter({ hasText: "Shoe game" });
+    await expect(shoe.getByLabel("Song title")).toHaveValue("Shoe");
+    await expect(shoe.getByLabel("Song link (optional)")).toHaveValue("https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC?si=a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4&context=spotify%3Aplaylist%3A37i9dQZF1DXcBWIGoYBM5M");
+    await shoe.getByRole("button", { name: 'Remove the song from "Shoe game"' }).click();
+    await expect(shoe.getByLabel("Song title")).toHaveCount(0);
+    await expect(reloaded.getByText("All changes saved")).toBeVisible();
+    const entries = (await answers(eventId, "dinner_activities"))!.entries!;
+    expect(entries[0]).toMatchObject({ name: "Shoe game", timing: "cue", cue: "Between courses" });
+    expect(entries[0]).toEqual(expect.not.objectContaining({ song_title: expect.anything() }));
+    expect(entries).toHaveLength(2);
 
     const party = await openMoment(client, "party", "party_activities");
     await party.getByLabel("No activities").check();
@@ -213,8 +236,9 @@ test.describe.serial("remaining planning editors", () => {
     await row.getByLabel("Relationship (optional)").fill("Grandparents");
     await expect(card.getByText("Saving…")).toBeVisible();
     // A song needs both fields: typed during the save, it is sent next.
+    await row.getByRole("button", { name: "Add a song" }).click();
     await row.getByLabel("Song title").fill("Moon River");
-    await row.getByLabel("Song artist").fill("Andy Williams");
+    await row.getByLabel("Artist", { exact: true }).fill("Andy Williams");
     release();
     await expect(card.getByText("All changes saved")).toBeVisible();
     await client.unroute(`**${planningUrl}*`);
@@ -242,8 +266,10 @@ test.describe.serial("remaining planning editors", () => {
     const otherCard = await openMoment(other, "party", "dedications");
     await addEntry(card, "dedications-entries-add", async (form) => {
       await form.getByLabel("For whom").fill("Team Lee");
+      await expect(form.getByRole("group", { name: "Music (needed to complete)" })).toBeVisible();
+      await form.getByRole("button", { name: "Add a song" }).click();
       await form.getByLabel("Song title").fill("Jump");
-      await form.getByLabel("Song artist").fill("Van Halen");
+      await form.getByLabel("Artist", { exact: true }).fill("Van Halen");
     });
     await expect(card.getByText("All changes saved")).toBeVisible();
     await otherCard.getByRole("button", { name: 'Remove "Our grandparents"' }).click();

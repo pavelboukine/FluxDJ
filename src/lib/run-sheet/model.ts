@@ -5,6 +5,7 @@ import type { IntroductionsAnswers, McAnswers, Person, ProcessionalAnswers, Spee
 import { GRAND_ENTRANCE_MOMENTS, grandEntranceOf, grandEntranceOpen, nextDayLabel, REQUIREMENT_NOTES, requirementLabel } from "@/lib/planning/stages";
 import type { ArrivalAnswers, TimedAnswers, TimedEntry } from "@/lib/planning/timed";
 import { formatInstant } from "@/lib/planning/cutoff";
+import { isHttpsUrl } from "@/lib/payments";
 import { djIdentity } from "@/lib/planning/dj";
 import { formatEventDate, formatImportedAnswer, type StaffPlanningView } from "@/lib/planning/view";
 
@@ -41,7 +42,8 @@ export type When =
 
 /** `order`: the entry's place in an ordered list such as the processional (1 is first). */
 export type PersonLine = { names: string; pronunciation?: string; role?: string; wording?: string; order?: number };
-export type SongLine = { title: string; artist: string; version?: string; cue?: string; notes?: string };
+/** `link`: the song's https:// link as the client saved it (shown as its host, never fetched). */
+export type SongLine = { title: string; artist: string; version?: string; cue?: string; notes?: string; link?: string };
 /** An explicit answer instead of content. */
 export type Status = { tone: "choice" | "open" | "none"; text: string };
 
@@ -162,7 +164,8 @@ function song(s: Partial<Song> | undefined): SongLine | null {
   const title = str(s?.title);
   const artist = str(s?.artist);
   if (!title || !artist) return null;
-  return { title, artist, version: str(s?.version), cue: str(s?.cue), notes: str(s?.notes) };
+  const link = str(s?.link);
+  return { title, artist, version: str(s?.version), cue: str(s?.cue), notes: str(s?.notes), link: link && isHttpsUrl(link) ? link : undefined };
 }
 const songs = (list: unknown): SongLine[] => (Array.isArray(list) ? list.map((s) => song(s as Song)).filter((s): s is SongLine => s !== null) : []);
 
@@ -698,7 +701,7 @@ function timedRows(id: string, editor: "program" | "activities" | "dedications",
   }
   const rows = entries.map((e): Row => {
     const when = timedWhen(e);
-    const s = song({ title: e.song_title as string, artist: e.song_artist as string, version: e.song_version as string | undefined });
+    const s = song({ title: e.song_title as string, artist: e.song_artist as string, version: e.song_version as string | undefined, link: e.song_link as string | undefined });
     const people: PersonLine[] = [];
     const notes: string[] = [];
     let title = label;

@@ -1,4 +1,5 @@
 import { UUID_RE } from "@/lib/forms";
+import { isHttpsUrl } from "@/lib/payments";
 import { MUSIC_RULES, SONG_LIMITS, emptySong, musicAnswersFromForm, type MusicAnswers, type MusicForm, type Song, type SongForm } from "./music";
 
 /**
@@ -92,7 +93,7 @@ export type ProcessionalAnswers = MusicAnswers & { participants?: Person[]; part
  * (and the person links to it) in one change: when a new person is added, or
  * when `use` is set on a person already listed. Never saved on its own.
  */
-export type NewSongForm = { id: string; title: string; artist: string; notes: string; use?: boolean };
+export type NewSongForm = { id: string; title: string; artist: string; version?: string; link?: string; notes: string; use?: boolean };
 /** A person or group with a song chosen, or typed in, right with them (Processional, grand entrance). */
 export type SongPersonForm = PersonForm & { new_song?: NewSongForm | null; kept_song_id?: string };
 export type ProcessionalPersonForm = SongPersonForm;
@@ -111,10 +112,10 @@ export function processionalForm(a: ProcessionalAnswers): ProcessionalForm {
 }
 
 export function emptyNewSong(id: string): NewSongForm {
-  return { id, title: "", artist: "", notes: "" };
+  return { id, title: "", artist: "", version: "", link: "", notes: "" };
 }
 
-const blankSong = (s: NewSongForm) => !s.title.trim() && !s.artist.trim() && !s.notes.trim();
+const blankSong = (s: NewSongForm) => !s.title.trim() && !s.artist.trim() && !(s.version ?? "").trim() && !(s.link ?? "").trim() && !s.notes.trim();
 
 /** Why a person's new song can't join the list yet (field of the person), or null. `room`: songs the list can still take; `list`: what it's called. */
 export function newSongProblem(s: NewSongForm | null | undefined, room: number, list = "The processional"): { field: string; message: string } | null {
@@ -123,6 +124,10 @@ export function newSongProblem(s: NewSongForm | null | undefined, room: number, 
   if (!s.artist.trim()) return { field: "song_artist", message: "Enter the song's title and artist, or choose \"No song yet\"." };
   if (s.title.trim().length > SONG_LIMITS.title) return { field: "song_title", message: `Keep this under ${SONG_LIMITS.title} characters.` };
   if (s.artist.trim().length > SONG_LIMITS.artist) return { field: "song_artist", message: `Keep this under ${SONG_LIMITS.artist} characters.` };
+  if ((s.version ?? "").trim().length > SONG_LIMITS.version) return { field: "song_version", message: `Keep this under ${SONG_LIMITS.version} characters.` };
+  const link = (s.link ?? "").trim();
+  if (link.length > SONG_LIMITS.link) return { field: "song_link", message: `Keep this under ${SONG_LIMITS.link} characters.` };
+  if (link && !isHttpsUrl(link)) return { field: "song_link", message: "Enter a full https:// address, or leave the link empty." };
   if (s.notes.trim().length > SONG_LIMITS.notes) return { field: "song_notes", message: `Keep this under ${SONG_LIMITS.notes} characters.` };
   if (room <= 0) return { field: "song_title", message: `${list} has the maximum of ${MUSIC_RULES.moment_songs.maxSongs} songs: choose one of them.` };
   return null;
@@ -149,7 +154,7 @@ export function addNewSongs<P extends SongPersonForm>(current: SongForm[], befor
     if (blankSong(s)) return { ...p, new_song: null };
     if (newSongProblem(s, MUSIC_RULES.moment_songs.maxSongs - songs.length)) return p;
     if (!songs.some((x) => x.id === s.id)) {
-      songs.push({ ...emptySong(s.id), title: s.title.trim(), artist: s.artist.trim(), notes: s.notes.trim() });
+      songs.push({ ...emptySong(s.id), title: s.title.trim(), artist: s.artist.trim(), version: (s.version ?? "").trim(), link: (s.link ?? "").trim(), notes: s.notes.trim() });
     }
     return { ...p, song_id: s.id, music: "song" as const, new_song: null };
   });

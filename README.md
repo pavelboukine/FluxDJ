@@ -398,7 +398,8 @@ How it works:
   `src/lib/planning/music.ts`). Title and artist are needed (200 characters
   each); version 100, cue 80, notes 500, link 1,000. Links must be
   `https://` with a host name and no credentials (`private.is_https_url`).
-  They are shown as "Open link (host)", open in a new tab with
+  They are shown as "Open link (host)" (on the run sheet, web and PDF, as
+  "Song link (host)"), open in a new tab with
   `noopener noreferrer`, and are never fetched. A list holds up to 150 songs,
   a moment up to 12. Unknown fields, repeated or malformed ids and other
   editors' choices are refused.
@@ -446,6 +447,12 @@ synthesis). Each editor opens as a card inside its stage, like songs.
 | Grand entrance order (Introductions, Reception entrance) | Everyone introduced, in order, each with their song; then the grand entrance songs, each once. Shown and counted only while a grand entrance is planned | Names exactly as announced; role, name pronunciation, how to announce them, instructions for the DJ or MC (all optional); music (needed): **Choose a song** (one already listed, an older plan's Entrance music song, or one typed in right there), **DJ's choice**, or **Not decided yet** (the default; stays open). Stored as `song_id`, `"music": "dj_choice"` or neither; an entry without a song is never read as the DJ's choice (`20261113000100`) | Nobody introduced; discuss with DJ |
 | MC (Reception entrance) | Who handles MC duties: your DJ, someone else, your DJ and another MC sharing them, or not sure yet (discuss with your DJ). The DJ choices name the event's DJ when one is configured ("DJ Boukine (your DJ) will be the MC"), otherwise "Your DJ"; staff see "the DJ" (`20261121000100`) | Someone else or shared: the MC's name (needed), phone or email; instructions. No pronunciation guide (older guides are kept and shown to staff). "No MC" is no longer offered; a saved one stays selected and valid until changed | |
 | Speeches and toasts (Dinner, Program or Party) | Speakers in order | Speaker; role, pronunciation; timing: an exact time, a moment ("After the main course") or not decided; minutes, microphone/AV notes, instructions (all optional) | No speeches; discuss with DJ |
+
+Every place a client types a song uses the same fields
+(`src/components/planning/song-fields.tsx`): title, artist, version and
+link, plus notes or a cue where that editor keeps them. **Enter a new song…**
+with a Processional or grand entrance entry takes a version and a link too,
+checked like the songs list before the song joins it.
 
 To try it: in **Ceremony → Processional**, **Add person or group** with
 **Enter a new song…**, then add another who walks to the same song (pick it
@@ -577,8 +584,8 @@ How it works:
 |---|---|---|
 | Arrival details (Guest arrival) | Location: same as the event venue, same as the ceremony, or another place, plus room or area; arrival time: same as the ceremony's guest arrival, or a start and end time; welcome instructions; announcement wording; or "No separate arrival arrangements" | Location and arrival time, each resolved; or "no separate arrangements" (not applicable) |
 | Program details (Speeches and program) | Optional overall start and end, host and pronunciation, instructions; ordered agenda items: title, timing, minutes, presenter, pronunciation, instructions | Every item has a time or a moment; or "No formal program" (not applicable) |
-| Activities (Dinner and Party, one shared editor) | Ordered activities: name (suggestions such as Shoe game, Bouquet toss or Centrepiece giveaway, or anything typed, such as a cultural tradition), timing, minutes, host, participants, instructions, optional song (no pronunciation guide; older guides are kept and shown to staff) | Every activity has a time or a moment; or "No activities" |
-| Dedications (Party) | Ordered dedications: for whom, relationship, pronunciation, announcement message, song, timing (any time during the party, a time, a moment or undecided), instructions | Every dedication has a song and a timing; or "No dedications" |
+| Activities (Dinner and Party, one shared editor) | Ordered activities: name (suggestions such as Shoe game, Bouquet toss or Centrepiece giveaway, or anything typed, such as a cultural tradition), timing, minutes, host, participants, instructions, optional song under **Music (optional) → Add a song** (title, artist, version, link; shown when editing an activity that has one; **Remove song** keeps the activity). No pronunciation guide (older guides are kept and shown to staff) | Every activity has a time or a moment; or "No activities" |
+| Dedications (Party) | Ordered dedications: for whom, relationship, pronunciation, announcement message, song (**Music (needed to complete) → Add a song**, as for activities), timing (any time during the party, a time, a moment or undecided), instructions | Every dedication has a song and a timing; or "No dedications" |
 
 Timing everywhere is an exact time (local to the event, with an explicit
 **Next day** after midnight), a moment such as "After dessert", or "Not

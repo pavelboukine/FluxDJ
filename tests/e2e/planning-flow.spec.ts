@@ -18,10 +18,10 @@
  *   - archiving closes client planning; unarchiving reopens it.
  */
 import { randomUUID } from "node:crypto";
-import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { expect, test, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { bookEvent, contractualState, must, sessionFor } from "./booking";
 import { grantPlatformAdminLocally, revokePlatformAdminLocally } from "../support/platform-admin";
-import { admin, openPlanSection, signInStaff, signInWithLink } from "./support";
+import { admin, openPlanMoment, openPlanSection, signInStaff, signInWithLink } from "./support";
 import { archiveTestTenant, createTestTenant, type TestTenant } from "./tenant";
 
 let tenant: TestTenant;
@@ -598,6 +598,65 @@ test.describe.serial("planning", () => {
       expect(await noSideways(client)).toBeLessThanOrEqual(0);
     }
     await client.setViewportSize({ width: 390, height: 844 });
+  });
+
+  test("leaving a section resets its questions to collapsed; input, pending and failed saves survive, and navigating saves nothing", async () => {
+    await client.setViewportSize({ width: 390, height: 844 });
+    const isAction = (route: { request(): { method(): string; headers(): Record<string, string> } }) =>
+      route.request().method() === "POST" && Boolean(route.request().headers()["next-action"]);
+    const ceremony = await openPlanSection(client, "ceremony");
+    const signing = ceremony.getByTestId("moment-ceremony_signing");
+    const recessional = ceremony.getByTestId("moment-recessional");
+    const isOpen = (card: Locator) => card.evaluate((el) => (el as HTMLDetailsElement).open);
+    const untouched = await stageRow(eventId, "pre_ceremony_music");
+
+    // Next: the questions opened here are collapsed when the client comes back with Previous.
+    await openPlanMoment(client, "ceremony", "ceremony_signing");
+    await openPlanMoment(client, "ceremony", "recessional");
+    await ceremony.getByRole("link", { name: /Next: Cocktail/ }).click();
+    expect(sectionParam(client)).toBe("cocktail");
+    await client.locator("#plan-panel-cocktail").getByRole("link", { name: /Previous: Ceremony/ }).click();
+    expect(sectionParam(client)).toBe("ceremony");
+    expect(await isOpen(signing)).toBe(false);
+    expect(await isOpen(recessional)).toBe(false);
+    // Opening a question within the section, or a save, never collapses the others.
+    await openPlanMoment(client, "ceremony", "ceremony_signing");
+    await openPlanMoment(client, "ceremony", "recessional");
+    expect(await isOpen(signing)).toBe(true);
+
+    // A waiting (debounced) save is sent when leaving through the section list; the input survives.
+    await recessional.getByLabel("DJ's choice", { exact: true }).check();
+    await openPlanSection(client, "dinner");
+    await expect.poll(async () => (await stageRow(eventId, "recessional"))?.answers).toEqual({ choice: "dj_choice" });
+    await openPlanSection(client, "ceremony");
+    expect(await isOpen(recessional)).toBe(false);
+    expect(await isOpen(signing)).toBe(false);
+    await openPlanMoment(client, "ceremony", "recessional");
+    await expect(recessional.getByLabel("DJ's choice", { exact: true })).toBeChecked();
+
+    // A failed save is kept, flagged on the collapsed question, and retried after coming back (Back and Forward too).
+    await client.route(`**${planningUrl}*`, (route) => (isAction(route) ? route.abort() : route.continue()));
+    await recessional.getByLabel("Not sure yet — discuss with your DJ").check();
+    await expect(recessional.getByRole("alert")).toContainText("Couldn't save");
+    await openPlanSection(client, "party");
+    await client.goBack();
+    expect(sectionParam(client)).toBe("ceremony");
+    expect(await isOpen(recessional)).toBe(false);
+    await expect(recessional.locator(":scope > summary")).toContainText("Not saved");
+    await client.unroute(`**${planningUrl}*`);
+    await openPlanMoment(client, "ceremony", "recessional");
+    await expect(recessional.getByLabel("Not sure yet — discuss with your DJ")).toBeChecked();
+    await recessional.getByRole("button", { name: "Retry saving" }).click();
+    await expect(recessional.getByText("All changes saved")).toBeVisible();
+    expect((await stageRow(eventId, "recessional"))?.answers).toEqual({ choice: "discuss" });
+    await client.goForward();
+    expect(sectionParam(client)).toBe("party");
+    await client.goBack();
+    expect(await isOpen(recessional)).toBe(false);
+
+    // Navigating itself saved nothing else.
+    expect(await stageRow(eventId, "pre_ceremony_music")).toEqual(untouched);
+    expect(await noSideways(client)).toBeLessThanOrEqual(0);
   });
 
   test("staff edit stage details reusing Event basics; hidden stages keep their answers; nothing contractual changes", async () => {

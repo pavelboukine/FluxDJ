@@ -1,5 +1,6 @@
 import { Document, Link, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import { formatInstant } from "@/lib/planning/cutoff";
+import { linkHost } from "@/lib/payments";
 import { listCount, whenText, type PersonLine, type Row, type RunSheet, type SongLine, type StageSheet } from "./model";
 
 /**
@@ -92,6 +93,7 @@ function SongText({ song }: { song: SongLine }) {
       <Text style={s.bold}>{song.title}</Text>
       <Text>{` by ${song.artist}`}</Text>
       {song.version ? <Text style={s.muted}>{` (${song.version})`}</Text> : null}
+      {song.link ? <Text>{" · "}<Link src={song.link} style={s.link}>{`Song link (${linkHost(song.link)})`}</Link></Text> : null}
       {song.notes ? <Text>{`\n${song.notes}`}</Text> : null}
     </Text>
   );
@@ -283,6 +285,7 @@ export function RunSheetDocument({ sheet, revision }: { sheet: RunSheet; revisio
                     <Text style={s.bold}>{song.title}</Text>
                     <Text>{` · ${song.artist}`}</Text>
                     {song.version ? <Text style={s.muted}>{` (${song.version})`}</Text> : null}
+                    {song.link ? <Text>{" · "}<Link src={song.link} style={s.link}>{`Song link (${linkHost(song.link)})`}</Link></Text> : null}
                     {song.notes ? <Text style={s.muted}>{` · ${song.notes}`}</Text> : null}
                   </Text>
                 </View>

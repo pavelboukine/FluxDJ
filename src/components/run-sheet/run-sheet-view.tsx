@@ -2,6 +2,7 @@ import Link from "next/link";
 import { PdfDownloadLink } from "@/components/app/pwa";
 import { Badge } from "@/components/ui/badge";
 import { formatInstant } from "@/lib/planning/cutoff";
+import { linkHost } from "@/lib/payments";
 import { listCount, whenText, type PersonLine, type PlaylistLine, type Row, type RunSheet, type SongLine, type StageSheet } from "@/lib/run-sheet/model";
 import { cn } from "@/lib/utils";
 
@@ -33,8 +34,18 @@ function Song({ s }: { s: SongLine }) {
       {s.cue ? <span className="text-muted-foreground">{s.cue}: </span> : null}
       <span className="font-semibold">{s.title}</span> by {s.artist}
       {s.version ? <span className="text-muted-foreground"> ({s.version})</span> : null}
+      {s.link ? <> · <SongLink s={s} /></> : null}
       {s.notes ? <span className="block text-sm">{s.notes}</span> : null}
     </p>
+  );
+}
+
+/** A song's link as a short label with its host (never the raw URL, which can be very long). */
+function SongLink({ s }: { s: SongLine }) {
+  return (
+    <a className="text-sm underline underline-offset-4" href={s.link} target="_blank" rel="noopener noreferrer nofollow" aria-label={`Open song link for ${s.title} (${linkHost(s.link!)})`}>
+      Song link <span className="text-muted-foreground">({linkHost(s.link!)})</span>
+    </a>
   );
 }
 
@@ -239,6 +250,7 @@ export function RunSheetView({ sheet, revision, pdfHref, planningHref, refreshHr
                                 <li key={i} className="[overflow-wrap:anywhere]">
                                   <span className="font-medium">{s.title}</span> · {s.artist}
                                   {s.version ? <span className="text-muted-foreground"> ({s.version})</span> : null}
+                                  {s.link ? <> · <SongLink s={s} /></> : null}
                                   {s.notes ? <span className="text-muted-foreground"> · {s.notes}</span> : null}
                                 </li>
                               ))}

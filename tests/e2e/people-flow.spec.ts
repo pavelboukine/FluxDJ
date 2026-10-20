@@ -161,6 +161,12 @@ test.describe.serial("people in planning", () => {
     await bride.getByLabel("Song they walk in to").selectOption({ label: "Enter a new song…" });
     await bride.getByLabel("Song title").fill("Here Comes the Sun");
     await bride.getByLabel("Artist", { exact: true }).fill("The Beatles");
+    // The same song details as the songs list: a version and a link (checked before it joins the list).
+    await bride.getByLabel("Version (optional)").fill("2019 mix");
+    await bride.getByLabel("Song link (optional)").fill("open.spotify.com/track/6dGnYIeXmHdcikdzNNDMm2");
+    await bride.getByRole("button", { name: "Use this song" }).click();
+    await expect(bride).toContainText("Enter a full https:// address, or leave the link empty.");
+    await bride.getByLabel("Song link (optional)").fill("https://open.spotify.com/track/6dGnYIeXmHdcikdzNNDMm2");
     await bride.getByRole("button", { name: "Use this song" }).click();
     await expect(bride).toContainText("Song: Here Comes the Sun by The Beatles");
     // Changing a song keeps the old one for everyone else.
@@ -180,6 +186,8 @@ test.describe.serial("people in planning", () => {
     saved = (await answers(eventId, "processional"))!;
     // Each song once; the removed person's song stays for the others; the unused one stays listed (removable).
     expect(saved.songs!.map((x) => x.title)).toEqual(["Canon in D", "A Thousand Years", "Here Comes the Sun"]);
+    expect(saved.songs![2]).toMatchObject({ version: "2019 mix", link: "https://open.spotify.com/track/6dGnYIeXmHdcikdzNNDMm2" });
+    await expect(again.getByTestId("music-processional").getByTestId("song-row").filter({ hasText: "Here Comes the Sun" })).toContainText("Open link (open.spotify.com)");
     expect(saved.participants!.map((p) => [p.names, saved.songs!.find((x) => x.id === p.song_id)?.title])).toEqual([
       ["Groom and his mother", "Canon in D"], ["Bride and her father", "Here Comes the Sun"], ["Flower girl", "Canon in D"],
     ]);
@@ -379,6 +387,7 @@ test.describe.serial("people in planning", () => {
     await parents.getByLabel("Song they enter to").selectOption({ label: "Enter a new song…" });
     await parents.getByLabel("Song title").fill("September");
     await parents.getByLabel("Artist", { exact: true }).fill("Earth, Wind & Fire");
+    await parents.getByLabel("Song link (optional)").fill("https://www.youtube.com/watch?v=Gs069dndIYk");
     await parents.getByRole("button", { name: "Use this song" }).click();
     await parents.getByRole("button", { name: "Use this song" }).click({ timeout: 1000 }).catch(() => {}); // a doubled click
     await expect(parents).toContainText("Song: September by Earth, Wind & Fire");
@@ -397,6 +406,7 @@ test.describe.serial("people in planning", () => {
     saved = (await answers(eventId, "introductions"))!;
     // Each song once, none lost or doubled; the removed entry's song stays listed (now removable).
     expect(saved.songs!.map((s) => s.title)).toEqual(["Man! I Feel Like a Woman!", "Feel So Close", "September"]);
+    expect(saved.songs![2]).toMatchObject({ link: "https://www.youtube.com/watch?v=Gs069dndIYk" });
     expect(saved.entries!.map((e) => [e.names, saved.songs!.find((s) => s.id === e.song_id)?.title])).toEqual([
       ["The wedding party", "Feel So Close"], ["Our parents", "September"], ["Alex and Taylor Nguyen-Roy", "Feel So Close"],
     ]);

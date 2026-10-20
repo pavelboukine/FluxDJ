@@ -423,7 +423,8 @@ describe("playlist links in the run sheet", () => {
 
   it("leaves song moments and legacy lists as they were", () => {
     const first = sheet.stages.find((s) => s.key === "special_dances")!.rows[0];
-    expect(first.songs).toEqual([{ title: "Better Together", artist: "Jack Johnson", notes: "Fade out after second chorus", version: undefined, cue: undefined }]);
+    // A song's own link stays with the song (shown as its host); it never becomes a playlist.
+    expect(first.songs).toEqual([{ title: "Better Together", artist: "Jack Johnson", notes: "Fade out after second chorus", version: undefined, cue: undefined, link: "https://open.spotify.com/track/1" }]);
     expect(list("must_play").playlists).toEqual([]);
     expect(buildRunSheet(input(wedding, { title: "Legacy" })).musicLists.every((l) => l.playlists.length === 0)).toBe(true);
   });

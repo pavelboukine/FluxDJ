@@ -28,7 +28,9 @@ import { SaveScope, useItemSaveSummary, useNotSavedSections, useSaveStore, useSe
  * API, without a server round trip. Every section stays mounted and the
  * inactive ones are only hidden, so switching never discards input: a
  * pending, debounced or failed save keeps running or waiting in its editor,
- * and the navigation says where something isn't saved yet.
+ * and the navigation says where something isn't saved yet. Leaving a section
+ * resets its question disclosures to how they first appeared; only that UI
+ * state changes, never an answer or a draft.
  */
 
 /** A view that isn't a plan section (proposal answers, settings), listed after the stages. Keys contain "-", so they never match a library key. */
@@ -89,6 +91,22 @@ export function PlanNavigation({ sections, extras = [], stagesHeading = "Your ev
     // Instant scrolling (never smooth), so reduced-motion preferences are respected.
     (el ?? document.getElementById(WORKSPACE_ID))?.scrollIntoView({ block: "start" });
   }, []);
+
+  // Leaving a section, however it happens (Next, Previous, the section list, links, Back and
+  // Forward): its questions go back to how they first appeared (collapsed, or open when the
+  // section has just one), so returning finds it tidy. Only the disclosures change: every
+  // editor stays mounted with its input, and waiting saves are sent first (a no-op when go()
+  // already sent them), so nothing typed is dropped and a failed save keeps its Retry.
+  const shownRef = useRef(active);
+  useEffect(() => {
+    const left = shownRef.current;
+    shownRef.current = active;
+    if (left === active) return;
+    store?.flush(left);
+    document.getElementById(panelId(left))?.querySelectorAll<HTMLDetailsElement>("details[data-plan-item]").forEach((d) => {
+      d.open = d.hasAttribute("data-default-open");
+    });
+  }, [active, store]);
 
   useEffect(() => {
     activeRef.current = active;
@@ -455,7 +473,7 @@ export function PanelHeading({ view, children }: { view: string | null; children
 export function PlanMoment({ moment, defaultOpen, children }: { moment: SectionMoment; defaultOpen?: boolean; children: ReactNode }) {
   const save = useItemSaveSummary(moment.id);
   return (
-    <details open={defaultOpen} data-plan-item={moment.id} data-testid={`moment-${moment.key}`} className="group/moment rounded-xl border bg-background">
+    <details open={defaultOpen} data-default-open={defaultOpen ? "" : undefined} data-plan-item={moment.id} data-testid={`moment-${moment.key}`} className="group/moment rounded-xl border bg-background">
       <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-4 py-2.5 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
         <h3 className="min-w-0 text-sm font-semibold [overflow-wrap:anywhere]">{moment.label}</h3>
         <span className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { isHttpsUrl, linkHost } from "@/lib/payments";
 import { djRef } from "@/lib/planning/dj";
+import { SongFields } from "./song-fields";
 import {
   CHOICE_LABELS,
   LIST_CHOICE_LABEL,
@@ -325,7 +326,7 @@ export function MusicSection(props: {
                     idPrefix={`${base}-${s.id}`}
                     song={s}
                     cue={rules.cue}
-                    notesLabel={notesLabel}
+                    notes={notesLabel}
                     errorFor={(field) => errorFor(s.id, field)}
                     onChange={(changes) => editSong(s.id, changes)}
                   />
@@ -540,40 +541,6 @@ function AddPlaylist({ base, dj, playlists, onAdd }: { base: string; dj: string;
   );
 }
 
-function SongFields({ idPrefix, song, cue, notesLabel, errorFor, onChange }: {
-  idPrefix: string;
-  song: SongForm;
-  cue: boolean;
-  notesLabel: string;
-  errorFor: (field: string) => string | null;
-  onChange: (changes: Partial<SongForm>) => void;
-}) {
-  const field = (name: keyof SongForm, label: string, opts: { hint?: string; rows?: number; wide?: boolean; inputMode?: "url" } = {}) => {
-    const fieldId = `${idPrefix}-${name}`;
-    const describe = describedBy(fieldId, errorFor(name), opts.hint);
-    return (
-      <FieldBox id={fieldId} label={label} error={errorFor(name)} hint={opts.hint} className={opts.rows || opts.wide ? "col-span-full" : undefined}>
-        {opts.rows ? (
-          <Textarea id={fieldId} rows={opts.rows} value={song[name]} onChange={(e) => onChange({ [name]: e.target.value })} aria-invalid={Boolean(errorFor(name))} aria-describedby={describe} />
-        ) : (
-          <Input id={fieldId} inputMode={opts.inputMode} value={song[name]} onChange={(e) => onChange({ [name]: e.target.value })} aria-invalid={Boolean(errorFor(name))} aria-describedby={describe} />
-        )}
-      </FieldBox>
-    );
-  };
-  return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      {/* Title and artist side by side, then what it's for: the cue never splits them. */}
-      {field("title", "Title")}
-      {field("artist", "Artist")}
-      {cue ? field("cue", "Cue (optional)", { hint: 'For example "Partner entrance" or "Dance with grandmother".', wide: true }) : null}
-      {field("version", "Version (optional)", { hint: "For example acoustic, clean, live or a particular recording." })}
-      {field("link", "Link (optional)", { hint: "An https:// link to help the DJ find it. It's never opened automatically.", inputMode: "url" })}
-      {field("notes", `${notesLabel} (optional)`, { rows: 2, hint: cue ? "For example: start at 0:45, fade after the chorus, play fully." : undefined })}
-    </div>
-  );
-}
-
 /** A complete song is added in one step, so the list never holds half-typed entries. */
 function AddSong({ base, editor, notesLabel, onAdd }: { base: string; editor: MusicEditorKind; notesLabel: string; onAdd: (song: SongForm) => void }) {
   const [song, setSong] = useState<SongForm>(() => emptySong(newId()));
@@ -599,7 +566,7 @@ function AddSong({ base, editor, notesLabel, onAdd }: { base: string; editor: Mu
           idPrefix={`${base}-new`}
           song={song}
           cue={MUSIC_RULES[editor].cue}
-          notesLabel={notesLabel}
+          notes={notesLabel}
           errorFor={(field) => (error?.field === field ? error.message : null)}
           onChange={(changes) => {
             setSong((s) => ({ ...s, ...changes }));

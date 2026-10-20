@@ -139,8 +139,8 @@ export function timedEntryProblem(editor: TimedEditor, e: TimedEntryForm): { fie
   const name = rules.name as keyof TimedEntryForm;
   if (!String(e[name]).trim()) return { field: rules.name, message: editor === "program" ? "Enter a title." : editor === "activities" ? "Enter the activity." : "Enter who it's for." };
   if (e.song_title.trim() || e.song_artist.trim() || e.song_version.trim() || e.song_link.trim()) {
-    if (!e.song_title.trim()) return { field: "song_title", message: "Enter the song's title and artist, or clear the song." };
-    if (!e.song_artist.trim()) return { field: "song_artist", message: "Enter the song's title and artist, or clear the song." };
+    if (!e.song_title.trim()) return { field: "song_title", message: "Enter the song's title and artist, or remove the song." };
+    if (!e.song_artist.trim()) return { field: "song_artist", message: "Enter the song's title and artist, or remove the song." };
   }
   if (e.song_link.trim() && !isHttpsUrl(e.song_link.trim())) return { field: "song_link", message: "Enter a full https:// address, or leave the link empty." };
   if (e.timing === "time" && e.time && !TIME.test(e.time)) return { field: "time", message: "Enter a time such as 18:30." };

@@ -1,6 +1,8 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { ListChoice } from "@/lib/planning/participants";
 import { minutesOf, nextDayLabel } from "@/lib/planning/stages";
@@ -26,6 +28,7 @@ import {
 } from "@/lib/planning/timed";
 import { isHttpsUrl, linkHost } from "@/lib/payments";
 import { FieldBox } from "./basics-editor";
+import { SongFields } from "./song-fields";
 import { TimeField } from "./time-field";
 import { Choices, EntryList, Frame, PRONUNCIATION_HINT, text, type Common } from "./participants-editor";
 import { useEditingClosed, usePlanProgress } from "./progress";
@@ -249,13 +252,7 @@ function TimedList(props: {
             ) : null}
             {editor === "dedications" ? text(`${prefix}-message`, "Announcement message (optional)", e.message, (v) => onChange({ message: v }), errorFor("message"), { rows: 2 }) : null}
             {rules.song ? (
-              <fieldset className="grid gap-3 col-span-full sm:grid-cols-2">
-                <legend className="mb-1 text-sm font-medium">{rules.requiresSong ? "Song (needed to complete)" : "Song (optional)"}</legend>
-                {text(`${prefix}-song_title`, "Song title", e.song_title, (v) => onChange({ song_title: v }), errorFor("song_title"))}
-                {text(`${prefix}-song_artist`, "Song artist", e.song_artist, (v) => onChange({ song_artist: v }), errorFor("song_artist"))}
-                {text(`${prefix}-song_version`, "Version (optional)", e.song_version, (v) => onChange({ song_version: v }), errorFor("song_version"))}
-                {text(`${prefix}-song_link`, "Link (optional)", e.song_link, (v) => onChange({ song_link: v }), errorFor("song_link"), { hint: "An https:// link to help the DJ find it. It's never opened automatically." })}
-              </fieldset>
+              <OptionalSong prefix={prefix} entry={e} needed={rules.requiresSong} name={String(e[nameField]).trim()} errorFor={errorFor} onChange={onChange} />
             ) : null}
             {text(`${prefix}-notes`, "Instructions (optional)", e.notes, (v) => onChange({ notes: v }), errorFor("notes"), { rows: 2 })}
           </>
@@ -265,6 +262,64 @@ function TimedList(props: {
         fieldError={props.fieldError}
       />
     </>
+  );
+}
+
+const SONG_KEYS = { title: "song_title", artist: "song_artist", version: "song_version", link: "song_link" } as const;
+const songOf = (e: TimedEntryForm) => ({ title: e.song_title, artist: e.song_artist, version: e.song_version, link: e.song_link });
+
+/**
+ * An activity's or dedication's song, out of the way until asked for: "Add a
+ * song" opens the same fields as the songs lists (title, artist, version,
+ * link). An entry that has a song shows it, and "Remove song" clears only the
+ * song, never the entry. A dedication still needs one to be complete.
+ */
+function OptionalSong({ prefix, entry, needed, name, errorFor, onChange }: {
+  prefix: string;
+  entry: TimedEntryForm;
+  needed: boolean;
+  name: string;
+  errorFor: (field: string) => string | null;
+  onChange: (changes: Partial<TimedEntryForm>) => void;
+}) {
+  const hasSong = Object.values(songOf(entry)).some((v) => v.trim() !== "");
+  const songError = Object.values(SONG_KEYS).some((k) => errorFor(k));
+  const [adding, setAdding] = useState(false);
+  const open = adding || hasSong || songError;
+  const panel = `${prefix}-song`;
+  const legend = needed ? "Music (needed to complete)" : "Music (optional)";
+  return (
+    <fieldset className="col-span-full grid gap-3 rounded-lg border bg-muted/20 p-3">
+      <legend className="px-1 text-sm font-medium">{legend}</legend>
+      {open ? (
+        <div id={panel} className="grid gap-3">
+          <SongFields
+            idPrefix={panel}
+            song={songOf(entry)}
+            inline
+            errorFor={(f) => (f in SONG_KEYS ? errorFor(SONG_KEYS[f as keyof typeof SONG_KEYS]) : null)}
+            onChange={(changes) => onChange(Object.fromEntries(Object.entries(changes).map(([k, v]) => [SONG_KEYS[k as keyof typeof SONG_KEYS], v])) as Partial<TimedEntryForm>)}
+          />
+          <Button type="button" size="sm" variant="outline" className="w-fit max-sm:min-h-11"
+            aria-label={`Remove the song${name ? ` from "${name}"` : ""}`}
+            onClick={() => {
+              onChange({ song_title: "", song_artist: "", song_version: "", song_link: "" });
+              setAdding(false);
+            }}>
+            Remove song
+          </Button>
+        </div>
+      ) : (
+        <Button type="button" size="sm" variant="outline" className="w-fit max-sm:min-h-11" aria-expanded={false} aria-controls={panel}
+          onClick={() => {
+            setAdding(true);
+            requestAnimationFrame(() => document.getElementById(`${panel}-title`)?.focus());
+          }}>
+          <Plus aria-hidden className="size-4" />
+          Add a song
+        </Button>
+      )}
+    </fieldset>
   );
 }
 
