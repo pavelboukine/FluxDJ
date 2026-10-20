@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Minus, TriangleAlert, X } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Clock, LoaderCircle, TriangleAlert, X } from "lucide-react";
 import {
   SECTION_PARAM,
   WORKSPACE_ID,
@@ -14,13 +14,16 @@ import {
   sectionStatus,
   type PlanSection,
   type SectionMoment,
-  type SectionState,
   type SectionStatus,
 } from "@/lib/planning/navigation";
-import { progressPercentText } from "@/lib/planning/view";
+import { itemProgress, progressPercentText } from "@/lib/planning/view";
 import { cn } from "@/lib/utils";
-import { ItemStatus, usePlanProgress } from "./progress";
-import { SaveScope, useItemSaveSummary, useNotSavedSections, useSaveStore, useSectionSaveSummary, type SaveSummary } from "./save-registry";
+import { itemGlyphState, itemStatusText, usePlanProgress } from "./progress";
+import { useAnswerSummary } from "./answer-preview";
+import { ProgressGlyph, StatusGlyph } from "./status-glyph";
+
+export { ProgressGlyph, StatusGlyph };
+import { SaveScope, useItemRetry, useItemSaveSummary, useNotSavedSections, useSaveStore, useSectionSaveSummary, type SaveSummary } from "./save-registry";
 
 /**
  * Planning, one section at a time (the client's page and the staff page). The open section is the
@@ -214,42 +217,6 @@ export function statusText(s: SectionStatus): string {
   }
 }
 
-/**
- * A section's status as a small glyph, always shown next to its words (never alone).
- * Deliberately unlike a form control (no outlined ring, no centre dot): a filled grey disc
- * when not started, a half-filled disc when in progress (a state, not a percentage: the
- * words beside it carry the exact count), a check when complete and a dash when not
- * applicable.
- */
-export function StatusGlyph({ status, className }: { status: SectionStatus; className?: string }) {
-  return <ProgressGlyph state={status.state} className={className} />;
-}
-
-export function ProgressGlyph({ state, className }: { state: SectionState; className?: string }) {
-  const base = cn("size-4 shrink-0", className);
-  if (state === "complete") {
-    return (
-      <span aria-hidden className={cn(base, "inline-grid place-items-center rounded-full bg-status-done text-white")}>
-        <Check className="size-2.5" strokeWidth={3.5} />
-      </span>
-    );
-  }
-  if (state === "not_applicable") {
-    return (
-      <span aria-hidden className={cn(base, "inline-grid place-items-center rounded-full bg-plan-track text-plan-ink-2")}>
-        <Minus className="size-2.5" strokeWidth={3.5} />
-      </span>
-    );
-  }
-  return (
-    <svg aria-hidden viewBox="0 0 16 16" className={cn(base, "text-brand-ink")}>
-      <circle cx="8" cy="8" r="8" className="fill-plan-track" />
-      {/* In progress: the right half, always the same. */}
-      {state === "in_progress" ? <path d="M8 2.5a5.5 5.5 0 0 1 0 11Z" fill="currentColor" /> : null}
-    </svg>
-  );
-}
-
 /** Discuss, timing and save flags. Saving is shown in the navigation only; the editor itself says so next to the fields. */
 export function Flags({ status, save, showPending }: { status: SectionStatus | null; save: SaveSummary; showPending?: boolean }) {
   return (
@@ -279,6 +246,14 @@ export function Flags({ status, save, showPending }: { status: SectionStatus | n
 
 /** Keyboard focus on planning navigation: a solid Brand Ink ring (at least 3:1 against white and the tints). */
 export const PLAN_FOCUS = "outline-none focus-visible:ring-2 focus-visible:ring-brand-ink focus-visible:ring-offset-1";
+
+/**
+ * Primary planning actions (Continue planning, Next): filled with Brand Ink, the business's
+ * colour darkened only as far as it must be to read on white, so a pale brand (lavender) still
+ * gives a button that stands out from the page; white text on it is at least 5.2:1.
+ */
+export const PLAN_PRIMARY =
+  "bg-brand-ink text-white hover:bg-[color-mix(in_oklab,var(--brand-ink,var(--foreground)),black_14%)] active:bg-[color-mix(in_oklab,var(--brand-ink,var(--foreground)),black_22%)] aria-disabled:opacity-50";
 
 const navItem = (current: boolean) =>
   cn(
@@ -541,6 +516,8 @@ export function SectionHeader({ sectionKey, eyebrow }: { sectionKey: string; eye
   const section = nav.sections.find((s) => s.key === sectionKey)!;
   const status = useSectionStatus(section);
   const save = useSectionSaveSummary(section.key);
+  // Read-only planning names what's open without asking for it.
+  const closed = usePlanProgress()?.editing?.state === "closed";
   return (
     <div className="grid gap-1.5">
       <h2 id={headingId(sectionKey)} tabIndex={-1} className={cn("rounded-sm text-xl leading-tight font-semibold tracking-tight text-balance [overflow-wrap:anywhere] sm:text-[1.375rem]", PLAN_FOCUS)}>
@@ -550,7 +527,7 @@ export function SectionHeader({ sectionKey, eyebrow }: { sectionKey: string; eye
         <span>{eyebrow}</span>
         <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-1" data-testid="section-status">
           {status ? <StatusGlyph status={status} /> : null}
-          {status ? <span>{status.state === "in_progress" || status.state === "not_started" ? `${statusText(status)} · ${status.total - status.met} still needed` : statusText(status)}</span> : null}
+          {status ? <span>{(status.state === "in_progress" || status.state === "not_started") && !closed ? `${statusText(status)} · ${status.total - status.met} still needed` : statusText(status)}</span> : null}
           <Flags status={status} save={save} />
         </span>
       </p>
@@ -566,24 +543,124 @@ export function PanelHeading({ view, children }: { view: string | null; children
   );
 }
 
-/** A moment of the open stage, as a disclosure (long stages stay scannable). */
+/**
+ * A moment of the open stage, as a question row (long stages stay scannable): its status
+ * glyph, its title and a one-line preview of what was entered, live from its editor (see
+ * answer-preview). A preview that isn't saved yet is never shown as if it were: the row says
+ * "Saving…" or "Not saved", with Retry beside it when a retry can help. Open, the editor sits
+ * in the same row on a light wash of the business's colour, not in another card.
+ */
 export function PlanMoment({ moment, defaultOpen, children }: { moment: SectionMoment; defaultOpen?: boolean; children: ReactNode }) {
   const save = useItemSaveSummary(moment.id);
+  const retry = useItemRetry(moment.id);
+  const plan = usePlanProgress();
+  const item = plan ? itemProgress(plan.progress, moment.id) : null;
+  const closed = plan?.editing?.state === "closed";
+  const summary = useAnswerSummary(moment.id, moment.editor);
+  const status = item ? itemStatusText(item, closed) : null;
   return (
-    <details open={defaultOpen} data-default-open={defaultOpen ? "" : undefined} data-plan-item={moment.id} data-testid={`moment-${moment.key}`} className="group/moment rounded-xl border bg-background">
-      <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 rounded-xl px-4 py-2.5 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
-        <h3 className="min-w-0 text-sm font-semibold [overflow-wrap:anywhere]">{moment.label}</h3>
-        <span className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-          <Flags status={null} save={save} />
-          <ItemStatus itemId={moment.id} />
-          <ChevronRight aria-hidden className="size-4 text-muted-foreground transition-transform group-open/moment:rotate-90 motion-reduce:transition-none" />
-        </span>
-      </summary>
-      <div className="border-t px-4 py-4 text-sm">
-        <SaveScope item={moment.id}>{children}</SaveScope>
-      </div>
-    </details>
+    <div className="relative">
+      <details
+        open={defaultOpen}
+        data-default-open={defaultOpen ? "" : undefined}
+        data-plan-item={moment.id}
+        data-testid={`moment-${moment.key}`}
+        className="group/moment transition-colors open:bg-brand-tint/60 motion-reduce:transition-none"
+      >
+        <summary
+          className={cn(
+            "grid min-h-14 cursor-pointer list-none grid-cols-[1rem_minmax(0,1fr)_auto] items-start gap-x-3 px-[var(--plan-sheet-pad,1rem)] py-3 hover:bg-plan-track/40 [&::-webkit-details-marker]:hidden",
+            PLAN_FOCUS,
+            "focus-visible:ring-offset-0 focus-visible:ring-inset",
+          )}
+        >
+          <span className="pt-0.5"><RowGlyph save={save} state={itemGlyphState(item)} /></span>
+          <span className="grid min-w-0 gap-0.5">
+            <h3 className="text-[0.9375rem] leading-snug font-medium [overflow-wrap:anywhere]">{moment.label}</h3>
+            <span className="truncate text-sm text-plan-ink-2" data-testid="moment-preview">
+              {/* A failed save never reads as its last saved status ("Complete"): "Not saved" speaks for it. */}
+              {status && save !== "not_saved" ? <span className={summary ? "sr-only" : undefined}>{status}{summary ? ". " : ""}</span> : null}
+              {summary}
+            </span>
+          </span>
+          <span className="flex items-center gap-2 pt-0.5">
+            <SaveIndicator save={save} />
+            {/* Room for Retry, which sits beside the row's summary (see below). */}
+            {retry ? <span aria-hidden className="w-12" /> : null}
+            <ChevronDown aria-hidden className="size-4 text-plan-ink-2 transition-transform group-open/moment:rotate-180 motion-reduce:transition-none" />
+          </span>
+        </summary>
+        {/* On the open row's wash, the editors' muted text uses the planning secondary ink so it keeps 4.5:1. */}
+        <div className="px-[var(--plan-sheet-pad,1rem)] pt-1 pb-5 text-sm [--muted-foreground:var(--plan-ink-2)] sm:pl-[calc(var(--plan-sheet-pad,1rem)+1.75rem)]">
+          <SaveScope item={moment.id}>{children}</SaveScope>
+        </div>
+      </details>
+      {retry ? (
+        // Beside the row, never inside its summary (a control can't sit inside another control).
+        <div className="absolute top-3 right-[calc(var(--plan-sheet-pad,1rem)+1.5rem)] flex items-center">
+          <button
+            type="button"
+            onClick={retry}
+            className={cn("inline-flex min-h-8 items-center rounded-md px-2 text-xs font-semibold text-foreground underline underline-offset-4 hover:bg-plan-track/70", PLAN_FOCUS)}
+          >
+            Retry<span className="sr-only"> {moment.label}</span>
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
+}
+
+/**
+ * The row's icon. Saved: the question's status. While a change saves: a spinner in its place.
+ * When the latest change isn't saved (a failed save, or a draft that can't be saved yet): an
+ * error mark, never the last saved status, so an unsaved edit can't pass for a complete one.
+ */
+function RowGlyph({ save, state }: { save: SaveSummary; state: Parameters<typeof ProgressGlyph>[0]["state"] }) {
+  if (save === "pending") {
+    return <LoaderCircle aria-hidden className="size-4 shrink-0 text-brand-ink motion-safe:animate-spin" />;
+  }
+  if (save === "not_saved") {
+    return (
+      <span aria-hidden className="inline-grid size-4 shrink-0 place-items-center rounded-full bg-destructive text-white">
+        <TriangleAlert className="size-2.5" strokeWidth={3} />
+      </span>
+    );
+  }
+  return <ProgressGlyph state={state} />;
+}
+
+/**
+ * Whether the question's latest change is saved, in words next to the question: "Not saved"
+ * when it failed or can't be saved yet, and a brief "Saved" when one completes (the spinner
+ * while saving is the row's icon). The
+ * editor's own status line (with its Retry) stays as it was, for when the question is open.
+ */
+function SaveIndicator({ save }: { save: SaveSummary }) {
+  const [justSaved, setJustSaved] = useState(false);
+  const previous = useRef(save);
+  useEffect(() => {
+    const was = previous.current;
+    previous.current = save;
+    if (was !== "pending" || save !== "saved") return;
+    setJustSaved(true);
+    const t = setTimeout(() => setJustSaved(false), 1600);
+    return () => clearTimeout(t);
+  }, [save]);
+  if (save === "not_saved") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
+        <TriangleAlert aria-hidden className="size-3" /> Not saved
+      </span>
+    );
+  }
+  // Saving shows in the row's icon (see RowGlyph), not as a second "Saving…" line beside the editor's own.
+  if (save === "pending") return <span className="sr-only">Saving</span>;
+  return justSaved ? (
+    <span className="inline-flex items-center gap-1 text-xs text-plan-ink-2">
+      <Check aria-hidden className="size-3" /> Saved
+    </span>
+  ) : null;
 }
 
 /**
@@ -609,7 +686,7 @@ export function SectionPager({ view }: { view: string | null }) {
         </NavLink>
       ) : null}
       {next ? (
-        <NavLink view={next.key} className={cn(base, "ml-auto bg-brand pl-4 text-brand-foreground hover:bg-brand/90")} rel="next">
+        <NavLink view={next.key} className={cn(base, "ml-auto pl-4", PLAN_PRIMARY)} rel="next">
           <span className="min-w-0 truncate"><span className="opacity-80">Next: </span>{nav.labelOf(next.key)}</span>
           <ChevronRight aria-hidden className="size-4 shrink-0" />
         </NavLink>

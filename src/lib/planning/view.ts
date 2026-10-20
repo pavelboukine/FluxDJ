@@ -314,3 +314,13 @@ export function formatEventDate(isoDate: string): string {
   const [y, m, d] = isoDate.split("-").map(Number);
   return new Intl.DateTimeFormat("en-CA", { dateStyle: "full", timeZone: "UTC" }).format(new Date(Date.UTC(y, m - 1, d)));
 }
+
+/** Every item's saved answers by item id (moments, music lists, stage details and Event basics), for answer previews. */
+export function savedAnswersByItem(view: { moments: MomentAnswers; music: MusicLists; stage_details: StageDetails; basics?: { item_id: string; answers: Record<string, unknown> } }): Record<string, Record<string, unknown>> {
+  const out: Record<string, Record<string, unknown>> = {};
+  for (const [id, v] of Object.entries(view.stage_details)) out[id] = v.answers;
+  for (const [id, v] of Object.entries(view.music)) out[id] = v.answers as Record<string, unknown>;
+  for (const [id, v] of Object.entries(view.moments)) out[id] = v.answers;
+  if (view.basics) out[view.basics.item_id] = view.basics.answers;
+  return out;
+}

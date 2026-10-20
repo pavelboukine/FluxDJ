@@ -184,8 +184,9 @@ test.describe.serial("playlist links in planning", () => {
     const firstDance = await openMoment(client, "special_dances", "first_dance");
     await expect(firstDance.getByTestId(/-add-playlist$/)).toHaveCount(0);
     await expect(firstDance).not.toContainText("playlist");
-    await expect(firstDance).toContainText("Songs or a choice");
-    await expect(dnp).toContainText("Songs, playlists or a choice");
+    await expect(firstDance).toContainText("Still needed: Songs or a choice");
+    // Lists that take playlists say so while they still need an answer (Do not play is complete by now).
+    await expect(await openMoment(client, "party", "play_if_possible")).toContainText("Still needed: Songs, playlists or a choice");
 
     // A reload keeps every playlist, in order, with its name and notes.
     await client.reload();

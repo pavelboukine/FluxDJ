@@ -261,7 +261,8 @@ test.describe.serial("planning", () => {
     await expect(client.getByText("All changes saved")).toBeVisible();
     await expect(client.getByTestId("progress-percent")).toHaveText("100% complete");
     await expect(client.getByTestId("progress-headline")).toHaveText("5 of 5 required answers");
-    await expect(client.getByText("Event basics is complete.")).toBeVisible();
+    await expect(client.locator("#plan-panel-basics").getByTestId("section-status")).toContainText("Complete");
+    await expect(client.locator("#plan-panel-basics").getByTestId("item-needs")).toHaveCount(0);
     expect((await basicsRow(eventId))!.answers).toEqual({ guest_count: 150, start_time: "18:00", end_time: "01:00", access_notes_none: true });
 
     // A refresh keeps the open section.
@@ -401,7 +402,7 @@ test.describe.serial("planning", () => {
     await details.getByLabel("Ceremony start (needed)").fill("16:00");
     await details.getByLabel("Not sure yet — discuss with your DJ").check();
     await expect(details.getByText("All changes saved")).toBeVisible();
-    await expect(details.getByRole("list", { name: "What Ceremony details needs" })).toContainText("Discuss with your DJ (still open)");
+    await expect(details.getByRole("group", { name: "What Ceremony details still needs" })).toContainText("To discuss with your DJ: Microphone needs");
     await expect(status).toContainText("In progress");
     // Discuss with DJ is open, never complete; the section and the list both say so.
     await expect(card.getByTestId("section-status")).toContainText("1 to discuss");
@@ -409,12 +410,12 @@ test.describe.serial("planning", () => {
     await expect(details.getByText("Equipment answers are planning information for your DJ to review.", { exact: false })).toBeVisible();
     await details.getByLabel("Needed", { exact: true }).check();
     // The guest arrival time is needed too; no time is assumed.
-    await expect(details.getByRole("list", { name: "What Ceremony details needs" })).toContainText(/Guest arrival time\s*Not answered yet/);
+    await expect(details.getByRole("group", { name: "What Ceremony details still needs" })).toContainText(/Still needed: .*Guest arrival time/);
     await expect(status).toContainText("In progress");
     await expect(details.getByRole("checkbox", { name: /Guest arrival: next day/ })).toHaveCount(0);
     // Optional fields don't block completion.
     await details.getByLabel("Guest arrival (needed)").fill("15:30");
-    await expect(details.getByText("Ceremony details is complete.")).toBeVisible();
+    await expect(details.getByTestId("item-needs")).toHaveCount(0);
     await expect(status).toContainText("Complete");
     await expect.poll(async () => (await stageRow(eventId, "ceremony"))!.answers).toEqual({ location_source: "event_venue", guest_arrival_time: "15:30", start_time: "16:00", microphones: "needed" });
 
@@ -718,8 +719,8 @@ test.describe.serial("planning", () => {
     const dinner = await openPlanSection(client, "dinner");
     // Dinner details are the stage's own; the other moments follow in their configured order.
     await expect(dinner.getByRole("heading", { name: "Dinner details", exact: true })).toBeVisible();
-    // The checklist names the same thing as the heading above it.
-    await expect(dinner.getByTestId("details-dinner")).toContainText(/Dinner details is complete|of \d+ needed answers/);
+    // What's still needed is named after the same heading (or nothing is, once complete).
+    await expect(dinner.getByRole("group", { name: "What Dinner details still needs" }).or(dinner.getByTestId("details-status").getByText("Complete"))).toBeVisible();
     await expect(dinner.getByRole("list", { name: "Moments in Dinner" }).locator(":scope > li")).toHaveText([/Background music/, /Speeches and toasts/, /Activities/, /Cake cutting/]);
     await expect(dinner.getByTestId("details-dinner").getByLabel("Dinner start (needed)")).toHaveValue("19:30");
 

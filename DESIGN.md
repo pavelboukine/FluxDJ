@@ -34,11 +34,12 @@ typography:
     fontWeight: 600
     lineHeight: 1.4
     letterSpacing: "-0.025em"
+  # Question rows (6C.3a): 15px medium title over a 14px preview.
   question-title:
     fontFamily: "Geist, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "0.875rem"
-    fontWeight: 600
-    lineHeight: 1.43
+    fontSize: "0.9375rem"
+    fontWeight: 500
+    lineHeight: 1.375
   body:
     fontFamily: "Geist, ui-sans-serif, system-ui, sans-serif"
     fontSize: "0.875rem"
@@ -110,8 +111,11 @@ components:
 <!--
 Status: written 2026-10-19 during Batch 6C.1 (audit). Batch 6C.2 (2026-10-19) implemented
 the client planning header, overview, navigation, status glyphs, Brand Ink/Tint and the
-planning tokens (src/app/globals.css, [data-plan-shell]); question rows and editors (6C.3)
-are still the "Current implementation" described below.
+planning tokens (src/app/globals.css, [data-plan-shell]). Batch 6C.3a (2026-10-20, local)
+implemented question rows (PlanMoment), live answer previews (src/lib/planning/summaries.ts,
+answer-preview.tsx), the one-line "Still needed" block and row-level save state. Editor
+internals (choices, fields, song and person rows) are 6C.3b and still the "Current
+implementation" described below.
 The frontmatter records the CURRENT implementation so tools read real values.
 Each section below separates "Current implementation" from "Proposed direction".
 The proposed direction is NOT implemented and is pending approval. Once approved,

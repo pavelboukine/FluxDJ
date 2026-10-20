@@ -3,8 +3,9 @@
 import { ChevronRight, Lock } from "lucide-react";
 import { PROVIDED_SECTION, firstIncompleteSection, isIncomplete, sectionStatus, type PlanSection, type SectionStatus } from "@/lib/planning/navigation";
 import { cn } from "@/lib/utils";
+import { useAnswerSummary } from "./answer-preview";
 import { ProgressMeter, usePlanProgress } from "./progress";
-import { Flags, NavLink, PLAN_FOCUS, PanelHeading, StatusGlyph, focusFor, statusText, useNav } from "./plan-navigation";
+import { Flags, NavLink, PLAN_FOCUS, PLAN_PRIMARY, PanelHeading, StatusGlyph, focusFor, statusText, useNav } from "./plan-navigation";
 
 /** The client's planning overview and editing chip (navigation itself is shared: plan-navigation). */
 
@@ -54,7 +55,8 @@ export function PlanOverview({ djName, providedCount }: { djName: string; provid
   const general = rows.filter(({ s }) => s.kind === "general");
   const stages = rows.filter(({ s }) => s.kind === "stage");
   const button = cn(
-    "inline-flex min-h-11 items-center justify-center gap-1.5 rounded-[10px] bg-brand px-5 text-sm font-semibold text-brand-foreground hover:bg-brand/90 max-sm:w-full",
+    "inline-flex min-h-11 items-center justify-center gap-1.5 rounded-[10px] px-5 text-sm font-semibold max-sm:w-full",
+    PLAN_PRIMARY,
     PLAN_FOCUS,
   );
 
@@ -152,6 +154,8 @@ export function PlanOverview({ djName, providedCount }: { djName: string; provid
  * Stages are numbered and joined by a hairline: the event's order, not a to-do list.
  */
 function OverviewRow({ row: { s, status }, number, next, connect }: { row: Row; number?: number; next: boolean; connect?: boolean }) {
+  // What's been entered so far: a general section's own answers, or a stage's details (place and time).
+  const summary = useAnswerSummary(s.id, s.kind === "general" ? s.editor : s.stageEditor);
   return (
     <li className="relative">
       {connect ? <span aria-hidden className="absolute top-[2.125rem] -bottom-[0.875rem] left-[1.25rem] w-px -translate-x-1/2 bg-plan-hairline" /> : null}
@@ -167,10 +171,11 @@ function OverviewRow({ row: { s, status }, number, next, connect }: { row: Row; 
             {number !== undefined ? <span className="font-normal text-plan-ink-2 tabular-nums">{number}. </span> : null}
             {s.label}
           </span>
-          <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-plan-ink-2">
+          <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-plan-ink-2">
             <span>{statusText(status)}</span>
             <Flags status={status} save="saved" />
           </span>
+          {summary ? <span className="truncate text-sm text-foreground/80" data-testid="overview-preview">{summary}</span> : null}
         </span>
         <span className="flex items-center gap-2 self-center">
           {next ? <span className="rounded-full bg-brand-tint px-2 py-0.5 text-xs font-medium text-brand-ink">Next up</span> : null}

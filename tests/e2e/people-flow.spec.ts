@@ -269,11 +269,13 @@ test.describe.serial("people in planning", () => {
 
     await details.getByLabel("Yes, we're planning a grand entrance").check();
     await expect(order).toBeVisible();
+    // A planned entrance needs its time: it's named as still needed until it's in.
+    await expect(details.getByTestId("item-needs")).toContainText("Planned grand entrance time");
     await details.getByLabel("Planned grand entrance time (needed)").fill("18:15");
     await expect(reception.getByText("All changes saved").first()).toBeVisible();
     await expect.poll(async () => answers(eventId, "reception_entrance")).toEqual({ guest_entry_time: "17:45", grand_entrance: "planned", entrance_time: "18:15" });
-    await expect(details).toContainText("Formal grand entrance");
-    await expect(details).toContainText("Planned grand entrance time");
+    await expect(reception.getByTestId("details-status")).toContainText("Complete");
+    await expect(details.getByTestId("item-needs")).toHaveCount(0);
 
     // No: the time and the order step aside; what was entered is kept.
     await details.getByLabel("No, we'll skip the formal entrance").check();
@@ -490,7 +492,8 @@ test.describe.serial("people in planning", () => {
 
     await mc.getByLabel("Not sure yet — discuss with your DJ").check();
     await expect(mc.getByText("All changes saved")).toBeVisible();
-    await expect(mc).toContainText("Discuss with your DJ (still open)");
+    await expect(mc.getByTestId("item-needs")).toContainText("To discuss with your DJ:");
+    await expect(mc.locator("summary").first()).toContainText("To discuss with your DJ");
     await client.reload();
     const reloaded = await openMoment(client, "reception_entrance", "mc");
     await expect(reloaded.getByLabel("Not sure yet — discuss with your DJ")).toBeChecked();
@@ -530,7 +533,9 @@ test.describe.serial("people in planning", () => {
     let mc = await openMoment(client, "reception_entrance", "mc");
     await expect(mc.getByLabel("No MC")).toBeChecked();
     await expect(mc).toContainText("An earlier answer that is no longer offered.");
-    await expect(client.getByTestId("moment-mc")).toContainText("Complete");
+    // Still answered: "No MC" means the moment needs nothing, so the row reads not applicable (never "not started").
+    await expect(client.getByTestId("moment-mc").locator("summary").first()).toContainText("Not applicable");
+    await expect(client.getByTestId("moment-mc").locator("summary").first()).toContainText("No MC");
     await mc.getByLabel("Instructions (optional)").fill("No announcements, please");
     await expect(mc.getByText("All changes saved")).toBeVisible();
     expect(await answers(eventId, "mc")).toEqual({ mc: "none", notes: "No announcements, please" });
@@ -597,7 +602,8 @@ test.describe.serial("people in planning", () => {
     await expect(card.getByText("All changes saved")).toBeVisible();
     await client.unroute(`**${planningUrl}*`);
     await expect.poll(async () => (await answers(eventId, "speeches"))!.entries![2]).toMatchObject({ timing: "time", time: "00:30", next_day: true });
-    await expect(card).toContainText("Speeches and toasts is complete.");
+    await expect(card.locator("summary").first()).toContainText("Complete");
+    await expect(card.getByTestId("item-needs")).toHaveCount(0);
     await expect(leo).toContainText("At 00:30 (next day, Sun, Aug 15)");
 
     // A failed save keeps the edit and retries.

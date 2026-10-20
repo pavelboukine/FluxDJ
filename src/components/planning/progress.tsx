@@ -2,10 +2,11 @@
 
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import { CalendarClock, Lock } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { BASICS_REQUIREMENT_LABELS, type BasicsAnswers } from "@/lib/planning/basics";
 import { clientEditingText, formatInstant, type ClientEditing } from "@/lib/planning/cutoff";
 import { REQUIREMENT_NOTES, requirementLabel } from "@/lib/planning/stages";
+import type { SectionState } from "@/lib/planning/navigation";
+import { ProgressGlyph } from "./status-glyph";
 import { cn } from "@/lib/utils";
 import { itemProgress, progressHeadline, progressPercent, progressPercentText, progressScopeNote, type PlanProgress, type Requirement, type TimelineWarning } from "@/lib/planning/view";
 import type { SaveState } from "./use-autosave";
@@ -203,46 +204,73 @@ export function ProgressSummary() {
   );
 }
 
-function stateText(r: Requirement, dj: string, audience: "client" | "staff"): string {
-  if (r.discuss) return audience === "client" ? "Discuss with your DJ (still open)" : "Discuss with DJ (still open)";
-  // The language is answered in DJ expectations, though it's stored with Event basics ("basics_missing").
-  if (r.state === "unanswered") return r.note && r.key !== "language" ? REQUIREMENT_NOTES[r.note] ?? "Not answered yet" : "Not answered yet";
-  if (r.state === "answered") return "Answered";
-  if (r.state === "imported") return audience === "client" ? `Provided by ${dj}` : "From the event details";
-  return audience === "client" ? "Not needed (you said so)" : "Marked not needed";
+type ItemProgressValue = NonNullable<ReturnType<typeof itemProgress>>;
+
+function requirementText(r: Requirement, item: { key: string }, editor?: string): string {
+  const label = (BASICS_REQUIREMENT_LABELS[r.key] && item.key === "basics" ? BASICS_REQUIREMENT_LABELS[r.key] : requirementLabel(r.key, editor)) ?? r.key;
+  // A note says why it's still open ("No event venue yet"). The language is asked in DJ expectations, so its note doesn't apply there.
+  const note = r.state === "unanswered" && r.note && r.key !== "language" ? REQUIREMENT_NOTES[r.note] : undefined;
+  return note ? `${label} (${note})` : label;
 }
 
-/** What one item still needs, from the server's progress. */
+/**
+ * What one item still needs, from the server's progress, in one or two short lines:
+ * "Still needed: Guest arrival time, Start time" and "To discuss with your DJ:
+ * Microphone needs". Nothing once the item is complete: its status says so.
+ * When planning is closed, open answers are named without asking for them.
+ */
 export function ItemChecklist({ itemId, title, djName, audience, editor }: { itemId: string; title: string; djName: string; audience: "client" | "staff"; editor?: string }) {
   const ctx = usePlanProgress();
   const item = ctx ? itemProgress(ctx.progress, itemId) : null;
-  if (!item || item.total === 0) return null;
+  if (!item || item.total === 0 || item.met === item.total) return null;
+  const closed = ctx?.editing?.state === "closed";
+  const discuss = item.requirements.filter((r) => r.discuss).map((r) => requirementText(r, item, editor));
+  const needed = item.requirements.filter((r) => !r.discuss && r.state === "unanswered").map((r) => requirementText(r, item, editor));
+  void djName;
   return (
-    <div className="grid gap-1 text-sm">
-      <p className="font-medium">{item.met === item.total ? `${title} is complete.` : `${item.met} of ${item.total} needed answers`}</p>
-      <ul aria-label={`What ${title} needs`} className="grid gap-0.5">
-        {item.requirements.map((r) => (
-          <li key={r.key} className="flex flex-wrap justify-between gap-2">
-            <span>{BASICS_REQUIREMENT_LABELS[r.key] && item.key === "basics" ? BASICS_REQUIREMENT_LABELS[r.key] : requirementLabel(r.key, editor) ?? r.key}</span>
-            <span className={r.state === "unanswered" ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground"}>{stateText(r, djName, audience)}</span>
-          </li>
-        ))}
-      </ul>
+    <div className="grid gap-0.5 text-sm text-plan-ink-2" data-testid="item-needs" aria-label={`What ${title} still needs`} role="group">
+      {needed.length > 0 ? (
+        <p>
+          <span className="font-medium text-foreground">{closed ? "Not answered:" : "Still needed:"}</span> {needed.join(", ")}
+        </p>
+      ) : null}
+      {discuss.length > 0 ? (
+        <p>
+          <span className="font-medium text-foreground">{audience === "client" ? "To discuss with your DJ:" : "To discuss with the client:"}</span> {discuss.join(", ")}
+        </p>
+      ) : null}
     </div>
   );
 }
 
-/** A stage card's status badge. */
+/** An item's state as a glyph state (all requirements "not needed" reads as not applicable). */
+export function itemGlyphState(item: ItemProgressValue | null): SectionState {
+  if (!item) return "nothing";
+  if (item.state === "complete") return item.requirements.length > 0 && item.requirements.every((r) => r.state === "not_applicable") ? "not_applicable" : "complete";
+  if (item.state === "not_available") return "nothing";
+  return item.state;
+}
+
+/** The words for an item's state; when planning is closed, "Not started" reads as "Not answered". */
+export function itemStatusText(item: ItemProgressValue, closed = false): string {
+  const glyph = itemGlyphState(item);
+  if (glyph === "not_applicable") return "Not applicable";
+  return { complete: "Complete", in_progress: "In progress", not_started: closed ? "Not answered" : "Not started", not_available: "Not available yet" }[item.state];
+}
+
+/** A stage's details status: glyph and words (never a badge). */
 export function ItemStatus({ itemId }: { itemId: string }) {
   const ctx = usePlanProgress();
   const item = ctx ? itemProgress(ctx.progress, itemId) : null;
   if (!item) return null;
   const warned = ctx!.warnings.some((w) => w.item_id === itemId);
-  const label = { complete: "Complete", in_progress: "In progress", not_started: "Not started", not_available: "Not available yet" }[item.state];
   return (
-    <span className="flex flex-wrap items-center justify-end gap-1">
-      {warned ? <Badge variant="outline" className="border-amber-500 text-amber-700 dark:text-amber-400">Check timing</Badge> : null}
-      <Badge variant={item.state === "complete" ? "secondary" : "outline"}>{label}</Badge>
+    <span className="inline-flex flex-wrap items-center justify-end gap-x-1.5 gap-y-1 text-sm text-plan-ink-2">
+      {warned ? (
+        <span className="inline-flex items-center gap-1 rounded-full bg-status-attention-tint px-2 py-0.5 text-xs font-medium text-status-attention">Check timing</span>
+      ) : null}
+      <ProgressGlyph state={itemGlyphState(item)} />
+      <span>{itemStatusText(item, ctx!.editing?.state === "closed")}</span>
     </span>
   );
 }

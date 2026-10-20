@@ -37,6 +37,8 @@ export type PlanSection = {
   id: string;
   label: string;
   kind: "general" | "stage";
+  /** A general section's editor ("basics", "contacts", "preferences"); null for stages (see stageEditor). */
+  editor: string | null;
   /** The stage's own details editor, when it has one. */
   stageEditor: string | null;
   /** The label of the moment its details editor covers (e.g. "Ceremony details"), if visible. */
@@ -63,7 +65,7 @@ export function languageAskedInPreferences(structure: PlanStructure): boolean {
 export function planSections(structure: PlanStructure): PlanSection[] {
   const general: PlanSection[] = structure.general
     .filter((g) => !g.disabled && g.editor !== null && GENERAL_EDITORS.includes(g.editor))
-    .map((g) => ({ key: g.key, id: g.id, label: g.label, kind: "general", stageEditor: null, detailsLabel: null, moments: [], unavailable: [], covered: [], itemIds: [g.id] }));
+    .map((g) => ({ key: g.key, id: g.id, label: g.label, kind: "general", editor: g.editor, stageEditor: null, detailsLabel: null, moments: [], unavailable: [], covered: [], itemIds: [g.id] }));
   const stages: PlanSection[] = [];
   for (const s of structure.stages) {
     if (s.disabled) continue;
@@ -79,6 +81,7 @@ export function planSections(structure: PlanStructure): PlanSection[] {
       id: s.id,
       label: s.label,
       kind: "stage",
+      editor: null,
       stageEditor,
       detailsLabel: stageEditor ? (visible.find((m) => m.editor === "stage_details")?.label ?? null) : null,
       moments,

@@ -10,16 +10,20 @@ import type { SaveState } from "./use-autosave";
  * saves keep their input; this registry only reports their state so the
  * navigation can say where something isn't saved, send a debounced save
  * right away when the client leaves a section, and warn before the browser
- * leaves the page with unsaved input. Answers never pass through here.
+ * leaves the page with unsaved input, and offer Retry next to a question
+ * whose save failed. Answers never pass through here (live previews of
+ * answers are answer-preview's job).
  *
  * Without a provider (the staff page) every hook is a no-op.
  */
 
-type Entry = { section: string | null; item: string | null; state: SaveState; flush: () => void };
+type Entry = { section: string | null; item: string | null; state: SaveState; flush: () => void; retry: () => void };
 export type SaveSummary = "saved" | "pending" | "not_saved";
 
 /** States whose input never reached the database. */
 const NOT_SAVED: SaveState[] = ["error", "invalid", "signed_out", "conflict", "locked", "unavailable"];
+/** Failed saves a Retry can send again (the editor's own Retry covers the same states). */
+const RETRYABLE: SaveState[] = ["error", "signed_out"];
 /** States worth a browser-leave warning: the input can still be saved from this page. */
 const LEAVE_WARNING: SaveState[] = ["unsaved", "saving", "error", "invalid", "signed_out"];
 
@@ -56,6 +60,14 @@ class SaveStore {
     for (const e of this.entries.values()) if (e.section !== null && NOT_SAVED.includes(e.state)) keys.add(e.section);
     return [...keys].join(" ");
   }
+  canRetry(item: string): boolean {
+    for (const e of this.entries.values()) if (e.item === item && RETRYABLE.includes(e.state)) return true;
+    return false;
+  }
+  /** Retries the item's failed saves (the same Retry its editor offers). */
+  retry(item: string) {
+    for (const e of this.entries.values()) if (e.item === item && RETRYABLE.includes(e.state)) e.retry();
+  }
   needsLeaveWarning(): boolean {
     for (const e of this.entries.values()) if (LEAVE_WARNING.includes(e.state)) return true;
     return false;
@@ -90,17 +102,24 @@ export function useSaveStore() {
   return useContext(StoreContext);
 }
 
-/** Called by useAutosave: reports its state and how to send a debounced save now. */
-export function useRegisterSave(state: SaveState, flush: () => void) {
+/** The plan item the surrounding editors belong to (see SaveScope), or null. */
+export function useSaveScopeItem(): string | null {
+  return useContext(ScopeContext).item;
+}
+
+/** Called by useAutosave: reports its state, how to send a debounced save now and how to retry a failed one. */
+export function useRegisterSave(state: SaveState, flush: () => void, retry: () => void) {
   const store = useContext(StoreContext);
   const scope = useContext(ScopeContext);
   const id = useId();
   const flushRef = useRef(flush);
+  const retryRef = useRef(retry);
   useEffect(() => {
     flushRef.current = flush;
+    retryRef.current = retry;
   });
   useEffect(() => {
-    store?.set(id, { section: scope.section, item: scope.item, state, flush: () => flushRef.current() });
+    store?.set(id, { section: scope.section, item: scope.item, state, flush: () => flushRef.current(), retry: () => retryRef.current() });
   }, [store, id, scope.section, scope.item, state]);
   useEffect(() => () => store?.remove(id), [store, id]);
 }
@@ -115,6 +134,13 @@ export function useSectionSaveSummary(section: string | null): SaveSummary {
 export function useItemSaveSummary(item: string): SaveSummary {
   const store = useContext(StoreContext);
   return useSyncExternalStore(store?.subscribe ?? noop, () => store?.summary((e) => e.item === item) ?? "saved", () => "saved");
+}
+
+/** Whether the item has a failed save Retry can send, and the Retry itself. */
+export function useItemRetry(item: string): (() => void) | null {
+  const store = useContext(StoreContext);
+  const retryable = useSyncExternalStore(store?.subscribe ?? noop, () => store?.canRetry(item) ?? false, () => false);
+  return retryable && store ? () => store.retry(item) : null;
 }
 
 export function useNotSavedSections(): string[] {

@@ -240,19 +240,20 @@ test.describe.serial("contacts and preferences", () => {
     await card.getByLabel("Not sure yet — discuss with your DJ").last().check();
     await card.getByLabel("Desired atmosphere and what matters most (optional)").fill("Elegant dinner, then a packed dance floor");
     await expect(card.getByText("All changes saved")).toBeVisible();
-    await expect(card).toContainText("2 of 4 needed answers");
-    await expect(card).toContainText("Discuss with your DJ (still open)");
+    await expect(card.getByTestId("section-status")).toContainText("2 of 4 answered");
+    await expect(card.getByTestId("item-needs")).toContainText("To discuss with your DJ:");
 
     // Asked here only: Event basics doesn't ask it again, and saves it as its own answer.
     const basics = await openPlanSection(client, "basics");
     await expect(basics.getByLabel("Language for announcements (optional)")).toHaveCount(0);
     await openPlanSection(client, "dj_preferences");
     await language.selectOption({ label: "Bilingual (French and English)" });
-    await expect(card).toContainText("3 of 4 needed answers");
+    await expect(card.getByTestId("section-status")).toContainText("3 of 4 answered");
     await expect.poll(async () => (await answers(eventId, "basics"))?.announcement_language).toBe("bilingual");
     await card.getByLabel("Guests may request songs (never anything on Do not play)").check();
     await expect(card.getByText("All changes saved")).toBeVisible();
-    await expect(card).toContainText("DJ expectations and overall preferences is complete.");
+    await expect(card.getByTestId("section-status")).toContainText("Complete");
+    await expect(card.getByTestId("item-needs")).toHaveCount(0);
     expect(await answers(eventId, "dj_preferences")).toEqual({ interaction: "interactive", lyrics: "clean", requests: "welcome", atmosphere: "Elegant dinner, then a packed dance floor" });
   });
 

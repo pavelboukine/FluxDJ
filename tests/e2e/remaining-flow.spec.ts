@@ -144,7 +144,9 @@ test.describe.serial("remaining planning editors", () => {
     await slideshow.getByLabel("At a moment in the evening").check();
     await slideshow.getByLabel("Moment", { exact: true }).fill("After the main course");
     await expect(card.getByText("All changes saved")).toBeVisible();
-    await expect(card).toContainText("Program details is complete.");
+    // Complete: the row says so and nothing is listed as still needed.
+    await expect(card.locator("summary").first()).toContainText("Complete");
+    await expect(card.getByTestId("item-needs")).toHaveCount(0);
     await card.getByRole("button", { name: 'Move "Slideshow" up' }).click();
     await card.getByRole("button", { name: 'Remove "Welcome"' }).click();
     await card.getByRole("button", { name: "Undo" }).click();
@@ -203,7 +205,9 @@ test.describe.serial("remaining planning editors", () => {
     const party = await openMoment(client, "party", "party_activities");
     await party.getByLabel("No activities").check();
     await expect(party.getByText("All changes saved")).toBeVisible();
-    await expect(party).toContainText("Not needed (you said so)");
+    // "No activities" counts as answered: the row reads not applicable, with the choice as its preview.
+    await expect(party.locator("summary").first()).toContainText("Not applicable");
+    await expect(party.locator("summary").first()).toContainText("No activities");
     expect(await answers(eventId, "party_activities")).toEqual({ choice: "none" });
     expect((await answers(eventId, "dinner_activities"))!.entries!.map((e) => `${e.name}|${e.timing}|${e.cue ?? e.time}`)).toEqual([
       "Shoe game|cue|Between courses", "Lantern blessing (family tradition)|time|20:45",
@@ -243,7 +247,8 @@ test.describe.serial("remaining planning editors", () => {
     await expect(card.getByText("All changes saved")).toBeVisible();
     await client.unroute(`**${planningUrl}*`);
     await expect.poll(async () => (await answers(eventId, "dedications"))!.entries![0]).toMatchObject({ song_title: "Moon River", song_artist: "Andy Williams", timing: "anytime" });
-    await expect(card).toContainText("Dedications is complete.");
+    await expect(card.locator("summary").first()).toContainText("Complete");
+    await expect(card.getByTestId("item-needs")).toHaveCount(0);
 
     // A failed save keeps the edit and retries.
     await client.route(`**${planningUrl}*`, (route) =>

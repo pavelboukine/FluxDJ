@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { answersKey } from "@/lib/planning/basics";
 import type { SaveItemResult } from "@/lib/planning/view";
 import { usePlanProgress } from "./progress";
-import { useRegisterSave } from "./save-registry";
+import { usePreviewPublisher } from "./answer-preview";
+import { useRegisterSave, useSaveScopeItem } from "./save-registry";
 
 export type SaveState = "saved" | "unsaved" | "saving" | "invalid" | "error" | "conflict" | "signed_out" | "unavailable" | "locked";
 type Parsed<A> = { ok: true; answers: A } | { ok: false; field: string; message: string };
@@ -134,6 +135,16 @@ export function useAutosave<F extends Record<string, unknown>, A extends Record<
   useEffect(() => {
     saveRef.current = save;
   }, [save]);
+
+  // Live preview: the answers this form would save, for the collapsed question and the overview.
+  // Read only; an invalid form keeps the last valid preview (the row says it isn't saved).
+  const scopeItem = useSaveScopeItem();
+  const publish = usePreviewPublisher();
+  useEffect(() => {
+    if (!scopeItem) return;
+    const parsed = optsRef.current.parse(form);
+    if (parsed.ok) publish(scopeItem, parsed.answers);
+  }, [form, scopeItem, publish]);
   useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current);
   }, []);
@@ -163,7 +174,7 @@ export function useAutosave<F extends Record<string, unknown>, A extends Record<
     timer.current = null;
     void save();
   }
-  useRegisterSave(saveState, flush);
+  useRegisterSave(saveState, flush, retry);
 
   return { form, update, saveState, message, fieldError, retry };
 }
@@ -184,8 +195,8 @@ const STATUS: Record<SaveState, string> = {
 export function SaveStatus({ saveState, message, retry }: { saveState: SaveState; message: string | null; retry: () => void }) {
   const alerting = saveState !== "saved" && saveState !== "unsaved" && saveState !== "saving";
   return (
-    <div className="flex flex-wrap items-center gap-3">
-      <p role={alerting ? "alert" : "status"} className={alerting ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+      <p role={alerting ? "alert" : "status"} className={alerting ? "text-sm font-medium text-destructive" : "text-xs text-plan-ink-2"}>
         {saveState === "error" && message ? message : STATUS[saveState]}
       </p>
       {saveState === "error" || saveState === "signed_out" ? (

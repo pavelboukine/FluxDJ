@@ -207,13 +207,15 @@ test.describe.serial("songs in planning", () => {
     await cake.getByLabel("Not applicable: this moment won't happen").check();
     await expect(cake.getByText("All changes saved")).toBeVisible();
     await expect(cake).toContainText("The moment stays in your plan; only your DJ can remove it.");
-    await expect(cake).toContainText("Not needed (you said so)");
+    // Not applicable counts as answered: the row says so, and why.
+    await expect(client.getByTestId("moment-cake_cutting").locator("summary").first()).toContainText("Not applicable");
+    await expect(client.getByTestId("moment-cake_cutting").locator("summary").first()).toContainText("Not happening");
 
     const final = await openMoment(client, "closing", "final_song");
     await final.getByLabel("Not sure yet — discuss with your DJ").check();
     await addSong(final, { title: "Time of My Life", artist: "Bill Medley & Jennifer Warnes" });
     await expect(final.getByText("All changes saved")).toBeVisible();
-    await expect(final).toContainText("Discuss with your DJ (still open)");
+    await expect(final.getByTestId("item-needs")).toContainText("To discuss with your DJ:");
     await expect(client.getByTestId("moment-final_song")).toContainText("In progress");
     await expect(client.locator("#plan-panel-closing").getByTestId("section-status")).toContainText("1 to discuss");
 
@@ -222,7 +224,8 @@ test.describe.serial("songs in planning", () => {
     await client.reload();
     await expect(client.getByTestId("progress-headline")).toHaveText(new RegExp(`^${before + 2} of `));
     // Not applicable keeps the moment in the plan.
-    await expect(await openMoment(client, "dinner", "cake_cutting")).toContainText("Not needed (you said so)");
+    await openMoment(client, "dinner", "cake_cutting");
+    await expect(client.getByTestId("moment-cake_cutting").locator("summary").first()).toContainText("Not applicable");
     expect((await responses(eventId, "cake_cutting"))!.answers).toEqual({ choice: "not_applicable" });
   });
 
