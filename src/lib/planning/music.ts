@@ -249,7 +249,7 @@ export const CHOICE_LABELS: Record<MusicEditor, Partial<Record<MusicChoice, stri
   music_background: { dj_choice: "DJ's choice: no suggestions" },
   music_requests: { none: "No requests" },
   music_exclusions: { none: "Nothing to exclude" },
-  moment_songs: { dj_choice: "DJ's choice", not_applicable: "Not applicable: this moment won't happen", discuss: "Not sure yet, discuss with the DJ" },
+  moment_songs: { dj_choice: "DJ's choice", not_applicable: "Not applicable: this moment won't happen", discuss: "Not sure yet — discuss with the DJ" },
 };
 
 export const LIST_CHOICE_LABEL: Record<MusicEditor, string> = {

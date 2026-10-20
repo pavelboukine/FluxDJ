@@ -184,7 +184,7 @@ export function ProgressSummary() {
 }
 
 function stateText(r: Requirement, dj: string, audience: "client" | "staff"): string {
-  if (r.discuss) return audience === "client" ? `Discuss with ${dj} (still open)` : "Discuss with DJ (still open)";
+  if (r.discuss) return audience === "client" ? "Discuss with your DJ (still open)" : "Discuss with DJ (still open)";
   // The language is answered in DJ expectations, though it's stored with Event basics ("basics_missing").
   if (r.state === "unanswered") return r.note && r.key !== "language" ? REQUIREMENT_NOTES[r.note] ?? "Not answered yet" : "Not answered yet";
   if (r.state === "answered") return "Answered";

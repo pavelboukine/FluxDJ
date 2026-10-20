@@ -107,6 +107,22 @@ export async function savePlanningCutoff(slug: string, _state: ActionState, form
 }
 
 /**
+ * Sets or clears the DJ name planning shows clients where it asks who does
+ * what ("DJ Boukine (your DJ) will be the MC"), for events that don't name
+ * their own DJ. Owner only (checked again in the database). Empty: "your DJ".
+ */
+export async function savePlanningDjName(slug: string, _state: ActionState, form: FormData): Promise<ActionState> {
+  const { supabase, tenant, membership } = await requireStaff(slug);
+  if (membership.role !== "owner") return fail("Only the owner can change the DJ name.");
+  const name = text(form, "dj_name").replace(/\s+/g, " ");
+  if (name.length > 80) return fail("Keep the DJ name under 80 characters.");
+  const { error } = await supabase.rpc("update_planning_dj_name", { p_tenant_id: tenant.id, p_dj_name: name || (null as unknown as string) });
+  if (error) return fail(describeDbError(error));
+  revalidatePath(`/staff/${slug}`, "layout");
+  return ok(name ? `Saved. Planning now names ${name} where an event doesn't name its own DJ.` : "Cleared. Planning says “your DJ” where an event doesn't name its own DJ.");
+}
+
+/**
  * Saves branding: an optional new logo (verified, re-encoded and registered
  * first), logo removal, and the primary colour, all checked against the
  * branding version so a stale tab can't overwrite newer branding. Owner only;

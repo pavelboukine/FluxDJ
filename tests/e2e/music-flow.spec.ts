@@ -206,14 +206,14 @@ test.describe.serial("songs in planning", () => {
     const cake = await openMoment(client, "dinner", "cake_cutting");
     await cake.getByLabel("Not applicable: this moment won't happen").check();
     await expect(cake.getByText("All changes saved")).toBeVisible();
-    await expect(cake).toContainText(`The moment stays in your plan; only ${tenant.displayName} can remove it.`);
+    await expect(cake).toContainText("The moment stays in your plan; only your DJ can remove it.");
     await expect(cake).toContainText("Not needed (you said so)");
 
     const final = await openMoment(client, "closing", "final_song");
-    await final.getByLabel(`Not sure yet, discuss with ${tenant.displayName}`).check();
+    await final.getByLabel("Not sure yet — discuss with your DJ").check();
     await addSong(final, { title: "Time of My Life", artist: "Bill Medley & Jennifer Warnes" });
     await expect(final.getByText("All changes saved")).toBeVisible();
-    await expect(final).toContainText(`Discuss with ${tenant.displayName} (still open)`);
+    await expect(final).toContainText("Discuss with your DJ (still open)");
     await expect(client.getByTestId("moment-final_song")).toContainText("In progress");
     await expect(client.locator("#plan-panel-closing").getByTestId("section-status")).toContainText("1 to discuss");
 

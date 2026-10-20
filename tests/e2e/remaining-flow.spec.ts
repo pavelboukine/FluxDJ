@@ -170,7 +170,8 @@ test.describe.serial("remaining planning editors", () => {
       await form.getByLabel("Activity").fill("Lantern blessing (family tradition)");
       await form.getByLabel("At an exact time").check();
       await form.getByLabel("Time", { exact: true }).fill("20:45");
-      await form.getByLabel("Pronunciation guide (optional)").fill("LAN-tern");
+      // Activities ask no pronunciation guide.
+      await expect(form.getByLabel("Pronunciation guide (optional)")).toHaveCount(0);
     });
     await expect(dinner.getByText("All changes saved")).toBeVisible();
     await expect(dinner.getByTestId("entry-row").nth(0)).toContainText("Song: Shoe by The Band");

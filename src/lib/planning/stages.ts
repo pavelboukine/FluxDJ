@@ -186,7 +186,7 @@ export const STAGE_LAYOUT: Record<StageEditor, Block[]> = {
     { type: "text", field: "officiant_contact", label: "Officiant phone or email (optional)", hint: "Only if the DJ may need to coordinate with them." },
     {
       type: "choice", field: "microphones", label: "Microphones (needed)",
-      options: [["not_needed", "Not needed"], ["needed", "Needed"], ["discuss", "Not sure, discuss with DJ"]],
+      options: [["not_needed", "Not needed"], ["needed", "Needed"], ["discuss", "Not sure yet — discuss with the DJ"]],
       hint: EQUIPMENT_NOTE,
     },
     { type: "text", field: "microphone_notes", label: "Who will speak? (optional)", hint: "For example: officiant, two readers, vows." },

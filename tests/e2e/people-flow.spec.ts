@@ -14,7 +14,9 @@
  *     right there (shared, changed, reordered, removed safely); older plans'
  *     Entrance music still links, and a linked song can't be removed (also
  *     from a stale tab);
- *   - the MC and speeches (exact time with next day, cue, undecided);
+ *   - the MC: four choices, shared duties with the other MC's name, the
+ *     DJ's configured name, legacy No MC and pronunciation answers kept;
+ *   - speeches (exact time with next day, cue, undecided);
  *   - pending, failed and stale saves keep entries;
  *   - staff edit the same entries on a phone; nothing contractual changes.
  */
@@ -440,20 +442,105 @@ test.describe.serial("people in planning", () => {
     await expect.poll(async () => (await answers(eventId, "reception_entrance"))!.grand_entrance).toBe("planned");
   });
 
-  test("the MC: someone else with a name and pronunciation; the DJ keeps no one else's details", async () => {
+  test("the MC: four choices with a generic DJ; another MC's name is needed when someone else or both handle it; no pronunciation asked", async () => {
     const mc = await openMoment(client, "reception_entrance", "mc");
-    await mc.getByLabel("Someone else").check();
+    await expect(mc).toContainText("Who will handle MC duties during the reception? (needed)");
+    await expect(mc.getByRole("radio")).toHaveCount(4);
+    for (const label of ["Your DJ will be the MC", "Someone else will be the MC", "Your DJ and another MC will share duties", "Not sure yet — discuss with your DJ"]) {
+      await expect(mc.getByLabel(label, { exact: true })).toBeVisible();
+    }
+    // No DJ name is configured: never the business name, and "No MC" is no longer offered.
+    await expect(mc).not.toContainText(tenant.displayName);
+    await expect(mc.getByLabel("No MC")).toHaveCount(0);
+
+    await mc.getByLabel("Someone else will be the MC").check();
     await expect(client.getByTestId("moment-mc")).toContainText("In progress");
+    await expect(mc.getByLabel("Pronunciation guide (optional)")).toHaveCount(0);
     await mc.getByLabel("MC's name (needed)").fill("Kiara Okafor");
-    await mc.getByLabel("Pronunciation guide (optional)").fill("kee-AR-ah oh-KAH-for");
     await mc.getByLabel("Phone or email (optional)").fill("kiara@example.test");
     await mc.getByLabel("Instructions (optional)").fill("Bilingual announcements");
     await expect(mc.getByText("All changes saved")).toBeVisible();
     await expect(client.getByTestId("moment-mc")).toContainText("Complete");
-    expect(await answers(eventId, "mc")).toEqual({ mc: "other", name: "Kiara Okafor", pronunciation: "kee-AR-ah oh-KAH-for", contact: "kiara@example.test", notes: "Bilingual announcements" });
-    await mc.getByLabel(`${tenant.displayName} (the DJ)`).check();
+    expect(await answers(eventId, "mc")).toEqual({ mc: "other", name: "Kiara Okafor", contact: "kiara@example.test", notes: "Bilingual announcements" });
+
+    // Shared duties keep the other MC's details, and need the name.
+    await mc.getByLabel("Your DJ and another MC will share duties").check();
+    await expect(mc.getByText("All changes saved")).toBeVisible();
+    expect(await answers(eventId, "mc")).toEqual({ mc: "shared", name: "Kiara Okafor", contact: "kiara@example.test", notes: "Bilingual announcements" });
+    await mc.getByLabel("MC's name (needed)").fill("");
+    await expect(mc.getByText("All changes saved")).toBeVisible();
+    await expect(client.getByTestId("moment-mc")).toContainText("In progress");
+    await mc.getByLabel("MC's name (needed)").fill("Kiara Okafor");
+    await expect(client.getByTestId("moment-mc")).toContainText("Complete");
+
+    await mc.getByLabel("Your DJ will be the MC").check();
+    await expect(mc.getByLabel("MC's name (needed)")).toHaveCount(0);
     await expect(mc.getByText("All changes saved")).toBeVisible();
     expect(await answers(eventId, "mc")).toEqual({ mc: "dj", notes: "Bilingual announcements" });
+
+    await mc.getByLabel("Not sure yet — discuss with your DJ").check();
+    await expect(mc.getByText("All changes saved")).toBeVisible();
+    await expect(mc).toContainText("Discuss with your DJ (still open)");
+    await client.reload();
+    const reloaded = await openMoment(client, "reception_entrance", "mc");
+    await expect(reloaded.getByLabel("Not sure yet — discuss with your DJ")).toBeChecked();
+    expect(await answers(eventId, "mc")).toEqual({ mc: "discuss", notes: "Bilingual announcements" });
+  });
+
+  test("the DJ named in the MC choices is the event's DJ, else the business's DJ name", async () => {
+    await must(admin.from("tenants").update({ dj_name: "DJ Boukine E2E" }).eq("id", tenant.id));
+    try {
+      await client.reload();
+      let mc = await openMoment(client, "reception_entrance", "mc");
+      await expect(mc.getByLabel("DJ Boukine E2E (your DJ) will be the MC")).toBeVisible();
+      await expect(mc.getByLabel("DJ Boukine E2E (your DJ) and another MC will share duties")).toBeVisible();
+      // Generic choices still say "your DJ".
+      await expect(mc.getByLabel("Not sure yet — discuss with your DJ")).toBeVisible();
+
+      await must(admin.from("events").update({ dj_name: "DJ Sam E2E" }).eq("id", eventId));
+      await client.reload();
+      mc = await openMoment(client, "reception_entrance", "mc");
+      await expect(mc.getByLabel("DJ Sam E2E (your DJ) will be the MC")).toBeVisible();
+      await expect(mc).not.toContainText("DJ Boukine E2E");
+      await staff.goto(staffPlanningUrl);
+      const staffMc = await openMoment(staff, "reception_entrance", "mc");
+      await expect(staffMc.getByLabel("DJ Sam E2E (the DJ) will be the MC")).toBeVisible();
+      await expect(staffMc.getByLabel("Not sure yet — discuss with the DJ")).toBeChecked();
+    } finally {
+      await must(admin.from("events").update({ dj_name: null }).eq("id", eventId));
+      await must(admin.from("tenants").update({ dj_name: null }).eq("id", tenant.id));
+    }
+  });
+
+  test("a saved No MC answer and an earlier pronunciation guide stay as saved, readable and safely updatable", async () => {
+    const { data: plan } = await must(admin.from("event_plans").select("event_plan_items(id, key)").eq("event_id", eventId).single());
+    const itemId = plan!.event_plan_items.find((i) => i.key === "mc")!.id;
+    await must(admin.from("event_plan_responses").update({ answers: { mc: "none", notes: "No announcements" } }).eq("item_id", itemId));
+    await client.reload();
+    let mc = await openMoment(client, "reception_entrance", "mc");
+    await expect(mc.getByLabel("No MC")).toBeChecked();
+    await expect(mc).toContainText("An earlier answer that is no longer offered.");
+    await expect(client.getByTestId("moment-mc")).toContainText("Complete");
+    await mc.getByLabel("Instructions (optional)").fill("No announcements, please");
+    await expect(mc.getByText("All changes saved")).toBeVisible();
+    expect(await answers(eventId, "mc")).toEqual({ mc: "none", notes: "No announcements, please" });
+    await mc.getByLabel("Someone else will be the MC").check();
+    await mc.getByLabel("MC's name (needed)").fill("Kiara Okafor");
+    await expect(mc.getByText("All changes saved")).toBeVisible();
+    expect(await answers(eventId, "mc")).toEqual({ mc: "other", name: "Kiara Okafor", notes: "No announcements, please" });
+
+    // An earlier pronunciation guide: kept when the client edits, shown to staff only.
+    await must(admin.from("event_plan_responses").update({ answers: { mc: "other", name: "Kiara Okafor", pronunciation: "kee-AR-ah" } }).eq("item_id", itemId));
+    await client.reload();
+    mc = await openMoment(client, "reception_entrance", "mc");
+    await expect(mc).not.toContainText("kee-AR-ah");
+    await expect(mc.getByLabel("No MC")).toHaveCount(0);
+    await mc.getByLabel("Phone or email (optional)").fill("kiara@example.test");
+    await expect(mc.getByText("All changes saved")).toBeVisible();
+    expect(await answers(eventId, "mc")).toEqual({ mc: "other", name: "Kiara Okafor", pronunciation: "kee-AR-ah", contact: "kiara@example.test" });
+    await staff.goto(staffPlanningUrl);
+    const staffMc = await openMoment(staff, "reception_entrance", "mc");
+    await expect(staffMc.getByTestId("mc-earlier-pronunciation")).toContainText("kee-AR-ah");
   });
 
   test("speeches: exact time, next day and cues complete them; undecided stays open; saves keep entries", async () => {

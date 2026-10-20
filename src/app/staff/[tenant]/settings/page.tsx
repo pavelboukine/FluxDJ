@@ -12,7 +12,7 @@ import { BrandLogo } from "@/components/app/brand-logo";
 import { brandTheme, normalizeHex } from "@/lib/branding/colors";
 import { logoUrl } from "@/lib/branding/logo.server";
 import { EVENT_TYPES } from "../events/event-form";
-import { saveBookingPolicy, saveBranding, saveBusinessSettings, savePlanningCutoff, saveReplyTo, saveTaxSettings } from "./actions";
+import { saveBookingPolicy, saveBranding, saveBusinessSettings, savePlanningCutoff, savePlanningDjName, saveReplyTo, saveTaxSettings } from "./actions";
 import { BrandingForm } from "./branding-form";
 import { TaxSettingsForm } from "./tax-settings-form";
 
@@ -60,7 +60,7 @@ export default async function BusinessSettings({ params, searchParams }: PagePro
   const { supabase, tenant, membership } = await requireStaff(slug);
   const { data: settings } = await supabase
     .from("tenants")
-    .select("business_name, display_name, business_address, contact_email, deposit_percent, tax_config, tax_categories, tax_settings_version, booking_confirmation_policy, booking_policy_version, planning_lock_days, planning_settings_version, brand_colors, logo_storage_path, branding_version, timezone, currency, reply_to_email")
+    .select("business_name, display_name, business_address, contact_email, deposit_percent, tax_config, tax_categories, tax_settings_version, booking_confirmation_policy, booking_policy_version, planning_lock_days, planning_settings_version, dj_name, brand_colors, logo_storage_path, branding_version, timezone, currency, reply_to_email")
     .eq("id", tenant.id)
     .single();
   const isOwner = membership.role === "owner";
@@ -416,6 +416,37 @@ export default async function BusinessSettings({ params, searchParams }: PagePro
                   <p>
                     <span className="text-muted-foreground">Client planning closes </span>
                     {settings?.planning_lock_days ?? 14} days before the event.
+                    <span className="block text-muted-foreground">Only the owner can change this.</span>
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card id="dj-name" className="scroll-mt-20" data-testid="planning-dj-name">
+              <CardHeader>
+                <CardTitle>DJ name</CardTitle>
+                <CardDescription>
+                  Where planning asks who does what, clients see this name, for example &ldquo;DJ Boukine (your DJ) will be the MC&rdquo;. An
+                  event can name its own DJ in its details. Leave it empty if different DJs handle your events: planning then says &ldquo;your
+                  DJ&rdquo;. Everywhere else, clients see your display name.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-3 text-sm">
+                {isOwner ? (
+                  <ActionForm action={savePlanningDjName.bind(null, slug)} submitLabel="Save DJ name" trackUnsaved>
+                    <TextField
+                      key={settings?.dj_name ?? ""}
+                      label="DJ name (optional)"
+                      name="dj_name"
+                      maxLength={80}
+                      defaultValue={settings?.dj_name ?? ""}
+                      placeholder="DJ Boukine"
+                      className="max-w-md"
+                    />
+                  </ActionForm>
+                ) : (
+                  <p>
+                    {settings?.dj_name ?? <span className="text-muted-foreground">Not set: planning says &ldquo;your DJ&rdquo;.</span>}
                     <span className="block text-muted-foreground">Only the owner can change this.</span>
                   </p>
                 )}

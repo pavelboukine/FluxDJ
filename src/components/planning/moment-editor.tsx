@@ -20,6 +20,8 @@ export function momentEditor(m: Moment, opts: {
   music: MusicLists;
   moments: MomentAnswers;
   djName: string;
+  /** The DJ handling the event, or null (see resolveDjName). */
+  djDisplayName: string | null;
   audience: "client" | "staff";
   event: { date: string; timezone: string; venueName: string | null; venueAddress: string | null };
   /** The visible Ceremony's details, for arrival answers that reuse them. */
@@ -30,7 +32,7 @@ export function momentEditor(m: Moment, opts: {
   const saved = opts.moments[m.id] ?? opts.music[m.id];
   const common = {
     itemId: m.id, momentKey: m.key, label: m.label, initialRevision: saved?.revision ?? 0,
-    djName: opts.djName, audience: opts.audience, disabledReason: opts.disabledReason,
+    djName: opts.djName, djDisplayName: opts.djDisplayName, audience: opts.audience, disabledReason: opts.disabledReason,
   };
   const answers = (saved?.answers ?? {}) as Record<string, unknown>;
   const save = opts.save(m.id) as (expectedRevision: number, answers: unknown) => Promise<SaveItemResult>;
@@ -83,7 +85,9 @@ export function knownPeople(stages: PlanStage[], moments: MomentAnswers, stageDe
   const ceremony = visible.find((s) => s.editor === "stage_ceremony");
   const c = ceremony ? stageDetails[ceremony.id]?.answers : undefined;
   return {
-    mc: mc?.mc === "dj" ? { dj: true } : mc?.mc === "other" ? { dj: false, name: mc.name, contact: mc.contact } : null,
+    mc: mc?.mc === "dj" || mc?.mc === "other" || mc?.mc === "shared"
+      ? { dj: mc.mc !== "other", other: mc.mc !== "dj", name: mc.mc === "dj" ? undefined : mc.name, contact: mc.mc === "dj" ? undefined : mc.contact }
+      : null,
     officiant: c && (c.officiant_name || c.officiant_contact) ? { name: c.officiant_name as string | undefined, contact: c.officiant_contact as string | undefined } : null,
   };
 }
@@ -94,6 +98,8 @@ export function generalEditor(g: General, opts: {
   eventContacts: EventContact[];
   known: KnownPeople;
   djName: string;
+  /** The DJ handling the event, or null (see resolveDjName). */
+  djDisplayName: string | null;
   audience: "client" | "staff";
   save: (itemId: string) => (expectedRevision: number, answers: never) => Promise<SaveItemResult>;
   disabledReason?: string;
@@ -101,7 +107,7 @@ export function generalEditor(g: General, opts: {
   const saved = opts.moments[g.id];
   const common = {
     itemId: g.id, momentKey: g.key, label: g.label, initialRevision: saved?.revision ?? 0,
-    djName: opts.djName, audience: opts.audience, disabledReason: opts.disabledReason,
+    djName: opts.djName, djDisplayName: opts.djDisplayName, audience: opts.audience, disabledReason: opts.disabledReason,
     save: opts.save(g.id) as (expectedRevision: number, answers: unknown) => Promise<SaveItemResult>,
   };
   const answers = (saved?.answers ?? {}) as Record<string, unknown>;

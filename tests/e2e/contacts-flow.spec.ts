@@ -193,7 +193,7 @@ test.describe.serial("contacts and preferences", () => {
     await client.reload();
     const card = await openPlanSection(client, "contacts_vendors");
     const patRow = card.getByTestId("entry-row").filter({ hasText: "Venue: Pat" });
-    await expect(patRow).toContainText(`No phone or email yet. Edit to add one so ${tenant.displayName} can reach them.`);
+    await expect(patRow).toContainText("No phone or email yet. Edit to add one so your DJ can reach them.");
     // Another vendor's change saves with Pat still incomplete.
     await card.getByRole("button", { name: 'Edit "Sasha Roy"' }).click();
     await card.getByTestId("entry-row").filter({ hasText: "Sasha Roy" }).getByLabel("Coordination notes (optional, shared with you and the DJ)").fill("Cue the DJ for the entrance, please");
@@ -227,13 +227,21 @@ test.describe.serial("contacts and preferences", () => {
     const language = card.getByLabel("Announcement language (needed)");
     await expect(language).toHaveValue("");
     await expect(language).toBeEnabled();
-    await card.getByLabel("Interactive: get the crowd going").check();
+    // The DJ's microphone interaction, not formal MC duties; generic wording, never the business name.
+    const interaction = card.getByRole("group", { name: "How much would you like your DJ to interact with guests on the microphone? (needed)" });
+    await expect(interaction.getByRole("radio")).toHaveCount(4);
+    await expect(interaction).toContainText("MinimalMostly let the music do the talking.");
+    await expect(interaction).toContainText("A little interactionSome crowd engagement when it feels right.");
+    await expect(interaction).toContainText("Not sure yet — discuss with your DJ");
+    await expect(interaction).not.toContainText("Occasional announcements");
+    await expect(card).not.toContainText(tenant.displayName);
+    await card.getByLabel("Energetic and interactive").check();
     await card.getByLabel("Clean versions only").check();
-    await card.getByLabel(`Not sure yet, discuss with ${tenant.displayName}`).last().check();
+    await card.getByLabel("Not sure yet — discuss with your DJ").last().check();
     await card.getByLabel("Desired atmosphere and what matters most (optional)").fill("Elegant dinner, then a packed dance floor");
     await expect(card.getByText("All changes saved")).toBeVisible();
     await expect(card).toContainText("2 of 4 needed answers");
-    await expect(card).toContainText(`Discuss with ${tenant.displayName} (still open)`);
+    await expect(card).toContainText("Discuss with your DJ (still open)");
 
     // Asked here only: Event basics doesn't ask it again, and saves it as its own answer.
     const basics = await openPlanSection(client, "basics");
@@ -246,6 +254,27 @@ test.describe.serial("contacts and preferences", () => {
     await expect(card.getByText("All changes saved")).toBeVisible();
     await expect(card).toContainText("DJ expectations and overall preferences is complete.");
     expect(await answers(eventId, "dj_preferences")).toEqual({ interaction: "interactive", lyrics: "clean", requests: "welcome", atmosphere: "Elegant dinner, then a packed dance floor" });
+  });
+
+  test("a saved Occasional announcements answer stays selected and saved until the client chooses a current option", async () => {
+    const { data: plan } = await must(admin.from("event_plans").select("event_plan_items(id, key)").eq("event_id", eventId).single());
+    const itemId = plan!.event_plan_items.find((i) => i.key === "dj_preferences")!.id;
+    const stored = (await answers(eventId, "dj_preferences"))!;
+    await must(admin.from("event_plan_responses").update({ answers: { ...stored, interaction: "occasional" } }).eq("item_id", itemId));
+    await client.reload();
+    const card = await openPlanSection(client, "dj_preferences");
+    await expect(card.getByLabel("Occasional announcements")).toBeChecked();
+    await expect(card).toContainText("An earlier answer that is no longer offered.");
+    await card.getByLabel("Practical preferences or concerns (optional)").fill("Keep the volume moderate during dinner");
+    await expect(card.getByText("All changes saved")).toBeVisible();
+    expect(await answers(eventId, "dj_preferences")).toMatchObject({ interaction: "occasional", notes: "Keep the volume moderate during dinner" });
+    await card.getByLabel("A little interaction").check();
+    await expect(card.getByText("All changes saved")).toBeVisible();
+    expect(await answers(eventId, "dj_preferences")).toMatchObject({ interaction: "a_little" });
+    await client.reload();
+    const reloaded = await openPlanSection(client, "dj_preferences");
+    await expect(reloaded.getByLabel("A little interaction")).toBeChecked();
+    await expect(reloaded.getByLabel("Occasional announcements")).toHaveCount(0);
   });
 
   test("music preferences: styles or DJ's choice and slow songs; typing during saves, failed saves and stale tabs keep answers", async () => {

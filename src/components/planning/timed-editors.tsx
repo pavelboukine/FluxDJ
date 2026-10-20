@@ -29,10 +29,10 @@ import { FieldBox } from "./basics-editor";
 import { TimeField } from "./time-field";
 import { Choices, EntryList, Frame, PRONUNCIATION_HINT, text, type Common } from "./participants-editor";
 import { useEditingClosed, usePlanProgress } from "./progress";
+import { discussLabel } from "@/lib/planning/dj";
 import { SaveStatus, useAutosave } from "./use-autosave";
 
 type EventInfo = { date: string; timezone: string; venueName: string | null; venueAddress: string | null };
-const djText = (props: { audience: "client" | "staff"; djName: string }) => (props.audience === "client" ? props.djName : "the DJ");
 
 /** An end at or before its start: offer "Next day" for it (never assumed). */
 function endNotAfterStart(form: { start_time: string; start_next_day: boolean; end_time: string; end_next_day: boolean }): boolean {
@@ -150,13 +150,15 @@ function TimedList(props: {
   fieldError: { field: string; message: string } | null;
   readOnly: boolean;
   eventDate: string;
-  dj: string;
+  audience: "client" | "staff";
 }) {
   const { editor, form, update } = props;
   const rules = TIMED_RULES[editor];
   const w = WORDING[editor];
   const nameField = rules.name as keyof TimedEntryForm;
   const blocked = form.entries.length > 0 ? "Remove the entries to choose this." : null;
+  // Activities ask no pronunciation guide (older guides are kept, and shown to staff).
+  const asksPronunciation = editor !== "activities";
   return (
     <>
       <Choices<ListChoice>
@@ -169,7 +171,7 @@ function TimedList(props: {
         options={[
           { value: "", label: w.list },
           { value: "none", label: w.none, blocked },
-          { value: "discuss", label: `Not sure yet, discuss with ${props.dj}` },
+          { value: "discuss", label: discussLabel(props.audience) },
         ]}
       />
       {editor === "activities" ? (
@@ -193,7 +195,7 @@ function TimedList(props: {
             <>
               <p className="font-medium [overflow-wrap:anywhere]">
                 {index + 1}. {String(e[nameField]).trim() || "Unnamed"}
-                {e.pronunciation.trim() ? <span className="font-normal text-muted-foreground"> (say: {e.pronunciation.trim()})</span> : null}
+                {e.pronunciation.trim() && (asksPronunciation || props.audience === "staff") ? <span className="font-normal text-muted-foreground"> (say: {e.pronunciation.trim()})</span> : null}
               </p>
               {who ? <p className="text-xs [overflow-wrap:anywhere]">{who}</p> : null}
               <p className={when ? "text-xs" : "text-xs text-amber-700 dark:text-amber-400"}>
@@ -224,7 +226,7 @@ function TimedList(props: {
             {editor === "activities" ? text(`${prefix}-host`, "Host (optional)", e.host, (v) => onChange({ host: v }), errorFor("host")) : null}
             {editor === "activities" ? text(`${prefix}-participants`, "Participants (optional)", e.participants, (v) => onChange({ participants: v }), errorFor("participants")) : null}
             {editor === "dedications" ? text(`${prefix}-relationship`, "Relationship (optional)", e.relationship, (v) => onChange({ relationship: v }), errorFor("relationship")) : null}
-            {text(`${prefix}-pronunciation`, "Pronunciation guide (optional)", e.pronunciation, (v) => onChange({ pronunciation: v }), errorFor("pronunciation"), { hint: PRONUNCIATION_HINT })}
+            {asksPronunciation ? text(`${prefix}-pronunciation`, "Pronunciation guide (optional)", e.pronunciation, (v) => onChange({ pronunciation: v }), errorFor("pronunciation"), { hint: PRONUNCIATION_HINT }) : null}
             <fieldset className="grid gap-1 col-span-full">
               <legend className="mb-1 text-sm font-medium">When (needed to complete)</legend>
               {rules.timings.map((t) => (
@@ -278,7 +280,7 @@ export function TimedEditorCard(props: Common<TimedAnswers> & { editor: "activit
   });
   return (
     <Frame props={props as Common<unknown>} hint={WORDING[props.editor].hint} status={<SaveStatus saveState={saveState} message={message} retry={retry} />}>
-      <TimedList editor={props.editor} base={props.momentKey} form={form} update={update} fieldError={fieldError} readOnly={readOnly} eventDate={props.event.date} dj={djText(props)} />
+      <TimedList editor={props.editor} base={props.momentKey} form={form} update={update} fieldError={fieldError} readOnly={readOnly} eventDate={props.event.date} audience={props.audience} />
     </Frame>
   );
 }
@@ -313,7 +315,7 @@ export function ProgramEditor(props: Common<TimedAnswers> & { event: EventInfo }
     <Frame props={props as Common<unknown>} hint={WORDING.program.hint} status={<SaveStatus saveState={saveState} message={message} retry={retry} />}>
       {head}
       <div className="grid gap-2 border-t pt-3">
-        <TimedList editor="program" base={props.momentKey} form={form} update={(c, clears) => update(c, clears)} fieldError={fieldError} readOnly={readOnly} eventDate={props.event.date} dj={djText(props)} />
+        <TimedList editor="program" base={props.momentKey} form={form} update={(c, clears) => update(c, clears)} fieldError={fieldError} readOnly={readOnly} eventDate={props.event.date} audience={props.audience} />
       </div>
     </Frame>
   );

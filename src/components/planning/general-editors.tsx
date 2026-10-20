@@ -3,6 +3,8 @@
 import {
   GENRES,
   INTERACTION,
+  INTERACTION_HINTS,
+  INTERACTION_LEGACY,
   LYRICS,
   REQUESTS,
   SLOW_SONGS,
@@ -28,18 +30,16 @@ import {
   vendorReachable,
 } from "@/lib/planning/contacts";
 import { selectClass } from "@/components/app/fields";
+import { djIdentity, djRef, withDj } from "@/lib/planning/dj";
 import { FieldBox, LanguageSelect, describedBy } from "./basics-editor";
 import { Choices, EntryList, Frame, text, type Common } from "./participants-editor";
 import { useEditingClosed, useLanguageBinding, usePlanProgress } from "./progress";
 import { SaveStatus, useAutosave } from "./use-autosave";
 
-const djText = (props: { audience: "client" | "staff"; djName: string }) => (props.audience === "client" ? props.djName : "the DJ");
-const withDj = <T extends readonly (readonly [string, string])[]>(options: T, dj: string) =>
-  options.map(([value, label]) => ({ value, label: label.replace("the DJ", dj) }));
-
 /** People already in the plan, shown where useful and never re-entered. */
 export type KnownPeople = {
-  mc: { name?: string; contact?: string; dj: boolean } | null;
+  /** dj: the DJ is the MC or shares the duties; name: the other MC, when there is one. */
+  mc: { name?: string; contact?: string; dj: boolean; other: boolean } | null;
   officiant: { name?: string; contact?: string } | null;
 };
 
@@ -62,7 +62,7 @@ export function ContactsEditor(props: Common<ContactsAnswers> & { eventContacts:
   const chosen = props.eventContacts.find((c) => c.id === form.day_of_client_id);
   const unavailable = form.day_of_source === "event_contact" && form.day_of_client_id !== "" && !chosen;
   const { mc, officiant } = props.known;
-  const dj = djText(props);
+  const dj = djRef(props.audience);
 
   return (
     <Frame props={props as Common<unknown>} status={<SaveStatus saveState={saveState} message={message} retry={retry} />}>
@@ -71,7 +71,7 @@ export function ContactsEditor(props: Common<ContactsAnswers> & { eventContacts:
           <p className="font-medium">Already in your plan</p>
           {mc ? (
             <p className="[overflow-wrap:anywhere]">
-              MC: {mc.dj ? `${djText(props)} (the DJ)` : mc.name ?? "someone else, name not entered yet"}
+              MC: {[mc.dj ? djIdentity(props.djDisplayName, props.audience) : null, mc.other ? mc.name ?? "another MC, name not entered yet" : null].filter(Boolean).join(" and ")}
               {mc.contact ? ` · ${mc.contact}` : ""} <span className="text-xs text-muted-foreground">(change it under Reception entrance → MC)</span>
             </p>
           ) : null}
@@ -142,7 +142,7 @@ export function ContactsEditor(props: Common<ContactsAnswers> & { eventContacts:
             { value: "none", label: "No additional vendor contacts", blocked: form.vendors.length > 0 ? "Remove the vendors to choose this." : null },
           ]}
         />
-        <p className="text-xs text-muted-foreground">Only the ones the DJ may need; no category is required. Notes here are shared with you and {djText(props)}.</p>
+        <p className="text-xs text-muted-foreground">Only the ones the DJ may need; no category is required. Notes here are shared with you and {dj}.</p>
         <EntryList<VendorForm>
           base={id("vendors")}
           noun="Vendor"
@@ -214,7 +214,7 @@ export function PreferencesEditor(props: Common<PreferencesAnswers>) {
   });
   const errorFor = (f: string) => (fieldError?.field === f ? fieldError.message : null);
   const id = (f: string) => `${props.momentKey}-${f}`;
-  const dj = djText(props);
+  const dj = djRef(props.audience);
   // Stored with Event basics and saved by its editor (see LanguageBinding); asked here, where it belongs.
   const language = useLanguageBinding();
   const savedLanguage = plan?.basics.announcement_language ?? "";
@@ -229,7 +229,8 @@ export function PreferencesEditor(props: Common<PreferencesAnswers>) {
       <fieldset disabled={readOnly} className="grid gap-4">
         <legend className="sr-only">DJ expectations and overall preferences</legend>
         {text(id("atmosphere"), "Desired atmosphere and what matters most (optional)", form.atmosphere, (v) => update({ atmosphere: v }, ["atmosphere"]), errorFor("atmosphere"), { rows: 3, hint: "For example: elegant dinner, then a packed dance floor; keep grandparents in mind." })}
-        <Choices name={id("interaction")} legend="How much should the DJ talk? (needed)" value={form.interaction} onChange={(v) => update({ interaction: v }, ["interaction"])} error={errorFor("interaction")} options={withDj(INTERACTION, dj)} />
+        <Choices name={id("interaction")} legend="How much would you like your DJ to interact with guests on the microphone? (needed)" value={form.interaction}
+          onChange={(v) => update({ interaction: v }, ["interaction"])} error={errorFor("interaction")} options={interactionOptions(props.audience, form.interaction, props.initialAnswers.interaction)} />
         <div className="grid gap-1.5" data-testid="announcement-language">
           <FieldBox id={languageId} label="Announcement language (needed)" error={language?.error ?? null} hint={languageHint} className="sm:max-w-sm">
             <LanguageSelect id={languageId} value={language?.value ?? savedLanguage} onChange={(v) => language?.set(v)} error={language?.error ?? null} hint={languageHint} disabled={!language} />
@@ -241,12 +242,25 @@ export function PreferencesEditor(props: Common<PreferencesAnswers>) {
             <SaveStatus saveState={language.saveState} message={language.message} retry={language.retry} />
           )}
         </div>
-        <Choices name={id("lyrics")} legend="Explicit lyrics (needed)" value={form.lyrics} onChange={(v) => update({ lyrics: v }, ["lyrics"])} error={errorFor("lyrics")} options={withDj(LYRICS, dj)} />
-        <Choices name={id("requests")} legend="Guest song requests (needed)" value={form.requests} onChange={(v) => update({ requests: v }, ["requests"])} error={errorFor("requests")} options={withDj(REQUESTS, dj)} />
+        <Choices name={id("lyrics")} legend="Explicit lyrics (needed)" value={form.lyrics} onChange={(v) => update({ lyrics: v }, ["lyrics"])} error={errorFor("lyrics")} options={withDj(LYRICS, props.audience)} />
+        <Choices name={id("requests")} legend="Guest song requests (needed)" value={form.requests} onChange={(v) => update({ requests: v }, ["requests"])} error={errorFor("requests")} options={withDj(REQUESTS, props.audience)} />
         {text(id("notes"), "Practical preferences or concerns (optional)", form.notes, (v) => update({ notes: v }, ["notes"]), errorFor("notes"), { rows: 3, hint: "For example: keep the volume moderate during dinner." })}
       </fieldset>
     </Frame>
   );
+}
+
+/**
+ * The DJ's microphone interaction (not formal MC duties, asked under Reception
+ * entrance → MC). "Occasional announcements" is no longer offered; a saved one
+ * is still shown, selected, until changed.
+ */
+function interactionOptions(audience: "client" | "staff", current: string, saved: string | undefined) {
+  const options: { value: string; label: string; hint?: string }[] = withDj(INTERACTION, audience).map((o) => ({ ...o, hint: INTERACTION_HINTS[o.value] }));
+  if (current === "occasional" || saved === "occasional") {
+    options.push({ value: "occasional", label: INTERACTION_LEGACY.occasional, hint: "An earlier answer that is no longer offered. Choose another option to update it." });
+  }
+  return options;
 }
 
 // ---------------------------------------------------------------------------
@@ -265,7 +279,7 @@ export function MusicStyleEditor(props: Common<MusicStyleAnswers>) {
   });
   const errorFor = (f: string) => (fieldError?.field === f ? fieldError.message : null);
   const id = (f: string) => `${props.momentKey}-${f}`;
-  const dj = djText(props);
+  const dj = djRef(props.audience);
   const djChoice = form.style_choice === "dj_choice";
   const hasStyles = form.genres.length > 0 || form.other_style.trim() !== "";
   return (
@@ -284,7 +298,7 @@ export function MusicStyleEditor(props: Common<MusicStyleAnswers>) {
           error={errorFor("style_choice")}
           options={[
             { value: "", label: "I'll pick styles" },
-            { value: "dj_choice", label: `${dj === "the DJ" ? "The DJ's" : `${dj}'s`} choice`, blocked: hasStyles ? "Clear the styles to choose this." : null },
+            { value: "dj_choice", label: `${dj.charAt(0).toUpperCase()}${dj.slice(1)}'s choice`, blocked: hasStyles ? "Clear the styles to choose this." : null },
           ]}
         />
         {!djChoice ? (
@@ -309,7 +323,7 @@ export function MusicStyleEditor(props: Common<MusicStyleAnswers>) {
         ) : null}
         {text(id("favorite_artists"), "Favourite artists (optional)", form.favorite_artists, (v) => update({ favorite_artists: v }, ["favorite_artists"]), errorFor("favorite_artists"), { rows: 2 })}
         {text(id("dance_floor"), "Dance-floor atmosphere (optional)", form.dance_floor, (v) => update({ dance_floor: v }, ["dance_floor"]), errorFor("dance_floor"), { rows: 2, hint: "For example: build up slowly, peak late, mix generations." })}
-        <Choices name={id("slow_songs")} legend="Slow songs during the party (needed)" value={form.slow_songs} onChange={(v) => update({ slow_songs: v }, ["slow_songs"])} error={errorFor("slow_songs")} options={withDj(SLOW_SONGS, dj)} />
+        <Choices name={id("slow_songs")} legend="Slow songs during the party (needed)" value={form.slow_songs} onChange={(v) => update({ slow_songs: v }, ["slow_songs"])} error={errorFor("slow_songs")} options={withDj(SLOW_SONGS, props.audience)} />
       </fieldset>
     </Frame>
   );

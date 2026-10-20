@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { EVENT_TYPES } from "@/app/staff/[tenant]/events/event-form";
 import { answersKey } from "@/lib/planning/basics";
+import { resolveDjName } from "@/lib/planning/dj";
 import { staffPlanningViewSchema } from "@/lib/planning/view";
 import type { Database } from "@/lib/supabase/database.types";
 import { buildRunSheet, type RunSheet } from "./model";
@@ -26,11 +27,11 @@ export async function loadRunSheet(supabase: SupabaseClient<Database>, tenant: {
   const [{ data: event }, { data: brand }] = await Promise.all([
     supabase
       .from("events")
-      .select("title, event_type, event_date, timezone, venue_name, venue_address, archived_at, booking_confirmed_at, lifecycle_status, booking_source")
+      .select("title, event_type, event_date, timezone, venue_name, venue_address, dj_name, archived_at, booking_confirmed_at, lifecycle_status, booking_source")
       .eq("id", eventId)
       .eq("tenant_id", tenant.id)
       .maybeSingle(),
-    supabase.from("tenants").select("display_name, brand_colors").eq("id", tenant.id).maybeSingle(),
+    supabase.from("tenants").select("display_name, brand_colors, dj_name").eq("id", tenant.id).maybeSingle(),
   ]);
   if (!event || !brand) return null;
   const { data, error } = await supabase.rpc("staff_planning_view", { p_event_id: eventId });
@@ -41,6 +42,7 @@ export async function loadRunSheet(supabase: SupabaseClient<Database>, tenant: {
     event,
     view,
     eventTypeLabel: new Map<string, string>(EVENT_TYPES).get(event.event_type) ?? "Event",
+    djName: resolveDjName(event.dj_name, brand.dj_name),
   });
   const { asOf: _asOf, editing: _editing, ...content } = sheet;
   void _asOf;

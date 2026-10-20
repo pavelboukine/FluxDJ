@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { isHttpsUrl, linkHost } from "@/lib/payments";
+import { djRef } from "@/lib/planning/dj";
 import {
   CHOICE_LABELS,
   LIST_CHOICE_LABEL,
@@ -197,7 +198,7 @@ export function MusicSection(props: {
   const errorFor = (id: string, field: string) => (fieldError?.field === songField(id, field) ? fieldError.message : null);
   const base = `music-${props.momentKey}`;
   const notesLabel = props.editor === "moment_songs" ? "Instructions" : "Notes";
-  const dj = props.audience === "client" ? props.djName : "the DJ";
+  const dj = djRef(props.audience);
 
   const setSongs = (songs: SongForm[], clears: string[] = []) => update({ songs }, clears);
   const songClears = (id: string) => ["songs", ...["title", "artist", "version", "link", "notes", "cue", "linked"].map((f) => songField(id, f))];
@@ -257,7 +258,7 @@ export function MusicSection(props: {
         })}
         {fieldError?.field === "choice" ? <p className="text-xs text-destructive">{fieldError.message}</p> : null}
         {form.choice === "not_applicable" ? (
-          <p className="text-xs text-muted-foreground">The moment stays in your plan; only {props.djName} can remove it.</p>
+          <p className="text-xs text-muted-foreground">The moment stays in your plan; only {dj} can remove it.</p>
         ) : null}
       </fieldset> : null}
 

@@ -444,7 +444,7 @@ synthesis). Each editor opens as a card inside its stage, like songs.
 |---|---|---|---|
 | Processional (Ceremony) | Who walks in, in order, either partner included, each with their song; then the processional's songs, each once | Name or names (a person, a pair or a group, for example "Alex with their mother Dana"); role or relationship, a song (one already listed, one typed in right there, or none yet), instructions for the DJ (all optional). No pronunciation guide: nobody is announced while walking in (older guides are kept and shown to staff) | Discuss with DJ; the moment's "not applicable" covers both |
 | Grand entrance order (Introductions, Reception entrance) | Everyone introduced, in order, each with their song; then the grand entrance songs, each once. Shown and counted only while a grand entrance is planned | Names exactly as announced; role, name pronunciation, how to announce them, instructions for the DJ or MC (all optional); music (needed): **Choose a song** (one already listed, an older plan's Entrance music song, or one typed in right there), **DJ's choice**, or **Not decided yet** (the default; stays open). Stored as `song_id`, `"music": "dj_choice"` or neither; an entry without a song is never read as the DJ's choice (`20261113000100`) | Nobody introduced; discuss with DJ |
-| MC (Reception entrance) | The DJ, someone else, no MC, discuss | Someone else: name (needed), pronunciation, phone or email, instructions | |
+| MC (Reception entrance) | Who handles MC duties: your DJ, someone else, your DJ and another MC sharing them, or not sure yet (discuss with your DJ). The DJ choices name the event's DJ when one is configured ("DJ Boukine (your DJ) will be the MC"), otherwise "Your DJ"; staff see "the DJ" (`20261121000100`) | Someone else or shared: the MC's name (needed), phone or email; instructions. No pronunciation guide (older guides are kept and shown to staff). "No MC" is no longer offered; a saved one stays selected and valid until changed | |
 | Speeches and toasts (Dinner, Program or Party) | Speakers in order | Speaker; role, pronunciation; timing: an exact time, a moment ("After the main course") or not decided; minutes, microphone/AV notes, instructions (all optional) | No speeches; discuss with DJ |
 
 To try it: in **Ceremony → Processional**, **Add person or group** with
@@ -498,7 +498,8 @@ How it works:
   person without a song is shown as "No song chosen yet" (staff, run sheet:
   "No song linked") but doesn't block completion.
   Introductions need entries, or "No introductions" (not applicable). The MC
-  needs the DJ, or someone else with a name; "No MC" is not applicable.
+  needs the DJ, or someone else or shared duties with the other MC's name; a
+  saved "No MC" is not applicable.
   Speeches need entries that each have a speaker and a time or a moment; an
   undecided timing keeps them open ("A speech has no time or cue yet"); "No
   speeches" is not applicable. "Discuss with DJ" always stays open.
@@ -519,7 +520,7 @@ How it works:
 | Section | Editor | Needed to complete |
 |---|---|---|
 | Contacts and vendors (general) | Day-of contact: one of the event's contacts (by reference, with an optional phone for the day), someone else (name, phone, relationship), or "Not decided yet". Vendors in order: role (planner or coordinator, venue, photographer, videographer, caterer, live musician, other), person's name and/or business, a phone or an email (at least one), and coordination notes shared with the client | A day-of contact with a phone; vendors listed, or "No additional vendor contacts" (not applicable) |
-| DJ expectations and overall preferences (general) | Atmosphere and what matters most; DJ interaction (mostly music, occasional announcements, interactive, discuss); announcement language (stored with Event basics); explicit lyrics (clean only, allowed, discuss); guest requests (welcome, never anything on Do not play; not welcome; discuss); practical preferences | Interaction, announcement language, lyrics and requests; "discuss" stays open |
+| DJ expectations and overall preferences (general) | Atmosphere and what matters most; DJ microphone interaction (minimal, a little interaction, energetic and interactive, not sure yet; a saved "occasional announcements" stays valid but is no longer offered); announcement language (stored with Event basics); explicit lyrics (clean only, allowed, discuss); guest requests (welcome, never anything on Do not play; not welcome; discuss); practical preferences | Interaction, announcement language, lyrics and requests; "discuss" stays open |
 | Music preferences (Party) | Styles (pop, dance, hip-hop and R&B, rock, disco and funk, country, Latin, house and electronic, throwbacks) and another style, or DJ's choice; favourite artists; dance-floor atmosphere; slow songs (DJ's choice, none, a few, discuss) | Styles or DJ's choice; a slow-song choice ("discuss" stays open) |
 
 To try it: open **Contacts and vendors**. The MC and officiant appear under
@@ -576,7 +577,7 @@ How it works:
 |---|---|---|
 | Arrival details (Guest arrival) | Location: same as the event venue, same as the ceremony, or another place, plus room or area; arrival time: same as the ceremony's guest arrival, or a start and end time; welcome instructions; announcement wording; or "No separate arrival arrangements" | Location and arrival time, each resolved; or "no separate arrangements" (not applicable) |
 | Program details (Speeches and program) | Optional overall start and end, host and pronunciation, instructions; ordered agenda items: title, timing, minutes, presenter, pronunciation, instructions | Every item has a time or a moment; or "No formal program" (not applicable) |
-| Activities (Dinner and Party, one shared editor) | Ordered activities: name (suggestions such as Shoe game, Bouquet toss or Centrepiece giveaway, or anything typed, such as a cultural tradition), timing, minutes, host, participants, pronunciation, instructions, optional song | Every activity has a time or a moment; or "No activities" |
+| Activities (Dinner and Party, one shared editor) | Ordered activities: name (suggestions such as Shoe game, Bouquet toss or Centrepiece giveaway, or anything typed, such as a cultural tradition), timing, minutes, host, participants, instructions, optional song (no pronunciation guide; older guides are kept and shown to staff) | Every activity has a time or a moment; or "No activities" |
 | Dedications (Party) | Ordered dedications: for whom, relationship, pronunciation, announcement message, song, timing (any time during the party, a time, a moment or undecided), instructions | Every dedication has a song and a timing; or "No dedications" |
 
 Timing everywhere is an exact time (local to the event, with an explicit
@@ -1736,6 +1737,14 @@ undelivered contract emails visibly.
   The display name stays the client-facing brand. Changes go only through
   `update_business_settings`, which checks the owner role in the database.
   Staff can see the values but not edit them.
+- **DJ name (Planning, `#dj-name`).** Optional `tenants.dj_name`, set by the
+  owner through `update_planning_dj_name` (`20261121000100`). An event can
+  name its own DJ on its details (`events.dj_name`, any staff). Planning and
+  the run sheet name the DJ only where they ask who does what (the MC
+  choices), as `events.dj_name`, else `tenants.dj_name`, else "your DJ" /
+  "The DJ"; the display name is never used as the DJ's name. Generic wording
+  ("Not sure yet — discuss with your DJ") never names anyone. Leave both
+  empty when different DJs handle the business's events.
 - **New placeholders.** `{{business.legal_name}}`, `{{business.address}}`
   and `{{business.email}}`. `{{business.name}}` is kept for existing
   templates and means the legal name.

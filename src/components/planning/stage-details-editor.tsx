@@ -3,6 +3,7 @@
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { endsAfterMidnight } from "@/lib/planning/basics";
+import { discussLabel, withDj } from "@/lib/planning/dj";
 import {
   STAGE_LAYOUT,
   minutesOf,
@@ -152,7 +153,7 @@ export function StageDetailsEditor(props: Props) {
         return (
           <fieldset key={b.field} className="grid gap-1 col-span-full">
             <legend className="mb-1 text-sm font-medium">{b.label}</legend>
-            {b.options.map(([value, label]) => radio(b.field, value, label))}
+            {withDj(b.options, props.audience).map(({ value, label }) => radio(b.field, value, label))}
             {b.hint ? <p className="text-xs text-muted-foreground">{b.hint}</p> : null}
             {fieldError_(b.field)}
           </fieldset>
@@ -194,7 +195,7 @@ export function StageDetailsEditor(props: Props) {
             {radio("finish_source", "time", "At a specific time")}
             {form.finish_source === "time" ? timeField("finish", "Finish time") : null}
             {radio("finish_source", "basics_end", `Same as the event end time in Event basics${basicsEnd ? ` (${basicsEnd})` : " (not entered yet)"}`)}
-            {radio("finish_source", "discuss", `Not sure yet, discuss with ${props.audience === "client" ? props.djName : "the DJ"}`)}
+            {radio("finish_source", "discuss", discussLabel(props.audience))}
           </fieldset>
         );
       }

@@ -56,7 +56,7 @@ export function PlanOverview({ djName, providedCount }: { djName: string; provid
             {p.complete_sections} of {p.available_sections} {p.available_sections === 1 ? "section" : "sections"} complete. {progressScopeNote(p)}
           </p>
           <p>
-            Unanswered questions and anything marked &ldquo;Discuss with {djName}&rdquo; still count as open. Progress shows what you&apos;ve filled in; it
+            Unanswered questions and anything marked &ldquo;Discuss with your DJ&rdquo; still count as open. Progress shows what you&apos;ve filled in; it
             doesn&apos;t mean {djName} has reviewed or approved your plan.
           </p>
         </div>

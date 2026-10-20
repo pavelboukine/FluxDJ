@@ -13,6 +13,7 @@ import {
   introductionsAnswersFromForm,
   introductionsForm,
   linksBySong,
+  hasOtherMc,
   mcAnswersFromForm,
   newSongProblem,
   mcForm,
@@ -26,6 +27,7 @@ import {
   type IntroductionsForm,
   type ListChoice,
   type McAnswers,
+  type McChoice,
   type McForm,
   type PersonForm,
   type ProcessionalAnswers,
@@ -46,6 +48,7 @@ import { TimeField } from "./time-field";
 import { MusicSection, usePlanSongs } from "./music-editor";
 import { SongPicker, type SongGroup } from "./song-picker";
 import { ItemChecklist, useEditingClosed } from "./progress";
+import { discussLabel, djIdentity, djRef } from "@/lib/planning/dj";
 import { SaveStatus, useAutosave } from "./use-autosave";
 
 const newId = () => crypto.randomUUID();
@@ -57,6 +60,8 @@ export type Common<A> = {
   initialAnswers: A;
   initialRevision: number;
   djName: string;
+  /** The DJ handling the event (events.dj_name, else tenants.dj_name), named only where planning asks who does what. */
+  djDisplayName?: string | null;
   audience: "client" | "staff";
   save: (expectedRevision: number, answers: A) => Promise<SaveItemResult>;
   disabledReason?: string;
@@ -80,7 +85,7 @@ export function Choices<C extends string>({ name, legend, value, options, onChan
   name: string;
   legend: string;
   value: C | "";
-  options: { value: C | ""; label: string; blocked?: string | null }[];
+  options: { value: C | ""; label: string; hint?: string; blocked?: string | null }[];
   onChange: (value: C | "") => void;
   error?: string | null;
   disabled?: boolean;
@@ -93,6 +98,7 @@ export function Choices<C extends string>({ name, legend, value, options, onChan
           <input type="radio" name={name} className="mt-0.5 size-4 accent-primary" checked={value === o.value} disabled={Boolean(o.blocked)} onChange={() => onChange(o.value)} />
           <span>
             {o.label}
+            {o.hint ? <span className="block text-xs text-muted-foreground">{o.hint}</span> : null}
             {o.blocked ? <span className="block text-xs text-muted-foreground">{o.blocked}</span> : null}
           </span>
         </label>
@@ -422,7 +428,6 @@ export function ProcessionalEditor(props: Common<ProcessionalAnswers>) {
     },
   });
   const notApplicable = form.choice === "not_applicable";
-  const dj = props.audience === "client" ? props.djName : "the DJ";
   // Older plans may also have a Couple entrance moment: its songs can still be picked here.
   const couple = songs?.lists.find((l) => l.key === "couple_entrance");
   const groups: SongGroup[] = [
@@ -470,7 +475,7 @@ export function ProcessionalEditor(props: Common<ProcessionalAnswers>) {
           error={fieldError?.field === "participants_choice" ? fieldError.message : null}
           options={[
             { value: "", label: "I'll list who walks in" },
-            { value: "discuss", label: `Not sure yet, discuss with ${dj}` },
+            { value: "discuss", label: discussLabel(props.audience) },
           ]}
         />
         <p className="text-xs text-muted-foreground">
@@ -535,7 +540,6 @@ export function IntroductionsEditor(props: Common<IntroductionsAnswers>) {
     readOnly,
     onSaved: (answers) => songs?.setIntroductions((answers as IntroductionsAnswers).entries ?? []),
   });
-  const dj = props.audience === "client" ? props.djName : "the DJ";
   const entrance = songs?.lists.find((l) => l.key === "entrance_music");
   const groups: SongGroup[] = [
     { label: "Songs already in this grand entrance", songs: songOptions(form.songs) },
@@ -583,7 +587,7 @@ export function IntroductionsEditor(props: Common<IntroductionsAnswers>) {
         options={[
           { value: "", label: "I'll list who is introduced" },
           { value: "none", label: "Nobody will be introduced", blocked },
-          { value: "discuss", label: `Not sure yet, discuss with ${dj}` },
+          { value: "discuss", label: discussLabel(props.audience) },
         ]}
       />
       <EntryList<SongPersonForm>
@@ -656,7 +660,7 @@ export function SpeechesEditor(props: Common<SpeechesAnswers> & { event: { date:
         options={[
           { value: "", label: "I'll list the speeches" },
           { value: "none", label: "No speeches or toasts", blocked },
-          { value: "discuss", label: `Not sure yet, discuss with ${props.audience === "client" ? props.djName : "the DJ"}` },
+          { value: "discuss", label: discussLabel(props.audience) },
         ]}
       />
       <EntryList<SpeechForm>
@@ -723,6 +727,12 @@ export function SpeechesEditor(props: Common<SpeechesAnswers> & { event: { date:
 // MC
 // ---------------------------------------------------------------------------
 
+/**
+ * Who handles MC duties: the DJ, someone else, or both sharing them. The DJ
+ * option names the DJ handling the event when one is configured. "No MC" is
+ * no longer offered; a saved one is still shown, selected, until changed.
+ * No pronunciation guide is asked; an earlier one is kept and shown to staff.
+ */
 export function McEditor(props: Common<McAnswers>) {
   const readOnly = useEditingClosed(props.disabledReason);
   const { form, update, saveState, message, fieldError, retry } = useAutosave<McForm, McAnswers>({
@@ -735,30 +745,38 @@ export function McEditor(props: Common<McAnswers>) {
   });
   const id = (f: string) => `${props.momentKey}-${f}`;
   const errorFor = (f: string) => (fieldError?.field === f ? fieldError.message : null);
-  const dj = props.audience === "client" ? props.djName : "the DJ";
+  const client = props.audience === "client";
+  const dj = djIdentity(props.djDisplayName, props.audience);
+  const legacyNone = props.initialAnswers.mc === "none" || form.mc === "none";
   return (
     <Frame props={props as Common<unknown>} status={<SaveStatus saveState={saveState} message={message} retry={retry} />}>
-      <Choices<"dj" | "other" | "none" | "discuss">
+      <Choices<McChoice>
         name={id("mc")}
-        legend="Who is the MC? (needed)"
+        legend="Who will handle MC duties during the reception? (needed)"
         value={form.mc}
         disabled={readOnly}
         onChange={(v) => update({ mc: v }, ["mc"])}
         error={errorFor("mc")}
         options={[
-          { value: "dj", label: props.audience === "client" ? `${props.djName} (the DJ)` : "The DJ" },
-          { value: "other", label: "Someone else" },
-          { value: "none", label: "No MC" },
-          { value: "discuss", label: `Not sure yet, discuss with ${dj}` },
+          { value: "dj", label: `${dj} will be the MC` },
+          { value: "other", label: "Someone else will be the MC" },
+          { value: "shared", label: `${dj} and another MC will share duties` },
+          { value: "discuss", label: discussLabel(props.audience) },
+          ...(legacyNone ? [{ value: "none" as const, label: "No MC", hint: "An earlier answer that is no longer offered. Choose another option to update it." }] : []),
         ]}
       />
       <fieldset disabled={readOnly} className="grid gap-3 sm:grid-cols-2">
         <legend className="sr-only">MC details</legend>
-        {form.mc === "other" ? (
+        {hasOtherMc(form.mc) ? (
           <>
-            {text(id("name"), "MC's name (needed)", form.name, (v) => update({ name: v }, ["name"]), errorFor("name"))}
-            {text(id("pronunciation"), "Pronunciation guide (optional)", form.pronunciation, (v) => update({ pronunciation: v }, ["pronunciation"]), errorFor("pronunciation"), { hint: PRONUNCIATION_HINT })}
-            {text(id("contact"), "Phone or email (optional)", form.contact, (v) => update({ contact: v }, ["contact"]), errorFor("contact"), { hint: "Only for coordinating on the day.", wide: true })}
+            {text(id("name"), "MC's name (needed)", form.name, (v) => update({ name: v }, ["name"]), errorFor("name"),
+              form.mc === "shared" ? { hint: `The person sharing MC duties with ${djRef(props.audience)}.` } : {})}
+            {text(id("contact"), "Phone or email (optional)", form.contact, (v) => update({ contact: v }, ["contact"]), errorFor("contact"), { hint: "Only for coordinating on the day." })}
+            {!client && form.pronunciation.trim() ? (
+              <p className="col-span-full text-xs text-muted-foreground [overflow-wrap:anywhere]" data-testid="mc-earlier-pronunciation">
+                Pronunciation guide (earlier answer, no longer asked): {form.pronunciation.trim()}
+              </p>
+            ) : null}
           </>
         ) : null}
         {text(id("notes"), "Instructions (optional)", form.notes, (v) => update({ notes: v }, ["notes"]), errorFor("notes"), { rows: 2, hint: "For example: bilingual announcements, who hands over to whom." })}

@@ -138,21 +138,31 @@ export function contactsAnswersFromForm(form: ContactsForm): Parsed<ContactsAnsw
 // DJ expectations and overall preferences (the language they ask is stored with Event basics)
 // ---------------------------------------------------------------------------
 
+/** The DJ's microphone interaction with guests (formal MC duties are asked under Reception entrance → MC). */
 export const INTERACTION = [
-  ["music_mostly", "Mostly music, few words"],
-  ["occasional", "Occasional announcements"],
-  ["interactive", "Interactive: get the crowd going"],
-  ["discuss", "Not sure yet, discuss with the DJ"],
+  ["music_mostly", "Minimal"],
+  ["a_little", "A little interaction"],
+  ["interactive", "Energetic and interactive"],
+  ["discuss", "Not sure yet — discuss with the DJ"],
 ] as const;
+export const INTERACTION_HINTS: Record<string, string> = {
+  music_mostly: "Mostly let the music do the talking.",
+  a_little: "Some crowd engagement when it feels right.",
+  interactive: "Hype up the crowd and engage with guests throughout the party.",
+};
+/** No longer offered; saved answers keep it and still read and save. */
+export const INTERACTION_LEGACY = { occasional: "Occasional announcements" } as const;
+/** Every interaction answer that can be saved or shown, offered or not. */
+export const INTERACTION_LABELS = [...INTERACTION, ...Object.entries(INTERACTION_LEGACY)] as const;
 export const LYRICS = [
   ["clean", "Clean versions only"],
   ["explicit_ok", "Explicit lyrics are fine"],
-  ["discuss", "Not sure yet, discuss with the DJ"],
+  ["discuss", "Not sure yet — discuss with the DJ"],
 ] as const;
 export const REQUESTS = [
   ["welcome", "Guests may request songs (never anything on Do not play)"],
   ["not_welcome", "No guest requests"],
-  ["discuss", "Not sure yet, discuss with the DJ"],
+  ["discuss", "Not sure yet — discuss with the DJ"],
 ] as const;
 export type PreferencesAnswers = { atmosphere?: string; interaction?: string; lyrics?: string; requests?: string; notes?: string };
 export type PreferencesForm = { atmosphere: string; interaction: string; lyrics: string; requests: string; notes: string };
@@ -177,7 +187,7 @@ function choicesAndText<F extends Record<string, string>>(form: F, choices: Reco
 }
 
 export function preferencesAnswersFromForm(form: PreferencesForm): Parsed<PreferencesAnswers> {
-  return choicesAndText(form, { interaction: INTERACTION, lyrics: LYRICS, requests: REQUESTS }, { atmosphere: 1000, notes: 1000 });
+  return choicesAndText(form, { interaction: INTERACTION_LABELS, lyrics: LYRICS, requests: REQUESTS }, { atmosphere: 1000, notes: 1000 });
 }
 
 // ---------------------------------------------------------------------------
@@ -199,7 +209,7 @@ export const SLOW_SONGS = [
   ["dj_choice", "DJ's choice"],
   ["none", "No slow songs"],
   ["a_few", "A few"],
-  ["discuss", "Not sure yet, discuss with the DJ"],
+  ["discuss", "Not sure yet — discuss with the DJ"],
 ] as const;
 export type MusicStyleAnswers = { genres?: string[]; other_style?: string; style_choice?: "dj_choice"; favorite_artists?: string; dance_floor?: string; slow_songs?: string };
 export type MusicStyleForm = { genres: string[]; other_style: string; style_choice: "" | "dj_choice"; favorite_artists: string; dance_floor: string; slow_songs: string };

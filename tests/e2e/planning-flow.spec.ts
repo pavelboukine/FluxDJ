@@ -394,9 +394,9 @@ test.describe.serial("planning", () => {
     await expect(status).toContainText("Not started");
     await details.getByLabel("Same as the event venue (Château E2E, 1 Rue du Lac, Gatineau)").check();
     await details.getByLabel("Ceremony start (needed)").fill("16:00");
-    await details.getByLabel("Not sure, discuss with DJ").check();
+    await details.getByLabel("Not sure yet — discuss with your DJ").check();
     await expect(details.getByText("All changes saved")).toBeVisible();
-    await expect(details.getByRole("list", { name: "What Ceremony details needs" })).toContainText(`Discuss with ${tenant.displayName} (still open)`);
+    await expect(details.getByRole("list", { name: "What Ceremony details needs" })).toContainText("Discuss with your DJ (still open)");
     await expect(status).toContainText("In progress");
     // Discuss with DJ is open, never complete; the section and the list both say so.
     await expect(card.getByTestId("section-status")).toContainText("1 to discuss");

@@ -30,6 +30,7 @@ import { StageDetailsEditor } from "@/components/planning/stage-details-editor";
 import { StructureEditor } from "@/components/planning/structure-editor";
 import { requireStaff } from "@/lib/auth/staff";
 import { UUID_RE } from "@/lib/forms";
+import { resolveDjName } from "@/lib/planning/dj";
 import { savedListsFrom } from "@/lib/planning/music";
 import { CLIENT_EDITING_SECTION, PROVIDED_SECTION, STRUCTURE_SECTION, WORKSPACE_ID, headingId, languageAskedInPreferences, planSections } from "@/lib/planning/navigation";
 import type { StageEditor } from "@/lib/planning/stages";
@@ -57,17 +58,18 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
   const { supabase, tenant } = staff;
   const { data: event } = await supabase
     .from("events")
-    .select("id, title, event_type, event_date, timezone, venue_name, venue_address, lifecycle_status, booking_confirmed_at, booking_source, archived_at, event_clients(is_primary, clients(id, name, email, phone, archived_at))")
+    .select("id, title, event_type, event_date, timezone, venue_name, venue_address, dj_name, lifecycle_status, booking_confirmed_at, booking_source, archived_at, event_clients(is_primary, clients(id, name, email, phone, archived_at))")
     .eq("id", eventId)
     .eq("tenant_id", tenant.id)
     .maybeSingle();
   if (!event) notFound();
   const primaryClient = (event.event_clients ?? []).find((ec) => ec.is_primary)?.clients ?? null;
-  const [{ data: viewData }, { data: templates }, { data: library }, { access }] = await Promise.all([
+  const [{ data: viewData }, { data: templates }, { data: library }, { access }, { data: business }] = await Promise.all([
     supabase.rpc("staff_planning_view", { p_event_id: event.id }),
     supabase.from("planning_templates").select("id, name, default_event_type").eq("tenant_id", tenant.id).is("archived_at", null).order("name"),
     supabase.rpc("planning_library"),
     loadPlanningAccess(staff, event.id, primaryClient ? { id: primaryClient.id, email: primaryClient.email } : null),
+    supabase.from("tenants").select("dj_name").eq("id", tenant.id).maybeSingle(),
   ]);
   const view = staffPlanningViewSchema.parse(viewData);
   const typeLabel = new Map<string, string>(EVENT_TYPES).get(event.event_type) ?? event.event_type;
@@ -84,6 +86,7 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
     .flatMap((ec) => (ec.clients && !ec.clients.archived_at ? [{ ...ec.clients, primary: ec.is_primary }] : []))
     .sort((a, b) => Number(b.primary) - Number(a.primary));
   const dj = tenant.display_name;
+  const djDisplayName = resolveDjName(event.dj_name, business?.dj_name);
   const link = "inline-flex min-h-9 items-center gap-1.5 rounded-lg border bg-card px-3 text-sm font-medium outline-none hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50";
 
   return (
@@ -352,7 +355,7 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
                         disabledReason={lockedReason}
                       />
                     ) : (
-                      generalEditor(g, { moments: view.moments, eventContacts: view.event_contacts, known, djName: dj, audience: "staff", save, disabledReason: lockedReason })
+                      generalEditor(g, { moments: view.moments, eventContacts: view.event_contacts, known, djName: dj, djDisplayName, audience: "staff", save, disabledReason: lockedReason })
                     );
                   return (
                     <PlanPanel key={s.key} view={s.key} testId={`staff-section-${s.key}`}>
@@ -409,7 +412,7 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
                           {s.moments.map((m) => (
                             <GrandEntranceGate key={m.id} momentKey={m.key}>
                               <PlanMoment moment={m} defaultOpen={single}>
-                                {momentEditor(moments.get(m.id)!, { music: view.music, moments: view.moments, djName: dj, audience: "staff", event: eventInfo, ceremony, save, disabledReason: lockedReason })}
+                                {momentEditor(moments.get(m.id)!, { music: view.music, moments: view.moments, djName: dj, djDisplayName, audience: "staff", event: eventInfo, ceremony, save, disabledReason: lockedReason })}
                               </PlanMoment>
                             </GrandEntranceGate>
                           ))}

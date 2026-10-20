@@ -150,6 +150,8 @@ export const clientPlanningViewSchema = z.discriminatedUnion("state", [
   z.object({
     state: z.literal("available"),
     brand: z.object({ display_name: z.string(), brand_colors: z.record(z.string(), z.string()) }),
+    /** The DJ handling the event (its own name, else the business's DJ name), or null. */
+    dj_name: z.string().nullable().optional(),
     event: eventSchema,
     /** Whether the client can edit now. Optional: a database without the cutoff omits it. */
     editing: clientEditingSchema.nullable().optional().default(null),

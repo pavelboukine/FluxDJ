@@ -69,7 +69,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
   const [{ data: event }, { data: templates }, { data: identity }, contracts, payments, planning] = await Promise.all([
     supabase
       .from("events")
-      .select("id, title, event_type, event_date, timezone, venue_name, venue_address, internal_notes, lifecycle_status, booking_source, booking_confirmed_at, active_proposal_id, archived_at, event_clients(id, is_primary, can_sign, clients(id, name, email, phone, archived_at)), proposals!proposals_event_fk(id, revision, status, offer_frozen_at, updated_at, expires_at)")
+      .select("id, title, event_type, event_date, timezone, venue_name, venue_address, internal_notes, dj_name, lifecycle_status, booking_source, booking_confirmed_at, active_proposal_id, archived_at, event_clients(id, is_primary, can_sign, clients(id, name, email, phone, archived_at)), proposals!proposals_event_fk(id, revision, status, offer_frozen_at, updated_at, expires_at)")
       .eq("id", eventId)
       .eq("tenant_id", tenant.id)
       .maybeSingle(),
@@ -421,6 +421,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
                 <Detail label="Booking">{external ? `Booked externally. ${BOOKED_EXTERNALLY_DETAIL}` : "Through Flux DJ"}</Detail>
                 <Detail label="Venue">{event.venue_name ?? <span className="text-muted-foreground">Not set</span>}</Detail>
                 <Detail label="Address">{event.venue_address ?? <span className="text-muted-foreground">Not set</span>}</Detail>
+                <Detail label="DJ">{event.dj_name ?? <span className="text-muted-foreground">Not set (planning uses the business&apos;s DJ name, or says “your DJ”)</span>}</Detail>
                 <Detail label="Internal notes · staff only">
                   {event.internal_notes ? <span className="whitespace-pre-line">{event.internal_notes}</span> : <span className="text-muted-foreground">None</span>}
                 </Detail>

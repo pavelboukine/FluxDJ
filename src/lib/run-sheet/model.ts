@@ -1,10 +1,11 @@
 import { ANNOUNCEMENT_LANGUAGES, BASICS_REQUIREMENT_LABELS, endsAfterMidnight, type BasicsAnswers } from "@/lib/planning/basics";
-import { GENRES, INTERACTION, LYRICS, REQUESTS, SLOW_SONGS, roleLabel, type ContactsAnswers, type EventContact, type MusicStyleAnswers, type PreferencesAnswers } from "@/lib/planning/contacts";
+import { GENRES, INTERACTION_LABELS, LYRICS, REQUESTS, SLOW_SONGS, roleLabel, type ContactsAnswers, type EventContact, type MusicStyleAnswers, type PreferencesAnswers } from "@/lib/planning/contacts";
 import { isMusicEditor, isPlaylistUrl, matchKey, playlistKind, type MusicAnswers, type MusicEditor, type Playlist, type Song } from "@/lib/planning/music";
 import type { IntroductionsAnswers, McAnswers, Person, ProcessionalAnswers, Speech, SpeechesAnswers } from "@/lib/planning/participants";
 import { GRAND_ENTRANCE_MOMENTS, grandEntranceOf, grandEntranceOpen, nextDayLabel, REQUIREMENT_NOTES, requirementLabel } from "@/lib/planning/stages";
 import type { ArrivalAnswers, TimedAnswers, TimedEntry } from "@/lib/planning/timed";
 import { formatInstant } from "@/lib/planning/cutoff";
+import { djIdentity } from "@/lib/planning/dj";
 import { formatEventDate, formatImportedAnswer, type StaffPlanningView } from "@/lib/planning/view";
 
 /**
@@ -114,6 +115,8 @@ export type RunSheetInput = {
   };
   view: StaffPlanningView;
   eventTypeLabel: string;
+  /** The DJ handling the event (resolveDjName), or null: the MC lines then say "The DJ", never the business name. */
+  djName?: string | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -196,9 +199,12 @@ const UNANSWERED: Status = { tone: "open", text: "Not answered yet" };
 // The projection
 // ---------------------------------------------------------------------------
 
+const SHARED_MC = "Shares MC duties";
+
 export function buildRunSheet(input: RunSheetInput): RunSheet {
   const { event, view } = input;
   const date = event.event_date;
+  const djLine = djIdentity(input.djName, "staff");
   const venueText = [event.venue_name, event.venue_address].filter(Boolean).join(", ") || null;
   const base: RunSheet = {
     business: { name: input.business.display_name, color: typeof input.business.brand_colors.primary === "string" ? input.business.brand_colors.primary : "#111827" },
@@ -428,8 +434,12 @@ export function buildRunSheet(input: RunSheetInput): RunSheet {
         case "mc": {
           const mc = ans as McAnswers;
           const notes = str(mc.notes) ? [str(mc.notes)!] : [];
-          if (mc.mc === "dj") rows.push({ id: m.id, when: { kind: "sequence" }, title: m.label, people: [{ names: `${input.business.display_name} (the DJ)` }], songs: [], notes, status: null });
-          else if (mc.mc === "other") rows.push({ id: m.id, when: { kind: "sequence" }, title: m.label, people: [{ names: str(mc.name) ?? "Name not given", pronunciation: str(mc.pronunciation), role: str(mc.contact) }], songs: [], notes, status: null });
+          const other: PersonLine = { names: str(mc.name) ?? "Name not given", pronunciation: str(mc.pronunciation), role: str(mc.contact) };
+          if (mc.mc === "dj") rows.push({ id: m.id, when: { kind: "sequence" }, title: m.label, people: [{ names: djLine }], songs: [], notes, status: null });
+          else if (mc.mc === "other") rows.push({ id: m.id, when: { kind: "sequence" }, title: m.label, people: [other], songs: [], notes, status: null });
+          // Shared duties: the DJ and the other MC, each marked as sharing them.
+          else if (mc.mc === "shared") rows.push({ id: m.id, when: { kind: "sequence" }, title: m.label, songs: [], notes, status: null,
+            people: [{ names: djLine, role: SHARED_MC }, { ...other, role: [SHARED_MC, other.role].filter(Boolean).join(" · ") }] });
           else rows.push({ id: m.id, when: { kind: "sequence" }, title: m.label, people: [], songs: [], notes,
             status: mc.mc === "none" ? { tone: "none", text: "No MC" } : mc.mc === "discuss" ? MOMENT_CHOICE.discuss : UNANSWERED });
           break;
@@ -536,10 +546,12 @@ export function buildRunSheet(input: RunSheetInput): RunSheet {
   const mcMoment = moment("mc");
   if (mcMoment) {
     const mc = answersOf(mcMoment.id) as McAnswers;
+    const otherMc = [str(mc.name) ?? "Name not given", str(mc.pronunciation) ? `[${str(mc.pronunciation)}]` : null, str(mc.contact)].filter(Boolean).join(" ");
     base.essentials.push({
       label: "MC",
-      value: mc.mc === "dj" ? `${input.business.display_name} (the DJ)`
-        : mc.mc === "other" ? [str(mc.name) ?? "Name not given", str(mc.pronunciation) ? `[${str(mc.pronunciation)}]` : null, str(mc.contact)].filter(Boolean).join(" ")
+      value: mc.mc === "dj" ? djLine
+        : mc.mc === "other" ? otherMc
+        : mc.mc === "shared" ? `Shared: ${djLine} and ${otherMc}`
         : mc.mc === "none" ? "No MC" : mc.mc === "discuss" ? "Discuss with DJ (still open)" : "Not answered yet",
       warn: !mc.mc || mc.mc === "discuss",
     });
@@ -556,7 +568,7 @@ export function buildRunSheet(input: RunSheetInput): RunSheet {
     base.preferences.push(
       { label: "Explicit lyrics", value: labelOf(LYRICS, p.lyrics) ?? "Not answered yet" },
       { label: "Guest requests", value: labelOf(REQUESTS, p.requests) ?? "Not answered yet" },
-      { label: "DJ interaction", value: labelOf(INTERACTION, p.interaction) ?? "Not answered yet" },
+      { label: "DJ interaction", value: labelOf(INTERACTION_LABELS, p.interaction) ?? "Not answered yet" },
     );
     if (str(p.atmosphere)) base.preferences.push({ label: "Atmosphere", value: str(p.atmosphere)! });
     if (str(p.notes)) base.preferences.push({ label: "Other preferences", value: str(p.notes)! });

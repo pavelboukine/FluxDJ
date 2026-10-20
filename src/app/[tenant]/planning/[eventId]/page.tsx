@@ -105,6 +105,7 @@ export default async function ClientPlanningPage({ params }: PageProps<"/[tenant
   }
 
   const dj = view.brand.display_name;
+  const djDisplayName = view.dj_name ?? null;
   const pageStyle = brandStyle(view.brand.brand_colors.primary);
   const brandLogo = (await liveBrand(slug))?.logo ?? null;
   const sections = planSections(view.structure);
@@ -187,7 +188,7 @@ export default async function ClientPlanningPage({ params }: PageProps<"/[tenant
                                 languageInPreferences={languageAskedInPreferences(view.structure)}
                               />
                             ) : (
-                              generalEditor(g, { moments: view.moments, eventContacts: view.event_contacts, known, djName: dj, audience: "client", save })
+                              generalEditor(g, { moments: view.moments, eventContacts: view.event_contacts, known, djName: dj, djDisplayName, audience: "client", save })
                             );
                           return (
                             <PlanPanel key={s.key} view={s.key} testId={`section-${s.key}`}>
@@ -244,7 +245,7 @@ export default async function ClientPlanningPage({ params }: PageProps<"/[tenant
                                     {s.moments.map((m) => (
                                       <GrandEntranceGate key={m.id} momentKey={m.key}>
                                         <PlanMoment moment={m} defaultOpen={single}>
-                                          {momentEditor(moments.get(m.id)!, { music: view.music, moments: view.moments, djName: dj, audience: "client", event, ceremony, save })}
+                                          {momentEditor(moments.get(m.id)!, { music: view.music, moments: view.moments, djName: dj, djDisplayName, audience: "client", event, ceremony, save })}
                                         </PlanMoment>
                                       </GrandEntranceGate>
                                     ))}

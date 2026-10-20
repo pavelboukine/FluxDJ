@@ -54,6 +54,7 @@ test.describe.serial("DJ run sheet", () => {
     await must(admin.from("events").insert({
       id: eventId, tenant_id: tenant.id, title: `Mariage Gagnon–Lévesque ${run}`, event_type: "wedding", event_date: "2027-08-14",
       venue_name: "Château E2E", venue_address: "1 rue du Lac, Gatineau", internal_notes: "E2E INTERNAL NOTE never on the run sheet",
+      dj_name: "DJ Boukine E2E",
     }));
     await must(admin.from("event_clients").insert({ tenant_id: tenant.id, event_id: eventId, client_id: clientId, is_primary: true, can_sign: true }));
     staffContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
@@ -91,6 +92,8 @@ test.describe.serial("DJ run sheet", () => {
       { id: randomUUID(), names: "Les grands-parents", music: "dj_choice" },
       { id: randomUUID(), names: "Les témoins" },
     ] });
+    // MC duties shared by the event's DJ and another MC.
+    await saveItem("mc", { mc: "shared", name: "Maxime Bélanger", contact: "819 555-0133" });
     await saveItem("speeches", { entries: [{ id: randomUUID(), speaker: "Olivier Lévesque", pronunciation: "oh-lee-VYAY", role: "Best man", timing: "cue", cue: "After the main course" }] });
     await saveItem("must_play", { songs: Array.from({ length: 80 }, (_, i) => song(`Chanson ${i + 1}`, `Artiste ${i + 1}`)) });
     await saveItem("other_dances", { choice: "not_applicable" });
@@ -132,6 +135,11 @@ test.describe.serial("DJ run sheet", () => {
     await expect(entrance).toContainText("18:15");
     await expect(entrance).toContainText("Grande salle");
     await expect(entrance).toContainText("3. Chloé Gagnon et François Lévesque");
+    // Shared MC duties: the event's DJ (never the business name) and the other MC, both marked.
+    const mc = entrance.getByTestId("run-row").filter({ hasText: "Shares MC duties" });
+    await expect(mc).toContainText("DJ Boukine E2E (the DJ) · Shares MC duties");
+    await expect(mc).toContainText("Maxime Bélanger · Shares MC duties · 819 555-0133");
+    await expect(staff.locator("main")).toContainText("Shared: DJ Boukine E2E (the DJ) and Maxime Bélanger 819 555-0133");
     // Music decided explicitly: the DJ's choice said as such; an undecided entry flagged, never as the DJ's choice.
     await expect(entrance.getByTestId("run-row").filter({ hasText: "4. Les grands-parents" })).toContainText("DJ's choice");
     await expect(entrance.getByTestId("run-row").filter({ hasText: "5. Les témoins" })).toContainText("Music not decided yet");
@@ -180,7 +188,7 @@ test.describe.serial("DJ run sheet", () => {
     }
     const text = pages.join("\n");
     expect(pages[0]).toContain(`Revision ${firstRevision}`);
-    for (const expected of ["Gig overview", "1. Groom and his mother", "3. Bride and her father", "Same song as 1. Groom and his mother", "3. Chloé Gagnon et François Lévesque [klo-AY gah-NYON]", "Guest entry", "Grand entrance", "4. Les grands-parents", "DJ's choice", "5. Les témoins", "Music not decided yet", "Not happening: Other special dances", "Cue: After the main course", "Loading dock at the back, door 4.", "DO NOT PLAY", "Chanson 80", "01:00 (next day, Sun, Aug 15)"]) {
+    for (const expected of ["Gig overview", "1. Groom and his mother", "3. Bride and her father", "Same song as 1. Groom and his mother", "3. Chloé Gagnon et François Lévesque [klo-AY gah-NYON]", "Guest entry", "Grand entrance", "Shared: DJ Boukine E2E (the DJ) and Maxime Bélanger", "Shares MC duties", "4. Les grands-parents", "DJ's choice", "5. Les témoins", "Music not decided yet", "Not happening: Other special dances", "Cue: After the main course", "Loading dock at the back, door 4.", "DO NOT PLAY", "Chanson 80", "01:00 (next day, Sun, Aug 15)"]) {
       expect(text).toContain(expected);
     }
     for (const bad of ["E2E INTERNAL NOTE", "E2E-PAYMENT-REF", "undefined", "null", "[object", tenant.ownerEmail, clientEmail]) expect(text).not.toContain(bad);

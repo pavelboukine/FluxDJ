@@ -282,26 +282,35 @@ export function speechResolved(s: Speech): boolean {
 // MC
 // ---------------------------------------------------------------------------
 
-export type McChoice = "dj" | "other" | "none" | "discuss";
+/**
+ * "shared": the DJ and another MC share the duties. "none" (No MC) is no
+ * longer offered but stays valid, so saved answers read and save unchanged.
+ * The pronunciation guide is no longer asked; an earlier one is kept.
+ */
+export type McChoice = "dj" | "other" | "shared" | "none" | "discuss";
 export type McAnswers = { mc?: McChoice; name?: string; pronunciation?: string; contact?: string; notes?: string };
 export type McForm = { mc: McChoice | ""; name: string; pronunciation: string; contact: string; notes: string };
 export const MC_LIMITS = { name: 200, pronunciation: 300, contact: 300, notes: 1000 } as const;
+const MC_CHOICES: McChoice[] = ["dj", "other", "shared", "none", "discuss"];
+
+/** Whether the choice involves another MC, whose name is then needed. */
+export const hasOtherMc = (mc: McChoice | "" | undefined) => mc === "other" || mc === "shared";
 
 export function mcForm(a: McAnswers): McForm {
   return { mc: a.mc ?? "", name: a.name ?? "", pronunciation: a.pronunciation ?? "", contact: a.contact ?? "", notes: a.notes ?? "" };
 }
 
-/** Someone else's details are kept only while someone else is the MC (the form keeps them meanwhile). */
+/** The other MC's details are kept only while another MC is involved (the form keeps them meanwhile). */
 export function mcAnswersFromForm(form: McForm): Parsed<McAnswers> {
   const answers: McAnswers = {};
   if (form.mc) {
-    if (!["dj", "other", "none", "discuss"].includes(form.mc)) return { ok: false, field: "mc", message: "Choose an option from the list." };
+    if (!MC_CHOICES.includes(form.mc)) return { ok: false, field: "mc", message: "Choose an option from the list." };
     answers.mc = form.mc;
   }
   for (const field of ["name", "pronunciation", "contact", "notes"] as const) {
     const value = form[field].trim();
     if (value.length > MC_LIMITS[field]) return { ok: false, field, message: `Keep this under ${MC_LIMITS[field].toLocaleString("en-CA")} characters.` };
-    if (value && (field === "notes" || form.mc === "other")) answers[field] = value;
+    if (value && (field === "notes" || hasOtherMc(form.mc))) answers[field] = value;
   }
   return { ok: true, answers };
 }
