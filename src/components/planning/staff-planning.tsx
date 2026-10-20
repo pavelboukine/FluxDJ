@@ -4,7 +4,7 @@ import { ChevronRight } from "lucide-react";
 import { headingId, isIncomplete, sectionStatus } from "@/lib/planning/navigation";
 import { progressScopeNote } from "@/lib/planning/view";
 import { ProgressMeter, usePlanProgress } from "./progress";
-import { Flags, NavLink, PanelHeading, StatusIcon, focusFor, useNav } from "./plan-navigation";
+import { Flags, NavLink, PanelHeading, StatusGlyph, focusFor, useNav } from "./plan-navigation";
 
 /**
  * The staff planning overview: the database's progress (the same items and
@@ -28,7 +28,7 @@ export function StaffPlanOverview() {
         <ProgressMeter progress={p} bar="bg-primary" compact />
       </div>
       <p className="text-sm text-muted-foreground">
-        {p.complete_sections} of {p.available_sections} {p.available_sections === 1 ? "section" : "sections"} complete
+        {p.complete_sections} of {p.available_sections} planning {p.available_sections === 1 ? "item" : "items"} complete
         {discuss > 0 ? ` · ${discuss} to discuss with the client` : ""}
         {plan.warnings.length > 0 ? ` · ${plan.warnings.length === 1 ? "1 timing note" : `${plan.warnings.length} timing notes`}` : ""}. {progressScopeNote(p)}{" "}
         Progress counts answers, by you or the client; it isn&apos;t an approval.
@@ -47,7 +47,7 @@ export function StaffPlanOverview() {
                   focusItem={focusFor(s, status)}
                   className="grid min-h-11 grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-2 py-1.5 text-sm outline-none hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50"
                 >
-                  <StatusIcon status={status} />
+                  <StatusGlyph status={status} />
                   <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
                     <span className="font-medium [overflow-wrap:anywhere]">{s.label}</span>
                     {isIncomplete(status) ? (

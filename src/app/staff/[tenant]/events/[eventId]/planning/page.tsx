@@ -266,9 +266,16 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
     const moments = new Map(view.structure.stages.flatMap((s) => s.moments).map((m) => [m.id, m]));
     const known = knownPeople(view.structure.stages, view.moments, view.stage_details);
     const ceremony = ceremonyDetails(view.structure.stages, view.stage_details);
-    const card = "grid min-w-0 gap-5 rounded-xl border bg-card p-4 sm:p-5";
+    // max-lg:pb-0 and --plan-sheet-pad: the shared Previous/Next bar closes each section on phones (see SectionPager).
+    const card = "grid min-w-0 grid-cols-1 gap-5 rounded-xl border bg-card p-4 sm:p-5 max-lg:pb-0 [--plan-sheet-pad:1rem] sm:[--plan-sheet-pad:1.25rem]";
     return (
-      <div id={WORKSPACE_ID} className="grid scroll-mt-4 gap-4 lg:grid-cols-[15rem_minmax(0,1fr)] lg:items-start">
+      <div
+        id={WORKSPACE_ID}
+        data-plan-shell
+        // The staff shell's own bar is sticky; the planning bars stay below it.
+        style={{ "--plan-sticky-top": "calc(3.5rem + env(safe-area-inset-top))" } as React.CSSProperties}
+        className="grid scroll-mt-4 gap-4 lg:grid-cols-[15rem_minmax(0,1fr)] lg:items-start"
+      >
         <PlanSidebar />
         <div className="grid min-w-0 gap-4">
           <SectionPicker />

@@ -291,10 +291,14 @@ export function progressSummaryLine(p: PlanProgress): string {
   return percent ? `${percent} · ${progressHeadline(p)}` : progressHeadline(p);
 }
 
+/**
+ * What progress covers. The database counts plan items (each section's details and moments,
+ * "available_sections"), not the sections people navigate, so this says "planning items".
+ */
 export function progressScopeNote(p: PlanProgress): string {
-  const available = p.available_sections === 1 ? "1 section you can fill in now (Event basics)" : `${p.available_sections} sections you can fill in now`;
+  const available = p.available_sections === 1 ? "1 planning item open now (Event basics)" : `${p.available_sections} planning items open now`;
   return p.unavailable_sections > 0
-    ? `Progress covers the ${available}. The other sections open later and aren't counted yet.`
+    ? `Progress covers the ${available}. The other items open later and aren't counted yet.`
     : `Progress covers the ${available}.`;
 }
 

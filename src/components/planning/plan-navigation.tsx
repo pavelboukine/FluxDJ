@@ -1,8 +1,8 @@
 "use client";
 
-import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { ChevronDown, ChevronLeft, ChevronRight, Circle, CircleCheck, CircleDot, CircleMinus, Clock, LayoutDashboard, TriangleAlert } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Minus, TriangleAlert, X } from "lucide-react";
 import {
   SECTION_PARAM,
   WORKSPACE_ID,
@@ -14,6 +14,7 @@ import {
   sectionStatus,
   type PlanSection,
   type SectionMoment,
+  type SectionState,
   type SectionStatus,
 } from "@/lib/planning/navigation";
 import { progressPercentText } from "@/lib/planning/view";
@@ -213,12 +214,40 @@ export function statusText(s: SectionStatus): string {
   }
 }
 
-export function StatusIcon({ status }: { status: SectionStatus }) {
-  const cls = "size-4 shrink-0";
-  if (status.state === "complete") return <CircleCheck aria-hidden className={cn(cls, "text-emerald-700 dark:text-emerald-400")} />;
-  if (status.state === "not_applicable") return <CircleMinus aria-hidden className={cn(cls, "text-muted-foreground")} />;
-  if (status.state === "in_progress") return <CircleDot aria-hidden className={cn(cls, "text-amber-700 dark:text-amber-400")} />;
-  return <Circle aria-hidden className={cn(cls, "text-muted-foreground")} />;
+/**
+ * A section's status as a small glyph, always shown next to its words (never alone).
+ * Deliberately unlike a form control (no outlined ring, no centre dot): a filled grey disc
+ * when not started, a half-filled disc when in progress (a state, not a percentage: the
+ * words beside it carry the exact count), a check when complete and a dash when not
+ * applicable.
+ */
+export function StatusGlyph({ status, className }: { status: SectionStatus; className?: string }) {
+  return <ProgressGlyph state={status.state} className={className} />;
+}
+
+export function ProgressGlyph({ state, className }: { state: SectionState; className?: string }) {
+  const base = cn("size-4 shrink-0", className);
+  if (state === "complete") {
+    return (
+      <span aria-hidden className={cn(base, "inline-grid place-items-center rounded-full bg-status-done text-white")}>
+        <Check className="size-2.5" strokeWidth={3.5} />
+      </span>
+    );
+  }
+  if (state === "not_applicable") {
+    return (
+      <span aria-hidden className={cn(base, "inline-grid place-items-center rounded-full bg-plan-track text-plan-ink-2")}>
+        <Minus className="size-2.5" strokeWidth={3.5} />
+      </span>
+    );
+  }
+  return (
+    <svg aria-hidden viewBox="0 0 16 16" className={cn(base, "text-brand-ink")}>
+      <circle cx="8" cy="8" r="8" className="fill-plan-track" />
+      {/* In progress: the right half, always the same. */}
+      {state === "in_progress" ? <path d="M8 2.5a5.5 5.5 0 0 1 0 11Z" fill="currentColor" /> : null}
+    </svg>
+  );
 }
 
 /** Discuss, timing and save flags. Saving is shown in the navigation only; the editor itself says so next to the fields. */
@@ -230,13 +259,13 @@ export function Flags({ status, save, showPending }: { status: SectionStatus | n
           <TriangleAlert aria-hidden className="size-3" /> Not saved
         </span>
       ) : save === "pending" && showPending ? (
-        <span className="text-xs text-muted-foreground">Saving…</span>
+        <span className="text-xs text-plan-ink-2">Saving…</span>
       ) : null}
       {status && status.discuss > 0 ? (
-        <span className="rounded-full bg-muted px-2 py-0.5 text-xs">{status.discuss === 1 ? "1 to discuss" : `${status.discuss} to discuss`}</span>
+        <span className="rounded-full bg-plan-track px-2 py-0.5 text-xs font-medium text-foreground">{status.discuss === 1 ? "1 to discuss" : `${status.discuss} to discuss`}</span>
       ) : null}
       {status && status.warnings > 0 ? (
-        <span className="inline-flex items-center gap-1 rounded-full border border-amber-500 px-2 py-0.5 text-xs text-amber-800 dark:text-amber-300">
+        <span className="inline-flex items-center gap-1 rounded-full bg-status-attention-tint px-2 py-0.5 text-xs font-medium text-status-attention">
           <Clock aria-hidden className="size-3" /> Check timing
         </span>
       ) : null}
@@ -245,8 +274,18 @@ export function Flags({ status, save, showPending }: { status: SectionStatus | n
 }
 
 // ---------------------------------------------------------------------------
-// Navigation: desktop column and phone picker
+// Navigation: desktop column and phone section bar + sheet
 // ---------------------------------------------------------------------------
+
+/** Keyboard focus on planning navigation: a solid Brand Ink ring (at least 3:1 against white and the tints). */
+export const PLAN_FOCUS = "outline-none focus-visible:ring-2 focus-visible:ring-brand-ink focus-visible:ring-offset-1";
+
+const navItem = (current: boolean) =>
+  cn(
+    "grid min-h-11 grid-cols-[1rem_minmax(0,1fr)] items-start gap-x-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors motion-reduce:transition-none",
+    PLAN_FOCUS,
+    current ? "bg-brand-tint font-semibold text-foreground" : "text-foreground hover:bg-plan-track/70",
+  );
 
 function SectionNavItem({ section, number, onPicked }: { section: PlanSection; number?: number; onPicked?: () => void }) {
   const nav = useNav();
@@ -255,23 +294,14 @@ function SectionNavItem({ section, number, onPicked }: { section: PlanSection; n
   const current = nav.active === section.key;
   return (
     <li>
-      <NavLink
-        view={section.key}
-        onPicked={onPicked}
-        aria-current={current ? "page" : undefined}
-        data-testid={`nav-${section.key}`}
-        className={cn(
-          "grid min-h-11 grid-cols-[1rem_minmax(0,1fr)] items-start gap-x-2 rounded-lg px-2.5 py-2 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-          current ? "bg-muted font-semibold" : "hover:bg-muted/60",
-        )}
-      >
-        <span className="pt-0.5">{status ? <StatusIcon status={status} /> : null}</span>
+      <NavLink view={section.key} onPicked={onPicked} aria-current={current ? "page" : undefined} data-testid={`nav-${section.key}`} className={navItem(current)}>
+        <span className="pt-0.5">{status ? <StatusGlyph status={status} /> : null}</span>
         <span className="grid min-w-0 gap-0.5">
           <span className="[overflow-wrap:anywhere]">
-            {number !== undefined ? <span className="text-muted-foreground">{number}. </span> : null}
+            {number !== undefined ? <span className="font-normal text-plan-ink-2 tabular-nums">{number}. </span> : null}
             {section.label}
           </span>
-          <span className="flex flex-wrap items-center gap-1 text-xs font-normal text-muted-foreground">
+          <span className="flex flex-wrap items-center gap-1 text-xs font-normal text-plan-ink-2">
             {status ? <span>{statusText(status)}</span> : null}
             <Flags status={status} save={save} showPending />
           </span>
@@ -281,7 +311,15 @@ function SectionNavItem({ section, number, onPicked }: { section: PlanSection; n
   );
 }
 
-/** The overview, as a navigation item like the sections (icon, label, status line), never a heading. */
+/** The plan's overall progress as a glyph (the overview's own status). */
+function OverallGlyph() {
+  const plan = usePlanProgress();
+  if (!plan) return <ProgressGlyph state="nothing" />;
+  const { requirements_met: met, requirements_total: total } = plan.progress;
+  return <ProgressGlyph state={total === 0 ? "nothing" : met >= total ? "complete" : met > 0 ? "in_progress" : "not_started"} />;
+}
+
+/** The overview, as a navigation item like the sections (glyph, label, status line), never a heading. */
 function OverviewNavItem({ onPicked }: { onPicked?: () => void }) {
   const nav = useNav();
   const plan = usePlanProgress();
@@ -289,121 +327,174 @@ function OverviewNavItem({ onPicked }: { onPicked?: () => void }) {
   const percent = plan ? progressPercentText(plan.progress) : null;
   return (
     <li>
-      <NavLink
-        view={null}
-        onPicked={onPicked}
-        aria-current={current ? "page" : undefined}
-        data-testid="nav-overview"
-        className={cn(
-          "grid min-h-11 grid-cols-[1rem_minmax(0,1fr)] items-start gap-x-2 rounded-lg px-2.5 py-2 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-          current ? "bg-muted font-semibold" : "hover:bg-muted/60",
-        )}
-      >
-        <span className="pt-0.5"><LayoutDashboard aria-hidden className="size-4 shrink-0 text-muted-foreground" /></span>
+      <NavLink view={null} onPicked={onPicked} aria-current={current ? "page" : undefined} data-testid="nav-overview" className={navItem(current)}>
+        <span className="pt-0.5"><OverallGlyph /></span>
         <span className="grid min-w-0 gap-0.5">
           <span>Overview</span>
-          <span className="text-xs font-normal text-muted-foreground">{percent ?? "Progress and next steps"}</span>
+          <span className="text-xs font-normal text-plan-ink-2">{percent ?? "Progress and next steps"}</span>
         </span>
       </NavLink>
     </li>
   );
 }
 
-function SectionNavList({ onPicked }: { onPicked?: () => void }) {
+function SectionNavList({ onPicked, idPrefix }: { onPicked?: () => void; idPrefix: string }) {
   const nav = useNav();
   const general = nav.sections.filter((s) => s.kind === "general");
   const stages = nav.sections.filter((s) => s.kind === "stage");
-  const plain = (view: string, label: string) => (
-    <li>
-      <NavLink
-        view={view}
-        onPicked={onPicked}
-        data-testid={`nav-${view}`}
-        aria-current={nav.active === view ? "page" : undefined}
-        className={cn(
-          "flex min-h-11 items-center rounded-lg px-2.5 py-2 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-          nav.active === view ? "bg-muted font-semibold" : "hover:bg-muted/60",
-        )}
-      >
-        {label}
-      </NavLink>
-    </li>
-  );
+  const group = "px-2.5 pb-1 text-xs font-medium text-plan-ink-2";
   return (
-    <div className="grid gap-3">
+    <div className="grid gap-4">
       <ul className="grid gap-0.5"><OverviewNavItem onPicked={onPicked} /></ul>
       {general.length > 0 ? (
-        <div className="grid gap-1">
-          <h3 className="px-2.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">Event details</h3>
-          <ul className="grid gap-0.5">
+        <div>
+          <p id={`${idPrefix}-general`} className={group}>Event details</p>
+          <ul className="grid gap-0.5" aria-labelledby={`${idPrefix}-general`}>
             {general.map((s) => <SectionNavItem key={s.key} section={s} onPicked={onPicked} />)}
           </ul>
         </div>
       ) : null}
       {stages.length > 0 ? (
-        <div className="grid gap-1">
-          <h3 className="px-2.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">{nav.stagesHeading}</h3>
+        <div>
+          <p aria-hidden className={group}>{nav.stagesHeading}</p>
           <ol className="grid gap-0.5" aria-label="Stages of the event, in order">
             {stages.map((s, i) => <SectionNavItem key={s.key} section={s} number={i + 1} onPicked={onPicked} />)}
           </ol>
         </div>
       ) : null}
-      {nav.extras.length > 0 ? <ul className="grid gap-0.5 border-t pt-3">{nav.extras.map((x) => <Fragment key={x.key}>{plain(x.key, x.label)}</Fragment>)}</ul> : null}
+      {nav.extras.length > 0 ? (
+        <ul className="grid gap-0.5 border-t border-plan-hairline pt-3">
+          {nav.extras.map((x) => (
+            <li key={x.key}>
+              <NavLink
+                view={x.key}
+                onPicked={onPicked}
+                data-testid={`nav-${x.key}`}
+                aria-current={nav.active === x.key ? "page" : undefined}
+                className={cn(navItem(nav.active === x.key), "flex items-center")}
+              >
+                {x.label}
+              </NavLink>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }
 
-/** Desktop: the planning navigation column. */
-export function PlanSidebar() {
+/**
+ * Desktop: the planning navigation, unboxed on the canvas; it stays in view on long sections.
+ * With hideOnOverview, the overview goes without it: its own rows lead to every section, so
+ * the two lists aren't shown side by side (the workspace grid follows data-plan-sidebar).
+ */
+export function PlanSidebar({ hideOnOverview = false }: { hideOnOverview?: boolean }) {
+  const nav = useNav();
+  if (hideOnOverview && nav.active === null) return null;
   return (
-    <nav aria-label="Planning sections" className="hidden rounded-2xl border bg-card p-2 shadow-sm lg:block">
-      <SectionNavList />
+    <nav
+      aria-label="Planning sections"
+      data-plan-sidebar
+      className="hidden lg:sticky lg:top-[calc(var(--plan-sticky-top,0px)+1.5rem)] lg:block lg:max-h-[calc(100dvh-var(--plan-sticky-top,0px)-3rem)] lg:-mx-1 lg:overflow-y-auto lg:overscroll-contain lg:px-1 lg:pt-1 lg:pb-4"
+    >
+      <SectionNavList idPrefix="plan-nav" />
     </nav>
   );
 }
 
-/** Phones and tablets: the current section and its progress; opens the same list inline (no nested scrolling). */
+/**
+ * Phones and tablets: a slim bar that stays at the top with the open section and its
+ * progress. "All sections" opens the same list as a modal sheet (Escape, the close button
+ * or picking a section closes it; focus returns to the bar, or moves to the picked section).
+ */
 export function SectionPicker() {
   const nav = useNav();
-  const ref = useRef<HTMLDetailsElement>(null);
+  const sheet = useRef<HTMLDialogElement>(null);
+  const [open, setOpen] = useState(false);
   const section = nav.sections.find((s) => s.key === nav.active) ?? null;
-  const index = section ? nav.sections.indexOf(section) : -1;
+  const close = () => sheet.current?.close();
+  const show = () => {
+    const d = sheet.current;
+    if (!d || d.open) return;
+    d.showModal();
+    setOpen(true);
+    const current = d.querySelector<HTMLElement>('[aria-current="page"]');
+    current?.focus();
+    current?.scrollIntoView({ block: "nearest" });
+  };
   return (
-    <details ref={ref} className="group/picker rounded-2xl border bg-card shadow-sm lg:hidden" data-testid="section-picker">
-      <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 rounded-2xl px-4 py-2.5 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
-        <span className="grid min-w-0 gap-0.5">
-          <span className="text-xs text-muted-foreground">
-            {section ? `Section ${index + 1} of ${nav.sections.length}` : "Planning sections"}
-            <span className="sr-only">. Choose a section.</span>
-          </span>
-          <span className="font-semibold [overflow-wrap:anywhere]">{nav.labelOf(nav.active)}</span>
-          {section ? <PickerStatus section={section} /> : null}
+    <div
+      data-testid="section-picker"
+      className="sticky top-[var(--plan-sticky-top,0px)] z-30 -mx-4 border-b border-plan-hairline bg-plan-canvas px-4 sm:mx-0 sm:rounded-b-xl sm:px-0 lg:hidden"
+    >
+      <button
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={show}
+        className={cn("flex min-h-14 w-full items-center gap-3 rounded-lg py-2 text-left sm:px-1", PLAN_FOCUS)}
+      >
+        {section ? <PickerGlyph section={section} /> : <OverallGlyph />}
+        <span className="grid min-w-0 flex-1 gap-0.5">
+          <span className="truncate text-sm font-semibold">{nav.labelOf(nav.active)}</span>
+          {section ? <PickerStatus section={section} /> : <OverviewStatus />}
         </span>
-        <span className="flex shrink-0 items-center gap-1 text-sm font-medium">
+        <span className="flex shrink-0 items-center gap-1 rounded-lg px-1 text-sm font-medium">
           All sections
-          <ChevronDown aria-hidden className="size-4 transition-transform group-open/picker:rotate-180 motion-reduce:transition-none" />
+          <ChevronDown aria-hidden className="size-4" />
         </span>
-      </summary>
-      <nav aria-label="Planning sections" className="border-t p-2">
-        <SectionNavList
-          onPicked={() => {
-            if (ref.current) ref.current.open = false;
-          }}
-        />
-      </nav>
-    </details>
+      </button>
+      <dialog
+        ref={sheet}
+        data-plan-sheet
+        aria-labelledby="plan-sheet-title"
+        onClose={() => setOpen(false)}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) close();
+        }}
+        className="fixed inset-y-0 right-0 left-auto m-0 h-dvh max-h-dvh w-full max-w-full overscroll-contain bg-plan-surface p-0 text-foreground shadow-xl backdrop:bg-black/30 sm:w-[26rem] motion-safe:open:animate-in motion-safe:open:fade-in-0 motion-safe:open:slide-in-from-bottom-4 motion-safe:sm:open:slide-in-from-bottom-0 motion-safe:sm:open:slide-in-from-right-8"
+      >
+        <div className="flex h-full flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)]">
+          <div className="flex min-h-14 items-center justify-between gap-3 border-b border-plan-hairline px-4">
+            <h2 id="plan-sheet-title" className="text-base font-semibold">Planning sections</h2>
+            <button
+              type="button"
+              onClick={close}
+              className={cn("-mr-2 inline-flex size-11 items-center justify-center rounded-lg hover:bg-plan-track/70", PLAN_FOCUS)}
+            >
+              <X aria-hidden className="size-5" />
+              <span className="sr-only">Close</span>
+            </button>
+          </div>
+          <nav aria-label="Planning sections" className="flex-1 overflow-y-auto overscroll-contain px-2 py-3">
+            <SectionNavList idPrefix="plan-sheet" onPicked={close} />
+          </nav>
+        </div>
+      </dialog>
+    </div>
   );
+}
+
+function PickerGlyph({ section }: { section: PlanSection }) {
+  const status = useSectionStatus(section);
+  return status ? <StatusGlyph status={status} /> : null;
 }
 
 function PickerStatus({ section }: { section: PlanSection }) {
   const status = useSectionStatus(section);
   const save = useSectionSaveSummary(section.key);
   return (
-    <span className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+    <span className="flex flex-wrap items-center gap-1 text-xs text-plan-ink-2">
       {status ? <span>{statusText(status)}</span> : null}
       <Flags status={status} save={save} showPending />
     </span>
   );
+}
+
+function OverviewStatus() {
+  const plan = usePlanProgress();
+  const percent = plan ? progressPercentText(plan.progress) : null;
+  return <span className="text-xs text-plan-ink-2">{percent ?? "Progress and next steps"}</span>;
 }
 
 /** Sections other than the open one with input that wasn't saved; never hidden silently. */
@@ -412,12 +503,15 @@ export function UnsavedElsewhere() {
   const keys = useNotSavedSections().filter((k) => k !== nav.active);
   if (keys.length === 0) return null;
   return (
-    <div role="status" data-testid="unsaved-elsewhere" className="grid gap-2 rounded-xl border border-destructive/50 bg-card p-3 text-sm">
-      <p className="font-medium">Some changes weren&apos;t saved. They&apos;re still on this page:</p>
-      <ul className="flex flex-wrap gap-x-4 gap-y-1">
+    <div role="status" data-testid="unsaved-elsewhere" className="grid gap-1 rounded-xl border border-destructive/40 bg-plan-surface px-4 py-3 text-sm">
+      <p className="flex items-center gap-2 font-medium">
+        <TriangleAlert aria-hidden className="size-4 shrink-0 text-destructive" />
+        Some changes weren&apos;t saved. They&apos;re still on this page:
+      </p>
+      <ul className="flex flex-wrap gap-x-4 pl-6">
         {keys.map((k) => (
           <li key={k}>
-            <NavLink view={k} className="inline-flex min-h-11 items-center rounded-md font-medium underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+            <NavLink view={k} className={cn("inline-flex min-h-11 items-center rounded-md font-medium underline underline-offset-4", PLAN_FOCUS)}>
               Open {nav.labelOf(k)}
             </NavLink>
           </li>
@@ -441,6 +535,7 @@ export function PlanPanel({ view, testId, children }: { view: string | null; tes
   );
 }
 
+/** The open section's title and one line of context: where it sits, its status and any flags. */
 export function SectionHeader({ sectionKey, eyebrow }: { sectionKey: string; eyebrow: string }) {
   const nav = useNav();
   const section = nav.sections.find((s) => s.key === sectionKey)!;
@@ -448,14 +543,16 @@ export function SectionHeader({ sectionKey, eyebrow }: { sectionKey: string; eye
   const save = useSectionSaveSummary(section.key);
   return (
     <div className="grid gap-1.5">
-      <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{eyebrow}</p>
-      <h2 id={headingId(sectionKey)} tabIndex={-1} className="text-xl font-semibold tracking-tight outline-none [overflow-wrap:anywhere] focus-visible:ring-3 focus-visible:ring-ring/50 sm:text-2xl">
+      <h2 id={headingId(sectionKey)} tabIndex={-1} className={cn("rounded-sm text-xl leading-tight font-semibold tracking-tight text-balance [overflow-wrap:anywhere] sm:text-[1.375rem]", PLAN_FOCUS)}>
         {section.label}
       </h2>
-      <p className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground" data-testid="section-status">
-        {status ? <StatusIcon status={status} /> : null}
-        {status ? <span>{status.state === "in_progress" || status.state === "not_started" ? `${statusText(status)} · ${status.total - status.met} still needed` : statusText(status)}</span> : null}
-        <Flags status={status} save={save} />
+      <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-plan-ink-2">
+        <span>{eyebrow}</span>
+        <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-1" data-testid="section-status">
+          {status ? <StatusGlyph status={status} /> : null}
+          {status ? <span>{status.state === "in_progress" || status.state === "not_started" ? `${statusText(status)} · ${status.total - status.met} still needed` : statusText(status)}</span> : null}
+          <Flags status={status} save={save} />
+        </span>
       </p>
     </div>
   );
@@ -463,7 +560,7 @@ export function SectionHeader({ sectionKey, eyebrow }: { sectionKey: string; eye
 
 export function PanelHeading({ view, children }: { view: string | null; children: ReactNode }) {
   return (
-    <h2 id={headingId(view)} tabIndex={-1} className="text-xl font-semibold tracking-tight outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:text-2xl">
+    <h2 id={headingId(view)} tabIndex={-1} className={cn("rounded-sm text-xl leading-tight font-semibold tracking-tight text-balance sm:text-[1.375rem]", PLAN_FOCUS)}>
       {children}
     </h2>
   );
@@ -489,26 +586,34 @@ export function PlanMoment({ moment, defaultOpen, children }: { moment: SectionM
   );
 }
 
-/** Previous and Next in plan order. Incomplete answers never block moving on. */
+/**
+ * Previous and Next in plan order. Incomplete answers never block moving on. On phones and
+ * tablets the bar stays at the bottom of the screen, within thumb reach, while its section is
+ * in view; it steps back into the page while a text field has focus (see globals.css), so the
+ * on-screen keyboard never squeezes it over the field. The section sheet sets --plan-sheet-pad.
+ */
 export function SectionPager({ view }: { view: string | null }) {
   const nav = useNav();
   const { previous, next } = neighbours(nav.sections, nav.extras.map((x) => x.key), view);
-  const link = "inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-xl border bg-card px-3 text-sm font-medium outline-none hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50";
+  const base = cn("inline-flex min-h-11 min-w-0 items-center gap-1.5 rounded-[10px] px-3 text-sm font-medium", PLAN_FOCUS);
   return (
-    <nav aria-label="Previous and next section" className="flex flex-wrap items-center justify-between gap-2 border-t pt-4">
+    <nav
+      data-plan-pager
+      aria-label="Previous and next section"
+      className="z-20 -mx-[var(--plan-sheet-pad,0px)] flex items-center gap-2 border-t border-plan-hairline bg-plan-surface px-[var(--plan-sheet-pad,0px)] pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] max-lg:sticky max-lg:bottom-0 lg:mx-0 lg:px-0 lg:pt-4 lg:pb-0"
+    >
       {previous ? (
-        <NavLink view={previous.key} className={link} rel="prev">
+        <NavLink view={previous.key} className={cn(base, "max-w-[45%] text-foreground hover:bg-plan-track/70")} rel="prev">
           <ChevronLeft aria-hidden className="size-4 shrink-0" />
           <span className="min-w-0 truncate"><span className="sr-only">Previous: </span>{nav.labelOf(previous.key)}</span>
         </NavLink>
-      ) : <span />}
+      ) : null}
       {next ? (
-        <NavLink view={next.key} className={cn(link, "ml-auto")} rel="next">
-          <span className="min-w-0 truncate"><span className="text-muted-foreground">Next: </span>{nav.labelOf(next.key)}</span>
+        <NavLink view={next.key} className={cn(base, "ml-auto bg-brand pl-4 text-brand-foreground hover:bg-brand/90")} rel="next">
+          <span className="min-w-0 truncate"><span className="opacity-80">Next: </span>{nav.labelOf(next.key)}</span>
           <ChevronRight aria-hidden className="size-4 shrink-0" />
         </NavLink>
       ) : null}
     </nav>
   );
 }
-

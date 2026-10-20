@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import sharp from "sharp";
-import { brandTheme, contrastRatio, normalizeHex } from "@/lib/branding/colors";
+import { BRAND_INK_CONTRAST, brandStyle, brandTheme, contrastRatio, normalizeHex } from "@/lib/branding/colors";
 import { LOGO_MAX_UPLOAD_BYTES, processLogo } from "@/lib/branding/logo.server";
 import { describeDbError } from "@/lib/db-errors";
 import {
@@ -31,6 +31,29 @@ describe("brand colours", () => {
     expect(brandTheme("#1e3a8a").foreground).toBe("#ffffff");
     expect(brandTheme("not a colour").color).toBe("#111827");
     expect(brandTheme("#fef08a").contrastOnWhite).toBeLessThan(3);
+  });
+
+  it("derives a Brand Ink that reads on white for any brand, keeping the hue, and a pale Brand Tint", () => {
+    // Pale lavender (BOUPROD), a dark brand, a mid blue, pale yellow, white and pure hues.
+    for (const color of ["#cbc7ff", "#111827", "#3b82f6", "#fef08a", "#ffffff", "#ffff00", "#e11d48", "#22c55e", "#0ea5e9"]) {
+      const theme = brandTheme(color);
+      expect(contrastRatio(theme.ink, "#ffffff"), color).toBeGreaterThanOrEqual(BRAND_INK_CONTRAST);
+      expect(normalizeHex(theme.ink)).toBe(theme.ink);
+      // The tint is a wash: barely darker than white, so ink text on it stays readable.
+      expect(contrastRatio(theme.tint, "#ffffff")).toBeLessThan(1.25);
+      expect(contrastRatio(theme.ink, theme.tint)).toBeGreaterThanOrEqual(4.5);
+    }
+    // A brand that already reads on white is its own ink.
+    expect(brandTheme("#111827").ink).toBe("#111827");
+    expect(brandTheme("#1e3a8a").ink).toBe("#1e3a8a");
+    // A pale brand keeps its hue: lavender stays blue-violet (blue channel strongest), not grey.
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(brandTheme("#cbc7ff").ink.slice(i, i + 2), 16));
+    expect(b).toBeGreaterThan(r);
+    expect(b - g).toBeGreaterThan(40);
+  });
+
+  it("puts every brand token in the page's CSS variables", () => {
+    expect(brandStyle("#cbc7ff")).toMatchObject({ "--brand": "#cbc7ff", "--brand-foreground": "#000000", "--brand-ink": brandTheme("#cbc7ff").ink, "--brand-tint": brandTheme("#cbc7ff").tint });
   });
 
   it("explains branding errors in plain words", () => {

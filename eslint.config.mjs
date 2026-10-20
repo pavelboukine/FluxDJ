@@ -13,6 +13,8 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     "src/lib/supabase/database.types.ts",
+    // Impeccable design skill: vendored, generated browser bundles (gitignored, not app code).
+    ".claude/skills/impeccable/scripts/**",
   ]),
 ]);
 

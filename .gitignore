@@ -45,6 +45,13 @@ next-env.d.ts
 supabase/.temp
 supabase/.branches
 
+# Impeccable design skill: local install (incl. a ~16 MB native binary) and its
+# generated state stay out of commits for now. Other .claude config is unaffected.
+/.claude/skills/impeccable/
+/.claude/agents/impeccable-*.md
+/.claude/settings.local.json
+/.impeccable/
+
 # playwright
 /test-results/
 # PDF and screenshot samples written by tests for visual review (never cleared by Playwright)

@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { CalendarClock, Lock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { BASICS_REQUIREMENT_LABELS, type BasicsAnswers } from "@/lib/planning/basics";
 import { clientEditingText, formatInstant, type ClientEditing } from "@/lib/planning/cutoff";
@@ -102,28 +103,47 @@ export function useEditingClosed(disabledReason?: string): boolean {
   return Boolean(disabledReason) || ctx?.editing?.state === "closed";
 }
 
-/** The client's deadline or read-only notice, kept current when a save finds planning closed. */
+/**
+ * The client's deadline or read-only notice, kept current when a save finds planning closed.
+ * It sits in the planning header: one quiet line while planning is open, a clear block when
+ * it has closed (its text in full ink on the tint, so it keeps its contrast).
+ */
 export function EditingNotice({ djName }: { djName: string }) {
   const ctx = usePlanProgress();
   const e = ctx?.editing;
   if (!e) return null;
-  const closed = e.state === "closed";
+  if (e.state === "closed") {
+    return (
+      <section
+        aria-label="Editing"
+        role="alert"
+        data-testid="editing-notice"
+        data-state={e.state}
+        className="flex items-start gap-2.5 rounded-xl bg-status-attention-tint px-3.5 py-3 text-sm text-foreground"
+      >
+        <Lock aria-hidden className="mt-0.5 size-4 shrink-0 text-status-attention" />
+        <span className="grid gap-0.5">
+          <span className="font-medium">{clientEditingText(e, djName)}</span>
+          <span>
+            {e.closed_by_dj ? `${djName} has closed planning to changes.` : `The planning deadline was ${formatInstant(e.deadline, e.timezone)}.`} You can
+            still open every section to see what was saved.
+          </span>
+        </span>
+      </section>
+    );
+  }
+  const until = formatInstant(e.closes_at ?? e.deadline, e.timezone);
   return (
-    <section
-      aria-label="Editing"
-      role={closed ? "alert" : "status"}
-      data-testid="editing-notice"
-      data-state={e.state}
-      className={closed ? "grid gap-1 rounded-xl border border-amber-500/60 bg-amber-500/10 p-4 text-sm" : "grid gap-1 rounded-xl border bg-card p-4 text-sm"}
-    >
-      <p className={closed ? "font-medium" : undefined}>{clientEditingText(e, djName)}</p>
-      {closed ? (
-        <p className="text-muted-foreground">
-          {e.closed_by_dj ? `${djName} has closed planning to changes.` : `The planning deadline was ${formatInstant(e.deadline, e.timezone)}.`} You can
-          still open every section to see what was saved.
-        </p>
-      ) : null}
-    </section>
+    <p aria-label="Editing" role="status" data-testid="editing-notice" data-state={e.state} className="flex items-start gap-2 text-sm text-plan-ink-2">
+      <CalendarClock aria-hidden className="mt-0.5 size-4 shrink-0" />
+      {e.state === "reopened" ? (
+        <span className="text-foreground">{clientEditingText(e, djName)}</span>
+      ) : (
+        <span>
+          <span className="text-foreground">You can make changes until {until}.</span> After that, contact {djName} for changes.
+        </span>
+      )}
+    </p>
   );
 }
 
@@ -137,13 +157,13 @@ export function ProgressMeter({ progress, bar, compact = false }: { progress: Pl
   return (
     <div className="grid gap-2">
       {percent === null ? (
-        <p className={compact ? "text-sm font-medium" : "text-lg font-medium"} data-testid="progress-headline">{headline}</p>
+        <p className={compact ? "text-sm font-medium" : "text-base font-medium"} data-testid="progress-headline">{headline}</p>
       ) : (
-        <p className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
-          <span className={compact ? "text-lg font-semibold tabular-nums" : "text-2xl font-semibold tracking-tight tabular-nums"} data-testid="progress-percent">
+        <p className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+          <span className={compact ? "text-lg font-semibold tabular-nums" : "text-lg font-semibold tracking-tight tabular-nums"} data-testid="progress-percent">
             {progressPercentText(progress)}
           </span>
-          <span className="text-sm text-muted-foreground" data-testid="progress-headline">{headline}</span>
+          <span className="text-sm text-plan-ink-2 tabular-nums" data-testid="progress-headline">{headline}</span>
         </p>
       )}
       {percent !== null ? (
@@ -154,9 +174,9 @@ export function ProgressMeter({ progress, bar, compact = false }: { progress: Pl
           aria-valuemax={100}
           aria-valuenow={percent}
           aria-valuetext={`${progressPercentText(progress)}, ${headline}`}
-          className="h-2 overflow-hidden rounded-full bg-muted"
+          className="h-1.5 overflow-hidden rounded-full bg-plan-track"
         >
-          <div className={cn("h-full", bar)} style={{ width: `${percent}%` }} />
+          <div className={cn("h-full rounded-full", bar)} style={{ width: `${percent}%` }} />
         </div>
       ) : null}
     </div>

@@ -1,35 +1,41 @@
 "use client";
 
 import { ChevronRight, Lock } from "lucide-react";
-import { PROVIDED_SECTION, firstIncompleteSection, headingId, isIncomplete, sectionStatus } from "@/lib/planning/navigation";
-import { progressScopeNote } from "@/lib/planning/view";
+import { PROVIDED_SECTION, firstIncompleteSection, isIncomplete, sectionStatus, type PlanSection, type SectionStatus } from "@/lib/planning/navigation";
 import { cn } from "@/lib/utils";
 import { ProgressMeter, usePlanProgress } from "./progress";
-import { Flags, NavLink, PanelHeading, StatusIcon, focusFor, useNav } from "./plan-navigation";
+import { Flags, NavLink, PLAN_FOCUS, PanelHeading, StatusGlyph, focusFor, statusText, useNav } from "./plan-navigation";
 
 /** The client's planning overview and editing chip (navigation itself is shared: plan-navigation). */
 
 // ---------------------------------------------------------------------------
-// Overview
+// Editing chip
 // ---------------------------------------------------------------------------
-
-const CHIP_TONES = {
-  open: "bg-emerald-100 text-emerald-950 dark:bg-emerald-500/20 dark:text-emerald-100",
-  reopened: "bg-amber-100 text-amber-950 dark:bg-amber-500/20 dark:text-amber-100",
-  closed: "bg-muted text-foreground",
-} as const;
 
 /** Whether the client can edit now; follows a save that finds planning closed. */
 export function EditingChip() {
   const e = usePlanProgress()?.editing;
   if (!e) return null;
   return (
-    <span data-testid="editing-chip" className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold", CHIP_TONES[e.state])}>
-      {e.state === "closed" ? <Lock aria-hidden className="size-3" /> : null}
+    <span data-testid="editing-chip" className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-plan-surface px-2.5 py-1 text-xs font-medium ring-1 ring-plan-hairline">
+      {e.state === "closed" ? (
+        <Lock aria-hidden className="size-3 text-plan-ink-2" />
+      ) : (
+        <span aria-hidden className={cn("size-1.5 rounded-full", e.state === "open" ? "bg-status-done" : "bg-status-attention")} />
+      )}
       {e.state === "open" ? "Planning open" : e.state === "reopened" ? "Reopened" : "Read-only"}
     </span>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Overview
+// ---------------------------------------------------------------------------
+
+/** A sheet on the planning canvas (no pager inside, so it keeps its bottom padding). */
+export const OVERVIEW_SHEET = "grid min-w-0 grid-cols-1 gap-5 border-plan-hairline bg-plan-surface p-4 max-sm:-mx-4 max-sm:border-y sm:rounded-2xl sm:border sm:p-6";
+
+type Row = { s: PlanSection; status: SectionStatus };
 
 export function PlanOverview({ djName, providedCount }: { djName: string; providedCount: number }) {
   const nav = useNav();
@@ -39,84 +45,138 @@ export function PlanOverview({ djName, providedCount }: { djName: string; provid
   const closed = plan.editing?.state === "closed";
   const next = firstIncompleteSection(nav.sections, p, plan.warnings);
   const first = nav.sections[0] ?? null;
-  const open = nav.sections
-    .map((s) => ({ s, status: sectionStatus(s, p, plan.warnings) }))
-    .filter(({ status }) => isIncomplete(status) || status.discuss > 0 || status.warnings > 0);
-  const button = "inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-[var(--brand)] px-4 text-sm font-semibold text-[var(--brand-foreground)] outline-none focus-visible:ring-3 focus-visible:ring-ring/60 max-sm:w-full";
+  const rows: Row[] = nav.sections.map((s) => ({ s, status: sectionStatus(s, p, plan.warnings) }));
+  // Sections, as the client sees them (the database's own counts are per question).
+  const counted = rows.filter(({ status }) => status.state !== "nothing");
+  const done = counted.filter(({ status }) => status.state === "complete" || status.state === "not_applicable").length;
+  // Only what needs action: a timing note or an answer left to discuss. Unanswered questions are normal, not a problem.
+  const attention = rows.filter(({ status }) => status.discuss > 0 || status.warnings > 0);
+  const general = rows.filter(({ s }) => s.kind === "general");
+  const stages = rows.filter(({ s }) => s.kind === "stage");
+  const button = cn(
+    "inline-flex min-h-11 items-center justify-center gap-1.5 rounded-[10px] bg-brand px-5 text-sm font-semibold text-brand-foreground hover:bg-brand/90 max-sm:w-full",
+    PLAN_FOCUS,
+  );
 
   return (
-    <div className="grid gap-4">
-      <section aria-labelledby={headingId(null)} className="grid gap-4 rounded-2xl border bg-card p-4 shadow-sm sm:p-6">
-        <div className="grid gap-2">
-          <PanelHeading view={null}>Planning progress</PanelHeading>
-          <ProgressMeter progress={p} bar="bg-[var(--brand)]" />
-        </div>
-        <div className="grid gap-1 text-sm text-muted-foreground">
-          <p>
-            {p.complete_sections} of {p.available_sections} {p.available_sections === 1 ? "section" : "sections"} complete. {progressScopeNote(p)}
+    <div className="grid gap-4 sm:gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-start">
+      <div className="grid gap-4 sm:gap-6 lg:sticky lg:top-6">
+        <section aria-labelledby="plan-heading-overview" className={OVERVIEW_SHEET}>
+          <div className="grid gap-3">
+            <PanelHeading view={null}>Planning progress</PanelHeading>
+            <ProgressMeter progress={p} bar="bg-brand-ink" />
+            <p className="max-w-[65ch] text-sm text-pretty text-plan-ink-2">
+              {counted.length > 0 ? `${done} of ${counted.length} ${counted.length === 1 ? "section" : "sections"} complete. ` : null}
+              {p.unavailable_sections > 0 ? "Some parts open later and aren't counted yet. " : null}
+              Progress shows what you&apos;ve filled in; it doesn&apos;t mean {djName} has reviewed or approved your plan.
+            </p>
+          </div>
+          {first ? (
+            closed ? (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <NavLink view={first.key} className={button} data-testid="plan-primary">View planning</NavLink>
+                <p className="text-sm text-plan-ink-2">Everything stays visible; changes now go through {djName}.</p>
+              </div>
+            ) : next ? (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <NavLink view={next.key} focusItem={focusFor(next, sectionStatus(next, p, plan.warnings))} className={button} data-testid="plan-primary">
+                  Continue planning
+                </NavLink>
+                <p className="text-sm text-plan-ink-2">Next up: <span className="font-medium text-foreground">{next.label}</span></p>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <NavLink view={first.key} className={button} data-testid="plan-primary">Review your plan</NavLink>
+                <p className="text-sm text-plan-ink-2">Every required answer in the available sections is in. You can still review and change them.</p>
+              </div>
+            )
+          ) : null}
+
+          {attention.length > 0 ? (
+            <div className="grid gap-2 border-t border-plan-hairline pt-4">
+              <h3 id="plan-attention-heading" className="text-sm font-semibold">Needs your attention</h3>
+              <ul className="grid" aria-labelledby="plan-attention-heading" data-testid="plan-open">
+                {attention.map(({ s, status }) => (
+                  <li key={s.key}>
+                    <NavLink
+                      view={s.key}
+                      focusItem={focusFor(s, status)}
+                      className={cn("-mx-2 flex min-h-11 items-center gap-3 rounded-lg px-2 py-1.5 text-sm hover:bg-plan-track/70", PLAN_FOCUS)}
+                    >
+                      <span className="min-w-0 flex-1 font-medium [overflow-wrap:anywhere]">{s.label}</span>
+                      <span className="flex flex-wrap items-center justify-end gap-1"><Flags status={status} save="saved" /></span>
+                      <ChevronRight aria-hidden className="size-4 shrink-0 text-plan-ink-2" />
+                    </NavLink>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </section>
+
+        {providedCount > 0 ? (
+          <p className="px-1 text-sm text-pretty text-plan-ink-2 max-sm:px-0">
+            You already answered {providedCount === 1 ? "1 question" : `${providedCount} questions`} in your proposal; there&apos;s no need to enter them again.{" "}
+            <NavLink view={PROVIDED_SECTION} data-testid={`overview-${PROVIDED_SECTION}`} className={cn("rounded-sm font-medium text-foreground underline underline-offset-4", PLAN_FOCUS)}>
+              See what you already provided
+            </NavLink>
           </p>
-          <p>
-            Unanswered questions and anything marked &ldquo;Discuss with your DJ&rdquo; still count as open. Progress shows what you&apos;ve filled in; it
-            doesn&apos;t mean {djName} has reviewed or approved your plan.
-          </p>
-        </div>
-        {first ? (
-          closed ? (
-            <div className="flex flex-wrap items-center gap-3">
-              <NavLink view={first.key} className={button} data-testid="plan-primary">View planning</NavLink>
-              <p className="text-sm text-muted-foreground">Everything stays visible; changes now go through {djName}.</p>
-            </div>
-          ) : next ? (
-            <div className="flex flex-wrap items-center gap-3">
-              <NavLink view={next.key} focusItem={focusFor(next, sectionStatus(next, p, plan.warnings))} className={button} data-testid="plan-primary">
-                Continue planning
-              </NavLink>
-              <p className="text-sm text-muted-foreground">Next up: {next.label}</p>
-            </div>
-          ) : (
-            <div className="flex flex-wrap items-center gap-3">
-              <NavLink view={first.key} className={button} data-testid="plan-primary">Review your plan</NavLink>
-              <p className="text-sm text-muted-foreground">Every required answer in the available sections is in. You can still review and change them.</p>
-            </div>
-          )
+        ) : null}
+      </div>
+
+      <section aria-label="Your plan" className={cn(OVERVIEW_SHEET, "gap-6")}>
+        {general.length > 0 ? (
+          <div className="grid gap-1.5">
+            <h2 id="plan-details-heading" className="text-base font-semibold">Event details</h2>
+            <ul className="grid" aria-labelledby="plan-details-heading" data-testid="plan-details">
+              {general.map((row) => <OverviewRow key={row.s.key} row={row} next={!closed && next?.key === row.s.key} />)}
+            </ul>
+          </div>
+        ) : null}
+        {stages.length > 0 ? (
+          <div className="grid gap-1.5">
+            <h2 id="plan-order-heading" className="text-base font-semibold">{nav.stagesHeading}</h2>
+            <ol className="grid" aria-labelledby="plan-order-heading" data-testid="plan-order">
+              {stages.map((row, i) => <OverviewRow key={row.s.key} row={row} number={i + 1} next={!closed && next?.key === row.s.key} connect={i < stages.length - 1} />)}
+            </ol>
+          </div>
         ) : null}
       </section>
 
-      {open.length > 0 ? (
-        <section aria-labelledby="plan-open-heading" className="grid gap-3 rounded-2xl border bg-card p-4 shadow-sm sm:p-6">
-          <h2 id="plan-open-heading" className="text-base font-semibold">Still to sort out</h2>
-          <ul className="grid gap-1" data-testid="plan-open">
-            {open.map(({ s, status }) => (
-              <li key={s.key}>
-                <NavLink
-                  view={s.key}
-                  focusItem={focusFor(s, status)}
-                  className="grid min-h-11 grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-2 py-2 text-sm outline-none hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50"
-                >
-                  <StatusIcon status={status} />
-                  <span className="grid min-w-0 gap-0.5">
-                    <span className="font-medium [overflow-wrap:anywhere]">{s.label}</span>
-                    <span className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
-                      {isIncomplete(status) ? <span>{status.total - status.met === 1 ? "1 answer needed" : `${status.total - status.met} answers needed`}</span> : null}
-                      <Flags status={status} save="saved" />
-                    </span>
-                  </span>
-                  <ChevronRight aria-hidden className="size-4 text-muted-foreground" />
-                </NavLink>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      {providedCount > 0 ? (
-        <p className="text-sm text-muted-foreground">
-          You already answered {providedCount === 1 ? "1 question" : `${providedCount} questions`} in your proposal; there&apos;s no need to enter them again.{" "}
-          <NavLink view={PROVIDED_SECTION} className="font-medium text-foreground underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded-sm">
-            See what you already provided
-          </NavLink>
-        </p>
-      ) : null}
     </div>
+  );
+}
+
+/**
+ * One section of the plan: its status in words and as a glyph, any flags, and a way in.
+ * Stages are numbered and joined by a hairline: the event's order, not a to-do list.
+ */
+function OverviewRow({ row: { s, status }, number, next, connect }: { row: Row; number?: number; next: boolean; connect?: boolean }) {
+  return (
+    <li className="relative">
+      {connect ? <span aria-hidden className="absolute top-[2.125rem] -bottom-[0.875rem] left-[1.25rem] w-px -translate-x-1/2 bg-plan-hairline" /> : null}
+      <NavLink
+        view={s.key}
+        focusItem={isIncomplete(status) ? focusFor(s, status) : null}
+        data-testid={`overview-${s.key}`}
+        className={cn("-mx-3 grid min-h-14 grid-cols-[1rem_minmax(0,1fr)_auto] items-start gap-x-3 rounded-xl px-3 py-3 hover:bg-plan-track/60", PLAN_FOCUS)}
+      >
+        <span className="relative pt-0.5"><StatusGlyph status={status} /></span>
+        <span className="grid min-w-0 gap-0.5">
+          <span className="text-sm font-medium [overflow-wrap:anywhere]">
+            {number !== undefined ? <span className="font-normal text-plan-ink-2 tabular-nums">{number}. </span> : null}
+            {s.label}
+          </span>
+          <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-plan-ink-2">
+            <span>{statusText(status)}</span>
+            <Flags status={status} save="saved" />
+          </span>
+        </span>
+        <span className="flex items-center gap-2 self-center">
+          {next ? <span className="rounded-full bg-brand-tint px-2 py-0.5 text-xs font-medium text-brand-ink">Next up</span> : null}
+          <ChevronRight aria-hidden className="size-4 text-plan-ink-2" />
+        </span>
+      </NavLink>
+    </li>
   );
 }

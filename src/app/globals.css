@@ -47,6 +47,19 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  /* Planning (client and staff): see DESIGN.md. Brand values fall back to neutrals where no business colour is set. */
+  --color-plan-canvas: var(--plan-canvas);
+  --color-plan-surface: var(--plan-surface);
+  --color-plan-hairline: var(--plan-hairline);
+  --color-plan-ink-2: var(--plan-ink-2);
+  --color-plan-track: var(--plan-track);
+  --color-status-done: var(--status-done);
+  --color-status-attention: var(--status-attention);
+  --color-status-attention-tint: var(--status-attention-tint);
+  --color-brand: var(--brand, var(--primary));
+  --color-brand-foreground: var(--brand-foreground, var(--primary-foreground));
+  --color-brand-ink: var(--brand-ink, var(--foreground));
+  --color-brand-tint: var(--brand-tint, var(--muted));
 }
 
 :root {
@@ -86,6 +99,16 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  /* Planning: a quiet, slightly cool canvas behind white sheets; hairlines instead of boxes. */
+  --plan-canvas: oklch(0.975 0.003 264);
+  --plan-surface: oklch(1 0 0);
+  --plan-hairline: oklch(0.92 0.004 264);
+  /* Secondary text: at least 4.5:1 on the canvas, the surface and the tints it sits on. */
+  --plan-ink-2: oklch(0.47 0.012 264);
+  --plan-track: oklch(0.93 0.004 264);
+  --status-done: oklch(0.52 0.12 155);
+  --status-attention: oklch(0.47 0.1 65);
+  --status-attention-tint: oklch(0.97 0.035 85);
 }
 
 .dark {
@@ -134,3 +157,39 @@
     @apply font-sans;
   }
 }
+
+/*
+ * Planning shell (client and staff planning pages). Sticky offsets: the client
+ * page has no sticky header; the staff shell sets --plan-sticky-top below its
+ * own bar. The phone section bar and Previous/Next bar never cover a focused
+ * field (scroll padding), and the bottom bar steps aside while the on-screen
+ * keyboard is likely open (a text field has focus).
+ */
+[data-plan-shell] {
+  --plan-bar-height: 3.5rem;
+  ::selection {
+    background-color: var(--brand-tint, var(--muted));
+    color: inherit;
+  }
+  caret-color: var(--brand-ink, var(--foreground));
+}
+
+:root:has([data-plan-shell]) {
+  scroll-padding-top: calc(var(--plan-sticky-top, 0px) + 0.75rem);
+}
+
+@media (width < 64rem) {
+  :root:has([data-plan-shell]) {
+    scroll-padding-top: calc(var(--plan-sticky-top, 0px) + 3.5rem + 0.75rem);
+    scroll-padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
+  }
+  [data-plan-shell]:has(:is(input:not([type="radio"], [type="checkbox"], [type="button"], [type="submit"]), textarea, select):focus) [data-plan-pager] {
+    position: static;
+  }
+}
+
+/* A modal section sheet keeps the page behind it still. */
+:root:has(dialog[data-plan-sheet][open]) {
+  overflow: hidden;
+}
+

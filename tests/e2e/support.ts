@@ -119,10 +119,14 @@ export async function openPlanSection(page: Page, key: string | null) {
   if (await panel.isVisible()) return panel;
   const picker = page.getByTestId("section-picker");
   if (await picker.isVisible()) {
-    if (!(await picker.evaluate((el) => (el as HTMLDetailsElement).open))) await picker.locator("summary").first().click();
+    // Phones: the section bar's "All sections" opens a modal sheet with the list.
+    if (!(await picker.locator("dialog").evaluate((el) => (el as HTMLDialogElement).open))) await picker.getByRole("button", { name: /All sections/ }).click();
     await picker.getByTestId(`nav-${view}`).click();
   } else {
-    await page.getByRole("navigation", { name: "Planning sections" }).getByTestId(`nav-${view}`).click();
+    // Desktop: the sidebar, or on the client's overview (which has no sidebar) the overview's own rows.
+    const sidebar = page.getByRole("navigation", { name: "Planning sections" });
+    if (await sidebar.isVisible()) await sidebar.getByTestId(`nav-${view}`).click();
+    else await page.locator("#plan-panel-overview").getByTestId(`overview-${view}`).click();
   }
   await expect(panel).toBeVisible();
   return panel;

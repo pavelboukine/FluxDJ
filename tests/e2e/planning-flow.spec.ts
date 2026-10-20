@@ -234,7 +234,8 @@ test.describe.serial("planning", () => {
     await expect(client.getByTestId("progress-percent")).toHaveText("20% complete");
     await expect(client.getByTestId("progress-headline")).toHaveText("1 of 5 required answers");
     await expect(client.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "20");
-    await expect(client.getByText("Progress covers the 1 section you can fill in now (Event basics).")).toBeVisible();
+    // Section counts are the sections the client sees (the database counts plan items).
+    await expect(client.getByText("0 of 1 section complete.", { exact: false })).toBeVisible();
     await expect(client.getByText("it doesn't mean", { exact: false })).toContainText("reviewed or approved your plan");
     // A plan without stages is small: no stage list at all.
     await expect(stageNav(client)).toHaveCount(0);
@@ -273,11 +274,15 @@ test.describe.serial("planning", () => {
     // Overview is a navigation item like the sections (progress line, current state), and Back/Forward follow it.
     expect(sectionParam(client)).toBeNull();
     const picker = client.getByTestId("section-picker");
-    await picker.locator("summary").first().click();
+    await picker.getByRole("button", { name: /All sections/ }).click();
+    await expect(picker.getByRole("dialog", { name: "Planning sections" })).toBeVisible();
     await expect(picker.getByTestId("nav-overview")).toHaveAttribute("aria-current", "page");
+    await expect(picker.getByTestId("nav-overview")).toBeFocused();
     await expect(picker.getByTestId("nav-overview")).toHaveText(/Overview\s*100% complete/);
     await expect(picker.getByTestId("nav-basics")).not.toHaveAttribute("aria-current", "page");
-    await picker.locator("summary").first().click();
+    await client.keyboard.press("Escape");
+    await expect(picker.getByRole("dialog")).toBeHidden();
+    await expect(picker.getByRole("button", { name: /All sections/ })).toBeFocused();
     await client.goBack();
     await expect(client.locator("#plan-panel-basics")).toBeVisible();
     expect(sectionParam(client)).toBe("basics");
@@ -380,7 +385,7 @@ test.describe.serial("planning", () => {
     expect(await noSideways(client)).toBeLessThanOrEqual(0);
     // Continue planning opens the first section, in plan order, with answers still needed.
     await openPlanSection(client, null);
-    await expect(client.getByText(/Progress covers the \d+ sections you can fill in now\./)).toBeVisible();
+    await expect(client.getByText(/\d+ of \d+ sections complete\./)).toBeVisible();
     await expect(client.getByTestId("plan-primary")).toHaveText("Continue planning");
     await client.getByTestId("plan-primary").click();
     expect(sectionParam(client)).toBe("contacts_vendors");
@@ -580,13 +585,13 @@ test.describe.serial("planning", () => {
 
     // The phone's section picker works from the keyboard, and focus lands on the new section's heading.
     const picker = client.getByTestId("section-picker");
-    await picker.locator("summary").focus();
+    await picker.getByRole("button", { name: /All sections/ }).focus();
     await client.keyboard.press("Enter");
     await picker.getByTestId("nav-dinner").focus();
     await client.keyboard.press("Enter");
     expect(sectionParam(client)).toBe("dinner");
     await expect(client.locator("#plan-heading-dinner")).toBeFocused();
-    await expect(picker).not.toHaveAttribute("open", "");
+    await expect(picker.getByRole("dialog")).toBeHidden();
     expect(await noSideways(client)).toBeLessThanOrEqual(0);
 
     // The smallest phones and landscape never scroll sideways, on a long stage or the overview.
