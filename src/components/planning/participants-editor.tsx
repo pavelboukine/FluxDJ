@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Button } from "@/components/ui/button";
+import { Music } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -47,6 +47,8 @@ import { FieldBox, describedBy } from "./basics-editor";
 import { TimeField } from "./time-field";
 import { MusicSection, usePlanSongs } from "./music-editor";
 import { SongPicker, type SongGroup, type SongPickerField } from "./song-picker";
+import { Choices } from "./choice-list";
+import { AddButton, AddDisclosure, EditToggle, ITEM_ROWS, ItemRow, RemoveButton, ReorderButtons, UndoBar } from "./item-list";
 import { ItemChecklist, useEditingClosed } from "./progress";
 import { discussLabel, djIdentity, djRef } from "@/lib/planning/dj";
 import { SaveStatus, useAutosave } from "./use-autosave";
@@ -81,39 +83,16 @@ export function Frame({ props, hint, children, status }: { props: Common<unknown
   );
 }
 
-export function Choices<C extends string>({ name, legend, value, options, onChange, error, disabled }: {
-  name: string;
-  legend: string;
-  value: C | "";
-  options: { value: C | ""; label: string; hint?: string; blocked?: string | null }[];
-  onChange: (value: C | "") => void;
-  error?: string | null;
-  disabled?: boolean;
-}) {
-  return (
-    <fieldset disabled={disabled} className="grid content-start gap-1">
-      <legend className="mb-1 text-sm font-medium">{legend}</legend>
-      {options.map((o) => (
-        <label key={o.value || "list"} className="flex min-h-9 items-start gap-2 text-sm">
-          <input type="radio" name={name} className="mt-0.5 size-4 accent-primary" checked={value === o.value} disabled={Boolean(o.blocked)} onChange={() => onChange(o.value)} />
-          <span>
-            {o.label}
-            {o.hint ? <span className="block text-xs text-muted-foreground">{o.hint}</span> : null}
-            {o.blocked ? <span className="block text-xs text-muted-foreground">{o.blocked}</span> : null}
-          </span>
-        </label>
-      ))}
-      {error ? <p className="text-xs text-destructive">{error}</p> : null}
-    </fieldset>
-  );
-}
+/** The shared planning choice list (see choice-list.tsx), kept importable from here. */
+export { Choices };
 
 /** "Name (pronunciation)". The guide sits beside the name, as typed. */
 function NameLine({ index, name, pronunciation }: { index: number; name: string; pronunciation: string }) {
   return (
-    <p className="font-medium [overflow-wrap:anywhere]">
-      {index + 1}. {name.trim() || "Unnamed"}
-      {pronunciation.trim() ? <span className="font-normal text-muted-foreground"> (say: {pronunciation.trim()})</span> : null}
+    <p className="text-[0.9375rem] leading-snug font-medium [overflow-wrap:anywhere]">
+      <span className="font-normal text-plan-ink-2 tabular-nums">{index + 1}. </span>
+      {name.trim() || "Unnamed"}
+      {pronunciation.trim() ? <span className="font-normal text-plan-ink-2"> (say: {pronunciation.trim()})</span> : null}
     </p>
   );
 }
@@ -177,57 +156,51 @@ export function EntryList<E extends { id: string }>(props: {
   }
 
   return (
-    <div className="grid gap-2">
+    <div className="grid gap-3">
       {entries.length > 0 ? (
-        <ol className="grid gap-2" aria-label={`${props.noun}s`}>
+        <ol className={ITEM_ROWS} aria-label={`${props.noun}s`}>
           {entries.map((e, index) => {
             const name = props.nameOf(e);
             const hasError = props.fieldError?.field.startsWith(`entry:${e.id}:`);
+            const open = editing === e.id || hasError;
             return (
-              <li key={e.id} className="grid gap-2 rounded-lg border p-3" data-testid="entry-row">
-                <div className="grid min-w-0 gap-0.5">{props.summary(e, index)}</div>
-                {!props.readOnly ? (
-                  <div className="flex flex-wrap gap-1">
-                    <Button type="button" size="sm" variant="outline" disabled={index === 0} onClick={() => move(index, -1)} aria-label={`Move "${name}" up`}>Move up</Button>
-                    <Button type="button" size="sm" variant="outline" disabled={index === entries.length - 1} onClick={() => move(index, 1)} aria-label={`Move "${name}" down`}>Move down</Button>
-                    <Button type="button" size="sm" variant="outline" onClick={() => setEditing(editing === e.id ? null : e.id)} aria-expanded={editing === e.id} aria-label={`${editing === e.id ? "Done editing" : "Edit"} "${name}"`}>
-                      {editing === e.id ? "Done" : "Edit"}
-                    </Button>
-                    <Button type="button" size="sm" variant="outline" onClick={() => remove(index)} aria-label={`Remove "${name}"`}>Remove</Button>
-                  </div>
+              <ItemRow
+                key={e.id}
+                testId="entry-row"
+                summary={props.summary(e, index)}
+                actions={!props.readOnly ? (
+                  <>
+                    <ReorderButtons name={name} index={index} count={entries.length} onMove={(by) => move(index, by)} />
+                    <EditToggle editing={editing === e.id} name={name} onToggle={() => setEditing(editing === e.id ? null : e.id)} />
+                  </>
                 ) : null}
-                {editing === e.id || hasError ? (
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {props.fields(e, (changes) => setEntries(entries.map((x) => (x.id === e.id ? { ...x, ...changes } : x)), clears(e.id)), errorFor(e.id), `${props.base}-${e.id}`)}
-                  </div>
+                panel={open && !props.readOnly ? (
+                  <>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      {props.fields(e, (changes) => setEntries(entries.map((x) => (x.id === e.id ? { ...x, ...changes } : x)), clears(e.id)), errorFor(e.id), `${props.base}-${e.id}`)}
+                    </div>
+                    <RemoveButton name={name} onClick={() => remove(index)} />
+                  </>
                 ) : null}
-              </li>
+              />
             );
           })}
         </ol>
       ) : null}
-      {removed ? (
-        <p role="status" className="flex flex-wrap items-center gap-2 text-sm">
-          Removed &ldquo;{props.nameOf(removed.entry)}&rdquo;.
-          <Button type="button" size="sm" variant="outline" onClick={undo}>Undo</Button>
-        </p>
-      ) : null}
+      {removed ? <UndoBar onUndo={undo}>Removed &ldquo;{props.nameOf(removed.entry)}&rdquo;.</UndoBar> : null}
       {props.readOnly ? null : !props.canAdd ? (
-        props.addBlockedText ? <p className="text-xs text-muted-foreground">{props.addBlockedText}</p> : null
+        props.addBlockedText ? <p className="text-xs text-plan-ink-2">{props.addBlockedText}</p> : null
       ) : entries.length >= props.max ? (
-        <p className="text-xs text-muted-foreground">This list has the maximum of {props.max} entries.</p>
+        <p className="text-xs text-plan-ink-2">This list has the maximum of {props.max} entries.</p>
       ) : (
-        <details className="rounded-lg border p-3" data-testid={`${props.base}-add`}>
-          <summary className="cursor-pointer text-sm font-medium">Add {props.noun.toLowerCase()}</summary>
-          <div className="mt-3 grid gap-3">
-            <div className="grid gap-3 sm:grid-cols-2">
-              {props.fields(draft, (changes) => { setDraft((d) => ({ ...d, ...changes })); setDraftError(null); }, (field) => (draftError?.field === field ? draftError.message : null), `${props.base}-new`)}
-            </div>
-            <Button type="button" size="sm" className="w-fit" onClick={add}>Add</Button>
+        <AddDisclosure testId={`${props.base}-add`} label={`Add ${props.noun.toLowerCase()}`}>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {props.fields(draft, (changes) => { setDraft((d) => ({ ...d, ...changes })); setDraftError(null); }, (field) => (draftError?.field === field ? draftError.message : null), `${props.base}-new`)}
           </div>
-        </details>
+          <AddButton onClick={add}>Add</AddButton>
+        </AddDisclosure>
       )}
-      {props.fieldError?.field === "entries" ? <p role="alert" className="text-xs text-destructive">{props.fieldError.message}</p> : null}
+      {props.fieldError?.field === "entries" ? <p role="alert" className="text-xs font-medium text-destructive">{props.fieldError.message}</p> : null}
     </div>
   );
 }
@@ -287,24 +260,23 @@ function songPersonSummary(c: SongPeople) {
     return (
       <>
         <NameLine index={index} name={p.names} pronunciation={c.announced || c.audience === "staff" ? p.pronunciation : ""} />
-        {p.role.trim() ? <p className="text-xs [overflow-wrap:anywhere]">{p.role}</p> : null}
-        {c.announced && p.wording.trim() ? <p className="whitespace-pre-line text-xs [overflow-wrap:anywhere]">Announcement: {p.wording}</p> : null}
+        {p.role.trim() ? <p className="text-xs text-plan-ink-2 [overflow-wrap:anywhere]">{p.role}</p> : null}
+        {c.announced && p.wording.trim() ? <p className="whitespace-pre-line text-xs text-plan-ink-2 [overflow-wrap:anywhere]">Announcement: {p.wording}</p> : null}
         {song ? (
-          <p className="text-xs [overflow-wrap:anywhere]">
-            <span aria-hidden>♪ </span>
-            {sameAsAbove ? "Same song as the entry above: " : "Song: "}
-            {songLabel(song)}
+          <p className="flex items-start gap-1.5 text-xs [overflow-wrap:anywhere]">
+            <Music aria-hidden className="mt-px size-3.5 shrink-0 text-brand-ink" />
+            <span>{sameAsAbove ? "Same song as the entry above: " : "Song: "}{songLabel(song)}</span>
           </p>
         ) : p.song_id ? (
-          <p className="text-xs text-amber-700 dark:text-amber-400">{c.missing}</p>
+          <p className="text-xs text-status-attention">{c.missing}</p>
         ) : c.musicChoice && p.music === "dj_choice" ? (
-          <p className="text-xs"><span aria-hidden>♪ </span>Music: DJ&apos;s choice</p>
+          <p className="flex items-center gap-1.5 text-xs"><Music aria-hidden className="size-3.5 shrink-0 text-brand-ink" />Music: DJ&apos;s choice</p>
         ) : c.musicChoice ? (
-          <p className="text-xs text-amber-700 dark:text-amber-400">Music not decided yet</p>
+          <p className="text-xs text-plan-ink-2">Music not decided yet</p>
         ) : (
-          <p className="text-xs text-amber-700 dark:text-amber-400">No song chosen yet</p>
+          <p className="text-xs text-plan-ink-2">No song chosen yet</p>
         )}
-        {p.notes.trim() ? <p className="whitespace-pre-line text-xs [overflow-wrap:anywhere]">Instructions: {p.notes}</p> : null}
+        {p.notes.trim() ? <p className="whitespace-pre-line text-xs text-plan-ink-2 [overflow-wrap:anywhere]">Instructions: {p.notes}</p> : null}
       </>
     );
   };
@@ -678,13 +650,13 @@ export function SpeechesEditor(props: Common<SpeechesAnswers> & { event: { date:
           return (
             <>
               <NameLine index={index} name={s.speaker} pronunciation={s.pronunciation} />
-              {s.role.trim() ? <p className="text-xs [overflow-wrap:anywhere]">{s.role}</p> : null}
-              <p className={when ? "text-xs [overflow-wrap:anywhere]" : "text-xs text-amber-700 dark:text-amber-400"}>
+              {s.role.trim() ? <p className="text-xs text-plan-ink-2 [overflow-wrap:anywhere]">{s.role}</p> : null}
+              <p className={when ? "text-xs text-plan-ink-2 [overflow-wrap:anywhere]" : "text-xs text-status-attention"}>
                 {when ?? "Timing not decided yet"}
                 {s.duration.trim() ? ` · about ${s.duration.trim()} min` : ""}
               </p>
-              {s.av_notes.trim() ? <p className="whitespace-pre-line text-xs [overflow-wrap:anywhere]">Microphone / AV: {s.av_notes}</p> : null}
-              {s.notes.trim() ? <p className="whitespace-pre-line text-xs [overflow-wrap:anywhere]">Instructions: {s.notes}</p> : null}
+              {s.av_notes.trim() ? <p className="whitespace-pre-line text-xs text-plan-ink-2 [overflow-wrap:anywhere]">Microphone / AV: {s.av_notes}</p> : null}
+              {s.notes.trim() ? <p className="whitespace-pre-line text-xs text-plan-ink-2 [overflow-wrap:anywhere]">Instructions: {s.notes}</p> : null}
             </>
           );
         }}
@@ -693,16 +665,14 @@ export function SpeechesEditor(props: Common<SpeechesAnswers> & { event: { date:
             {text(`${idPrefix}-speaker`, "Speaker", s.speaker, (v) => onChange({ speaker: v }), errorFor("speaker"))}
             {text(`${idPrefix}-role`, "Role or relationship (optional)", s.role, (v) => onChange({ role: v }), errorFor("role"))}
             {text(`${idPrefix}-pronunciation`, "Pronunciation guide (optional)", s.pronunciation, (v) => onChange({ pronunciation: v }), errorFor("pronunciation"), { hint: PRONUNCIATION_HINT, wide: true })}
-            <fieldset className="grid gap-1 col-span-full">
-              <legend className="mb-1 text-sm font-medium">When (needed to complete)</legend>
-              {([["time", "At an exact time"], ["cue", "At a moment in the evening"], ["undecided", "Not decided yet"]] as [Timing, string][]).map(([value, label]) => (
-                <label key={value} className="flex min-h-9 items-center gap-2 text-sm">
-                  <input type="radio" name={`${idPrefix}-timing`} className="size-4 accent-primary" checked={s.timing === value} onChange={() => onChange({ timing: value })} />
-                  {label}
-                </label>
-              ))}
-              {errorFor("timing") ? <p className="text-xs text-destructive">{errorFor("timing")}</p> : null}
-            </fieldset>
+            <Choices<Timing>
+              name={`${idPrefix}-timing`}
+              legend="When (needed to complete)"
+              value={s.timing}
+              onChange={(v) => onChange({ timing: (v || "undecided") as Timing })}
+              error={errorFor("timing")}
+              options={[{ value: "time", label: "At an exact time" }, { value: "cue", label: "At a moment in the evening" }, { value: "undecided", label: "Not decided yet" }]}
+            />
             {s.timing === "time" ? (
               <TimeField id={`${idPrefix}-time`} label="Time" time={s.time} nextDay={s.next_day} eventDate={props.event.date}
                 onTime={(t) => onChange({ time: t })} onNextDay={(n) => onChange({ next_day: n })} error={errorFor("time")} />

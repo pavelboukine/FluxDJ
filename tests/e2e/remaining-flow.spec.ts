@@ -148,6 +148,7 @@ test.describe.serial("remaining planning editors", () => {
     await expect(card.locator("summary").first()).toContainText("Complete");
     await expect(card.getByTestId("item-needs")).toHaveCount(0);
     await card.getByRole("button", { name: 'Move "Slideshow" up' }).click();
+    await card.getByRole("button", { name: 'Edit "Welcome"' }).click();
     await card.getByRole("button", { name: 'Remove "Welcome"' }).click();
     await card.getByRole("button", { name: "Undo" }).click();
     await expect(card.getByText("All changes saved")).toBeVisible();
@@ -277,6 +278,7 @@ test.describe.serial("remaining planning editors", () => {
       await form.getByLabel("Artist", { exact: true }).fill("Van Halen");
     });
     await expect(card.getByText("All changes saved")).toBeVisible();
+    await otherCard.getByRole("button", { name: 'Edit "Our grandparents"' }).click();
     await otherCard.getByRole("button", { name: 'Remove "Our grandparents"' }).click();
     await expect(otherCard.getByRole("alert")).toContainText("changed in another tab or window");
     expect((await answers(eventId, "dedications"))!.entries!.map((e) => e.recipient)).toEqual(["Our grandparents", "Team Lee"]);

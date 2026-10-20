@@ -21,6 +21,7 @@ import { useGrandEntrance } from "./grand-entrance";
 import { ItemChecklist, ItemWarnings, useEditingClosed, usePlanProgress } from "./progress";
 import { TimeField } from "./time-field";
 import { SaveStatus, useAutosave } from "./use-autosave";
+import { ChoiceFieldset, ChoiceOption, ChoiceSingle, SECONDARY_CHOICES } from "./choice-list";
 
 type TimeBlock = Extract<Block, { type: "time" }>;
 
@@ -79,17 +80,9 @@ export function StageDetailsEditor(props: Props) {
     ? `${props.event.venueName}${props.event.venueAddress ? `, ${props.event.venueAddress}` : ""}`
     : basics.venue_details ?? null;
 
-  const radio = (field: string, value: string, label: string) => (
-    <label key={value} className="flex min-h-9 items-start gap-2 text-sm">
-      <input
-        type="radio"
-        name={id(field)}
-        className="mt-0.5 size-4 accent-primary"
-        checked={form[field] === value}
-        onChange={() => update({ [field]: value } as Partial<StageForm>)}
-      />
-      <span>{label}</span>
-    </label>
+  const radio = (field: string, value: string, label: string, secondary = false) => (
+    <ChoiceOption key={value} name={id(field)} checked={form[field] === value} secondary={secondary}
+      onChange={() => update({ [field]: value } as Partial<StageForm>)} label={label} />
   );
   const fieldError_ = (field: string) =>
     errorFor(field) ? <p id={`${id(field)}-error`} className="text-xs text-destructive">{errorFor(field)}</p> : null;
@@ -120,20 +113,27 @@ export function StageDetailsEditor(props: Props) {
     switch (b.type) {
       case "location":
         return (
-          <fieldset key="location" className="grid gap-1.5 col-span-full">
-            <legend className="mb-1 text-sm font-medium">{b.label} (needed)</legend>
+          <ChoiceFieldset
+            key="location"
+            legend={`${b.label} (needed)`}
+            className="col-span-full"
+            after={
+              <>
+                {fieldError_("location_source")}
+                {form.location_source === "other" ? (
+                  <FieldBox id={id("location_other")} label="Place and address" error={errorFor("location_other")}>
+                    <Textarea id={id("location_other")} rows={2} value={str("location_other")} onChange={(e) => update({ location_other: e.target.value })} />
+                  </FieldBox>
+                ) : null}
+                <FieldBox id={id("location_area")} label="Room or outdoor area (optional)" error={errorFor("location_area")}>
+                  <Input id={id("location_area")} value={str("location_area")} onChange={(e) => update({ location_area: e.target.value })} />
+                </FieldBox>
+              </>
+            }
+          >
             {radio("location_source", "event_venue", `Same as the event venue${eventVenue ? ` (${eventVenue})` : " (not entered yet)"}`)}
             {radio("location_source", "other", "Somewhere else")}
-            {form.location_source === "other" ? (
-              <FieldBox id={id("location_other")} label="Place and address" error={errorFor("location_other")}>
-                <Textarea id={id("location_other")} rows={2} value={str("location_other")} onChange={(e) => update({ location_other: e.target.value })} />
-              </FieldBox>
-            ) : null}
-            <FieldBox id={id("location_area")} label="Room or outdoor area (optional)" error={errorFor("location_area")}>
-              <Input id={id("location_area")} value={str("location_area")} onChange={(e) => update({ location_area: e.target.value })} />
-            </FieldBox>
-            {fieldError_("location_source")}
-          </fieldset>
+          </ChoiceFieldset>
         );
       case "time":
         return timeField(b.prefix, b.label, b.hint);
@@ -151,12 +151,22 @@ export function StageDetailsEditor(props: Props) {
         );
       case "choice":
         return (
-          <fieldset key={b.field} className="grid gap-1 col-span-full">
-            <legend className="mb-1 text-sm font-medium">{b.label}</legend>
-            {withDj(b.options, props.audience).map(({ value, label }) => radio(b.field, value, label))}
-            {b.hint ? <p className="text-xs text-muted-foreground">{b.hint}</p> : null}
-            {fieldError_(b.field)}
-          </fieldset>
+          <ChoiceFieldset
+            key={b.field}
+            legend={b.label}
+            className="col-span-full"
+            secondary={withDj(b.options, props.audience).some(({ value }) => SECONDARY_CHOICES.includes(value))
+              ? withDj(b.options, props.audience).filter(({ value }) => SECONDARY_CHOICES.includes(value)).map(({ value, label }) => radio(b.field, value, label, true))
+              : undefined}
+            after={
+              <>
+                {b.hint ? <p className="text-xs text-plan-ink-2">{b.hint}</p> : null}
+                {fieldError_(b.field)}
+              </>
+            }
+          >
+            {withDj(b.options, props.audience).filter(({ value }) => !SECONDARY_CHOICES.includes(value)).map(({ value, label }) => radio(b.field, value, label))}
+          </ChoiceFieldset>
         );
       case "int":
         return (
@@ -167,36 +177,39 @@ export function StageDetailsEditor(props: Props) {
         );
       case "flag":
         return (
-          <label key={b.field} className="flex items-center gap-2 text-sm col-span-full">
-            <input type="checkbox" className="size-4 accent-primary" checked={form[b.field] === true} onChange={(e) => update({ [b.field]: e.target.checked } as Partial<StageForm>, ["entrance_time"])} />
-            {b.label}
-          </label>
+          <ChoiceSingle key={b.field} checked={form[b.field] === true} onChange={(checked) => update({ [b.field]: checked } as Partial<StageForm>, ["entrance_time"])} label={b.label} />
         );
       case "guest_count":
         return (
-          <fieldset key="guest_count" className="grid gap-1.5 col-span-full">
-            <legend className="mb-1 text-sm font-medium">Guests at dinner (needed)</legend>
-            {radio("guest_count_source", "basics", `Same as the guest count in Event basics${basics.guest_count ? ` (${basics.guest_count})` : " (not entered yet)"}`)}
-            {radio("guest_count_source", "number", "A different number")}
-            {form.guest_count_source === "number" ? (
+          <ChoiceFieldset
+            key="guest_count"
+            legend="Guests at dinner (needed)"
+            className="col-span-full"
+            after={form.guest_count_source === "number" ? (
               <FieldBox id={id("guest_count")} label="Guests at dinner" error={errorFor("guest_count")}>
                 <Input id={id("guest_count")} inputMode="numeric" autoComplete="off" className="w-36" value={str("guest_count")} onChange={(e) => update({ guest_count: e.target.value })} />
               </FieldBox>
             ) : null}
-          </fieldset>
+          >
+            {radio("guest_count_source", "basics", `Same as the guest count in Event basics${basics.guest_count ? ` (${basics.guest_count})` : " (not entered yet)"}`)}
+            {radio("guest_count_source", "number", "A different number")}
+          </ChoiceFieldset>
         );
       case "finish": {
         const basicsEnd = basics.end_time
           ? `${basics.end_time}${endsAfterMidnight(basics.start_time, basics.end_time) ? ", next day" : ""}`
           : null;
         return (
-          <fieldset key="finish" className="grid gap-1.5 col-span-full">
-            <legend className="mb-1 text-sm font-medium">Planned finish (needed)</legend>
+          <ChoiceFieldset
+            key="finish"
+            legend="Planned finish (needed)"
+            className="col-span-full"
+            secondary={radio("finish_source", "discuss", discussLabel(props.audience), true)}
+            after={form.finish_source === "time" ? timeField("finish", "Finish time") : null}
+          >
             {radio("finish_source", "time", "At a specific time")}
-            {form.finish_source === "time" ? timeField("finish", "Finish time") : null}
             {radio("finish_source", "basics_end", `Same as the event end time in Event basics${basicsEnd ? ` (${basicsEnd})` : " (not entered yet)"}`)}
-            {radio("finish_source", "discuss", discussLabel(props.audience))}
-          </fieldset>
+          </ChoiceFieldset>
         );
       }
       case "grand_entrance": {
@@ -208,17 +221,16 @@ export function StageDetailsEditor(props: Props) {
         // Answers kept while the entrance is skipped or undecided (never cleared).
         const kept = (decision === "none" || decision === "undecided") && (str("entrance_time") !== "" || Boolean(entrance?.saved));
         return (
-          <fieldset key="grand_entrance" className="grid gap-1.5 col-span-full" data-testid="grand-entrance">
-            <legend className="mb-1 text-sm font-medium">Are you planning a formal grand entrance? (needed)</legend>
-            {([["planned", "Yes, we're planning a grand entrance"], ["none", "No, we'll skip the formal entrance"], ["undecided", "We're not sure yet"]] as [GrandEntrance, string][]).map(([value, label]) => (
-              <label key={value} className="flex min-h-9 items-start gap-2 text-sm">
-                <input type="radio" name={id("grand_entrance")} className="mt-0.5 size-4 accent-primary" checked={decision === value} onChange={() => choose(value)} />
-                <span>{label}</span>
-              </label>
-            ))}
+          <ChoiceFieldset
+            key="grand_entrance"
+            legend="Are you planning a formal grand entrance? (needed)"
+            className="col-span-full"
+            testId="grand-entrance"
+            secondary={<ChoiceOption name={id("grand_entrance")} checked={decision === "undecided"} onChange={() => choose("undecided")} label="We're not sure yet" secondary />}
+            after={<>
             {fieldError_("grand_entrance")}
             {decision === "planned" ? (
-              <div className="mt-2 grid gap-2 border-l-2 pl-4">
+              <div className="grid gap-2">
                 {timeField("entrance", "Planned grand entrance time (needed)", "When should the DJ or MC begin introducing the wedding party and/or couple?")}
                 <p className="text-xs text-muted-foreground">Who is introduced, how to announce them and the song for each go in the grand entrance order below.</p>
               </div>
@@ -232,7 +244,12 @@ export function StageDetailsEditor(props: Props) {
                 What you already entered for the grand entrance is kept, and comes back if you choose &ldquo;Yes&rdquo;.
               </p>
             ) : null}
-          </fieldset>
+            </>}
+          >
+            {([["planned", "Yes, we're planning a grand entrance"], ["none", "No, we'll skip the formal entrance"]] as [GrandEntrance, string][]).map(([value, label]) => (
+              <ChoiceOption key={value} name={id("grand_entrance")} checked={decision === value} onChange={() => choose(value)} label={label} />
+            ))}
+          </ChoiceFieldset>
         );
       }
       case "note":

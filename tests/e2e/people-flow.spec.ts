@@ -153,6 +153,7 @@ test.describe.serial("people in planning", () => {
     const music = card.getByTestId("music-processional");
     const canon = music.getByTestId("song-row").filter({ hasText: "Canon in D" });
     await expect(canon).toContainText("Linked to: Groom and his mother, Bridesmaids");
+    await canon.getByRole("button", { name: 'Edit "Canon in D"' }).click();
     await expect(canon.getByRole("button", { name: 'Remove "Canon in D"' })).toBeDisabled();
 
     // A listed person gets a new song with "Use this song"; until then nothing changes.
@@ -175,6 +176,7 @@ test.describe.serial("people in planning", () => {
     await expect(rows.filter({ hasText: "Flower girl" })).toContainText("Same song as the entry above: Canon in D by Pachelbel");
     // Reorder and remove.
     await people.getByRole("button", { name: 'Move "Bride and her father" up' }).click();
+    await people.getByRole("button", { name: 'Edit "Bridesmaids"' }).click();
     await people.getByRole("button", { name: 'Remove "Bridesmaids"' }).click();
     await expect(card.getByText("All changes saved")).toBeVisible();
 
@@ -192,6 +194,7 @@ test.describe.serial("people in planning", () => {
       ["Groom and his mother", "Canon in D"], ["Bride and her father", "Here Comes the Sun"], ["Flower girl", "Canon in D"],
     ]);
     const unused = again.getByTestId("music-processional").getByTestId("song-row").filter({ hasText: "A Thousand Years" });
+    await unused.getByRole("button", { name: 'Edit "A Thousand Years"' }).click();
     await expect(unused.getByRole("button", { name: 'Remove "A Thousand Years"' })).toBeEnabled();
     expect(await noSideways(client)).toBeLessThanOrEqual(0);
   });
@@ -219,10 +222,11 @@ test.describe.serial("people in planning", () => {
     // Linked from Processional: Couple entrance won't remove it, and says where the link is.
     const song = couple.getByTestId("song-row").filter({ hasText: "At Last" });
     await expect(song).toContainText("Linked to: Alex & Taylor");
+    // Remove sits in the edit panel, disabled while linked, with where the link is.
+    await couple.getByRole("button", { name: 'Edit "At Last"' }).click();
     await expect(song.getByRole("button", { name: 'Remove "At Last"' })).toBeDisabled();
     await expect(song).toContainText("in Processional (who walks in)");
     // A rename shows through the link.
-    await couple.getByRole("button", { name: 'Edit "At Last"' }).click();
     await song.getByLabel("Title", { exact: true }).fill("At Last (Live)");
     await expect(couple.getByText("All changes saved")).toBeVisible();
     await expect(entry).toContainText("Song: Couple: At Last (Live) by Etta James");
@@ -379,6 +383,7 @@ test.describe.serial("people in planning", () => {
     // Linked songs list who enters to them and can't be removed.
     const shania = intros.getByTestId("music-introductions").getByTestId("song-row").filter({ hasText: "Man! I Feel Like a Woman!" });
     await expect(shania).toContainText("Linked to: Bridesmaids, The wedding party");
+    await shania.getByRole("button", { name: 'Edit "Man! I Feel Like a Woman!"' }).click();
     await expect(shania.getByRole("button", { name: 'Remove "Man! I Feel Like a Woman!"' })).toBeDisabled();
 
     // A listed entry gets a new song with "Use this song", and pronunciation is edited in place.
@@ -397,6 +402,7 @@ test.describe.serial("people in planning", () => {
     await intros.getByRole("button", { name: 'Edit "The wedding party"' }).click();
     await rows.filter({ hasText: "The wedding party" }).getByLabel("Song they enter to").selectOption({ label: "Feel So Close by Calvin Harris" });
     await intros.getByRole("button", { name: 'Move "Our parents" up' }).click();
+    await intros.getByRole("button", { name: 'Edit "Bridesmaids"' }).click();
     await intros.getByRole("button", { name: 'Remove "Bridesmaids"' }).click();
     await expect(intros.getByText("All changes saved")).toBeVisible();
 
@@ -412,8 +418,9 @@ test.describe.serial("people in planning", () => {
     expect(saved.entries!.map((e) => [e.names, saved.songs!.find((s) => s.id === e.song_id)?.title])).toEqual([
       ["The wedding party", "Feel So Close"], ["Our parents", "September"], ["Alex and Taylor Nguyen-Roy", "Feel So Close"],
     ]);
-    await expect(again.getByTestId("music-introductions").getByTestId("song-row").filter({ hasText: "Man! I Feel Like a Woman!" })
-      .getByRole("button", { name: 'Remove "Man! I Feel Like a Woman!"' })).toBeEnabled();
+    const freed = again.getByTestId("music-introductions").getByTestId("song-row").filter({ hasText: "Man! I Feel Like a Woman!" });
+    await freed.getByRole("button", { name: 'Edit "Man! I Feel Like a Woman!"' }).click();
+    await expect(freed.getByRole("button", { name: 'Remove "Man! I Feel Like a Woman!"' })).toBeEnabled();
     expect(await noSideways(client)).toBeLessThanOrEqual(0);
   });
 
@@ -437,6 +444,7 @@ test.describe.serial("people in planning", () => {
     const music = (await answers(eventId, "entrance_music"))!.songs!;
     expect((await answers(eventId, "introductions"))!.entries![2].song_id).toBe(music[0].id);
 
+    await staleEntrance.getByRole("button", { name: 'Edit "Signed, Sealed, Delivered"' }).click();
     await staleEntrance.getByRole("button", { name: 'Remove "Signed, Sealed, Delivered"' }).click();
     await expect(staleEntrance.getByRole("alert").filter({ hasText: "linked to introductions" })).toHaveText(
       '"Signed, Sealed, Delivered" is linked to introductions (Alex and Taylor Nguyen-Roy). Change those introductions first. Use Undo to put the song back.',
@@ -621,6 +629,7 @@ test.describe.serial("people in planning", () => {
     const other = await clientContext.newPage();
     await other.goto(planningUrl);
     const otherCard = await openMoment(other, "dinner", "speeches");
+    await card.getByRole("button", { name: 'Edit "Priya Raman"' }).click();
     await card.getByRole("button", { name: 'Remove "Priya Raman"' }).click();
     await expect(card.getByRole("status").filter({ hasText: "Removed “Priya Raman”." })).toBeVisible();
     await expect(card.getByText("All changes saved")).toBeVisible();

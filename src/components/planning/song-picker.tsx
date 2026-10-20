@@ -1,9 +1,11 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
 import { selectClass } from "@/components/app/fields";
 import { emptyNewSong, songLabel, type NewSongForm } from "@/lib/planning/participants";
 import { FieldBox, describedBy } from "./basics-editor";
+import { AddButton } from "./item-list";
+import { PLAN_FOCUS } from "./plan-navigation";
+import { cn } from "@/lib/utils";
 import { SongFields } from "./song-fields";
 
 /** The picker's fields, as an entry's errors name them. */
@@ -70,10 +72,10 @@ export function SongPicker({ id, label, value, groups, draft, onSelect, onDraft,
         </select>
       </FieldBox>
       {!draft && value && sharedWith.length > 0 ? (
-        <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{sharedText}: {sharedWith.join(", ")}.</p>
+        <p className="text-xs text-plan-ink-2 [overflow-wrap:anywhere]">{sharedText}: {sharedWith.join(", ")}.</p>
       ) : null}
       {draft ? (
-        <fieldset className="grid gap-3 rounded-lg border bg-muted/20 p-3">
+        <fieldset className="grid gap-3 border-t border-plan-hairline pt-3">
           <legend className="sr-only">New song</legend>
           <SongFields
             idPrefix={id}
@@ -86,8 +88,8 @@ export function SongPicker({ id, label, value, groups, draft, onSelect, onDraft,
           />
           {onUseDraft ? (
             <div className="col-span-full flex flex-wrap gap-2">
-              <Button type="button" size="sm" onClick={onUseDraft}>Use this song</Button>
-              <Button type="button" size="sm" variant="outline" onClick={() => onDraft(null)}>Cancel</Button>
+              <AddButton onClick={onUseDraft}>Use this song</AddButton>
+              <button type="button" onClick={() => onDraft(null)} className={cn("inline-flex min-h-10 items-center rounded-[10px] px-3 text-sm font-medium hover:bg-plan-track/70 max-sm:min-h-11", PLAN_FOCUS)}>Cancel</button>
             </div>
           ) : null}
         </fieldset>

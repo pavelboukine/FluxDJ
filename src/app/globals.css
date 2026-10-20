@@ -106,6 +106,9 @@
   /* Secondary text: at least 4.5:1 on the canvas, the surface and the tints it sits on. */
   --plan-ink-2: oklch(0.47 0.012 264);
   --plan-track: oklch(0.93 0.004 264);
+  /* Field outlines: visible against white and the open-row wash (3:1 for the control boundary). */
+  --plan-field-border: oklch(0.65 0.01 264);
+  --plan-field-border-hover: oklch(0.52 0.012 264);
   --status-done: oklch(0.52 0.12 155);
   --status-attention: oklch(0.47 0.1 65);
   --status-attention-tint: oklch(0.97 0.035 85);
@@ -193,3 +196,95 @@
   overflow: hidden;
 }
 
+
+/*
+ * Planning fields (6C.3b). Scoped to the planning shell, so the staff app's
+ * shadcn fields are untouched. Unlayered on purpose: these win over the
+ * components' utility classes (h-8, text-sm…) without editing them.
+ * Phones: 44px controls and 16px text (iOS never zooms on focus).
+ */
+[data-plan-shell] :is(input[data-slot="input"], select, textarea[data-slot="textarea"]) {
+  border-color: var(--plan-field-border);
+  background-color: var(--plan-surface);
+  border-radius: 0.625rem;
+  font-size: 1rem;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+[data-plan-shell] :is(input[data-slot="input"], select) {
+  height: auto;
+  min-height: 2.75rem;
+  padding-inline: 0.75rem;
+}
+[data-plan-shell] textarea[data-slot="textarea"] {
+  padding: 0.625rem 0.75rem;
+}
+@media (width >= 48rem) {
+  [data-plan-shell] :is(input[data-slot="input"], select, textarea[data-slot="textarea"]) {
+    font-size: 0.875rem;
+  }
+  [data-plan-shell] :is(input[data-slot="input"], select) {
+    min-height: 2.5rem;
+  }
+}
+[data-plan-shell] :is(input[data-slot="input"], select, textarea[data-slot="textarea"]):hover:not(:disabled, :focus-visible) {
+  border-color: var(--plan-field-border-hover);
+}
+/* Focus: the border turns Brand Ink (at least 3:1 against white) with a soft halo. */
+[data-plan-shell] :is(input[data-slot="input"], select, textarea[data-slot="textarea"]):focus-visible {
+  border-color: var(--brand-ink, var(--foreground));
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--brand-ink, var(--foreground)) 22%, transparent);
+  outline: none;
+}
+[data-plan-shell] :is(input[data-slot="input"], select, textarea[data-slot="textarea"])[aria-invalid="true"] {
+  border-color: var(--destructive);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--destructive) 14%, transparent);
+}
+[data-plan-shell] :is(input[type="radio"], input[type="checkbox"]) {
+  accent-color: var(--brand-ink, var(--foreground));
+}
+
+/*
+ * Read-only planning (closed when the page loaded): answers read as text, not
+ * as disabled empty forms. Values keep their place in the editor; empty fields
+ * and unchosen options step aside; a question with no choice says "Not answered".
+ */
+[data-plan-readonly] :is(input[data-slot="input"], select, textarea[data-slot="textarea"]):disabled {
+  border-color: transparent;
+  background-color: transparent;
+  box-shadow: none;
+  padding-inline: 0;
+  min-height: 0;
+  height: auto;
+  opacity: 1;
+  color: var(--foreground);
+  -webkit-text-fill-color: var(--foreground);
+  cursor: default;
+  resize: none;
+  appearance: none;
+  field-sizing: content;
+}
+[data-plan-readonly] [data-field]:has(input:disabled[value=""]),
+[data-plan-readonly] [data-field]:has(select:disabled option[value=""]:checked),
+[data-plan-readonly] [data-field]:has(textarea:disabled:empty) {
+  display: none;
+}
+[data-plan-readonly] [data-choice-option]:not(:has(:checked)) {
+  display: none;
+}
+[data-plan-readonly] [data-choice-group]:not(:has(:checked))::after {
+  content: "Not answered";
+  font-size: 0.875rem;
+  color: var(--plan-ink-2);
+}
+[data-plan-readonly] [data-choice-option] {
+  opacity: 1;
+  cursor: default;
+}
+/* The chosen answer reads as an answer, not as a control that can't be used. */
+[data-plan-readonly] [data-choice-option] > input {
+  display: none;
+}
+/* Nothing can change, so "All changes saved" says nothing; errors and "not saved" stay. */
+[data-plan-readonly] [data-save-status="saved"] {
+  display: none;
+}

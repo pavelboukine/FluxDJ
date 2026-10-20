@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Plus } from "lucide-react";
+import { Plus, Music } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { ListChoice } from "@/lib/planning/participants";
@@ -31,6 +31,8 @@ import { FieldBox } from "./basics-editor";
 import { SongFields } from "./song-fields";
 import { TimeField } from "./time-field";
 import { Choices, EntryList, Frame, PRONUNCIATION_HINT, text, type Common } from "./participants-editor";
+import { ChoiceFieldset, ChoiceOption, ChoiceSingle } from "./choice-list";
+import { LabelText } from "./label-text";
 import { useEditingClosed, usePlanProgress } from "./progress";
 import { discussLabel } from "@/lib/planning/dj";
 import { SaveStatus, useAutosave } from "./use-autosave";
@@ -67,11 +69,8 @@ export function ArrivalEditor(props: Common<ArrivalAnswers> & { event: EventInfo
   const ceremonyArrival = c?.guest_arrival_time ? `${c.guest_arrival_time}${c.guest_arrival_next_day ? ", next day" : ""}` : null;
   const none = form.arrival_none;
   const radio = (field: "location_source" | "time_source", value: string, label: string) => (
-    <label key={value} className="flex min-h-9 items-start gap-2 text-sm">
-      <input type="radio" name={id(field)} className="mt-0.5 size-4 accent-primary" checked={form[field] === value} disabled={none}
-        onChange={() => update({ [field]: value } as Partial<ArrivalForm>, [field, "arrival_none"])} />
-      <span>{label}</span>
-    </label>
+    <ChoiceOption key={value} name={id(field)} checked={form[field] === value} disabled={none}
+      onChange={() => update({ [field]: value } as Partial<ArrivalForm>, [field, "arrival_none"])} label={label} />
   );
   return (
     <Frame
@@ -81,24 +80,26 @@ export function ArrivalEditor(props: Common<ArrivalAnswers> & { event: EventInfo
     >
       <fieldset disabled={readOnly} className="grid gap-4 sm:grid-cols-2">
         <legend className="sr-only">Arrival details</legend>
-        <label className="flex items-center gap-2 text-sm col-span-full">
-          <input type="checkbox" className="size-4 accent-primary" checked={none} onChange={(e) => update({ arrival_none: e.target.checked }, ["arrival_none"])} />
-          No separate arrival arrangements
-        </label>
+        <ChoiceSingle checked={none} onChange={(checked) => update({ arrival_none: checked }, ["arrival_none"])} label="No separate arrival arrangements" />
         {errorFor("arrival_none") ? <p className="text-xs text-destructive col-span-full">{errorFor("arrival_none")}</p> : null}
-        <fieldset className="grid gap-1.5 col-span-full">
-          <legend className="mb-1 text-sm font-medium">Where do guests arrive? (needed)</legend>
+        <ChoiceFieldset
+          legend="Where do guests arrive? (needed)"
+          className="col-span-full"
+          after={
+            <>
+              {form.location_source === "other" ? text(id("location_other"), "Place and address", form.location_other, (v) => update({ location_other: v }, ["location_other"]), errorFor("location_other"), { rows: 2 }) : null}
+              {text(id("location_area"), "Room or outdoor area (optional)", form.location_area, (v) => update({ location_area: v }, ["location_area"]), errorFor("location_area"))}
+            </>
+          }
+        >
           {radio("location_source", "event_venue", `Same as the event venue${venue ? ` (${venue})` : " (not entered yet)"}`)}
           {radio("location_source", "ceremony", `Same as the ceremony${ceremonyPlace ? ` (${ceremonyPlace})` : " (not in the Ceremony details yet)"}`)}
           {radio("location_source", "other", "Somewhere else")}
-          {form.location_source === "other" ? text(id("location_other"), "Place and address", form.location_other, (v) => update({ location_other: v }, ["location_other"]), errorFor("location_other"), { rows: 2 }) : null}
-          {text(id("location_area"), "Room or outdoor area (optional)", form.location_area, (v) => update({ location_area: v }, ["location_area"]), errorFor("location_area"))}
-        </fieldset>
-        <fieldset className="grid gap-1.5 col-span-full">
-          <legend className="mb-1 text-sm font-medium">When do guests arrive? (needed)</legend>
-          {radio("time_source", "ceremony", `Same as the ceremony's guest arrival${ceremonyArrival ? ` (${ceremonyArrival})` : " (not in the Ceremony details yet)"}`)}
-          {radio("time_source", "time", "At a specific time")}
-          {form.time_source === "time" ? (
+        </ChoiceFieldset>
+        <ChoiceFieldset
+          legend="When do guests arrive? (needed)"
+          className="col-span-full"
+          after={form.time_source === "time" ? (
             <>
               <div className="grid gap-3 sm:grid-cols-2">
                 <TimeField id={id("start_time")} label="Arrival starts (needed)" time={form.start_time} nextDay={form.start_next_day} eventDate={props.event.date}
@@ -110,7 +111,10 @@ export function ArrivalEditor(props: Common<ArrivalAnswers> & { event: EventInfo
               </div>
             </>
           ) : null}
-        </fieldset>
+        >
+          {radio("time_source", "ceremony", `Same as the ceremony's guest arrival${ceremonyArrival ? ` (${ceremonyArrival})` : " (not in the Ceremony details yet)"}`)}
+          {radio("time_source", "time", "At a specific time")}
+        </ChoiceFieldset>
         {text(id("welcome"), "Welcome instructions (optional)", form.welcome, (v) => update({ welcome: v }, ["welcome"]), errorFor("welcome"), { rows: 2, hint: "For example: welcome drinks on the terrace, light background music." })}
         {text(id("announcement"), "Announcement wording (optional)", form.announcement, (v) => update({ announcement: v }, ["announcement"]), errorFor("announcement"), { rows: 2 })}
       </fieldset>
@@ -196,26 +200,27 @@ function TimedList(props: {
           const who = [e.presenter, e.host, e.participants, e.relationship].map((x) => x.trim()).filter(Boolean).join(" · ");
           return (
             <>
-              <p className="font-medium [overflow-wrap:anywhere]">
-                {index + 1}. {String(e[nameField]).trim() || "Unnamed"}
-                {e.pronunciation.trim() && (asksPronunciation || props.audience === "staff") ? <span className="font-normal text-muted-foreground"> (say: {e.pronunciation.trim()})</span> : null}
+              <p className="text-[0.9375rem] leading-snug font-medium [overflow-wrap:anywhere]">
+                <span className="font-normal text-plan-ink-2 tabular-nums">{index + 1}. </span>{String(e[nameField]).trim() || "Unnamed"}
+                {e.pronunciation.trim() && (asksPronunciation || props.audience === "staff") ? <span className="font-normal text-plan-ink-2"> (say: {e.pronunciation.trim()})</span> : null}
               </p>
-              {who ? <p className="text-xs [overflow-wrap:anywhere]">{who}</p> : null}
-              <p className={when ? "text-xs" : "text-xs text-amber-700 dark:text-amber-400"}>
+              {who ? <p className="text-xs text-plan-ink-2 [overflow-wrap:anywhere]">{who}</p> : null}
+              <p className={when ? "text-xs text-plan-ink-2" : "text-xs text-status-attention"}>
                 {when ?? "Timing not decided yet"}{rules.duration && e.duration.trim() ? ` · about ${e.duration.trim()} min` : ""}
               </p>
               {rules.song ? (
                 e.song_title.trim() ? (
                   <p className="text-xs [overflow-wrap:anywhere]">
+                    <Music aria-hidden className="mr-1.5 inline size-3.5 -translate-y-px text-brand-ink" />
                     Song: {e.song_title} by {e.song_artist}{e.song_version.trim() ? ` (${e.song_version.trim()})` : ""}
                     {e.song_link.trim() && isHttpsUrl(e.song_link.trim()) ? (
-                      <> · <a className="underline" href={e.song_link.trim()} target="_blank" rel="noopener noreferrer nofollow">Open link ({linkHost(e.song_link.trim())})</a></>
+                      <> · <a className="underline underline-offset-2" href={e.song_link.trim()} target="_blank" rel="noopener noreferrer nofollow">Open link ({linkHost(e.song_link.trim())})</a></>
                     ) : null}
                   </p>
-                ) : songMissing ? <p className="text-xs text-amber-700 dark:text-amber-400">Song not chosen yet</p> : null
+                ) : songMissing ? <p className="text-xs text-status-attention">Song not chosen yet</p> : null
               ) : null}
-              {e.message.trim() ? <p className="whitespace-pre-line text-xs [overflow-wrap:anywhere]">Message: {e.message}</p> : null}
-              {e.notes.trim() ? <p className="whitespace-pre-line text-xs [overflow-wrap:anywhere]">Instructions: {e.notes}</p> : null}
+              {e.message.trim() ? <p className="whitespace-pre-line text-xs text-plan-ink-2 [overflow-wrap:anywhere]">Message: {e.message}</p> : null}
+              {e.notes.trim() ? <p className="whitespace-pre-line text-xs text-plan-ink-2 [overflow-wrap:anywhere]">Instructions: {e.notes}</p> : null}
             </>
           );
         }}
@@ -230,16 +235,16 @@ function TimedList(props: {
             {editor === "activities" ? text(`${prefix}-participants`, "Participants (optional)", e.participants, (v) => onChange({ participants: v }), errorFor("participants")) : null}
             {editor === "dedications" ? text(`${prefix}-relationship`, "Relationship (optional)", e.relationship, (v) => onChange({ relationship: v }), errorFor("relationship")) : null}
             {asksPronunciation ? text(`${prefix}-pronunciation`, "Pronunciation guide (optional)", e.pronunciation, (v) => onChange({ pronunciation: v }), errorFor("pronunciation"), { hint: PRONUNCIATION_HINT }) : null}
-            <fieldset className="grid gap-1 col-span-full">
-              <legend className="mb-1 text-sm font-medium">When (needed to complete)</legend>
-              {rules.timings.map((t) => (
-                <label key={t} className="flex min-h-9 items-center gap-2 text-sm">
-                  <input type="radio" name={`${prefix}-timing`} className="size-4 accent-primary" checked={e.timing === t} onChange={() => onChange({ timing: t })} />
-                  {TIMING_LABELS[t]}
-                </label>
-              ))}
-              {errorFor("timing") ? <p className="text-xs text-destructive">{errorFor("timing")}</p> : null}
-            </fieldset>
+            <div className="col-span-full">
+              <Choices<Timing>
+                name={`${prefix}-timing`}
+                legend="When (needed to complete)"
+                value={e.timing}
+                onChange={(v) => onChange({ timing: (v || "undecided") as Timing })}
+                error={errorFor("timing")}
+                options={rules.timings.map((t) => ({ value: t, label: TIMING_LABELS[t] }))}
+              />
+            </div>
             {e.timing === "time" ? (
               <TimeField id={`${prefix}-time`} label="Time" time={e.time} nextDay={e.next_day} eventDate={props.eventDate}
                 onTime={(t) => onChange({ time: t })} onNextDay={(n) => onChange({ next_day: n })} error={errorFor("time")} />
@@ -289,8 +294,8 @@ function OptionalSong({ prefix, entry, needed, name, errorFor, onChange }: {
   const panel = `${prefix}-song`;
   const legend = needed ? "Music (needed to complete)" : "Music (optional)";
   return (
-    <fieldset className="col-span-full grid gap-3 rounded-lg border bg-muted/20 p-3">
-      <legend className="px-1 text-sm font-medium">{legend}</legend>
+    <fieldset className="col-span-full grid gap-3 border-t border-plan-hairline pt-4">
+      <legend className="mb-1 flex items-baseline gap-2 text-sm font-medium"><LabelText text={legend} /></legend>
       {open ? (
         <div id={panel} className="grid gap-3">
           <SongFields
@@ -300,7 +305,7 @@ function OptionalSong({ prefix, entry, needed, name, errorFor, onChange }: {
             errorFor={(f) => (f in SONG_KEYS ? errorFor(SONG_KEYS[f as keyof typeof SONG_KEYS]) : null)}
             onChange={(changes) => onChange(Object.fromEntries(Object.entries(changes).map(([k, v]) => [SONG_KEYS[k as keyof typeof SONG_KEYS], v])) as Partial<TimedEntryForm>)}
           />
-          <Button type="button" size="sm" variant="outline" className="w-fit max-sm:min-h-11"
+          <Button type="button" size="sm" variant="ghost" className="w-fit text-destructive hover:bg-destructive/10 hover:text-destructive max-sm:min-h-11"
             aria-label={`Remove the song${name ? ` from "${name}"` : ""}`}
             onClick={() => {
               onChange({ song_title: "", song_artist: "", song_version: "", song_link: "" });
@@ -310,7 +315,7 @@ function OptionalSong({ prefix, entry, needed, name, errorFor, onChange }: {
           </Button>
         </div>
       ) : (
-        <Button type="button" size="sm" variant="outline" className="w-fit max-sm:min-h-11" aria-expanded={false} aria-controls={panel}
+        <Button type="button" size="sm" variant="ghost" className="w-fit text-brand-ink hover:bg-brand-tint hover:text-brand-ink max-sm:min-h-11" aria-expanded={false} aria-controls={panel}
           onClick={() => {
             setAdding(true);
             requestAnimationFrame(() => document.getElementById(`${panel}-title`)?.focus());

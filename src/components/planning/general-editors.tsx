@@ -33,6 +33,7 @@ import { selectClass } from "@/components/app/fields";
 import { djIdentity, djRef, withDj } from "@/lib/planning/dj";
 import { FieldBox, LanguageSelect, describedBy } from "./basics-editor";
 import { Choices, EntryList, Frame, text, type Common } from "./participants-editor";
+import { ChoiceFieldset, ChoiceOption } from "./choice-list";
 import { useEditingClosed, useLanguageBinding, usePlanProgress } from "./progress";
 import { SaveStatus, useAutosave } from "./use-autosave";
 
@@ -67,7 +68,7 @@ export function ContactsEditor(props: Common<ContactsAnswers> & { eventContacts:
   return (
     <Frame props={props as Common<unknown>} status={<SaveStatus saveState={saveState} message={message} retry={retry} />}>
       {mc || officiant ? (
-        <div className="grid gap-1 rounded-lg border bg-muted/30 p-3 text-sm" data-testid="known-people">
+        <div className="grid gap-1 rounded-xl bg-plan-track/50 px-3.5 py-3 text-sm" data-testid="known-people">
           <p className="font-medium">Already in your plan</p>
           {mc ? (
             <p className="[overflow-wrap:anywhere]">
@@ -155,15 +156,15 @@ export function ContactsEditor(props: Common<ContactsAnswers> & { eventContacts:
           nameOf={(v) => v.name.trim() || v.business.trim() || "Unnamed vendor"}
           summary={(v, index) => (
             <>
-              <p className="font-medium [overflow-wrap:anywhere]">
-                {index + 1}. {roleLabel(v.role)}: {[v.name.trim(), v.business.trim()].filter(Boolean).join(", ") || "Unnamed"}
+              <p className="text-[0.9375rem] leading-snug font-medium [overflow-wrap:anywhere]">
+                <span className="font-normal text-plan-ink-2 tabular-nums">{index + 1}. </span>{roleLabel(v.role)}: {[v.name.trim(), v.business.trim()].filter(Boolean).join(", ") || "Unnamed"}
               </p>
               {vendorReachable(v) ? (
-                <p className="text-xs [overflow-wrap:anywhere]">{[v.phone.trim(), v.email.trim()].filter(Boolean).join(" · ")}</p>
+                <p className="text-xs text-plan-ink-2 [overflow-wrap:anywhere]">{[v.phone.trim(), v.email.trim()].filter(Boolean).join(" · ")}</p>
               ) : (
-                <p className="text-xs text-amber-700 dark:text-amber-400">No phone or email yet. Edit to add one so {dj} can reach them.</p>
+                <p className="text-xs text-status-attention">No phone or email yet. Edit to add one so {dj} can reach them.</p>
               )}
-              {v.notes.trim() ? <p className="whitespace-pre-line text-xs [overflow-wrap:anywhere]">Shared notes: {v.notes}</p> : null}
+              {v.notes.trim() ? <p className="whitespace-pre-line text-xs text-plan-ink-2 [overflow-wrap:anywhere]">Shared notes: {v.notes}</p> : null}
             </>
           )}
           fields={(v, onChange, entryError, prefix) => (
@@ -303,21 +304,21 @@ export function MusicStyleEditor(props: Common<MusicStyleAnswers>) {
         />
         {!djChoice ? (
           <div className="grid gap-2">
-            <fieldset className="grid gap-1 sm:grid-cols-2">
-              <legend className="mb-1 text-sm font-medium">Styles (choose any)</legend>
+            <ChoiceFieldset
+              legend="Styles (choose any)"
+              columns={2}
+              after={errorFor("genres") ? <p className="text-xs font-medium text-destructive">{errorFor("genres")}</p> : null}
+            >
               {GENRES.map(([value, label]) => (
-                <label key={value} className="flex min-h-9 items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    className="size-4 accent-primary"
-                    checked={form.genres.includes(value)}
-                    onChange={(e) => update({ genres: e.target.checked ? [...form.genres, value] : form.genres.filter((g) => g !== value) }, ["genres", "style_choice"])}
-                  />
-                  {label}
-                </label>
+                <ChoiceOption
+                  key={value}
+                  type="checkbox"
+                  checked={form.genres.includes(value)}
+                  onChange={(checked) => update({ genres: checked ? [...form.genres, value] : form.genres.filter((g) => g !== value) }, ["genres", "style_choice"])}
+                  label={label}
+                />
               ))}
-              {errorFor("genres") ? <p className="text-xs text-destructive">{errorFor("genres")}</p> : null}
-            </fieldset>
+            </ChoiceFieldset>
             {text(id("other_style"), "Other style (optional)", form.other_style, (v) => update({ other_style: v }, ["other_style", "style_choice"]), errorFor("other_style"), { hint: "For example: Afrobeats, K-pop, 80s French pop." })}
           </div>
         ) : null}

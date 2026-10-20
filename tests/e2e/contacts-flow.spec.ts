@@ -170,6 +170,8 @@ test.describe.serial("contacts and preferences", () => {
     await expect(rows.filter({ hasText: "String quartet" })).toContainText("Enter a phone number or an email address for this vendor.");
     await rows.filter({ hasText: "String quartet" }).getByLabel("Phone", { exact: true }).fill("438 555 0100");
     await expect(card.getByText("All changes saved")).toBeVisible();
+    // Remove sits in the entry's edit panel.
+    await card.getByRole("button", { name: 'Edit "Lumière Photo"' }).click();
     await card.getByRole("button", { name: 'Remove "Lumière Photo"' }).click();
     await card.getByRole("button", { name: "Undo" }).click();
     await expect(card.getByText("All changes saved")).toBeVisible();

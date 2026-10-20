@@ -113,9 +113,15 @@ Status: written 2026-10-19 during Batch 6C.1 (audit). Batch 6C.2 (2026-10-19) im
 the client planning header, overview, navigation, status glyphs, Brand Ink/Tint and the
 planning tokens (src/app/globals.css, [data-plan-shell]). Batch 6C.3a (2026-10-20, local)
 implemented question rows (PlanMoment), live answer previews (src/lib/planning/summaries.ts,
-answer-preview.tsx), the one-line "Still needed" block and row-level save state. Editor
-internals (choices, fields, song and person rows) are 6C.3b and still the "Current
-implementation" described below.
+answer-preview.tsx), the one-line "Still needed" block and row-level save state. Batch 6C.3b
+(2026-10-20, local) implemented the editor internals: planning-scoped fields (globals.css,
+[data-plan-shell]: 44px/16px on phones, Brand Ink focus), labels with a muted "Optional" tag
+(label-text.tsx; accessible names unchanged), one choice pattern (choice-list.tsx, refined in
+6C.3c: rounded rows on spacing with no separators, grey hover, a 10% Brand Ink wash when chosen,
+"discuss" options apart), one list pattern (item-list.tsx: rows on
+hairlines, reorder arrows + Edit, Remove inside the edit panel, "+ Add …" disclosures) and a
+read-only review mode ([data-plan-readonly]). The "Current implementation" notes below describe
+the pre-6C state.
 The frontmatter records the CURRENT implementation so tools read real values.
 Each section below separates "Current implementation" from "Proposed direction".
 The proposed direction is NOT implemented and is pending approval. Once approved,

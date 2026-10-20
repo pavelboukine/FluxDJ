@@ -139,12 +139,15 @@ test.describe.serial("songs in planning", () => {
     await expect(mustPlay.getByText("All changes saved")).toBeVisible();
 
     // Remove, undo, remove for good.
+    // Remove sits in the entry's edit panel.
+    await mustPlay.getByRole("button", { name: 'Edit "One More Time"' }).click();
     await mustPlay.getByRole("button", { name: 'Remove "One More Time"' }).click();
     await expect(mustPlay.getByRole("status").filter({ hasText: "Removed “One More Time”." })).toBeVisible();
     await mustPlay.getByRole("button", { name: "Undo" }).click();
     await expect(rows(mustPlay)).toHaveCount(3);
     await expect(mustPlay.getByText("All changes saved")).toBeVisible();
     await expect.poll(async () => (await responses(eventId, "must_play"))!.answers.songs!.map((s) => s.id)).toEqual([firstIds[2], firstIds[0], firstIds[1]]);
+    await mustPlay.getByRole("button", { name: 'Edit "September"' }).click();
     await mustPlay.getByRole("button", { name: 'Remove "September"' }).click();
     await expect(mustPlay.getByText("All changes saved")).toBeVisible();
 
@@ -188,6 +191,7 @@ test.describe.serial("songs in planning", () => {
     await expect(rows(playList).nth(3)).toContainText("Also listed under Do not play.");
     expect((await responses(eventId, "play_if_possible"))!.answers.songs).toHaveLength(4);
     expect((await responses(eventId, "must_play"))!.answers.songs).toHaveLength(3);
+    await mustPlay.getByRole("button", { name: 'Edit "dancing queen"', exact: true }).click();
     await mustPlay.getByRole("button", { name: 'Remove "dancing queen"', exact: true }).click();
     await expect(mustPlay.getByText("All changes saved")).toBeVisible();
   });
@@ -293,6 +297,7 @@ test.describe.serial("songs in planning", () => {
     const stale = await openMoment(other, "special_dances", "first_dance");
     await addSong(first, { title: "Can't Help Falling in Love", artist: "Elvis Presley" });
     await expect(first.getByText("All changes saved")).toBeVisible();
+    await stale.getByRole("button", { name: 'Edit "Perfect"' }).click();
     await stale.getByRole("button", { name: 'Remove "Perfect"' }).click();
     await expect(stale.getByRole("alert")).toContainText("changed in another tab or window");
     expect((await responses(eventId, "first_dance"))!.answers.songs!.map((s) => s.title)).toEqual(["Perfect", "At Last", "Can't Help Falling in Love"]);

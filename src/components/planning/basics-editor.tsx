@@ -17,6 +17,8 @@ import type { SaveItemResult } from "@/lib/planning/view";
 import { cn } from "@/lib/utils";
 import { ItemChecklist, useEditingClosed, usePlanProgress, usePublishLanguage } from "./progress";
 import { SaveStatus, useAutosave } from "./use-autosave";
+import { ChoiceSingle } from "./choice-list";
+import { LabelText } from "./label-text";
 
 type Props = {
   itemId: string;
@@ -180,15 +182,7 @@ export function BasicsEditor(props: Props) {
             aria-describedby={description("access_notes")}
           />
         </FieldBox>
-        <label className="flex items-center gap-2 text-sm col-span-full">
-          <input
-            type="checkbox"
-            className="size-4 accent-primary"
-            checked={form.access_notes_none}
-            onChange={(e) => update({ access_notes_none: e.target.checked }, ["access_notes"])}
-          />
-          No special instructions
-        </label>
+        <ChoiceSingle checked={form.access_notes_none} onChange={(checked) => update({ access_notes_none: checked }, ["access_notes"])} label="No special instructions" />
       </fieldset>
       {!readOnly || saveState === "locked" ? <SaveStatus saveState={saveState} message={message} retry={retry} /> : null}
       <p className="text-xs text-muted-foreground">
@@ -207,13 +201,15 @@ export function BasicsEditor(props: Props) {
  */
 export function FieldBox({ id, label, hint, error, className, children }: { id: string; label: string; hint?: string; error: string | null; className?: string; children: React.ReactNode }) {
   return (
-    <div className={cn("grid content-start gap-1.5", className)}>
-      <Label htmlFor={id}>{label}</Label>
+    <div className={cn("grid content-start gap-1.5", className)} data-field>
+      <Label htmlFor={id} className="leading-snug">
+        <LabelText text={label} />
+      </Label>
       {children}
       {error ? (
-        <p id={`${id}-error`} className="text-xs text-destructive">{error}</p>
+        <p id={`${id}-error`} className="text-xs font-medium text-destructive">{error}</p>
       ) : hint ? (
-        <p id={`${id}-hint`} className="text-xs text-muted-foreground">{hint}</p>
+        <p id={`${id}-hint`} className="text-xs text-plan-ink-2">{hint}</p>
       ) : null}
     </div>
   );

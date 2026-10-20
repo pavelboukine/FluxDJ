@@ -124,7 +124,9 @@ export default async function ClientPlanningPage({ params }: PageProps<"/[tenant
     "grid min-w-0 grid-cols-1 gap-6 border-plan-hairline bg-plan-surface p-4 max-sm:-mx-4 max-sm:border-y sm:rounded-2xl sm:border sm:p-6 max-lg:pb-0 [--plan-sheet-pad:1rem] sm:[--plan-sheet-pad:1.5rem]";
 
   return (
-    <div data-plan-shell className="min-h-dvh bg-plan-canvas">
+    // Closed when the page loaded: answers read as a review, not as disabled forms (globals.css). A plan
+    // that closes while open keeps its editors on screen, unsaved input marked as such.
+    <div data-plan-shell data-plan-readonly={view.editing?.state === "closed" ? "" : undefined} className="min-h-dvh bg-plan-canvas">
       <ClientHeader email={email} back wide signOut={signOut} />
       <main style={pageStyle} className="mx-auto grid w-full max-w-5xl gap-5 px-4 pt-5 pb-[max(2.5rem,env(safe-area-inset-bottom))] sm:gap-8 sm:pt-8">
         <PlanProgressProvider initial={view.progress} warnings={view.timeline_warnings} basics={view.basics.answers} editing={view.editing}>

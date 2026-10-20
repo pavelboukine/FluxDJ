@@ -36,6 +36,7 @@ async function openMoment(page: Page, stageKey: string, momentKey: string): Prom
 
 async function addPlaylist(editor: Locator, url: string, name = "") {
   const form = editor.getByTestId(/-add-playlist$/);
+  if (!(await form.evaluate((el) => (el as HTMLDetailsElement).open))) await form.locator("summary").click();
   await form.getByLabel("Playlist link").fill(url);
   await form.getByLabel("Playlist name (optional)").fill(name);
   await form.getByRole("button", { name: "Add playlist" }).click();
@@ -136,12 +137,14 @@ test.describe.serial("playlist links in planning", () => {
     await expect(cocktail.getByText("All changes saved")).toBeVisible();
     await expect(first).toContainText("Notes: Relaxed indie and acoustic");
 
-    // Remove with undo, then remove for good.
+    // Remove with undo, then remove for good (Remove sits in the playlist's edit panel).
+    await cocktail.getByRole("button", { name: 'Edit playlist "Playlist link"' }).click();
     await cocktail.getByRole("button", { name: 'Remove playlist "Playlist link"' }).click();
     await expect(cards(cocktail)).toHaveCount(1);
     await cocktail.getByRole("button", { name: "Undo" }).click();
     await expect(cards(cocktail)).toHaveCount(2);
     await expect(cocktail.getByText("All changes saved")).toBeVisible();
+    await cocktail.getByRole("button", { name: 'Edit playlist "Playlist link"' }).click();
     await cocktail.getByRole("button", { name: 'Remove playlist "Playlist link"' }).click();
     await expect(cards(cocktail)).toHaveCount(1);
     await expect(cocktail.getByText("All changes saved")).toBeVisible();
@@ -166,7 +169,8 @@ test.describe.serial("playlist links in planning", () => {
     const addSongToggle = mustPlay.getByTestId(/-add$/).locator("summary");
     await expect(addSongToggle).toHaveText("Add a song");
     const boxes = await Promise.all((await mustPlay.locator("[data-testid=song-row] button, [data-testid=playlist-row] a, [data-testid=playlist-row] button").all()).map((b) => b.boundingBox()));
-    expect(boxes.length).toBeGreaterThanOrEqual(7);
+    // Rows show reorder and Edit (Remove sits in the edit panel): a song's up, down and Edit, a playlist's Open and Edit.
+    expect(boxes.length).toBeGreaterThanOrEqual(5);
     boxes.push(await addSongToggle.boundingBox());
     for (const b of boxes) expect(Math.min(b!.width, b!.height)).toBeGreaterThanOrEqual(44);
     const overlaps = boxes.some((a, i) => boxes.some((b, j) => i < j && a!.x < b!.x + b!.width && b!.x < a!.x + a!.width && a!.y < b!.y + b!.height && b!.y < a!.y + a!.height));
