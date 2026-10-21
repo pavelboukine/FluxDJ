@@ -77,7 +77,7 @@ test.describe("public homepage and sign-in", () => {
     await expect(page.getByRole("link", { name: "Client sign in" })).toBeFocused();
     await page.keyboard.press("Enter");
     await page.waitForURL("**/login?role=client");
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Access your event");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Welcome to your event portal");
     expect(await sideways(page)).toBeLessThanOrEqual(0);
     await page.context().close();
   });
@@ -91,7 +91,7 @@ test.describe("public homepage and sign-in", () => {
 
     const planning = `/${tenant.slug}/planning/${randomUUID()}`;
     await page.goto(`/login?role=client&next=${encodeURIComponent(planning)}`);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Access your event");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Welcome to your event portal");
     await expect(page.getByTestId("login-next")).toBeVisible();
     await expect(page.locator('input[name="next"]')).toHaveValue(planning);
     await expect(page.locator('input[name="role"]')).toHaveValue("client");
@@ -158,7 +158,7 @@ test.describe("public homepage and sign-in", () => {
     await expect(dj.getByRole("link", { name: "Open your events" })).toHaveAttribute("href", "/my");
     await dj.getByTestId("signed-in").getByRole("link", { name: "Your events" }).click();
     await dj.waitForURL("**/my");
-    await expect(dj.getByText(`Landing event ${run}`)).toBeVisible();
+    await expect(dj.getByRole("heading", { name: `Landing event ${run}` })).toBeVisible();
     await dj.context().close();
   });
 

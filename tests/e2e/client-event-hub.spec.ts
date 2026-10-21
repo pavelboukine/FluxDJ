@@ -116,11 +116,15 @@ test.describe.serial("client event hub", () => {
     await page.getByTestId("event-hub-link").filter({ hasText: titles.external }).click();
     await page.waitForURL(`**${hub(rose, ids.external)}`);
     await expect(page.locator("main")).toContainText(rose.displayName);
+    // Read the resting colour: the pointer that clicked on /my may be over the button now.
+    await page.mouse.move(0, 0);
     await expect(page.getByTestId("hub-primary")).toHaveCSS("background-color", rgb(brandTheme("#E11D48").ink));
     await page.goto("/my");
     await page.getByTestId("event-hub-link").filter({ hasText: titles.booked }).click();
     await page.waitForURL(`**${hub(lumiere, ids.booked)}`);
     await expect(page.getByRole("img", { name: lumiere.displayName })).toBeVisible();
+    // Read the resting colour: the pointer that clicked on /my may be over the button now.
+    await page.mouse.move(0, 0);
     await expect(page.getByTestId("hub-primary")).toHaveCSS("background-color", rgb(brandTheme("#cbc7ff").ink));
   });
 
@@ -130,20 +134,41 @@ test.describe.serial("client event hub", () => {
       await signInWithLink(page, clientEmail, hub(lumiere, ids.booked));
       await expect(page.getByRole("heading", { level: 1 })).toHaveText(titles.booked);
       await expect(page.getByTestId("event-status")).toHaveText("Booked");
-      const planning = page.getByTestId("hub-planning");
-      await expect(planning.getByRole("heading", { level: 2 })).toHaveText("Plan your event");
-      await expect(planning.getByTestId("progress-headline")).toBeVisible();
-      await expect(planning.getByTestId("hub-deadline")).toContainText("You can make changes through");
+      // One full-width next step with a planning summary, not a copy of the planning overview.
+      const next = page.getByTestId("hub-next-step");
+      await expect(next.getByRole("heading", { level: 2 })).toHaveText("Plan your event");
+      await expect(next.getByTestId("hub-progress")).toContainText("required answers");
+      await expect(next.getByTestId("hub-deadline")).toContainText("You can make changes through");
+      await expect(page.getByTestId("hub-planning")).toHaveCount(0);
+      await expect(page.getByTestId("hub-primary")).toHaveCount(1);
       const booking = page.getByTestId("hub-booking");
       await expect(booking.getByRole("link", { name: /Approved proposal/ })).toHaveAttribute("href", `${hub(lumiere, ids.booked)}/proposal`);
       await expect(booking.getByRole("link", { name: /Signed contract/ })).toHaveAttribute("href", `/${lumiere.slug}/contracts/${bookedContract}`);
+      // The signed PDF downloads from the contract page, not the hub.
+      await expect(page.getByRole("link", { name: "Download signed PDF" })).toHaveCount(0);
       const payments = page.locator("#payments");
       await expect(payments).toContainText("Received so far");
       await expect(payments).toContainText("Early booking");
       expect(await sideways(page)).toBeLessThanOrEqual(0);
 
+      // Open planning lands on the planning overview, never a section; the overview's own Continue planning goes on.
+      await expect(page.getByTestId("hub-primary")).toHaveText("Open planning");
+      await expect(page.getByTestId("hub-primary")).toHaveAttribute("href", `/${lumiere.slug}/planning/${ids.booked}`);
+      // The footer credit: "Powered by" and the Flux wordmark (named for screen readers).
+      await expect(page.getByTestId("client-footer")).toContainText("Powered by");
+      await expect(page.getByTestId("client-footer").getByRole("img", { name: "Flux DJ" })).toBeVisible();
       await page.getByTestId("hub-primary").click();
-      await page.waitForURL(`**/${lumiere.slug}/planning/${ids.booked}`);
+      await page.waitForURL(new RegExp(`/${lumiere.slug}/planning/${ids.booked}$`));
+      await expect(page.locator("#plan-panel-overview")).toBeVisible();
+      await expect(page.getByTestId("client-page-title")).toHaveText("Your planning");
+      await expect(page.getByTestId("client-footer")).toHaveCount(1);
+      await expect(page.getByTestId("footer-flux-logo")).toHaveCount(1);
+      expect(await sideways(page)).toBeLessThanOrEqual(0);
+      await page.getByTestId("plan-primary").filter({ hasText: "Continue planning" }).click();
+      await page.waitForURL(new RegExp(`/${lumiere.slug}/planning/${ids.booked}\\?section=[a-z0-9_]+$`));
+      const section = new URL(page.url()).searchParams.get("section")!;
+      await expect(page.locator(`#plan-panel-${section}`)).toBeVisible();
+      await expect(page.locator("#plan-panel-overview")).toBeHidden();
       await page.getByRole("link", { name: "Your event", exact: true }).click();
       await page.waitForURL(`**${hub(lumiere, ids.booked)}`);
       await booking.getByRole("link", { name: /Signed contract/ }).click();
@@ -195,7 +220,7 @@ test.describe.serial("client event hub", () => {
     await expect(page.getByTestId("event-status")).toHaveText("Booked");
     await expect(page.locator("#payments")).toContainText("No payment due");
     await expect(page.locator("#payments")).not.toContainText("Deposit on signing");
-    await expect(page.getByTestId("hub-planning").getByRole("heading", { level: 2 })).toHaveText("Your DJ is getting planning ready");
+    await expect(page.getByTestId("hub-next-step").getByRole("heading", { level: 2 })).toHaveText("Your DJ is getting planning ready");
     await expect(page.getByTestId("hub-primary")).toHaveCount(0);
     expect(await sideways(page)).toBeLessThanOrEqual(0);
   });
@@ -203,7 +228,8 @@ test.describe.serial("client event hub", () => {
   test("booked elsewhere: planning only, nothing to sign or pay", async ({ page }) => {
     await signInWithLink(page, clientEmail, hub(rose, ids.external));
     await expect(page.getByTestId("event-status")).toHaveText("Booked");
-    await expect(page.getByTestId("hub-planning").getByTestId("hub-primary")).toHaveText("Continue planning");
+    await expect(page.getByTestId("hub-next-step").getByTestId("hub-primary")).toHaveText("Open planning");
+    await expect(page.getByTestId("hub-primary")).toHaveAttribute("href", `/${rose.slug}/planning/${ids.external}`);
     await expect(page.getByTestId("hub-booking")).toHaveCount(0);
     await expect(page.locator("#payments")).toHaveCount(0);
     await expect(page.locator("main")).not.toContainText(/contract|deposit|proposal/i);
@@ -212,7 +238,7 @@ test.describe.serial("client event hub", () => {
   test("someone at the event who isn't the signer: status and planning, never the financial documents", async ({ page }) => {
     await signInWithLink(page, partnerEmail, hub(lumiere, ids.booked));
     await expect(page.getByTestId("event-status")).toHaveText("Booked");
-    await expect(page.getByTestId("hub-planning")).toBeVisible();
+    await expect(page.getByTestId("hub-next-step").getByTestId("hub-primary")).toHaveText("Open planning");
     await expect(page.getByTestId("hub-booking")).toHaveCount(0);
     await expect(page.locator("#payments")).toHaveCount(0);
     await page.goto(`${hub(lumiere, ids.booked)}/proposal`);

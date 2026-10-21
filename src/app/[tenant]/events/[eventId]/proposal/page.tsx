@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { BrandLogo } from "@/components/app/brand-logo";
+import { ClientFooter } from "@/components/app/client-footer";
 import { ClientHeader } from "@/components/app/client-header";
 import { SelectionSummary } from "@/components/proposal/selection-summary";
 import { signOut } from "@/app/auth/confirm/actions";
@@ -49,7 +50,7 @@ export default async function ApprovedProposal({ params }: PageProps<"/[tenant]/
   const approved = (data as Approved | null) ?? { state: "unavailable" };
   if (!facts || approved.state !== "available" || approved.event_id !== eventId) {
     return (
-      <div data-plan-shell className="min-h-dvh bg-plan-canvas">
+      <div data-plan-shell className="flex min-h-dvh flex-col bg-plan-canvas">
         <ClientHeader email={auth.user.email ?? null} back={facts ? { href: hub, label: "Your event" } : true} signOut={signOut} />
         <main className="mx-auto grid w-full max-w-md px-4 py-12">
           <section className={SHEET}>
@@ -60,6 +61,7 @@ export default async function ApprovedProposal({ params }: PageProps<"/[tenant]/
             </p>
           </section>
         </main>
+        <ClientFooter />
       </div>
     );
   }
@@ -68,7 +70,7 @@ export default async function ApprovedProposal({ params }: PageProps<"/[tenant]/
   const dj = e.tenantName;
   const live = await liveBrand(slug);
   return (
-    <div data-plan-shell className="min-h-dvh bg-plan-canvas">
+    <div data-plan-shell className="flex min-h-dvh flex-col bg-plan-canvas">
       <ClientHeader email={auth.user.email ?? null} back={{ href: hub, label: "Your event" }} signOut={signOut} />
       <main style={brandStyle(live?.brandColors.primary)} className="mx-auto grid w-full max-w-3xl gap-5 px-4 pt-5 pb-[max(2.5rem,env(safe-area-inset-bottom))] sm:gap-6 sm:pt-8">
         <header className="grid gap-3">
@@ -94,6 +96,7 @@ export default async function ApprovedProposal({ params }: PageProps<"/[tenant]/
           <SelectionSummary offer={approved.proposal.offer} selection={approved.selection.priced} headingLevel={3} />
         </section>
       </main>
+      <ClientFooter />
     </div>
   );
 }

@@ -9,54 +9,18 @@ const sent = { id: "c1", status: "sent" as const, signable: true, pdfReady: fals
 const signed = { id: "c1", status: "signed" as const, signable: true, pdfReady: true, pdfPending: false };
 const card = (over: Partial<HomeEvent>) => homeCard({ ...base, ...over });
 
-describe("client home actions", () => {
-  it("asks only the signer to sign", () => {
-    expect(card({ lifecycle: "awaiting_signature", contract: sent }).primary).toEqual({ label: "Review and sign contract", href: "/dj/contracts/c1", kind: "link" });
-    const other = card({ lifecycle: "awaiting_signature", contract: null });
-    expect(other.primary).toBeNull();
-    expect(JSON.stringify(other)).not.toMatch(/sign it|Review and sign/i);
+describe("client home status", () => {
+  it("a contract waiting for its signer; for anyone else, the contract stage", () => {
+    expect(card({ lifecycle: "awaiting_signature", contract: sent })).toEqual({ status: "Contract ready to sign", tone: "action" });
+    expect(card({ lifecycle: "awaiting_signature", contract: { ...sent, signable: false } }).status).toBe("Contract ready to read");
+    expect(card({ lifecycle: "awaiting_signature", contract: null }).status).toBe("Contract stage");
   });
 
-  it("offers reading, not signing, when online signing isn't available", () => {
-    const c = card({ lifecycle: "awaiting_signature", contract: { ...sent, signable: false } });
-    expect(c.primary?.label).toBe("Read contract");
-    expect(c.note).toMatch(/can't be signed online/);
-  });
-
-  it("never offers payment; awaiting deposit points to the details and says who records it", () => {
-    const c = card({ lifecycle: "awaiting_deposit", contract: signed, payments: { currency: "CAD", bookingStatus: "awaiting_deposit", depositOutstandingCents: 123456 } });
-    expect(c.status).toBe("Signed · awaiting deposit");
-    expect(c.primary).toEqual({ label: "View deposit details", href: "/dj/contracts/c1#payments", kind: "link" });
-    expect(c.note).toContain("$1,234.56 deposit still to pay");
-    expect(c.secondary.map((a) => a.label)).toEqual(["View signed contract", "Download signed PDF"]);
-    expect(JSON.stringify(c)).not.toMatch(/pay now|booked\b/i);
-    // A non-signer at the same event: status only, no contract or payment links.
-    const viewer = card({ lifecycle: "awaiting_deposit" });
-    expect(viewer.primary).toBeNull();
-    expect(viewer.secondary).toEqual([]);
-  });
-
-  it("plans when the database allows it; read-only once editing closes", () => {
-    expect(card({ lifecycle: "booked", contract: signed, plan: { editing: "open" } }).primary?.label).toBe("Plan your event");
-    expect(card({ lifecycle: "booked", contract: signed, plan: { editing: "reopened" } }).primary?.label).toBe("Plan your event");
-    const closed = card({ lifecycle: "booked", contract: signed, plan: { editing: "closed" } });
-    expect(closed.primary?.label).toBe("View planning");
-    expect(closed.secondary.map((a) => a.kind)).toEqual(["link", "pdf"]);
-    // Booked without planning access (not offered before the rules allow it).
-    expect(card({ lifecycle: "booked", contract: signed, plan: null }).primary?.label).toBe("View signed contract");
-    // A signed contract alone never opens planning.
-    expect(card({ lifecycle: "awaiting_deposit", contract: signed }).primary?.label).not.toMatch(/plan/i);
-  });
-
-  it("keeps legacy signed contracts honest: booking not confirmed yet", () => {
-    const c = card({ lifecycle: "awaiting_signature", contract: { ...signed, pdfReady: false } });
-    expect(c.status).toBe("Contract signed · booking not confirmed yet");
-    expect(c.primary?.label).toBe("View signed contract");
-    expect(c.secondary).toEqual([]);
-  });
-
-  it("shows the PDF only once it exists", () => {
-    expect(card({ lifecycle: "booked", contract: { ...signed, pdfReady: false, pdfPending: true } }).secondary).toEqual([]);
+  it("never calls a signed contract with its deposit outstanding a booking", () => {
+    expect(card({ lifecycle: "awaiting_deposit", contract: signed }).status).toBe("Signed · awaiting deposit");
+    expect(card({ lifecycle: "awaiting_deposit" }).status).toBe("Signed · awaiting deposit");
+    expect(card({ lifecycle: "awaiting_signature", contract: signed }).status).toBe("Contract signed · booking not confirmed yet");
+    expect(card({ lifecycle: "booked", contract: signed })).toEqual({ status: "Booked", tone: "done" });
   });
 });
 
@@ -79,18 +43,12 @@ describe("upcoming and past", () => {
 describe("events booked elsewhere", () => {
   const external = (over: Partial<HomeEvent>) => card({ bookingSource: "external", lifecycle: "lead", ...over });
 
-  it("invite the client to plan, with no proposal, contract or payment wording", () => {
-    const c = external({ plan: { editing: "open" } });
-    expect(c.status).toBe("Booked");
-    expect(c.note).toBe("Your event is booked. Let's plan the details.");
-    expect(c.primary).toEqual({ label: "Plan your event", href: "/dj/planning/e1", kind: "link" });
-    expect(JSON.stringify(c)).not.toMatch(/proposal|contract|deposit|pay/i);
+  it("read as booked, with no proposal, contract or payment wording", () => {
+    expect(external({ plan: { editing: "open" } })).toEqual({ status: "Booked", tone: "done" });
+    expect(external({ plan: null }).status).toBe("Booked");
   });
 
-  it("read-only once editing closes; a waiting note before planning is shared", () => {
-    expect(external({ plan: { editing: "closed" } }).primary?.label).toBe("View planning");
-    const waiting = external({ plan: null });
-    expect(waiting.primary).toBeNull();
-    expect(JSON.stringify(waiting)).not.toMatch(/proposal|contract|deposit/i);
+  it("a cancelled event reads as cancelled, never booked", () => {
+    expect(external({ lifecycle: "cancelled", plan: { editing: "open" } })).toEqual({ status: "Cancelled", tone: "neutral" });
   });
 });

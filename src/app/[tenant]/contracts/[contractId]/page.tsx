@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { AlertTriangle, CalendarDays, CheckCircle2, Clock, FileText, Lock, MapPin, PenLine } from "lucide-react";
 import { PdfDownloadLink } from "@/components/app/pwa";
 import { BrandLogo } from "@/components/app/brand-logo";
+import { ClientFooter } from "@/components/app/client-footer";
 import { ClientHeader } from "@/components/app/client-header";
 import { ContractDocument } from "@/components/contract/contract-document";
 import { ClientPayments } from "@/components/payments/client-payments";
@@ -45,7 +46,7 @@ type View =
 
 function Notice({ title, icon: Icon, email, children }: { title: string; icon: typeof Lock; email?: string | null; children: React.ReactNode }) {
   return (
-    <div className="min-h-dvh bg-muted/40">
+    <div className="flex min-h-dvh flex-col bg-muted/40">
       <ClientHeader email={email ?? null} back={email !== undefined} signOut={email ? signOut : undefined} />
       <main className="mx-auto grid w-full max-w-md px-4 py-12">
         <div className="grid gap-3 rounded-2xl border bg-card p-6 text-sm shadow-sm">
@@ -54,6 +55,7 @@ function Notice({ title, icon: Icon, email, children }: { title: string; icon: t
           {children}
         </div>
       </main>
+      <ClientFooter />
     </div>
   );
 }
@@ -167,7 +169,7 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
   const back = eventId ? { href: eventHubPath(slug, eventId), label: "Your event" } : true;
 
   return (
-    <div data-plan-shell className="min-h-dvh bg-plan-canvas">
+    <div data-plan-shell className="flex min-h-dvh flex-col bg-plan-canvas">
       <ClientHeader email={auth.user.email ?? null} back={back} signOut={signOut} />
       <main style={pageStyle} className="mx-auto grid w-full max-w-3xl gap-5 px-4 pt-5 pb-[max(2.5rem,env(safe-area-inset-bottom))] sm:gap-6 sm:pt-8">
         {isDemo ? (
@@ -357,6 +359,7 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
           {c.legal_name} · Contract fingerprint (SHA-256): {c.content_sha256}
         </p>
       </main>
+      <ClientFooter />
     </div>
   );
 }

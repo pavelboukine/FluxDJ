@@ -224,8 +224,10 @@ test.describe.serial("planning", () => {
     clientContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
     client = await clientContext.newPage();
     await signInClient(client, clientEmail);
-    await client.getByRole("link", { name: `Plan your event for ${title}` }).click();
-    await client.waitForURL(`**${planningUrl}*`);
+    // From the event (its hub) to the planning overview.
+    await client.getByRole("link", { name: `Open your event for ${title}` }).click();
+    await client.getByTestId("hub-primary").filter({ hasText: "Open planning" }).click();
+    await client.waitForURL(`**${planningUrl}`);
     // The overview: event, deadline state, honest progress and one obvious next step.
     await expect(client.getByRole("heading", { level: 1, name: title })).toBeVisible();
     // Back to the event's hub (which leads on to all events).
@@ -750,7 +752,9 @@ test.describe.serial("planning", () => {
 
   test("the contract page links to planning; archiving closes client planning and unarchiving reopens it", async () => {
     await client.goto(`/${tenant.slug}/contracts/${contractId}`);
-    await client.getByRole("link", { name: "Plan your event" }).click();
+    // The contract leads to the event (6F), whose next step is planning.
+    await client.getByTestId("go-to-event").click();
+    await client.getByTestId("hub-primary").filter({ hasText: "Open planning" }).click();
     await client.waitForURL(`**${planningUrl}*`);
     await openPlanSection(client, "basics");
 

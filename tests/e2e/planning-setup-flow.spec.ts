@@ -100,7 +100,7 @@ test.describe.serial("planning setup after booking", () => {
     client = await clientContext.newPage();
     await signInWithLink(client, clientEmail);
     await client.waitForURL("**/my");
-    await expect(client.getByRole("link", { name: `Plan your event for ${title}` })).toHaveCount(0);
+    await expect(client.getByTestId("event-next-step")).toContainText("Your DJ is getting planning ready");
     await client.goto(planningUrl);
     await expect(client.getByRole("heading", { name: "Your DJ is setting up your event planning" })).toBeVisible();
     await expect(client.getByTestId("planning-setting-up")).toContainText("Check back soon.");
@@ -138,7 +138,8 @@ test.describe.serial("planning setup after booking", () => {
 
   test("the client plans the configured event and staff see the answers; staff close and reopen editing", async () => {
     await client.goto("/my");
-    await client.getByRole("link", { name: `Plan your event for ${title}` }).click();
+    await client.getByRole("link", { name: `Open your event for ${title}` }).click();
+    await client.getByTestId("hub-primary").filter({ hasText: "Open planning" }).click();
     await client.waitForURL(`**${planningUrl}*`);
     await expect(client.getByRole("heading", { level: 1, name: title })).toBeVisible();
     await expect(client.getByTestId("editing-chip")).toHaveText("Planning open");

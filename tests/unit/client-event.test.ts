@@ -15,7 +15,9 @@ describe("event hub: next step", () => {
     expect(step({ home: { lifecycle: "awaiting_signature" }, contract: { id: "c1", status: "sent", totalCents: 100, signable: true } })).toEqual({
       title: "Review and sign your contract", text: expect.stringContaining("then sign online"), action: { label: "Review and sign", href: "/dj/contracts/c1" },
     });
-    expect(step({ home: { lifecycle: "awaiting_signature" }, contract: { id: "c1", status: "sent", totalCents: 100, signable: false } }).action?.label).toBe("Read contract");
+    const read = step({ home: { lifecycle: "awaiting_signature" }, contract: { id: "c1", status: "sent", totalCents: 100, signable: false } });
+    expect(read.action?.label).toBe("Read contract");
+    expect(read.text).toMatch(/can't be signed online/);
   });
 
   it("never calls a signed contract with its deposit outstanding a booking", () => {
@@ -33,15 +35,22 @@ describe("event hub: next step", () => {
   });
 
   it("booked: planning when it's open, a calm wait when it isn't ready, read-only when closed", () => {
-    expect(step({ plan: { editing: "open", complete: false } }).action).toEqual({ label: "Continue planning", href: "/dj/planning/e1" });
+    expect(step({ plan: { editing: "open", complete: false } }).action).toEqual({ label: "Open planning", href: "/dj/planning/e1" });
     expect(step({ plan: { editing: "open", complete: true } }).action?.label).toBe("Review your plan");
     expect(step({ plan: null })).toEqual({ title: "Your DJ is getting planning ready", text: expect.stringContaining("DJ Co"), action: null });
     expect(step({ plan: { editing: "closed", complete: false } }).action).toEqual({ label: "View your plan", href: "/dj/planning/e1" });
   });
 
+  it("planning always opens on its overview, never a section directly", () => {
+    for (const editing of ["open", "reopened", "closed", null] as const) {
+      for (const complete of [false, true]) expect(step({ plan: { editing, complete } }).action?.href).toBe("/dj/planning/e1");
+    }
+    expect(step({ plan: { editing: "reopened", complete: false } }).action?.label).toBe("Open planning");
+  });
+
   it("an event booked elsewhere plans like a booked one, with nothing to sign or pay", () => {
     const s = step({ home: { lifecycle: "lead", bookingSource: "external" }, plan: { editing: "open", complete: false } });
-    expect(s.action?.label).toBe("Continue planning");
+    expect(s.action?.label).toBe("Open planning");
     expect(JSON.stringify(s)).not.toMatch(/contract|deposit|pay/i);
   });
 
@@ -50,6 +59,10 @@ describe("event hub: next step", () => {
     expect(step({ home: { lifecycle: "awaiting_signature" }, contract: { id: "c1", status: "signed", totalCents: 1, signable: true } }).title).toBe("Booking not confirmed yet");
     expect(step({ home: { lifecycle: "pending_approval" } }).action).toBeNull();
     expect(step({ home: { lifecycle: "cancelled" } }).title).toBe("This event was cancelled");
+    // However it was booked: a cancelled event never asks for planning.
+    expect(step({ home: { lifecycle: "cancelled", bookingSource: "external" }, plan: { editing: "open", complete: false } })).toEqual({
+      title: "This event was cancelled", text: expect.stringContaining("DJ Co"), action: null,
+    });
   });
 
   it("knows a legitimate $0 booking and builds the hub's address", () => {

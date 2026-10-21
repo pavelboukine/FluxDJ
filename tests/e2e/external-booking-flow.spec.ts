@@ -148,9 +148,10 @@ test.describe.serial("event booked elsewhere", () => {
     await client.goto("/my");
     const card = client.locator("li").filter({ hasText: title }).first();
     await expect(card).toContainText("Booked");
-    await expect(card).toContainText("Your event is booked. Let's plan the details.");
+    // The same next step as the event's hub.
+    await expect(card.getByTestId("event-next-step")).toContainText("Plan your event");
     await expect(card).not.toContainText(/contract|deposit|proposal/i);
-    await expect(card.getByRole("link", { name: new RegExp(`Plan your event`) })).toBeVisible();
+    await expect(card.getByRole("link")).toHaveText([`Open your event for ${title}`]);
   });
 
   test("staff follow the answers and open the web and PDF run sheet", async () => {

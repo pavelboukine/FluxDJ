@@ -6,6 +6,7 @@
 const ALLOWED = [
   /^\/staff(?:\/[a-z0-9-]+(?:\/[A-Za-z0-9/_-]*)?)?$/,
   /^\/my$/,
+  /^\/my\/continue$/,
   /^\/platform\/(?:invitations|workspaces)$/,
   /^\/join\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
   /^\/join\/team\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
@@ -47,9 +48,16 @@ export function loginHref(role: SignInRole, next?: string | null): string {
   return `/login?${params.toString()}`;
 }
 
-/** Where a sign-in continues: the requested destination if allowed, else the role's home (clients: /my), else /staff (which sends clients to /my). */
+/**
+ * Where the client sign-in continues when no page asked for it: the client's
+ * one event's hub, or /my when they have several or none (app/my/continue).
+ * Visiting /my itself always shows the list.
+ */
+export const CLIENT_SIGN_IN_HOME = "/my/continue";
+
+/** Where a sign-in continues: the requested destination if allowed, else the role's home (clients: CLIENT_SIGN_IN_HOME), else /staff (which sends clients to /my). */
 export function signInDestination(role: SignInRole | null, next: unknown): string {
-  return allowedNext(next) ?? (role === "client" ? "/my" : "/staff");
+  return allowedNext(next) ?? (role === "client" ? CLIENT_SIGN_IN_HOME : "/staff");
 }
 
 /**

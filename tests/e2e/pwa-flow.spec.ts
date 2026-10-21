@@ -117,7 +117,7 @@ test.describe.serial("installable app shell", () => {
     await signInWithLink(client, clientEmail);
     await client.goto("/start");
     await expect(client).toHaveURL(/\/my$/);
-    await expect(client.getByRole("link", { name: `Plan your event for E2E PWA Wedding ${run}` })).toBeVisible();
+    await expect(client.getByRole("link", { name: `Open your event for E2E PWA Wedding ${run}` })).toBeVisible();
     await clientContext.close();
 
     // Both roles: staff of one business and a client elsewhere -> the staff workspace, as /staff already does.
@@ -272,7 +272,8 @@ test.describe.serial("installable app shell", () => {
     await signInWithLink(page, clientEmail);
     await page.goto("/start");
     await expect(page).toHaveURL(/\/my$/);
-    await page.getByRole("link", { name: `Plan your event for E2E PWA Wedding ${run}` }).click();
+    await page.getByRole("link", { name: `Open your event for E2E PWA Wedding ${run}` }).click();
+    await page.getByTestId("hub-primary").click();
     await expect(page.getByTestId("editing-notice")).toBeVisible();
     expect(await noSideways(page)).toBeLessThanOrEqual(0);
     // Typing scrolls the field into view and saves as before (Basics opens from the section navigation).
@@ -292,7 +293,8 @@ test.describe.serial("installable app shell", () => {
     expect(await noSideways(page)).toBeLessThanOrEqual(0);
     await page.getByRole("link", { name: "Your events", exact: true }).click();
     await expect(page).toHaveURL(/\/my$/);
-    await page.getByRole("link", { name: `View signed contract for E2E PWA Wedding ${run}` }).click();
+    await page.getByRole("link", { name: `Open your event for E2E PWA Wedding ${run}` }).click();
+    await page.getByTestId("hub-booking").getByRole("link", { name: /Signed contract/ }).click();
     await expect(page).toHaveURL(/\/contracts\//);
     expect(await noSideways(page)).toBeLessThanOrEqual(0);
     await page.getByRole("link", { name: "Your event", exact: true }).click();

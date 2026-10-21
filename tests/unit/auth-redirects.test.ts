@@ -5,7 +5,7 @@ const UUID = "0b9c7f3e-1a2b-4c3d-8e9f-0a1b2c3d4e5f";
 
 describe("sign-in destinations", () => {
   it("allows only same-site app pages, including a client's contract and planning pages", () => {
-    for (const ok of ["/staff", "/staff/bouprod", "/staff/bouprod/events/new", "/my", `/bouprod/contracts/${UUID}`, `/bouprod/planning/${UUID}`, `/bouprod/planning-invitations/${UUID}`, `/join/${UUID}`, `/bouprod/events/${UUID}`, `/bouprod/events/${UUID}/proposal`]) {
+    for (const ok of ["/staff", "/staff/bouprod", "/staff/bouprod/events/new", "/my", "/my/continue", `/bouprod/contracts/${UUID}`, `/bouprod/planning/${UUID}`, `/bouprod/planning-invitations/${UUID}`, `/join/${UUID}`, `/bouprod/events/${UUID}`, `/bouprod/events/${UUID}/proposal`]) {
       expect(allowedNext(ok)).toBe(ok);
     }
     for (const bad of [
@@ -13,6 +13,8 @@ describe("sign-in destinations", () => {
       "//evil.example/staff",
       "/\\evil.example",
       "/my?x=1",
+      "/my/continue/",
+      "/my/other",
       `/bouprod/planning/${UUID}/../../staff`,
       `/bouprod/planning/not-a-uuid`,
       `/bouprod/planning-invitations/not-a-uuid`,
@@ -41,8 +43,11 @@ describe("sign-in destinations", () => {
 
   it("continues to the requested page, else the role's home", () => {
     expect(signInDestination("client", `/bouprod/contracts/${UUID}`)).toBe(`/bouprod/contracts/${UUID}`);
-    expect(signInDestination("client", null)).toBe("/my");
-    expect(signInDestination("client", "https://evil.example")).toBe("/my");
+    // The client sign-in's own default: the one event's hub, or /my (app/my/continue).
+    expect(signInDestination("client", null)).toBe("/my/continue");
+    expect(signInDestination("client", "https://evil.example")).toBe("/my/continue");
+    // Asking for /my explicitly keeps the list.
+    expect(signInDestination("client", "/my")).toBe("/my");
     expect(signInDestination("dj", "/staff/bouprod/gear")).toBe("/staff/bouprod/gear");
     expect(signInDestination("dj", null)).toBe("/staff");
     expect(signInDestination(null, null)).toBe("/staff");
@@ -76,6 +81,7 @@ describe("destinations carried by the sign-in email", () => {
 
   it("sends a failed link back to sign-in, keeping where it was going", () => {
     expect(retrySignInHref("/staff")).toBe("/login?error=link");
+    expect(retrySignInHref("/my/continue")).toBe("/login?role=client&next=%2Fmy%2Fcontinue&error=link");
     expect(retrySignInHref(planning)).toBe(`/login?role=client&next=${encodeURIComponent(planning)}&error=link`);
     expect(retrySignInHref("/staff/bouprod/gear")).toBe(`/login?role=dj&next=${encodeURIComponent("/staff/bouprod/gear")}&error=link`);
   });

@@ -170,8 +170,9 @@ test.describe.serial("contract sending and verified client access", () => {
     await page.goto(/href="([^"]+\/auth\/confirm[^"]+)"/.exec(message.html)![1].replaceAll("&amp;", "&"));
     await page.getByRole("button", { name: "Sign in" }).click();
     await page.waitForURL("**/my");
-    // The card's contract action (its title leads to the event page).
-    await page.getByRole("link", { name: `Review and sign contract for ${eventTitle}` }).click();
+    // The event's one way in, then its next step: the contract.
+    await page.getByRole("link", { name: `Open your event for ${eventTitle}` }).click();
+    await page.getByTestId("hub-primary").filter({ hasText: "Review and sign" }).click();
     await expect(page.getByRole("heading", { level: 1 })).toContainText(eventTitle);
 
     // Staff void it: the signed-in client can no longer read it, and keeps nothing else.

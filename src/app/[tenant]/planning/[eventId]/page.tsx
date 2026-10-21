@@ -24,6 +24,7 @@ import { EditingNotice, ItemStatus, PlanProgressProvider } from "@/components/pl
 import { SaveRegistryProvider, SaveScope } from "@/components/planning/save-registry";
 import { AnswerPreviewProvider } from "@/components/planning/answer-preview";
 import { StageDetailsEditor } from "@/components/planning/stage-details-editor";
+import { ClientFooter } from "@/components/app/client-footer";
 import { ClientHeader } from "@/components/app/client-header";
 import { signOut } from "@/app/auth/confirm/actions";
 import { savedListsFrom } from "@/lib/planning/music";
@@ -43,7 +44,7 @@ export const metadata: Metadata = { title: "Event planning", robots: { index: fa
 
 function Notice({ title, email, children }: { title: string; email: string | null; children: React.ReactNode }) {
   return (
-    <div className="min-h-dvh bg-muted/40">
+    <div className="flex min-h-dvh flex-col bg-muted/40">
       <ClientHeader email={email} back={email !== null} signOut={email ? signOut : undefined} />
       <main className="mx-auto grid w-full max-w-md px-4 py-12">
         <div className="grid gap-3 rounded-2xl border bg-card p-6 text-sm shadow-sm">
@@ -52,6 +53,7 @@ function Notice({ title, email, children }: { title: string; email: string | nul
           {children}
         </div>
       </main>
+      <ClientFooter />
     </div>
   );
 }
@@ -128,8 +130,8 @@ export default async function ClientPlanningPage({ params }: PageProps<"/[tenant
   return (
     // Closed when the page loaded: answers read as a review, not as disabled forms (globals.css). A plan
     // that closes while open keeps its editors on screen, unsaved input marked as such.
-    <div data-plan-shell data-plan-readonly={view.editing?.state === "closed" ? "" : undefined} className="min-h-dvh bg-plan-canvas">
-      <ClientHeader email={email} back={{ href: eventHubPath(slug, eventId), label: "Your event" }} wide signOut={signOut} />
+    <div data-plan-shell data-plan-readonly={view.editing?.state === "closed" ? "" : undefined} className="flex min-h-dvh flex-col bg-plan-canvas">
+      <ClientHeader email={email} back={{ href: eventHubPath(slug, eventId), label: "Your event" }} title="Your planning" wide signOut={signOut} />
       <main style={pageStyle} className="mx-auto grid w-full max-w-5xl gap-5 px-4 pt-5 pb-[max(2.5rem,env(safe-area-inset-bottom))] sm:gap-8 sm:pt-8">
         <PlanProgressProvider initial={view.progress} warnings={view.timeline_warnings} basics={view.basics.answers} editing={view.editing}>
           <SaveRegistryProvider>
@@ -288,6 +290,7 @@ export default async function ClientPlanningPage({ params }: PageProps<"/[tenant
           </SaveRegistryProvider>
         </PlanProgressProvider>
       </main>
+      <ClientFooter wide />
     </div>
   );
 }

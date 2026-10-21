@@ -3,7 +3,8 @@
  * businesses in different states, the recommended action for the signer and
  * for another person with access, the contract overview, payments, signing,
  * the signed PDF, and the refusals (signed out, archived, suspended, another
- * person's contract).
+ * person's contract). Where the client sign-in lands without a destination:
+ * the one event's hub, or /my for several or none.
  *
  * Fixtures go through the same database functions the app uses (the staff
  * screens that create them are covered by their own specs). Dedicated e2e
@@ -25,6 +26,8 @@ const keptPdfJobs: string[] = [];
 const signerEmail = `e2e-home-signer-${run}@example.test`;
 const viewerEmail = `e2e-home-viewer-${run}@example.test`;
 const emptyEmail = `e2e-home-empty-${run}@example.test`;
+/** One event they can open (and one archived they no longer can). */
+const soloEmail = `e2e-home-solo-${run}@example.test`;
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
 const dayFromNow = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
 
@@ -163,6 +166,18 @@ test.describe.serial("client home and contract", () => {
       await must(admin.from("event_access").insert({ tenant_id: a.tenant.id, event_id: id, client_id: viewerClient, user_id: viewer.user!.id }));
     }
 
+    // A client with one event they can open, and one the business archived.
+    const { data: solo } = await must(admin.auth.admin.createUser({ email: soloEmail, email_confirm: true }));
+    const soloClient = randomUUID();
+    await must(admin.from("clients").insert({ id: soloClient, tenant_id: a.tenant.id, name: "Alex Kim", email: soloEmail }));
+    const archivedId = randomUUID();
+    await must(admin.from("events").insert({ id: archivedId, tenant_id: a.tenant.id, title: `E2E Archived Party ${run}`, event_type: "party", event_date: dayFromNow(90) }));
+    for (const id of [ev.booked.id, archivedId]) {
+      await must(admin.from("event_clients").insert({ tenant_id: a.tenant.id, event_id: id, client_id: soloClient, is_primary: false, can_sign: false }));
+      await must(admin.from("event_access").insert({ tenant_id: a.tenant.id, event_id: id, client_id: soloClient, user_id: solo.user!.id }));
+    }
+    await must(admin.from("events").update({ archived_at: new Date().toISOString() }).eq("id", archivedId));
+
     signerContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
     signer = await signerContext.newPage();
     await signInWithLink(signer, signerEmail, "/my");
@@ -181,13 +196,50 @@ test.describe.serial("client home and contract", () => {
     await archiveTestTenant(b?.tenant);
   });
 
-  test("an account with no events gets a clear empty state", async () => {
+  test("an account with no events: the client sign-in lands on a clear empty state, with a way to switch email", async () => {
     const page = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
-    await signInWithLink(page, emptyEmail, "/my");
+    // The client sign-in's own default (what the form sends when no page asked for sign-in).
+    await signInWithLink(page, emptyEmail, "/my/continue");
     await page.waitForURL("**/my");
-    await expect(page.getByRole("heading", { name: "No events yet" })).toBeVisible();
-    await expect(page.getByText(/has no contracts to read yet/)).toBeVisible();
+    await expect(page.getByRole("heading", { name: "No events to show yet" })).toBeVisible();
+    await expect(page.getByTestId("no-events")).toContainText(`When your DJ shares an event with ${emptyEmail}, you'll find it here.`);
+    await expect(page.getByTestId("no-events")).not.toContainText(/book|create|new event/i);
     await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+    expect(await noSideways(page)).toBeLessThanOrEqual(0);
+    const another = page.getByRole("button", { name: "Sign in with another email" });
+    expect((await another.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await another.click();
+    await page.waitForURL("**/login?role=client");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Welcome to your event portal");
+    await page.goto("/my");
+    await expect(page).toHaveURL(/\/login\?role=client&next=%2Fmy$/);
+    await page.context().close();
+  });
+
+  test("one event: the client sign-in opens its hub; /my still lists it; archived events never count", async () => {
+    const page = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+    await signInWithLink(page, soloEmail, "/my/continue");
+    await page.waitForURL(`**/${a.tenant.slug}/events/${ev.booked.id}`);
+    await expect(page.getByRole("heading", { level: 1, name: ev.booked.title })).toBeVisible();
+    // The hub leads back to the list, which stays available for a single event.
+    await page.getByRole("link", { name: "Your events", exact: true }).click();
+    await page.waitForURL("**/my");
+    await expect(page.getByRole("heading", { level: 3 })).toHaveText([ev.booked.title]);
+    await expect(page.locator("body")).not.toContainText(`E2E Archived Party ${run}`);
+    // Signing in again for /my (asked for explicitly) keeps the list, and an explicit page wins over the hub.
+    await signInWithLink(page, soloEmail, "/my");
+    await expect(page).toHaveURL(/\/my$/);
+    await signInWithLink(page, soloEmail, `/${a.tenant.slug}/planning/${ev.booked.id}`);
+    await expect(page).toHaveURL(new RegExp(`/${a.tenant.slug}/planning/${ev.booked.id}$`));
+    await page.context().close();
+  });
+
+  test("several events, at two businesses: the client sign-in opens the list", async () => {
+    const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
+    await signInWithLink(page, signerEmail, "/my/continue");
+    await page.waitForURL("**/my");
+    await expect(page.getByRole("heading", { level: 1, name: "Your events" })).toBeVisible();
+    expect(await noSideways(page)).toBeLessThanOrEqual(0);
     await page.context().close();
   });
 
@@ -202,27 +254,34 @@ test.describe.serial("client home and contract", () => {
     const upcoming = signer.locator("section", { has: signer.getByRole("heading", { name: "Upcoming" }) }).getByRole("heading", { level: 3 });
     await expect(upcoming).toHaveText([ev.soon.title, ev.booked.title, ev.deposit.title, ev.unsigned.title]);
 
+    // One way into each event (its hub), first and strongest; shortcuts follow it.
+    await expect(card(ev.unsigned.title).getByTestId("event-hub-link")).toHaveAccessibleName(`Open your event for ${ev.unsigned.title}`);
+    await expect(card(ev.unsigned.title).getByTestId("event-hub-link")).toHaveAttribute("href", `/${a.tenant.slug}/events/${ev.unsigned.id}`);
+    await expect(card(ev.unsigned.title).getByRole("link").first()).toHaveAttribute("data-testid", "event-hub-link");
     await expect(card(ev.unsigned.title).getByTestId("event-status")).toHaveText("Contract ready to sign");
-    await expect(card(ev.unsigned.title).getByRole("link", { name: `Review and sign contract for ${ev.unsigned.title}` })).toHaveAttribute("href", `/${a.tenant.slug}/contracts/${ev.unsigned.contractId}`);
+    await expect(card(ev.unsigned.title).getByTestId("event-next-step")).toContainText("Review and sign your contract");
+    // Exactly one action per card: the event's hub, where its documents and planning live.
+    for (const t of [ev.unsigned.title, ev.deposit.title, ev.booked.title, ev.soon.title]) await expect(card(t).getByRole("link")).toHaveText([`Open your event for ${t}`]);
     await expect(card(ev.unsigned.title)).toContainText("Le Grand Salon, Montréal");
 
     await expect(card(ev.deposit.title).getByTestId("event-status")).toHaveText("Signed · awaiting deposit");
-    await expect(card(ev.deposit.title).getByRole("link", { name: `View deposit details for ${ev.deposit.title}` })).toBeVisible();
+    await expect(card(ev.deposit.title).getByTestId("event-next-step")).toContainText("Pay your deposit");
+    await expect(card(ev.deposit.title).getByTestId("event-next-step")).toContainText("Your contract is signed.");
     await expect(card(ev.deposit.title)).toContainText("Your signed PDF is being prepared.");
 
     await expect(card(ev.booked.title).getByTestId("event-status")).toHaveText("Booked");
-    await expect(card(ev.booked.title).getByRole("link", { name: `Plan your event for ${ev.booked.title}` })).toHaveAttribute("href", `/${a.tenant.slug}/planning/${ev.booked.id}`);
-    await expect(card(ev.booked.title).getByRole("link", { name: `View signed contract for ${ev.booked.title}` })).toBeVisible();
+    await expect(card(ev.booked.title).getByTestId("event-next-step")).toContainText("Plan your event");
 
     // The other business's event, a week away: client planning edits have closed (14-day default).
     await expect(card(ev.soon.title)).toContainText(b.tenant.displayName);
-    await expect(card(ev.soon.title).getByRole("link", { name: `View planning for ${ev.soon.title}` })).toBeVisible();
-    await expect(card(ev.soon.title)).toContainText("Planning is closed for changes.");
+    await expect(card(ev.soon.title).getByTestId("event-next-step")).toContainText("Planning is closed for changes");
 
-    // Each card carries its own business's colour.
-    const stripe = (title: string) => card(title).locator("div[aria-hidden]").first().evaluate((el) => getComputedStyle(el).backgroundColor);
-    expect(await stripe(ev.booked.title)).toBe("rgb(109, 40, 217)");
-    expect(await stripe(ev.soon.title)).toBe("rgb(15, 118, 110)");
+    // Each card carries its own business's colour (as Brand Ink, on its way into the event).
+    const ink = (title: string) => card(title).getByTestId("event-hub-link").evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(await ink(ev.booked.title)).not.toBe(await ink(ev.soon.title));
+    for (const [title, slug] of [[ev.booked.title, a.tenant.slug], [ev.soon.title, b.tenant.slug]]) {
+      expect(await card(title).evaluate((el) => el.style.getPropertyValue("--brand"))).toBe(slug === a.tenant.slug ? "#6d28d9" : "#0f766e");
+    }
 
     // Past events are secondary.
     const pastToggle = signer.getByText("Past events (1)");
@@ -244,7 +303,7 @@ test.describe.serial("client home and contract", () => {
       await phone.goto("/my");
       await expect(phone.getByRole("heading", { level: 1, name: "Your events" })).toBeVisible();
       expect(await noSideways(phone)).toBeLessThanOrEqual(0);
-      const action = phone.getByRole("link", { name: `Review and sign contract for ${ev.unsigned.title}` });
+      const action = phone.getByRole("link", { name: `Open your event for ${ev.unsigned.title}` });
       const box = (await action.boundingBox())!;
       expect(box.height).toBeGreaterThanOrEqual(44);
       if (width === 390) await shot(phone, "03-client-home-phone-390", true);
@@ -258,10 +317,10 @@ test.describe.serial("client home and contract", () => {
     await page.waitForURL("**/my");
     const card = (title: string) => page.getByRole("listitem").filter({ has: page.getByRole("heading", { name: title }) });
     await expect(card(ev.deposit.title).getByTestId("event-status")).toHaveText("Signed · awaiting deposit");
-    // Their only link is the event's hub (the title): no signing, contract or deposit links.
-    await expect(card(ev.deposit.title).getByRole("link")).toHaveText([ev.deposit.title]);
+    // Their only link is the event's hub: no signing, contract or deposit links.
+    await expect(card(ev.deposit.title).getByRole("link")).toHaveText([`Open your event for ${ev.deposit.title}`]);
     await expect(card(ev.deposit.title).getByRole("link")).toHaveAttribute("href", new RegExp(`^/${a.tenant.slug}/events/[0-9a-f-]{36}$`));
-    await expect(card(ev.booked.title).getByRole("link", { name: `Plan your event for ${ev.booked.title}` })).toBeVisible();
+    await expect(card(ev.booked.title).getByTestId("event-next-step")).toContainText("Plan your event");
     await expect(page.locator("body")).not.toContainText(/sign it|Review and sign|deposit still to pay|View deposit/i);
     await expect(page.getByRole("heading", { name: ev.unsigned.title })).toHaveCount(0);
     // The signer's contract stays closed to them.
@@ -366,7 +425,14 @@ test.describe.serial("client home and contract", () => {
     const anon = await browser.newContext({ viewport: { width: 390, height: 844 } });
     const page = await anon.newPage();
     await page.goto("/my");
-    await expect(page).toHaveURL(/\/login/);
+    await expect(page).toHaveURL(/\/login\?role=client&next=%2Fmy$/);
+    await page.goto("/my/continue");
+    await expect(page).toHaveURL(/\/login\?role=client$/);
+    // The hub, signed out: sign-in comes back to it.
+    await page.goto(`/${a.tenant.slug}/events/${ev.booked.id}`);
+    await expect(page).toHaveURL(new RegExp(`/login\\?role=client&next=%2F${a.tenant.slug}%2Fevents%2F${ev.booked.id}$`));
+    await expect(page.getByTestId("login-next")).toBeVisible();
+    await expect(page.locator("body")).not.toContainText(ev.booked.title);
     await page.goto(`/${a.tenant.slug}/contracts/${ev.booked.contractId}`);
     await expect(page.getByRole("heading", { name: "Sign in to read your contract" })).toBeVisible();
     await expect(page.locator("body")).not.toContainText(ev.booked.title);

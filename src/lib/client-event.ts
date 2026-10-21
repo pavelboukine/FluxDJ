@@ -44,6 +44,9 @@ export function hubNextStep(f: HubFacts): HubStep {
       : { title: "Read your contract", text: `This contract can't be signed online. ${dj} will send you an updated contract to sign.`, action: { label: "Read contract", href: contractHref! } };
   }
 
+  // Cancelled, however it was booked: no planning or payment step.
+  if (e.lifecycle === "cancelled") return { title: "This event was cancelled", text: `Contact ${dj} with any questions.`, action: null };
+
   const booked = e.bookingSource === "external" || e.lifecycle === "booked" || e.lifecycle === "completed";
   if (booked) {
     if (!f.plan) {
@@ -54,9 +57,10 @@ export function hubNextStep(f: HubFacts): HubStep {
     if (f.plan.editing === "closed") {
       return { title: "Planning is closed for changes", text: `Everything you planned stays here to read. Contact ${dj} for changes.`, action: { label: "View your plan", href: planHref } };
     }
+    // Always the planning overview (progress, sections, then its own Continue planning), never a section directly.
     return f.plan.complete
       ? { title: "Your plan is complete", text: "Every required planning detail is filled in. You can still review and change it while planning is open.", action: { label: "Review your plan", href: planHref } }
-      : { title: "Plan your event", text: `Share the timing, music and moments that matter so ${dj} can get everything ready.`, action: { label: "Continue planning", href: planHref } };
+      : { title: "Plan your event", text: `Share the timing, music and moments that matter so ${dj} can get everything ready.`, action: { label: "Open planning", href: planHref } };
   }
 
   switch (e.lifecycle) {
@@ -79,8 +83,6 @@ export function hubNextStep(f: HubFacts): HubStep {
       return { title: "Your choices are with your DJ", text: `${dj} is reviewing your choices. A contract follows if they approve them.`, action: null };
     case "lead":
       return { title: "Your proposal", text: `Proposals from ${dj} open from the link in your email.`, action: null };
-    case "cancelled":
-      return { title: "This event was cancelled", text: `Contact ${dj} with any questions.`, action: null };
     default:
       return { title: "Your event", text: null, action: null };
   }

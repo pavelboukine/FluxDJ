@@ -1,7 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { HubFacts } from "@/lib/client-event";
 import type { HomeEvent } from "@/lib/client-home";
 import { clientEditingSchema, type ClientEditing } from "@/lib/planning/cutoff";
-import { progressSchema, type PlanProgress } from "@/lib/planning/view";
+import { progressPercent, progressSchema, type PlanProgress } from "@/lib/planning/view";
 import type { ClientPaymentSummary } from "@/lib/payments";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -134,4 +135,15 @@ export async function loadClientEvents(supabase: Db, only?: { slug: string; even
       };
       return { home, contract: c?.contract ?? null, payments: c?.payments ?? null, plan };
     });
+}
+
+/** What the hub's next step (and each event's card on /my) is worded from. */
+export function hubFacts(f: ClientEventFacts): HubFacts {
+  return {
+    home: f.home,
+    contract: f.contract
+      ? { id: f.contract.id, status: f.contract.status, totalCents: f.contract.totalCents, signable: f.contract.signing.signed || f.contract.signing.enabled }
+      : null,
+    plan: f.plan ? { editing: f.plan.editing?.state ?? null, complete: f.plan.progress ? progressPercent(f.plan.progress) === 100 : false } : null,
+  };
 }

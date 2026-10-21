@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { ShieldCheck } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { PublicShell } from "@/components/app/public-shell";
-import { allowedNext, nextFromRedirectTo, safeNext, safeOtpType } from "@/lib/auth/redirects";
+import { allowedNext, CLIENT_SIGN_IN_HOME, nextFromRedirectTo, safeNext, safeOtpType } from "@/lib/auth/redirects";
 import { SIGN_IN_NEXT_COOKIE } from "@/lib/auth/sign-in-next";
 import { publicEnv } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
@@ -25,7 +25,7 @@ function wording(to: string): { heading: string; text: string } {
   if (/^\/[^/]+\/events\//.test(to)) return { heading: "Open your event", text: "You're almost there. Confirm to sign in on this device and continue to your event." };
   if (/^\/[^/]+\/planning-invitations\//.test(to)) return { heading: "Open your event planning", text: "You're almost there. Confirm to verify your email and continue to your event planning on this device." };
   if (/^\/[^/]+\/planning\//.test(to)) return { heading: "Open your event planning", text: "You're almost there. Confirm to sign in on this device and continue to your planning." };
-  if (to === "/my") return { heading: "Open your events", text: "You're almost there. Confirm to sign in on this device and see your events." };
+  if (to === "/my" || to === CLIENT_SIGN_IN_HOME) return { heading: "Open your events", text: "You're almost there. Confirm to sign in on this device and see your events." };
   return { heading: "Welcome back to Flux DJ", text: "You're almost there. Confirm to sign in to Flux DJ on this device." };
 }
 

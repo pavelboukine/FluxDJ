@@ -3,7 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { retrySignInHref, safeNext, safeOtpType } from "@/lib/auth/redirects";
+import { loginHref, retrySignInHref, safeNext, safeOtpType } from "@/lib/auth/redirects";
 import { SIGN_IN_NEXT_COOKIE } from "@/lib/auth/sign-in-next";
 
 /**
@@ -30,4 +30,11 @@ export async function signOut() {
   const supabase = await createClient();
   await supabase.auth.signOut();
   redirect("/login");
+}
+
+/** Signs out and opens the client sign-in, for a client who signed in with a different email than their DJ has. */
+export async function signOutToClientSignIn() {
+  const supabase = await createClient();
+  await supabase.auth.signOut();
+  redirect(loginHref("client"));
 }

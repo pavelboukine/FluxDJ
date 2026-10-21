@@ -1,9 +1,8 @@
 import { dateIn } from "@/lib/dates";
-import { formatCents } from "@/lib/money";
 
 /**
  * The client home (/my): what to show for each event the signed-in client
- * can open, and the one action to recommend.
+ * can open.
  *
  * Everything comes from client views that already decide access and status
  * in the database:
@@ -15,9 +14,8 @@ import { formatCents } from "@/lib/money";
  *  - client_payment_summary: the signer's booking status and payment figures;
  *  - my_plans + client_planning_view: planning, only once the database allows
  *    it, and whether client editing is open.
- * This module only chooses wording and links from those facts. It adds no
- * booking, payment or signing rule, and never offers payment (Flux DJ takes
- * none) or signing to someone who isn't the signer.
+ * This module only words each event's status from those facts. It adds no
+ * booking, payment or signing rule.
  */
 
 export type HomeContract = {
@@ -53,103 +51,43 @@ export type HomeEvent = {
   plan: { editing: "open" | "reopened" | "closed" | null } | null;
 };
 
-export type HomeAction = { label: string; href: string; kind: "link" | "pdf" };
 export type HomeTone = "action" | "waiting" | "done" | "neutral";
 
-export type HomeCard = {
-  status: string;
-  tone: HomeTone;
-  /** One or two sentences: what is happening and who acts next. */
-  note: string | null;
-  primary: HomeAction | null;
-  secondary: HomeAction[];
-};
+/**
+ * An event's status, the same pill on /my and its hub. What happens next, and
+ * the way to do it, is the hub's next step (lib/client-event hubNextStep).
+ */
+export type HomeCard = { status: string; tone: HomeTone };
 
 export function homeCard(e: HomeEvent): HomeCard {
-  const dj = e.tenantName;
-  const contractHref = e.contract ? `/${e.tenantSlug}/contracts/${e.contract.id}` : null;
-  const pdf: HomeAction | null =
-    e.contract?.status === "signed" && e.contract.pdfReady ? { label: "Download signed PDF", href: `${contractHref}/signed-pdf`, kind: "pdf" } : null;
-  const planAction: HomeAction | null = e.plan
-    ? e.plan.editing === "closed"
-      ? { label: "View planning", href: `/${e.tenantSlug}/planning/${e.eventId}`, kind: "link" }
-      : { label: "Plan your event", href: `/${e.tenantSlug}/planning/${e.eventId}`, kind: "link" }
-    : null;
-  const signedContract: HomeAction | null = e.contract?.status === "signed" ? { label: "View signed contract", href: contractHref!, kind: "link" } : null;
-  const secondary = (...actions: (HomeAction | null)[]) => actions.filter((a): a is HomeAction => a !== null);
-
   // A contract waiting for this user, who is its signer.
   if (e.contract?.status === "sent") {
-    return e.contract.signable
-      ? {
-          status: "Contract ready to sign",
-          tone: "action",
-          note: `Read your contract from ${dj} and sign it online.`,
-          primary: { label: "Review and sign contract", href: contractHref!, kind: "link" },
-          secondary: [],
-        }
-      : {
-          status: "Contract ready to read",
-          tone: "waiting",
-          note: `This contract can't be signed online. ${dj} will send you an updated contract to sign.`,
-          primary: { label: "Read contract", href: contractHref!, kind: "link" },
-          secondary: [],
-        };
+    return e.contract.signable ? { status: "Contract ready to sign", tone: "action" } : { status: "Contract ready to read", tone: "waiting" };
   }
-
+  // Cancelled, however it was booked.
+  if (e.lifecycle === "cancelled") return { status: "Cancelled", tone: "neutral" };
   // Booked outside Flux DJ: nothing to sign or pay here, only planning.
-  if (e.bookingSource === "external") {
-    return {
-      status: "Booked",
-      tone: "done",
-      note: planAction
-        ? e.plan?.editing === "closed"
-          ? "Planning is closed for changes. You can still read it."
-          : "Your event is booked. Let's plan the details."
-        : `${dj} will share your event planning when it's ready.`,
-      primary: planAction,
-      secondary: [],
-    };
-  }
+  if (e.bookingSource === "external") return { status: "Booked", tone: "done" };
 
   switch (e.lifecycle) {
     case "lead":
-      return { status: "Proposal stage", tone: "neutral", note: `Proposals from ${dj} open from the link in your email.`, primary: null, secondary: [] };
+      return { status: "Proposal stage", tone: "neutral" };
     case "pending_approval":
-      return { status: "Choices submitted", tone: "waiting", note: `${dj} is reviewing your choices. A contract follows if they approve them.`, primary: null, secondary: [] };
+      return { status: "Choices submitted", tone: "waiting" };
     case "awaiting_signature":
-      if (e.contract?.status === "signed") {
-        // Signed before booking rules existed: the DJ confirms the booking.
-        return { status: "Contract signed · booking not confirmed yet", tone: "waiting", note: `${dj} will confirm your booking.`, primary: signedContract, secondary: secondary(pdf) };
-      }
-      // No contract this user can read: none is ready yet, or it is for another person to sign.
-      return { status: "Contract stage", tone: "waiting", note: `${dj} emails the contract to the person signing for this event.`, primary: null, secondary: [] };
-    case "awaiting_deposit": {
-      const owed = e.payments?.depositOutstandingCents ? formatCents(e.payments.depositOutstandingCents, e.payments.currency) : null;
-      return {
-        status: "Signed · awaiting deposit",
-        tone: "waiting",
-        note: owed
-          ? `${owed} deposit still to pay, as arranged with ${dj}. They confirm your booking once they record it.`
-          : `${dj} confirms your booking once they record your deposit.`,
-        primary: e.contract ? { label: "View deposit details", href: `${contractHref}#payments`, kind: "link" } : null,
-        secondary: secondary(e.contract ? signedContract : null, pdf),
-      };
-    }
+      // Signed before booking rules existed: the DJ confirms the booking. Otherwise no contract this
+      // user can read yet: none is ready, or it is for another person to sign.
+      return e.contract?.status === "signed"
+        ? { status: "Contract signed · booking not confirmed yet", tone: "waiting" }
+        : { status: "Contract stage", tone: "waiting" };
+    case "awaiting_deposit":
+      return { status: "Signed · awaiting deposit", tone: "waiting" };
     case "booked":
-      return {
-        status: "Booked",
-        tone: "done",
-        note: planAction ? (e.plan?.editing === "closed" ? "Planning is closed for changes. You can still read it." : null) : `${dj} will be in touch about the next steps.`,
-        primary: planAction ?? signedContract,
-        secondary: secondary(planAction ? signedContract : null, pdf),
-      };
+      return { status: "Booked", tone: "done" };
     case "completed":
-      return { status: "Completed", tone: "neutral", note: null, primary: planAction ?? signedContract, secondary: secondary(planAction ? signedContract : null, pdf) };
-    case "cancelled":
-      return { status: "Cancelled", tone: "neutral", note: `Contact ${dj} with any questions.`, primary: null, secondary: [] };
+      return { status: "Completed", tone: "neutral" };
     default:
-      return { status: e.lifecycle.replaceAll("_", " "), tone: "neutral", note: null, primary: planAction ?? signedContract, secondary: secondary(pdf) };
+      return { status: e.lifecycle.replaceAll("_", " "), tone: "neutral" };
   }
 }
 

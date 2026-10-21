@@ -1,17 +1,21 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CalendarDays, ChevronRight, MapPin } from "lucide-react";
+import { redirect } from "next/navigation";
+import { ArrowRight, CalendarDays, MapPin } from "lucide-react";
 import { BrandLogo } from "@/components/app/brand-logo";
-import { InstallHelp, PdfDownloadLink } from "@/components/app/pwa";
+import { CLIENT_FOCUS, CLIENT_PRIMARY, CLIENT_SECONDARY, EventStatusPill } from "@/components/app/client-event-ui";
+import { InstallHelp } from "@/components/app/pwa";
+import { ClientFooter } from "@/components/app/client-footer";
 import { ClientHeader } from "@/components/app/client-header";
-import { signOut } from "@/app/auth/confirm/actions";
-import { requireUser } from "@/lib/auth/staff";
+import { signOut, signOutToClientSignIn } from "@/app/auth/confirm/actions";
+import { loginHref } from "@/lib/auth/redirects";
 import { brandStyle } from "@/lib/branding/colors";
 import { liveBrand, type BrandLogo as Logo } from "@/lib/branding/logo.server";
-import { eventHubPath } from "@/lib/client-event";
-import { loadClientEvents } from "@/lib/client-event.server";
-import { homeCard, splitByDate, type HomeAction, type HomeCard, type HomeEvent, type HomeTone } from "@/lib/client-home";
-import { formatEventDate } from "@/lib/planning/view";
+import { eventHubPath, hubNextStep } from "@/lib/client-event";
+import { hubFacts, loadClientEvents, type ClientEventFacts } from "@/lib/client-event.server";
+import { homeCard, splitByDate } from "@/lib/client-home";
+import { formatEventDate, progressPercentText } from "@/lib/planning/view";
+import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Your events", robots: { index: false, follow: false } };
@@ -19,113 +23,108 @@ export const metadata: Metadata = { title: "Your events", robots: { index: false
 type Brand = { logo: Logo | null; primary: string | undefined };
 
 /**
- * Client home after sign-in: the events this verified identity can open, each
- * with its own business's branding, status and one recommended next action.
- * Every fact comes from client views that check access in the database (see
- * lib/client-event.server, shared with each event's hub); this page never reads
- * staff data. Each card leads to its event's hub.
+ * The client's events, across every business they work with: each card
+ * carries its own business's branding, status and next step (the same words as
+ * the event's hub), and leads to that hub. Every fact comes from client views
+ * that check access in the database (lib/client-event.server, shared with
+ * each hub); this page never reads staff data. The page itself stays neutral
+ * (Flux), since its events can belong to different businesses.
  */
 export default async function MyEvents() {
-  const { supabase, user } = await requireUser();
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) redirect(loginHref("client", "/my"));
+  const user = auth.user;
   const [facts, { count: memberships }] = await Promise.all([
     loadClientEvents(supabase),
     supabase.from("tenant_memberships").select("id", { count: "exact", head: true }).eq("user_id", user.id).is("removed_at", null),
   ]);
-  const homeEvents: HomeEvent[] = facts.map((f) => f.home);
 
   // Each business's current branding (after the access checks above), once per business.
   const brands = new Map<string, Brand>();
   await Promise.all(
-    [...new Set(homeEvents.map((e) => e.tenantSlug))].map(async (slug) => {
+    [...new Set(facts.map((f) => f.home.tenantSlug))].map(async (slug) => {
       const live = await liveBrand(slug);
       brands.set(slug, { logo: live?.logo ?? null, primary: live?.brandColors.primary });
     }),
   );
 
-  const { upcoming, past } = splitByDate(homeEvents, new Date());
+  const { upcoming, past } = splitByDate(
+    facts.map((f) => ({ ...f, eventDate: f.home.eventDate, timezone: f.home.timezone })),
+    new Date(),
+  );
 
   return (
-    <div className="min-h-dvh bg-muted/40">
+    <div data-plan-shell className="flex min-h-dvh flex-col bg-plan-canvas">
       <ClientHeader email={user.email ?? null} staffLink={memberships ? "/staff" : null} signOut={signOut} />
-      <main className="mx-auto grid w-full max-w-3xl gap-6 px-4 pt-6 pb-[max(2rem,env(safe-area-inset-bottom))] sm:pt-10">
+      <main className="mx-auto grid w-full max-w-3xl gap-6 px-4 pt-6 pb-[max(2.5rem,env(safe-area-inset-bottom))] sm:gap-8 sm:pt-10">
         <InstallHelp />
-        <div className="grid gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Your events</h1>
-          <p className="text-sm text-muted-foreground">Contracts, payments and planning shared with you by your DJ.</p>
+        <div className="grid gap-1.5">
+          <h1 className="text-[1.375rem] leading-tight font-semibold tracking-tight sm:text-[1.75rem]">Your events</h1>
+          <p className="max-w-[60ch] text-sm text-pretty text-plan-ink-2">
+            {facts.length > 0
+              ? "Open an event for its booking documents, payments and planning."
+              : "Events your DJ shares with you appear here."}
+          </p>
         </div>
 
-        {homeEvents.length === 0 ? (
-          <section className="grid gap-2 rounded-2xl border bg-card p-5 text-sm shadow-sm">
-            <h2 className="text-base font-semibold">No events yet</h2>
-            <p>{user.email} has no contracts to read yet. Your DJ will email you when one is ready.</p>
-            <p className="text-muted-foreground">Proposals open from the link in your DJ&apos;s email; they don&apos;t need an account.</p>
-          </section>
-        ) : null}
+        {facts.length === 0 ? <NoEvents email={user.email ?? null} /> : null}
 
         {upcoming.length > 0 ? (
           <section aria-labelledby="upcoming-heading" className="grid gap-3">
-            <h2 id="upcoming-heading" className="text-sm font-semibold tracking-wide text-muted-foreground uppercase">
+            <h2 id="upcoming-heading" className="text-sm font-semibold text-plan-ink-2">
               Upcoming
             </h2>
             <ul className="grid gap-4">
-              {upcoming.map((e) => (
-                <EventCard key={e.eventId} event={e} card={homeCard(e)} brand={brands.get(e.tenantSlug)} />
+              {upcoming.map((f) => (
+                <EventCard key={f.home.eventId} facts={f} brand={brands.get(f.home.tenantSlug)} />
               ))}
             </ul>
           </section>
-        ) : homeEvents.length > 0 ? (
-          <p className="text-sm text-muted-foreground">No upcoming events.</p>
+        ) : facts.length > 0 ? (
+          <p className="text-sm text-plan-ink-2" data-testid="no-upcoming">No upcoming events. Your past events are below.</p>
         ) : null}
 
         {past.length > 0 ? (
           <details className="group/past grid gap-3" open={upcoming.length === 0}>
-            <summary className="flex min-h-11 cursor-pointer items-center rounded-lg px-1 text-sm font-semibold tracking-wide text-muted-foreground uppercase outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+            <summary className={cn("flex min-h-11 w-fit cursor-pointer items-center rounded-md text-sm font-semibold text-plan-ink-2", CLIENT_FOCUS)}>
               Past events ({past.length})
             </summary>
             <ul className="mt-3 grid gap-4">
-              {past.map((e) => (
-                <EventCard key={e.eventId} event={e} card={homeCard(e)} brand={brands.get(e.tenantSlug)} past />
+              {past.map((f) => (
+                <EventCard key={f.home.eventId} facts={f} brand={brands.get(f.home.tenantSlug)} past />
               ))}
             </ul>
           </details>
         ) : null}
       </main>
+      <ClientFooter />
     </div>
   );
 }
 
-const TONES: Record<HomeTone, string> = {
-  action: "bg-amber-100 text-amber-950 dark:bg-amber-500/20 dark:text-amber-100",
-  waiting: "bg-muted text-foreground",
-  done: "bg-emerald-100 text-emerald-950 dark:bg-emerald-500/20 dark:text-emerald-100",
-  neutral: "bg-muted text-muted-foreground",
-};
-
-function EventCard({ event: e, card, brand, past }: { event: HomeEvent; card: HomeCard; brand: Brand | undefined; past?: boolean }) {
+/**
+ * One event: whose it is (logo or name), what and when, its status and next step, and one way in: its hub,
+ * where every document and planning link lives. On the business's Brand Ink; quieter for a past event.
+ */
+function EventCard({ facts, brand, past }: { facts: ClientEventFacts; brand: Brand | undefined; past?: boolean }) {
+  const e = facts.home;
+  const card = homeCard(e);
+  const step = hubNextStep(hubFacts(facts));
+  const progress = facts.plan?.progress && facts.plan.editing?.state !== "closed" ? progressPercentText(facts.plan.progress) : null;
   return (
-    <li style={brandStyle(brand?.primary)} className={cn("overflow-hidden rounded-2xl border bg-card", past ? "shadow-none" : "shadow-sm")}>
-      <div aria-hidden className="h-1.5 bg-[var(--brand)]" />
-      <div className="grid gap-4 p-4 sm:p-5">
-        <div className="flex flex-wrap items-center justify-between gap-2">
+    <li style={brandStyle(brand?.primary)} className="rounded-2xl border border-plan-hairline bg-plan-surface">
+      <div className="grid gap-4 p-4 sm:p-6">
+        <div className="flex items-center justify-between gap-3">
           <span className="flex min-h-8 min-w-0 items-center text-sm">
             <BrandLogo logo={brand?.logo ?? null} name={e.tenantName} className="max-h-8 max-w-36" fallbackClassName="font-semibold [overflow-wrap:anywhere]" />
           </span>
-          <span data-testid="event-status" className={cn("rounded-full px-2.5 py-1 text-xs font-semibold", TONES[card.tone])}>
-            {card.status}
-          </span>
+          <EventStatusPill label={card.status} tone={card.tone} />
         </div>
-        <div className="grid gap-1">
-          <h3 className="text-lg leading-snug font-semibold [overflow-wrap:anywhere]">
-            <Link
-              href={eventHubPath(e.tenantSlug, e.eventId)}
-              data-testid="event-hub-link"
-              className="group/title inline-flex items-baseline gap-1 rounded-sm underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"
-            >
-              {e.title}
-              <ChevronRight aria-hidden className="size-4 shrink-0 translate-y-0.5 text-muted-foreground transition-transform group-hover/title:translate-x-0.5 motion-reduce:transition-none" />
-            </Link>
-          </h3>
-          <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+
+        <div className="grid gap-1.5">
+          <h3 className="text-lg leading-snug font-semibold text-balance [overflow-wrap:anywhere] sm:text-xl">{e.title}</h3>
+          <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-plan-ink-2">
             <span className="inline-flex items-center gap-1.5">
               <CalendarDays aria-hidden className="size-4 shrink-0" />
               {formatEventDate(e.eventDate)}
@@ -138,41 +137,51 @@ function EventCard({ event: e, card, brand, past }: { event: HomeEvent; card: Ho
             ) : null}
           </p>
         </div>
-        {card.note ? <p className="text-sm">{card.note}</p> : null}
-        {e.contract?.status === "signed" && e.contract.pdfPending && !e.contract.pdfReady ? (
-          <p className="text-xs text-muted-foreground">Your signed PDF is being prepared.</p>
-        ) : null}
-        {card.primary || card.secondary.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            {card.primary ? <ActionLink action={card.primary} title={e.title} primary /> : null}
-            {card.secondary.map((a) => (
-              <ActionLink key={a.label} action={a} title={e.title} />
-            ))}
-          </div>
-        ) : null}
+
+        <div className="grid gap-1 border-t border-plan-hairline pt-4 text-sm" data-testid="event-next-step">
+          <p className="font-medium text-pretty">
+            {step.title}
+            {progress ? <span className="font-normal text-plan-ink-2"> · {progress}</span> : null}
+          </p>
+          {step.text ? <p className="max-w-[60ch] text-pretty text-plan-ink-2">{step.text}</p> : null}
+          {e.contract?.status === "signed" && e.contract.pdfPending && !e.contract.pdfReady ? (
+            <p className="text-plan-ink-2">Your signed PDF is being prepared.</p>
+          ) : null}
+        </div>
+
+        <div className="flex sm:justify-end">
+          <Link href={eventHubPath(e.tenantSlug, e.eventId)} data-testid="event-hub-link" className={past ? CLIENT_SECONDARY : CLIENT_PRIMARY}>
+            Open your event
+            <span className="sr-only"> for {e.title}</span>
+            <ArrowRight aria-hidden className="size-4" />
+          </Link>
+        </div>
       </div>
     </li>
   );
 }
 
-function ActionLink({ action, title, primary }: { action: HomeAction; title: string; primary?: boolean }) {
-  const className = primary
-    ? "inline-flex min-h-11 items-center justify-center rounded-xl bg-[var(--brand)] px-4 text-sm font-semibold text-[var(--brand-foreground)] outline-none focus-visible:ring-3 focus-visible:ring-ring/60 max-sm:w-full"
-    : "inline-flex min-h-11 items-center text-sm font-medium underline underline-offset-4 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 rounded-md";
-  // Several events can share a label, so the link's accessible name includes the event.
-  const label = (
-    <>
-      {action.label}
-      <span className="sr-only"> for {title}</span>
-    </>
-  );
-  return action.kind === "pdf" ? (
-    <PdfDownloadLink className={className} href={action.href} fallbackName="signed-contract.pdf">
-      {label}
-    </PdfDownloadLink>
-  ) : (
-    <Link className={className} href={action.href}>
-      {label}
-    </Link>
+/** No event this account can open. The same answer whatever the reason (none yet, archived, another email), naming nothing. */
+function NoEvents({ email }: { email: string | null }) {
+  return (
+    <section aria-labelledby="no-events-heading" data-testid="no-events" className="grid justify-items-start gap-4 rounded-2xl border border-plan-hairline bg-plan-surface p-5 sm:p-8">
+      <span aria-hidden className="flex size-10 items-center justify-center rounded-full bg-plan-track text-plan-ink-2">
+        <CalendarDays className="size-5" />
+      </span>
+      <div className="grid gap-1.5">
+        <h2 id="no-events-heading" className="text-lg leading-snug font-semibold">No events to show yet</h2>
+        <p className="max-w-[60ch] text-sm text-pretty text-plan-ink-2">
+          When your DJ shares an event with {email ? <span className="font-medium text-foreground [overflow-wrap:anywhere]">{email}</span> : "this email address"}, you&apos;ll find it here. Proposals open from the link in your DJ&apos;s email and don&apos;t need an account.
+        </p>
+      </div>
+      <div className="grid gap-2 border-t border-plan-hairline pt-4 text-sm text-plan-ink-2 justify-self-stretch">
+        <p>Does your DJ have a different email address for you?</p>
+        <form action={signOutToClientSignIn}>
+          <button type="submit" className={CLIENT_SECONDARY}>
+            Sign in with another email
+          </button>
+        </form>
+      </div>
+    </section>
   );
 }
