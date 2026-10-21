@@ -3,6 +3,7 @@
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { endsAfterMidnight } from "@/lib/planning/basics";
+import { zoneName } from "@/lib/planning/cutoff";
 import { discussLabel, withDj } from "@/lib/planning/dj";
 import {
   STAGE_LAYOUT,
@@ -277,8 +278,8 @@ export function StageDetailsEditor(props: Props) {
           ),
         )}
       </fieldset>
-      <p className="text-xs text-muted-foreground">
-        Times are local to the event ({props.event.timezone}). A time after midnight can be marked as the next day. Entering times never reorders the stages.
+      <p data-plan-help className="text-xs text-muted-foreground">
+        Times are local to the event ({zoneName(props.event.timezone)}). A time after midnight can be marked as the next day. Entering times never reorders the stages.
       </p>
       {!readOnly || saveState === "locked" ? <SaveStatus saveState={saveState} message={message} retry={retry} /> : null}
     </div>

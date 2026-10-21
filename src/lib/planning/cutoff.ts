@@ -64,6 +64,43 @@ export function formatInstant(iso: string, timeZone: string): string {
   return `${formatted}${zone ? ` ${zone}` : ""} (${timeZone})`;
 }
 
+/** A time zone as people say it ("Eastern Time"), never its identifier ("America/Toronto"). */
+export function zoneName(timeZone: string): string {
+  try {
+    const name = new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "longGeneric" }).formatToParts(new Date()).find((p) => p.type === "timeZoneName")?.value;
+    if (name && !name.includes("/")) return name;
+  } catch {
+    // An unknown zone falls through to its city.
+  }
+  return `${timeZone.split("/").pop()!.replaceAll("_", " ")} time`;
+}
+
+/** The calendar day ("YYYY-MM-DD") of an instant in a time zone. */
+function localDay(ms: number, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ms));
+}
+
+/**
+ * When the client can edit until, in plain words and without time-zone identifiers.
+ * A deadline at the first moment of a day (midnight, or later where daylight saving
+ * skips midnight) closes at the end of the day before: "through Friday, July 30".
+ * Any other time keeps its time and zone abbreviation: "until Tuesday, October 20 at 6:00 p.m. EDT".
+ */
+export function clientDeadlinePhrase(iso: string, timeZone: string): string {
+  const at = new Date(iso).getTime();
+  const day = localDay(at, timeZone);
+  if (localDay(at - 1, timeZone) !== day) {
+    // The day before, read in UTC so the server's own zone and DST never shift it.
+    const [y, m, d] = day.split("-").map(Number);
+    const before = new Date(Date.UTC(y, m - 1, d - 1, 12));
+    return `through ${new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" }).format(before)}`;
+  }
+  const date = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", timeZone }).format(at);
+  const time = new Intl.DateTimeFormat("en-CA", { hour: "numeric", minute: "2-digit", timeZone }).format(at);
+  const zone = new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "short" }).formatToParts(at).find((p) => p.type === "timeZoneName")?.value;
+  return `until ${date} at ${time}${zone ? ` ${zone}` : ""}`;
+}
+
 /** The wall-clock "YYYY-MM-DDTHH:MM" of an instant in a time zone (for datetime-local inputs). */
 export function localInputValue(iso: string, timeZone: string): string {
   const parts = Object.fromEntries(
@@ -125,6 +162,13 @@ export function staffEditingText(e: StaffEditing): { title: string; detail: stri
 /** The client's one-line status. */
 export function clientEditingText(e: Pick<ClientEditing, "state" | "deadline" | "closes_at" | "timezone">, djName: string): string {
   if (e.state === "closed") return "Planning is read-only. Contact your DJ for changes.";
-  if (e.state === "reopened") return `${djName} reopened planning for you. You can make changes until ${formatInstant(e.closes_at ?? e.deadline, e.timezone)}.`;
-  return `You can make changes until ${formatInstant(e.closes_at ?? e.deadline, e.timezone)}. After that, planning becomes read-only; contact ${djName} for changes.`;
+  const until = clientDeadlinePhrase(e.closes_at ?? e.deadline, e.timezone);
+  if (e.state === "reopened") return `${djName} reopened planning for you. You can make changes ${until}.`;
+  return `You can make changes ${until}. After that, planning becomes read-only; contact ${djName} for changes.`;
+}
+
+/** For the client, after the deadline: "Planning closed at the end of Friday, July 30." */
+export function clientDeadlinePassedText(deadline: string, timeZone: string): string {
+  const phrase = clientDeadlinePhrase(deadline, timeZone);
+  return phrase.startsWith("through ") ? `Planning closed at the end of ${phrase.slice("through ".length)}.` : `Planning closed ${phrase.replace(/^until /, "on ")}.`;
 }

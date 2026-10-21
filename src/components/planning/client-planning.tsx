@@ -5,6 +5,8 @@ import { PROVIDED_SECTION, firstIncompleteSection, isIncomplete, sectionStatus, 
 import { cn } from "@/lib/utils";
 import { useAnswerSummary } from "./answer-preview";
 import { ProgressMeter, usePlanProgress } from "./progress";
+import { usePlanSaveSummary } from "./save-registry";
+import { ProgressGlyph } from "./status-glyph";
 import { Flags, NavLink, PLAN_FOCUS, PLAN_PRIMARY, PanelHeading, StatusGlyph, focusFor, statusText, useNav } from "./plan-navigation";
 
 /** The client's planning overview and editing chip (navigation itself is shared: plan-navigation). */
@@ -41,6 +43,7 @@ type Row = { s: PlanSection; status: SectionStatus };
 export function PlanOverview({ djName, providedCount }: { djName: string; providedCount: number }) {
   const nav = useNav();
   const plan = usePlanProgress();
+  const saves = usePlanSaveSummary();
   if (!plan) return null;
   const p = plan.progress;
   const closed = plan.editing?.state === "closed";
@@ -86,10 +89,28 @@ export function PlanOverview({ djName, providedCount }: { djName: string; provid
                 </NavLink>
                 <p className="text-sm text-plan-ink-2">Next up: <span className="font-medium text-foreground">{next.label}</span></p>
               </div>
+            ) : saves === "saved" ? (
+              // Complete and every change saved: a quiet moment of closure. It never says the DJ was told or approved anything.
+              <div className="grid gap-4" data-testid="plan-complete">
+                <div className="grid gap-1">
+                  <p className="flex items-center gap-2 text-base font-semibold">
+                    <ProgressGlyph state="complete" />
+                    You&apos;re all caught up!
+                  </p>
+                  <p className="max-w-[60ch] text-sm text-pretty text-plan-ink-2">
+                    All required planning details are filled in. {djName} can review your answers, and you can still make changes while planning is open.
+                  </p>
+                </div>
+                <NavLink view={first.key} className={cn(button, "justify-self-start")} data-testid="plan-primary">Review your plan</NavLink>
+              </div>
             ) : (
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                 <NavLink view={first.key} className={button} data-testid="plan-primary">Review your plan</NavLink>
-                <p className="text-sm text-plan-ink-2">Every required answer in the available sections is in. You can still review and change them.</p>
+                <p className="text-sm text-plan-ink-2">
+                  {saves === "pending"
+                    ? "All required planning details are complete. Your latest changes are still being saved."
+                    : "Some changes weren't saved. Open the sections marked “Not saved” to retry."}
+                </p>
               </div>
             )
           ) : null}

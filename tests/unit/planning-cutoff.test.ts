@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkReason, clientEditingText, formatInstant, localInputValue, parseLocalInput, staffEditingSchema, staffEditingText } from "@/lib/planning/cutoff";
+import { checkReason, clientDeadlinePassedText, zoneName, clientDeadlinePhrase, clientEditingText, formatInstant, localInputValue, parseLocalInput, staffEditingSchema, staffEditingText } from "@/lib/planning/cutoff";
 import { clientPlanningViewSchema, saveResultSchema } from "@/lib/planning/view";
 
 describe("planning deadline display", () => {
@@ -41,11 +41,49 @@ describe("planning deadline display", () => {
 
   it("tells the client exactly when editing closes, and the read-only wording after", () => {
     const base = { deadline: "2026-10-16T04:00:00+00:00", timezone: "America/Toronto" };
-    expect(clientEditingText({ ...base, state: "open", closes_at: base.deadline }, "BOUPROD")).toMatch(/^You can make changes until Friday, October 16, 2026/);
+    // Midnight starting Friday, October 16 closes at the end of Thursday.
+    expect(clientEditingText({ ...base, state: "open", closes_at: base.deadline }, "BOUPROD")).toBe(
+      "You can make changes through Thursday, October 15. After that, planning becomes read-only; contact BOUPROD for changes.",
+    );
     expect(clientEditingText({ ...base, state: "reopened", closes_at: "2026-10-20T22:00:00+00:00" }, "BOUPROD")).toMatch(
-      /^BOUPROD reopened planning for you\. You can make changes until Tuesday, October 20, 2026 at 6:00\sp\.m\. EDT/,
+      /^BOUPROD reopened planning for you\. You can make changes until Tuesday, October 20 at 6:00\sp\.m\. EDT\.$/,
     );
     expect(clientEditingText({ ...base, state: "closed", closes_at: null }, "BOUPROD")).toBe("Planning is read-only. Contact your DJ for changes.");
+  });
+
+  it("says a midnight deadline as the end of the day before, in the event's zone and season", () => {
+    // 00:00 EDT, July 31, 2027 (summer).
+    expect(clientDeadlinePhrase("2027-07-31T04:00:00Z", "America/Toronto")).toBe("through Friday, July 30");
+    // 00:00 EST, November 16, 2026 (winter): the same local midnight is a different UTC hour.
+    expect(clientDeadlinePhrase("2026-11-16T05:00:00Z", "America/Toronto")).toBe("through Sunday, November 15");
+    // Across a month and a year.
+    expect(clientDeadlinePhrase("2026-03-01T08:00:00Z", "America/Vancouver")).toBe("through Saturday, February 28");
+    expect(clientDeadlinePhrase("2027-01-01T05:00:00Z", "America/Toronto")).toBe("through Thursday, December 31");
+    // East of UTC: midnight in Paris is the evening before in UTC.
+    expect(clientDeadlinePhrase("2027-06-14T22:00:00Z", "Europe/Paris")).toBe("through Monday, June 14");
+    // Where daylight saving skips midnight, the day's first moment (01:00) still closes the day before.
+    expect(clientDeadlinePhrase("2026-09-06T04:00:00Z", "America/Santiago")).toBe("through Saturday, September 5");
+  });
+
+  it("keeps the time for any other deadline, with a readable zone and never its identifier", () => {
+    expect(clientDeadlinePhrase("2026-10-20T22:00:00Z", "America/Toronto")).toMatch(/^until Tuesday, October 20 at 6:00\sp\.m\. EDT$/);
+    expect(clientDeadlinePhrase("2026-12-01T17:30:00Z", "America/Toronto")).toMatch(/^until Tuesday, December 1 at 12:30\sp\.m\. EST$/);
+    // The same instant, 00:00 in Toronto, is 9:00 p.m. the day before in Vancouver: not a midnight there.
+    expect(clientDeadlinePhrase("2027-07-31T04:00:00Z", "America/Vancouver")).toMatch(/^until Friday, July 30 at 9:00\sp\.m\. PDT$/);
+    for (const [iso, zone] of [["2027-07-31T04:00:00Z", "America/Toronto"], ["2026-10-20T22:00:00Z", "America/Toronto"]]) {
+      expect(clientEditingText({ state: "open", deadline: iso, closes_at: iso, timezone: zone }, "BOUPROD")).not.toContain("America/");
+    }
+  });
+
+  it("names a time zone the way people say it", () => {
+    expect(zoneName("America/Toronto")).toBe("Eastern Time");
+    expect(zoneName("America/Vancouver")).toBe("Pacific Time");
+    expect(zoneName("Not/A_Zone")).toBe("A Zone time");
+  });
+
+  it("says when planning closed, in the same words", () => {
+    expect(clientDeadlinePassedText("2027-07-31T04:00:00Z", "America/Toronto")).toBe("Planning closed at the end of Friday, July 30.");
+    expect(clientDeadlinePassedText("2026-10-20T22:00:00Z", "America/Toronto")).toMatch(/^Planning closed on Tuesday, October 20 at 6:00\sp\.m\. EDT\.$/);
   });
 });
 

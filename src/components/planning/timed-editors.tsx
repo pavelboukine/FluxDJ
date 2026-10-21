@@ -34,6 +34,7 @@ import { Choices, EntryList, Frame, PRONUNCIATION_HINT, text, type Common } from
 import { ChoiceFieldset, ChoiceOption, ChoiceSingle } from "./choice-list";
 import { LabelText } from "./label-text";
 import { useEditingClosed, usePlanProgress } from "./progress";
+import { zoneName } from "@/lib/planning/cutoff";
 import { discussLabel } from "@/lib/planning/dj";
 import { SaveStatus, useAutosave } from "./use-autosave";
 
@@ -75,7 +76,7 @@ export function ArrivalEditor(props: Common<ArrivalAnswers> & { event: EventInfo
   return (
     <Frame
       props={props as Common<unknown>}
-      hint={`General guest arrival, before anything else. Ceremony guest arrival stays in the Ceremony details; reuse it here instead of typing it twice. Times are local to the event (${props.event.timezone}). Arrival music has its own card.`}
+      hint={`General guest arrival, before anything else. Ceremony guest arrival stays in the Ceremony details; reuse it here instead of typing it twice. Times are local to the event (${zoneName(props.event.timezone)}). Arrival music has its own card.`}
       status={<SaveStatus saveState={saveState} message={message} retry={retry} />}
     >
       <fieldset disabled={readOnly} className="grid gap-4 sm:grid-cols-2">

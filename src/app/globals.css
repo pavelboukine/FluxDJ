@@ -239,6 +239,10 @@
   border-color: var(--destructive);
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--destructive) 14%, transparent);
 }
+/* No single word left alone on the last line of a hint or explanation. */
+[data-plan-shell] p {
+  text-wrap: pretty;
+}
 [data-plan-shell] :is(input[type="radio"], input[type="checkbox"]) {
   accent-color: var(--brand-ink, var(--foreground));
 }
@@ -283,6 +287,17 @@
 /* The chosen answer reads as an answer, not as a control that can't be used. */
 [data-plan-readonly] [data-choice-option] > input {
   display: none;
+}
+/* How-to-fill-in guidance ("Add everyone who…", field hints such as "For example: …") is for editing only. */
+[data-plan-readonly] [data-plan-help],
+[data-plan-readonly] [data-field] > [id$="-hint"] {
+  display: none;
+}
+/* A chosen option reads like the other answers: plain text under its question, not a tinted row. */
+[data-plan-readonly] [data-choice-option] {
+  min-height: 0;
+  padding-block: 0.375rem;
+  background-color: transparent;
 }
 /* Nothing can change, so "All changes saved" says nothing; errors and "not saved" stay. */
 [data-plan-readonly] [data-save-status="saved"] {

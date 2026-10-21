@@ -1,9 +1,9 @@
 "use client";
 
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
-import { CalendarClock, Lock } from "lucide-react";
+import { CalendarClock, Clock, Lock } from "lucide-react";
 import { BASICS_REQUIREMENT_LABELS, type BasicsAnswers } from "@/lib/planning/basics";
-import { clientEditingText, formatInstant, type ClientEditing } from "@/lib/planning/cutoff";
+import { clientDeadlinePassedText, clientDeadlinePhrase, clientEditingText, type ClientEditing } from "@/lib/planning/cutoff";
 import { REQUIREMENT_NOTES, requirementLabel } from "@/lib/planning/stages";
 import type { SectionState } from "@/lib/planning/navigation";
 import { ProgressGlyph } from "./status-glyph";
@@ -126,14 +126,14 @@ export function EditingNotice({ djName }: { djName: string }) {
         <span className="grid gap-0.5">
           <span className="font-medium">{clientEditingText(e, djName)}</span>
           <span>
-            {e.closed_by_dj ? `${djName} has closed planning to changes.` : `The planning deadline was ${formatInstant(e.deadline, e.timezone)}.`} You can
+            {e.closed_by_dj ? `${djName} has closed planning to changes.` : clientDeadlinePassedText(e.deadline, e.timezone)} You can
             still open every section to see what was saved.
           </span>
         </span>
       </section>
     );
   }
-  const until = formatInstant(e.closes_at ?? e.deadline, e.timezone);
+  const until = clientDeadlinePhrase(e.closes_at ?? e.deadline, e.timezone);
   return (
     <p aria-label="Editing" role="status" data-testid="editing-notice" data-state={e.state} className="flex items-start gap-2 text-sm text-plan-ink-2">
       <CalendarClock aria-hidden className="mt-0.5 size-4 shrink-0" />
@@ -141,7 +141,7 @@ export function EditingNotice({ djName }: { djName: string }) {
         <span className="text-foreground">{clientEditingText(e, djName)}</span>
       ) : (
         <span>
-          <span className="text-foreground">You can make changes until {until}.</span> After that, contact {djName} for changes.
+          <span className="text-foreground">You can make changes {until}.</span> After that, contact {djName} for changes.
         </span>
       )}
     </p>
@@ -266,11 +266,14 @@ export function ItemStatus({ itemId }: { itemId: string }) {
   const warned = ctx!.warnings.some((w) => w.item_id === itemId);
   return (
     <span className="inline-flex flex-wrap items-center justify-end gap-x-1.5 gap-y-1 text-sm text-plan-ink-2">
-      {warned ? (
-        <span className="inline-flex items-center gap-1 rounded-full bg-status-attention-tint px-2 py-0.5 text-xs font-medium text-status-attention">Check timing</span>
-      ) : null}
       <ProgressGlyph state={itemGlyphState(item)} />
       <span>{itemStatusText(item, ctx!.editing?.state === "closed")}</span>
+      {/* After the status, with its clock, as in the navigation and section headers. */}
+      {warned ? (
+        <span className="inline-flex items-center gap-1 rounded-full bg-status-attention-tint px-2 py-0.5 text-xs font-medium text-status-attention">
+          <Clock aria-hidden className="size-3" /> Check timing
+        </span>
+      ) : null}
     </span>
   );
 }

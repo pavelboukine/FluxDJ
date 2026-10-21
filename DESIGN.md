@@ -118,10 +118,15 @@ answer-preview.tsx), the one-line "Still needed" block and row-level save state.
 [data-plan-shell]: 44px/16px on phones, Brand Ink focus), labels with a muted "Optional" tag
 (label-text.tsx; accessible names unchanged), one choice pattern (choice-list.tsx, refined in
 6C.3c: rounded rows on spacing with no separators, grey hover, a 10% Brand Ink wash when chosen,
-"discuss" options apart), one list pattern (item-list.tsx: rows on
+"discuss" options last in the list), one list pattern (item-list.tsx: rows on
 hairlines, reorder arrows + Edit, Remove inside the edit panel, "+ Add …" disclosures) and a
-read-only review mode ([data-plan-readonly]). The "Current implementation" notes below describe
-the pre-6C state.
+read-only review mode ([data-plan-readonly]). Batch 6C.4 (2026-10-20) finished client planning:
+the review hides editing guidance ([data-plan-help], field hints) and shows chosen options as
+plain text; "Not sure yet" options use full-contrast text (only unavailable options are grey);
+client deadlines read "through Friday, July 30" for a midnight cutoff, never a zone identifier
+(clientDeadlinePhrase); a complete, fully saved plan shows "You're all caught up!" on the
+overview; "All changes saved" shows only where something was changed; a row's Retry shows only
+while the row is closed. The "Current implementation" notes below describe the pre-6C state.
 The frontmatter records the CURRENT implementation so tools read real values.
 Each section below separates "Current implementation" from "Proposed direction".
 The proposed direction is NOT implemented and is pending approval. Once approved,

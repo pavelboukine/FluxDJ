@@ -191,13 +191,19 @@ const STATUS: Record<SaveState, string> = {
   locked: "Not saved: planning is now read-only. Your last changes are still shown here; contact your DJ to make them.",
 };
 
-/** The save status line with Retry, sign-in and Reload actions. */
+/**
+ * The save status line with Retry, sign-in and Reload actions. "All changes saved" is said only
+ * where something was changed on this page: untouched questions keep an empty status line (still
+ * announced when it changes), so the confirmation isn't repeated under every open question.
+ */
 export function SaveStatus({ saveState, message, retry }: { saveState: SaveState; message: string | null; retry: () => void }) {
   const alerting = saveState !== "saved" && saveState !== "unsaved" && saveState !== "saving";
+  const [touched, setTouched] = useState(false);
+  if (saveState !== "saved" && !touched) setTouched(true);
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
       <p role={alerting ? "alert" : "status"} data-save-status={saveState} className={alerting ? "text-sm font-medium text-destructive" : "text-xs text-plan-ink-2"}>
-        {saveState === "error" && message ? message : STATUS[saveState]}
+        {saveState === "error" && message ? message : saveState === "saved" && !touched ? null : STATUS[saveState]}
       </p>
       {saveState === "error" || saveState === "signed_out" ? (
         <Button type="button" size="sm" variant="outline" onClick={retry}>Retry saving</Button>

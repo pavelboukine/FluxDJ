@@ -96,9 +96,10 @@ export default async function ClientPlanningPage({ params }: PageProps<"/[tenant
   if (view.state !== "available") {
     return (
       <Notice title="Planning isn't available" email={email}>
+        {/* One message for every reason (not booked yet, archived, another account): the reason is never revealed. */}
         <p>
-          Planning opens once your event is booked and your DJ has shared it with you. If that has happened, this account may not have
-          access to this event. See{" "}
+          This event&apos;s planning can&apos;t be opened from this account right now. It may not be ready yet, or the event may no longer be
+          active. If you think it should be available, contact your DJ. See{" "}
           <Link className="underline" href="/my">your events</Link>.
         </p>
       </Notice>
@@ -212,7 +213,7 @@ export default async function ClientPlanningPage({ params }: PageProps<"/[tenant
                           return (
                             <PlanPanel key={s.key} view={s.key} testId={`stage-${s.key}`}>
                               <section aria-labelledby={headingId(s.key)} className={card}>
-                                <SectionHeader sectionKey={s.key} eyebrow={`Part ${stageNumber} of ${stageCount}`} />
+                                <SectionHeader sectionKey={s.key} eyebrow={stageCount === 1 ? "Your event" : `Part ${stageNumber} of ${stageCount}`} />
                                 {s.stageEditor ? (
                                   <section data-plan-item={s.id} tabIndex={-1} aria-labelledby={`details-heading-${s.key}`} className="grid gap-3 text-sm outline-none">
                                     <div className="flex flex-wrap items-center justify-between gap-2">

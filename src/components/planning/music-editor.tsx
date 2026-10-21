@@ -134,7 +134,7 @@ export function MusicEditor(props: Props) {
   return (
     <div className="grid gap-3" data-testid={`music-${props.momentKey}`}>
       <ItemChecklist itemId={props.itemId} title={props.label} djName={props.djName} audience={props.audience} editor={props.editor} />
-      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
+      {hint ? <p data-plan-help className="text-xs text-muted-foreground">{hint}</p> : null}
       {props.disabledReason ? (
         <p role="status" className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm">{props.disabledReason}</p>
       ) : null}

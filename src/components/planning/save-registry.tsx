@@ -131,6 +131,12 @@ export function useSectionSaveSummary(section: string | null): SaveSummary {
   return useSyncExternalStore(store?.subscribe ?? noop, () => store?.summary((e) => e.section === section) ?? "saved", () => "saved");
 }
 
+/** The whole plan's saves: "saved" only when nothing is waiting, running or failed. */
+export function usePlanSaveSummary(): SaveSummary {
+  const store = useContext(StoreContext);
+  return useSyncExternalStore(store?.subscribe ?? noop, () => store?.summary(() => true) ?? "saved", () => "saved");
+}
+
 export function useItemSaveSummary(item: string): SaveSummary {
   const store = useContext(StoreContext);
   return useSyncExternalStore(store?.subscribe ?? noop, () => store?.summary((e) => e.item === item) ?? "saved", () => "saved");

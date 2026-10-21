@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { usePathname, useSearchParams } from "next/navigation";
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Clock, LoaderCircle, TriangleAlert, X } from "lucide-react";
 import {
+  PROVIDED_SECTION,
   SECTION_PARAM,
   WORKSPACE_ID,
   headingId,
@@ -565,7 +566,7 @@ export function PlanMoment({ moment, defaultOpen, children }: { moment: SectionM
         data-default-open={defaultOpen ? "" : undefined}
         data-plan-item={moment.id}
         data-testid={`moment-${moment.key}`}
-        className="group/moment transition-colors open:bg-brand-tint/60 motion-reduce:transition-none"
+        className="group/moment peer transition-colors open:bg-brand-tint/60 motion-reduce:transition-none"
       >
         <summary
           className={cn(
@@ -586,7 +587,7 @@ export function PlanMoment({ moment, defaultOpen, children }: { moment: SectionM
           <span className="flex items-center gap-2 pt-0.5">
             <SaveIndicator save={save} />
             {/* Room for Retry, which sits beside the row's summary (see below). */}
-            {retry ? <span aria-hidden className="w-12" /> : null}
+            {retry ? <span aria-hidden className="w-12 group-open/moment:hidden" /> : null}
             <ChevronDown aria-hidden className="size-4 text-plan-ink-2 transition-transform group-open/moment:rotate-180 motion-reduce:transition-none" />
           </span>
         </summary>
@@ -596,8 +597,9 @@ export function PlanMoment({ moment, defaultOpen, children }: { moment: SectionM
         </div>
       </details>
       {retry ? (
-        // Beside the row, never inside its summary (a control can't sit inside another control).
-        <div className="absolute top-3 right-[calc(var(--plan-sheet-pad,1rem)+1.5rem)] flex items-center">
+        // Beside the row, never inside its summary (a control can't sit inside another control). Only while
+        // the row is closed: open, the editor's own status line shows the error with its Retry, once.
+        <div className="absolute top-3 right-[calc(var(--plan-sheet-pad,1rem)+1.5rem)] flex items-center peer-open:hidden">
           <button
             type="button"
             onClick={retry}
@@ -672,6 +674,8 @@ function SaveIndicator({ save }: { save: SaveSummary }) {
 export function SectionPager({ view }: { view: string | null }) {
   const nav = useNav();
   const { previous, next } = neighbours(nav.sections, nav.extras.map((x) => x.key), view);
+  // "Already provided" is for reference, not the next step: the last section and that page lead back to the overview.
+  const finish = next?.key === PROVIDED_SECTION || (view === PROVIDED_SECTION && !next);
   const base = cn("inline-flex min-h-11 min-w-0 items-center gap-1.5 rounded-[10px] px-3 text-sm font-medium", PLAN_FOCUS);
   return (
     <nav
@@ -685,7 +689,12 @@ export function SectionPager({ view }: { view: string | null }) {
           <span className="min-w-0 truncate"><span className="sr-only">Previous: </span>{nav.labelOf(previous.key)}</span>
         </NavLink>
       ) : null}
-      {next ? (
+      {finish ? (
+        <NavLink view={null} className={cn(base, "ml-auto pl-4", PLAN_PRIMARY)}>
+          <span className="min-w-0 truncate">Back to overview</span>
+          <ChevronRight aria-hidden className="size-4 shrink-0" />
+        </NavLink>
+      ) : next ? (
         <NavLink view={next.key} className={cn(base, "ml-auto pl-4", PLAN_PRIMARY)} rel="next">
           <span className="min-w-0 truncate"><span className="opacity-80">Next: </span>{nav.labelOf(next.key)}</span>
           <ChevronRight aria-hidden className="size-4 shrink-0" />

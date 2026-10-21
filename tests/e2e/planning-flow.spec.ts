@@ -230,7 +230,8 @@ test.describe.serial("planning", () => {
     await expect(client.getByRole("heading", { level: 1, name: title })).toBeVisible();
     await expect(client.getByRole("link", { name: "Your events" })).toHaveAttribute("href", "/my");
     await expect(client.getByTestId("editing-chip")).toHaveText("Planning open");
-    await expect(client.getByTestId("editing-notice")).toContainText("(America/Toronto)");
+    await expect(client.getByTestId("editing-notice")).toContainText(/You can make changes (through|until) \w+day, /);
+    await expect(client.getByTestId("editing-notice")).not.toContainText("America/");
     await expect(client.getByTestId("progress-percent")).toHaveText("20% complete");
     await expect(client.getByTestId("progress-headline")).toHaveText("1 of 5 required answers");
     await expect(client.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "20");

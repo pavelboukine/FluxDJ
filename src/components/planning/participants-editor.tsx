@@ -50,6 +50,7 @@ import { SongPicker, type SongGroup, type SongPickerField } from "./song-picker"
 import { Choices } from "./choice-list";
 import { AddButton, AddDisclosure, EditToggle, ITEM_ROWS, ItemRow, RemoveButton, ReorderButtons, UndoBar } from "./item-list";
 import { ItemChecklist, useEditingClosed } from "./progress";
+import { zoneName } from "@/lib/planning/cutoff";
 import { discussLabel, djIdentity, djRef } from "@/lib/planning/dj";
 import { SaveStatus, useAutosave } from "./use-autosave";
 
@@ -73,7 +74,7 @@ export function Frame({ props, hint, children, status }: { props: Common<unknown
   return (
     <div className="grid gap-3" data-testid={`editor-${props.momentKey}`}>
       <ItemChecklist itemId={props.itemId} title={props.label} djName={props.djName} audience={props.audience} />
-      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
+      {hint ? <p data-plan-help className="text-xs text-muted-foreground">{hint}</p> : null}
       {props.disabledReason ? (
         <p role="status" className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm">{props.disabledReason}</p>
       ) : null}
@@ -351,7 +352,7 @@ function SongsUnderPeople({ props, title, intro, form, update, fieldError, readO
   return (
     <section className="grid gap-2 border-t pt-3" aria-label={title} data-testid={`music-${props.momentKey}`}>
       <h4 className="text-sm font-semibold">{title}</h4>
-      <p className="text-xs text-muted-foreground">{intro}</p>
+      <p data-plan-help className="text-xs text-muted-foreground">{intro}</p>
       <MusicSection
         itemId={props.itemId}
         momentKey={props.momentKey}
@@ -450,7 +451,7 @@ export function ProcessionalEditor(props: Common<ProcessionalAnswers>) {
             { value: "discuss", label: discussLabel(props.audience) },
           ]}
         />
-        <p className="text-xs text-muted-foreground">
+        <p data-plan-help className="text-xs text-muted-foreground">
           One entry per person or group, in walking order, for example &ldquo;Alex with their mother, Dana&rdquo;, &ldquo;The bridesmaids&rdquo; or
           &ldquo;Sam and Jo&rdquo; if you walk in together. Someone already waiting at the front doesn&apos;t need an entry.
         </p>
@@ -619,7 +620,7 @@ export function SpeechesEditor(props: Common<SpeechesAnswers> & { event: { date:
   return (
     <Frame
       props={props as Common<unknown>}
-      hint={`Each speech counts once it has a speaker and a timing: an exact time (local to the event, ${props.event.timezone}) or a moment such as "After the main course".`}
+      hint={`Each speech counts once it has a speaker and a timing: an exact time (local to the event, ${zoneName(props.event.timezone)}) or a moment such as "After the main course".`}
       status={<SaveStatus saveState={saveState} message={message} retry={retry} />}
     >
       <Choices<ListChoice>

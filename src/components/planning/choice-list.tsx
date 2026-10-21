@@ -8,8 +8,9 @@ import { LabelText } from "./label-text";
  * Planning's one choice pattern (radios and checkboxes): full-width rounded rows on spacing (no
  * lines or box around them), the chosen row on the business's Brand Tint. The whole
  * row is the hit target (44px), the native control keeps keyboard and screen-reader behaviour,
- * and "Not sure yet — discuss…" options sit apart below the main ones, quieter, with the same
- * value and meaning. Read-only planning shows only what was chosen (see globals.css).
+ * and "Not sure yet — discuss…" options end the list, in the same full-contrast text as the others
+ * (only options that can't be chosen are greyed). Read-only planning shows only what was chosen
+ * (see globals.css).
  */
 
 /** Values shown as the separate, quieter "not sure yet" option. */
@@ -26,7 +27,7 @@ export function ChoiceOption({ type = "radio", name, checked, disabled, onChange
   hint?: ReactNode;
   /** Why it can't be chosen right now, or another short note. */
   note?: ReactNode;
-  /** The separate "not sure yet" option. */
+  /** The "not sure yet" option, at the end of the list (marked for styles and tests). */
   secondary?: boolean;
   testId?: string;
   ariaLabel?: string;
@@ -34,6 +35,7 @@ export function ChoiceOption({ type = "radio", name, checked, disabled, onChange
   return (
     <label
       data-choice-option
+      data-secondary={secondary ? "" : undefined}
       data-testid={testId}
       className={cn(
         // Every option is the same rounded surface: quiet grey on hover, the business's colour when
@@ -43,7 +45,6 @@ export function ChoiceOption({ type = "radio", name, checked, disabled, onChange
         "has-[:checked]:bg-[color-mix(in_oklab,var(--brand-ink,var(--foreground))_10%,white)] has-[:checked]:hover:bg-[color-mix(in_oklab,var(--brand-ink,var(--foreground))_14%,white)]",
         "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-ink",
         "has-[:disabled]:cursor-not-allowed has-[:disabled]:hover:bg-transparent",
-        secondary ? "text-plan-ink-2" : undefined,
       )}
     >
       <input
@@ -56,7 +57,7 @@ export function ChoiceOption({ type = "radio", name, checked, disabled, onChange
         aria-label={ariaLabel}
       />
       <span className="grid min-w-0 gap-0.5">
-        <span className={cn("text-sm leading-snug [overflow-wrap:anywhere]", disabled && !checked ? "text-plan-ink-2" : secondary ? undefined : "text-foreground")}>{label}</span>
+        <span className={cn("text-sm leading-snug [overflow-wrap:anywhere]", disabled && !checked ? "text-plan-ink-2" : "text-foreground")}>{label}</span>
         {hint ? <span className="text-xs text-plan-ink-2">{hint}</span> : null}
         {note ? <span className="text-xs text-plan-ink-2">{note}</span> : null}
       </span>

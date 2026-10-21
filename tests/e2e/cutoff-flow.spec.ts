@@ -106,9 +106,9 @@ test.describe.serial("planning cutoff and reopening", () => {
     await client.goto(planningUrl);
     const notice = client.getByTestId("editing-notice");
     await expect(notice).toHaveAttribute("data-state", "open");
-    // 2027-08-14 minus 14 days, at 00:00 in Toronto.
-    await expect(notice).toContainText("You can make changes until Saturday, July 31, 2027");
-    await expect(notice).toContainText(/12:00\sa\.m\. EDT \(America\/Toronto\)/);
+    // 2027-08-14 minus 14 days, at 00:00 in Toronto: editing runs through the end of the day before.
+    await expect(notice).toContainText("You can make changes through Friday, July 30.");
+    await expect(notice).not.toContainText("America/Toronto");
     await expect(client.getByTestId("editing-chip")).toHaveText("Planning open");
     await openPlanSection(client, "basics");
     await client.getByLabel("Guest count (needed)").fill("150");
@@ -175,7 +175,7 @@ test.describe.serial("planning cutoff and reopening", () => {
     await client.reload();
     const notice = client.getByTestId("editing-notice");
     await expect(notice).toHaveAttribute("data-state", "reopened");
-    await expect(notice).toContainText(/reopened planning for you\. You can make changes until .+ \(America\/Toronto\)\./);
+    await expect(notice).toContainText(/reopened planning for you\. You can make changes until \w+day, \w+ \d+ at \d+:\d\d\s[ap]\.m\. E[DS]T\./);
     await expect(client.getByTestId("editing-chip")).toHaveText("Reopened");
     await client.getByLabel("Guest count (needed)").fill("165");
     await expect.poll(async () => (await basicsAnswers(eventId))?.answers).toMatchObject({ guest_count: 165 });
