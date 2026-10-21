@@ -13,6 +13,8 @@ const ALLOWED = [
   /^\/[a-z0-9][a-z0-9-]{1,46}[a-z0-9]\/planning-invitations\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
   /^\/[a-z0-9][a-z0-9-]{1,46}[a-z0-9]\/contracts\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
   /^\/[a-z0-9][a-z0-9-]{1,46}[a-z0-9]\/planning\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+  // A client's event hub, and the approved proposal under it.
+  /^\/[a-z0-9][a-z0-9-]{1,46}[a-z0-9]\/events\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\/proposal)?$/,
 ];
 
 export function safeNext(value: unknown, fallback = "/staff"): string {

@@ -121,7 +121,8 @@ test.describe.serial("event booked elsewhere", () => {
 
     // The link page offers the verification email; opening it sends nothing.
     await client.goto(link.replace(/^https?:\/\/[^/]+/, ""));
-    await expect(client.getByRole("heading", { name: `Plan your event with ${tenant.displayName}` })).toBeVisible();
+    await expect(client.getByRole("heading", { level: 1, name: "You're invited to plan your event" })).toBeVisible();
+    await expect(client.locator("main")).toContainText(tenant.displayName);
     await expect(client.getByRole("button", { name: "Email me a sign-in link" })).toBeVisible();
     expect(new URL(client.url()).hash).toBe("");
 

@@ -101,7 +101,7 @@ export function homeCard(e: HomeEvent): HomeCard {
   if (e.bookingSource === "external") {
     return {
       status: "Booked",
-      tone: planAction && e.plan?.editing !== "closed" ? "action" : "done",
+      tone: "done",
       note: planAction
         ? e.plan?.editing === "closed"
           ? "Planning is closed for changes. You can still read it."

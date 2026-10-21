@@ -7,15 +7,16 @@ import { PdfDownloadLink } from "@/components/app/pwa";
 import { BrandLogo } from "@/components/app/brand-logo";
 import { ClientHeader } from "@/components/app/client-header";
 import { ContractDocument } from "@/components/contract/contract-document";
-import { DiscountRows, InvoiceLink } from "@/components/payments/payment-summary";
+import { ClientPayments } from "@/components/payments/client-payments";
 import { signOut } from "@/app/auth/confirm/actions";
 import { renderedContentSchema } from "@/lib/contracts/content";
 import { SIGNATURE_BUCKET } from "@/lib/contracts/signing";
 import { brandStyle } from "@/lib/branding/colors";
 import { liveBrand } from "@/lib/branding/logo.server";
 import { UUID_RE } from "@/lib/forms";
+import { eventHubPath } from "@/lib/client-event";
 import { formatCents } from "@/lib/money";
-import { discountBreakdown, type ClientPaymentSummary } from "@/lib/payments";
+import type { ClientPaymentSummary } from "@/lib/payments";
 import { formatEventDate } from "@/lib/planning/view";
 import { SLUG_PATTERN } from "@/lib/proposals/client-session.server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -65,15 +66,6 @@ function formatInstant(iso: string, timeZone: string | undefined): string {
   }
 }
 
-function Row({ label, children, strong }: { label: React.ReactNode; children: React.ReactNode; strong?: boolean }) {
-  return (
-    <div className={cn("flex justify-between gap-3", strong && "font-semibold")}>
-      <dt>{label}</dt>
-      <dd className="text-right tabular-nums">{children}</dd>
-    </div>
-  );
-}
-
 /**
  * The client's contract. Every request is checked in the database: verified
  * identity, event access, intended signer, and that the contract is still
@@ -109,7 +101,6 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
 
   const c = view.contract;
   const content = renderedContentSchema.parse(c.rendered_content);
-  const money = (cents: number) => formatCents(cents, c.currency);
   const dj = view.brand.display_name;
   // Live branding (current logo and colour), shown only after the access check above.
   const live = await liveBrand(slug);
@@ -125,8 +116,6 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
     supabase.rpc("my_events"),
   ]);
   const payments = paymentData as ClientPaymentSummary | null;
-  // This contract's frozen breakdown, only when its proposal had a discount.
-  const discount = discountBreakdown(payments?.pricing ?? null);
   // Planning opens once the booking is confirmed; the database decides.
   const plan = (plans ?? []).find((p) => p.contract_id === contractId);
   // The event's venue and time zone, from the client's own event list.
@@ -156,54 +145,20 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
   const canSign = !signing.signed && signing.enabled && signing.consent_version && signing.consent_text;
 
   const paymentsCard = (
-    <section id="payments" aria-labelledby="payments-heading" className="grid scroll-mt-4 gap-3 rounded-2xl border bg-card p-4 text-sm shadow-sm sm:p-6">
-      <h2 id="payments-heading" className="text-base font-semibold">
-        Payments
-      </h2>
-      <div className="grid gap-1.5">
-        <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{signing.signed ? "Agreed terms" : "Terms in this contract"}</p>
-        <p className="text-muted-foreground">{signing.signed ? "Terms of the signed contract. They don't change." : "Terms of the contract sent to you. It isn't signed yet."}</p>
-        <dl className="grid gap-1">
-          {discount ? <DiscountRows b={discount} currency={c.currency} /> : null}
-          <Row label={discount ? "Agreed total, including taxes" : "Total, including taxes"} strong>{money(c.total_cents)}</Row>
-          <Row label={`Deposit on signing (${c.deposit_percent}%)`}>{c.deposit_cents ? money(c.deposit_cents) : "No deposit required"}</Row>
-          <Row label="Balance">{money(c.balance_cents)}</Row>
-          <Row label="Balance due">{c.balance_due_date ? formatEventDate(c.balance_due_date) : "Not specified in the contract"}</Row>
-        </dl>
-      </div>
-      {payments ? (
-        <div className="grid gap-1.5 border-t pt-3">
-          <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Recorded by {dj}</p>
-          <dl className="grid gap-1">
-            <Row label="Received so far" strong>{formatCents(payments.received_cents, payments.currency)}</Row>
-            {payments.deposit_cents ? (
-              <Row label="Deposit still outstanding">
-                {payments.deposit_outstanding_cents ? formatCents(payments.deposit_outstanding_cents, payments.currency) : "Deposit received in full"}
-              </Row>
-            ) : null}
-            {payments.remaining_balance_cents !== null ? (
-              <Row label="Remaining balance" strong>{payments.remaining_balance_cents ? formatCents(payments.remaining_balance_cents, payments.currency) : "Paid in full"}</Row>
-            ) : null}
-            {payments.credit_cents ? <Row label="Received above the total (credit)">{formatCents(payments.credit_cents, payments.currency)}</Row> : null}
-          </dl>
-          {payments.invoice_url ? (
-            <p>
-              <InvoiceLink url={payments.invoice_url} />
-              <span className="text-muted-foreground"> · opens the invoice on that site</span>
-            </p>
-          ) : null}
-          <p className="text-xs text-muted-foreground">
-            Payments are recorded by hand by {dj} when they receive them, so a recent payment may not appear yet. Pay only as arranged with {dj};
-            Flux DJ doesn&apos;t take payments.
-          </p>
-        </div>
-      ) : null}
-    </section>
+    <ClientPayments
+      terms={{ currency: c.currency, totalCents: c.total_cents, depositPercent: c.deposit_percent, depositCents: c.deposit_cents, balanceCents: c.balance_cents, balanceDueDate: c.balance_due_date }}
+      signed={signing.signed}
+      payments={payments}
+      djName={dj}
+      className="rounded-2xl border bg-card p-4 shadow-sm sm:p-6"
+    />
   );
+  // Back to the event's hub when this contract's event is known, else the client home.
+  const back = eventId ? { href: eventHubPath(slug, eventId), label: "Your event" } : true;
 
   return (
     <div className="min-h-dvh bg-muted/40">
-      <ClientHeader email={auth.user.email ?? null} back signOut={signOut} />
+      <ClientHeader email={auth.user.email ?? null} back={back} signOut={signOut} />
       <main style={pageStyle} className="mx-auto grid w-full max-w-3xl gap-5 px-4 pt-5 pb-[max(2.5rem,env(safe-area-inset-bottom))] sm:gap-6 sm:pt-8">
         {isDemo ? (
           <p role="alert" className="rounded-xl border-2 border-destructive bg-card p-3 text-sm font-semibold text-destructive">
@@ -297,6 +252,14 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
               ) : (
                 <p>Your DJ will follow up with the next steps.</p>
               )}
+              {/* The event's hub: its status (booked or awaiting the deposit), planning, contract and payments in one place. */}
+              {eventId ? (
+                <p>
+                  <Link className="font-medium underline" href={eventHubPath(slug, eventId)} data-testid="go-to-event">
+                    Go to your event
+                  </Link>
+                </p>
+              ) : null}
             </div>
             <div className="flex flex-wrap items-center gap-3 border-t pt-3">
               {signing.pdf_ready ? (

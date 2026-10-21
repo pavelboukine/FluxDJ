@@ -30,7 +30,9 @@ export async function updateSession(request: NextRequest) {
   const { data } = await supabase.auth.getClaims();
   const signedIn = Boolean(data?.claims?.sub);
 
-  if (!signedIn && request.nextUrl.pathname.startsWith("/staff")) {
+  // Exactly /staff and below, never a business whose slug merely starts with "staff" (its client pages are matched too).
+  const path = request.nextUrl.pathname;
+  if (!signedIn && (path === "/staff" || path.startsWith("/staff/"))) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     // The DJ sign-in, coming back to this page afterwards when it's an allowed destination.

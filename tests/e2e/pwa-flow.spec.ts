@@ -286,12 +286,17 @@ test.describe.serial("installable app shell", () => {
     const res = await page.goto(page.url());
     expect(res!.headers()["cache-control"]).toMatch(/no-store|no-cache/);
     expect(res!.headers()["cache-control"]).not.toContain("public");
-    // The client header's way back (renamed "Your events" in the client home redesign).
+    // The client header's way back: to the event's hub, then to all events.
+    await page.getByRole("link", { name: "Your event", exact: true }).click();
+    await expect(page).toHaveURL(/\/events\/[0-9a-f-]{36}$/);
+    expect(await noSideways(page)).toBeLessThanOrEqual(0);
     await page.getByRole("link", { name: "Your events", exact: true }).click();
     await expect(page).toHaveURL(/\/my$/);
     await page.getByRole("link", { name: `View signed contract for E2E PWA Wedding ${run}` }).click();
     await expect(page).toHaveURL(/\/contracts\//);
     expect(await noSideways(page)).toBeLessThanOrEqual(0);
+    await page.getByRole("link", { name: "Your event", exact: true }).click();
+    await expect(page).toHaveURL(/\/events\/[0-9a-f-]{36}$/);
     await page.getByRole("link", { name: "Your events", exact: true }).click();
     await expect(page).toHaveURL(/\/my$/);
     await app.close();

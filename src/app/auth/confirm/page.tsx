@@ -22,6 +22,8 @@ function wording(to: string): { heading: string; text: string } {
   if (to.startsWith("/join/")) return { heading: "Continue setting up Flux DJ", text: "Confirm to verify your email and continue setting up your DJ business on this device." };
   if (to.includes("/invitations/")) return { heading: "Open your contract", text: "Confirm to verify your email and continue to your contract on this device." };
   if (/^\/[^/]+\/contracts\//.test(to)) return { heading: "Open your contract", text: "You're almost there. Confirm to sign in on this device and continue to your contract." };
+  if (/^\/[^/]+\/events\//.test(to)) return { heading: "Open your event", text: "You're almost there. Confirm to sign in on this device and continue to your event." };
+  if (/^\/[^/]+\/planning-invitations\//.test(to)) return { heading: "Open your event planning", text: "You're almost there. Confirm to verify your email and continue to your event planning on this device." };
   if (/^\/[^/]+\/planning\//.test(to)) return { heading: "Open your event planning", text: "You're almost there. Confirm to sign in on this device and continue to your planning." };
   if (to === "/my") return { heading: "Open your events", text: "You're almost there. Confirm to sign in on this device and see your events." };
   return { heading: "Welcome back to Flux DJ", text: "You're almost there. Confirm to sign in to Flux DJ on this device." };

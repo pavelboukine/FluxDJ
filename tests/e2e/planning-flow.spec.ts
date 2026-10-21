@@ -228,7 +228,8 @@ test.describe.serial("planning", () => {
     await client.waitForURL(`**${planningUrl}*`);
     // The overview: event, deadline state, honest progress and one obvious next step.
     await expect(client.getByRole("heading", { level: 1, name: title })).toBeVisible();
-    await expect(client.getByRole("link", { name: "Your events" })).toHaveAttribute("href", "/my");
+    // Back to the event's hub (which leads on to all events).
+    await expect(client.getByRole("link", { name: "Your event", exact: true })).toHaveAttribute("href", planningUrl.replace("/planning/", "/events/"));
     await expect(client.getByTestId("editing-chip")).toHaveText("Planning open");
     await expect(client.getByTestId("editing-notice")).toContainText(/You can make changes (through|until) \w+day, /);
     await expect(client.getByTestId("editing-notice")).not.toContainText("America/");

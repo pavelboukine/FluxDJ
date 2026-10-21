@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CalendarDays, MapPin } from "lucide-react";
+import { CalendarDays, ChevronRight, MapPin } from "lucide-react";
 import { BrandLogo } from "@/components/app/brand-logo";
 import { InstallHelp, PdfDownloadLink } from "@/components/app/pwa";
 import { ClientHeader } from "@/components/app/client-header";
@@ -8,10 +8,10 @@ import { signOut } from "@/app/auth/confirm/actions";
 import { requireUser } from "@/lib/auth/staff";
 import { brandStyle } from "@/lib/branding/colors";
 import { liveBrand, type BrandLogo as Logo } from "@/lib/branding/logo.server";
+import { eventHubPath } from "@/lib/client-event";
+import { loadClientEvents } from "@/lib/client-event.server";
 import { homeCard, splitByDate, type HomeAction, type HomeCard, type HomeEvent, type HomeTone } from "@/lib/client-home";
-import { clientEditingSchema } from "@/lib/planning/cutoff";
 import { formatEventDate } from "@/lib/planning/view";
-import type { ClientPaymentSummary } from "@/lib/payments";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Your events", robots: { index: false, follow: false } };
@@ -22,68 +22,16 @@ type Brand = { logo: Logo | null; primary: string | undefined };
  * Client home after sign-in: the events this verified identity can open, each
  * with its own business's branding, status and one recommended next action.
  * Every fact comes from client views that check access in the database (see
- * lib/client-home); this page never reads staff data.
+ * lib/client-event.server, shared with each event's hub); this page never reads
+ * staff data. Each card leads to its event's hub.
  */
 export default async function MyEvents() {
   const { supabase, user } = await requireUser();
-  const [{ data: events }, { data: contracts }, { data: plans }, { count: memberships }] = await Promise.all([
-    supabase.rpc("my_events"),
-    supabase.rpc("my_contracts"),
-    supabase.rpc("my_plans"),
+  const [facts, { count: memberships }] = await Promise.all([
+    loadClientEvents(supabase),
     supabase.from("tenant_memberships").select("id", { count: "exact", head: true }).eq("user_id", user.id).is("removed_at", null),
   ]);
-
-  // Readable contracts (signer only) per event, with their signing and PDF state and the booking/payment summary.
-  const contractByEvent = new Map<string, { contract: HomeEvent["contract"]; payments: HomeEvent["payments"] }>();
-  await Promise.all(
-    (contracts ?? []).map(async (c) => {
-      if (!c.event_id || contractByEvent.has(c.event_id)) return;
-      const [{ data: view }, { data: summary }] = await Promise.all([
-        supabase.rpc("client_contract_view", { p_contract_id: c.contract_id, p_tenant_slug: c.tenant_slug }),
-        supabase.rpc("client_payment_summary", { p_contract_id: c.contract_id, p_tenant_slug: c.tenant_slug }),
-      ]);
-      const v = view as { state: string; signing?: { signed: boolean; enabled?: boolean; pdf_ready?: boolean; pdf_pending?: boolean } } | null;
-      if (v?.state !== "available" || !v.signing) return;
-      const s = summary as ClientPaymentSummary | null;
-      contractByEvent.set(c.event_id, {
-        contract: {
-          id: c.contract_id,
-          status: c.status === "signed" ? "signed" : "sent",
-          signable: v.signing.signed || v.signing.enabled === true,
-          pdfReady: v.signing.pdf_ready === true,
-          pdfPending: v.signing.pdf_pending === true,
-        },
-        payments: s ? { currency: s.currency, bookingStatus: s.booking_status, depositOutstandingCents: s.deposit_outstanding_cents } : null,
-      });
-    }),
-  );
-
-  // Planning the database lets this client open, and whether editing is open.
-  const planByEvent = new Map<string, HomeEvent["plan"]>();
-  await Promise.all(
-    (plans ?? []).map(async (p) => {
-      const { data } = await supabase.rpc("client_planning_view", { p_event_id: p.event_id, p_tenant_slug: p.tenant_slug });
-      const view = data as { state?: string; editing?: unknown } | null;
-      if (view?.state !== "available") return;
-      const editing = clientEditingSchema.safeParse(view.editing);
-      planByEvent.set(p.event_id, { editing: editing.success ? editing.data.state : null });
-    }),
-  );
-
-  const homeEvents: HomeEvent[] = (events ?? []).map((e) => ({
-    eventId: e.event_id,
-    tenantSlug: e.tenant_slug,
-    tenantName: e.tenant_display_name,
-    title: e.title,
-    eventDate: e.event_date,
-    timezone: e.timezone,
-    venueName: e.venue_name || null,
-    lifecycle: e.lifecycle_status,
-    bookingSource: e.booking_source,
-    contract: contractByEvent.get(e.event_id)?.contract ?? null,
-    payments: contractByEvent.get(e.event_id)?.payments ?? null,
-    plan: planByEvent.get(e.event_id) ?? null,
-  }));
+  const homeEvents: HomeEvent[] = facts.map((f) => f.home);
 
   // Each business's current branding (after the access checks above), once per business.
   const brands = new Map<string, Brand>();
@@ -167,7 +115,16 @@ function EventCard({ event: e, card, brand, past }: { event: HomeEvent; card: Ho
           </span>
         </div>
         <div className="grid gap-1">
-          <h3 className="text-lg leading-snug font-semibold [overflow-wrap:anywhere]">{e.title}</h3>
+          <h3 className="text-lg leading-snug font-semibold [overflow-wrap:anywhere]">
+            <Link
+              href={eventHubPath(e.tenantSlug, e.eventId)}
+              data-testid="event-hub-link"
+              className="group/title inline-flex items-baseline gap-1 rounded-sm underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+              {e.title}
+              <ChevronRight aria-hidden className="size-4 shrink-0 translate-y-0.5 text-muted-foreground transition-transform group-hover/title:translate-x-0.5 motion-reduce:transition-none" />
+            </Link>
+          </h3>
           <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
             <span className="inline-flex items-center gap-1.5">
               <CalendarDays aria-hidden className="size-4 shrink-0" />

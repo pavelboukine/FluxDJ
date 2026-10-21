@@ -1398,6 +1398,9 @@ isOneToOne: false
               "attempts": number,"deliverable": boolean,"event_type": string,"expires_at": string,"id": string,"invitation_id": string,"link_id": string,"payload": Json,"recipient_email": string,"tenant_display_name": string,"tenant_id": string,"tenant_reply_to": string,"tenant_slug": string,"token_hash": string
             }[]
                            },
+"client_approved_offer":
+{ Args: { "p_contract_id": string,"p_tenant_slug": string }; Returns: Json
+                           },
 "client_contract_view":
 { Args: { "p_contract_id": string,"p_tenant_slug": string }; Returns: Json
                            },

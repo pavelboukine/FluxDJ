@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ClipboardList } from "lucide-react";
+import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { PublicCard } from "@/components/app/public-shell";
+import { BRAND_BUTTON, TenantPublicCard } from "@/components/app/tenant-public-shell";
+import { liveBrand } from "@/lib/branding/logo.server";
 import { signOut } from "@/app/auth/confirm/actions";
 import { UUID_RE } from "@/lib/forms";
 import { formatEventDate } from "@/lib/planning/view";
@@ -32,11 +35,19 @@ export default async function PlanningInvitationPage({ params }: PageProps<"/[te
   const status: Status = auth.user
     ? (((await supabase.rpc("client_planning_invitation_status", { p_invitation_id: invitationId, p_tenant_slug: slug })).data as Status | null) ?? { state: "invalid" })
     : { state: "signed_out" };
-  const brand = status.tenant_display_name ?? "your DJ";
   const when = status.event_date ? ` (${formatEventDate(status.event_date)})` : "";
+  // The business's branding (active businesses only), once the signed-in status check has tied this invitation to the
+  // URL's business (it returns these states only for a usable invitation). Signed out or unusable: the neutral Flux
+  // frame and a generic message, so a stale, guessed or foreign link shows nothing of any business.
+  const verified = status.state === "ready" || status.state === "accepted" || status.state === "wrong_account" || status.state === "unverified";
+  const live = verified ? await liveBrand(slug) : null;
+  const title = status.state === "ready" || status.state === "accepted" ? "Your planning is ready" : "Open your event planning";
+  const primary = live ? BRAND_BUTTON : undefined;
+  const frame = (children: ReactNode) =>
+    live ? <TenantPublicCard brand={live} title={title}>{children}</TenantPublicCard> : <PublicCard icon={ClipboardList} title={title}>{children}</PublicCard>;
 
-  return (
-    <PublicCard icon={ClipboardList} title={status.state === "ready" || status.state === "accepted" ? `Plan your event with ${brand}` : "Open your event planning"}>
+  return frame(
+    <>
       {status.state === "ready" ? (
         <>
           <p>
@@ -44,7 +55,7 @@ export default async function PlanningInvitationPage({ params }: PageProps<"/[te
             the details.
           </p>
           <form action={acceptPlanningInvitation.bind(null, slug, invitationId)}>
-            <Button type="submit" size="lg" className="w-full">Open my planning</Button>
+            {primary ? <button type="submit" className={primary}>Open my planning</button> : <Button type="submit" size="lg" className="w-full">Open my planning</Button>}
           </form>
         </>
       ) : status.state === "accepted" ? (
@@ -52,7 +63,7 @@ export default async function PlanningInvitationPage({ params }: PageProps<"/[te
           <p>Your planning for <strong>{status.event_title}</strong>{when} is ready.</p>
           {/* Already has access (e.g. from their contract): accepting again only records this invitation's acceptance, then opens planning. */}
           <form action={acceptPlanningInvitation.bind(null, slug, invitationId)}>
-            <Button type="submit" size="lg" className="w-full">Open my planning</Button>
+            {primary ? <button type="submit" className={primary}>Open my planning</button> : <Button type="submit" size="lg" className="w-full">Open my planning</Button>}
           </form>
         </>
       ) : status.state === "wrong_account" ? (
@@ -72,6 +83,6 @@ export default async function PlanningInvitationPage({ params }: PageProps<"/[te
           to get a new one.
         </p>
       )}
-    </PublicCard>
+    </>,
   );
 }

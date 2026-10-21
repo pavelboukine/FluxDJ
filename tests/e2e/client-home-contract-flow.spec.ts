@@ -258,7 +258,9 @@ test.describe.serial("client home and contract", () => {
     await page.waitForURL("**/my");
     const card = (title: string) => page.getByRole("listitem").filter({ has: page.getByRole("heading", { name: title }) });
     await expect(card(ev.deposit.title).getByTestId("event-status")).toHaveText("Signed · awaiting deposit");
-    await expect(card(ev.deposit.title).getByRole("link")).toHaveCount(0);
+    // Their only link is the event's hub (the title): no signing, contract or deposit links.
+    await expect(card(ev.deposit.title).getByRole("link")).toHaveText([ev.deposit.title]);
+    await expect(card(ev.deposit.title).getByRole("link")).toHaveAttribute("href", new RegExp(`^/${a.tenant.slug}/events/[0-9a-f-]{36}$`));
     await expect(card(ev.booked.title).getByRole("link", { name: `Plan your event for ${ev.booked.title}` })).toBeVisible();
     await expect(page.locator("body")).not.toContainText(/sign it|Review and sign|deposit still to pay|View deposit/i);
     await expect(page.getByRole("heading", { name: ev.unsigned.title })).toHaveCount(0);
@@ -280,7 +282,8 @@ test.describe.serial("client home and contract", () => {
     await expect(agreement).toContainText("Setup two hours before guests arrive.");
     await expect(signer.getByRole("region", { name: "Payments" })).toContainText("Deposit on signing (50%)");
     await expect(signer.getByRole("checkbox")).not.toBeChecked();
-    await expect(signer.getByRole("link", { name: "Your events", exact: true })).toBeVisible();
+    // Back to the event's hub.
+    await expect(signer.getByRole("link", { name: "Your event", exact: true })).toHaveAttribute("href", new RegExp(`^/${a.tenant.slug}/events/[0-9a-f-]{36}$`));
     await shot(signer, "04-unsigned-contract");
 
     await signer.getByRole("link", { name: "Go to signing" }).click();
@@ -350,7 +353,7 @@ test.describe.serial("client home and contract", () => {
     await expect(signer.getByRole("region", { name: "Contract overview" })).toContainText("Signed · booked");
     await expect(signer.getByRole("link", { name: "Plan your event" })).toHaveAttribute("href", `/${a.tenant.slug}/planning/${ev.booked.id}`);
     const payments = signer.getByRole("region", { name: "Payments" });
-    await expect(payments).toContainText("Deposit received in full");
+    await expect(payments).toContainText("DepositReceived in full");
     await expect(signer.locator("body")).not.toContainText(new RegExp(`E2E-PAYMENT-REF-SECRET|staff payment note|Staff-only note ${run}|user agent|ip address`, "i"));
     await expect(signer.getByTestId("pdf-unavailable")).toBeVisible(); // its PDF job was retired: honest wording, no staff controls
     await expect(signer.getByRole("button", { name: /retry/i })).toHaveCount(0);

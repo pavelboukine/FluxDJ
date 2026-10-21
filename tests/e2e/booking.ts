@@ -27,12 +27,22 @@ export async function sessionFor(email: string): Promise<SupabaseClient> {
   return db;
 }
 
-/** Books `eventId` for a new client account `clientEmail` (the event's primary contact). Returns the contract id. */
-export async function bookEvent(tenant: TestTenant, eventId: string, clientEmail: string): Promise<string> {
+/**
+ * Books `eventId` for a new client account `clientEmail` (the event's primary contact). Returns the contract id.
+ * `discount` puts a proposal discount on the offer; `recordDeposit: false` stops after signing (the event then
+ * waits for its deposit, or is booked by signing alone when nothing is due).
+ */
+export async function bookEvent(
+  tenant: TestTenant,
+  eventId: string,
+  clientEmail: string,
+  opts: { discount?: { type: "percent"; percent_basis_points: number; label: string | null }; recordDeposit?: boolean } = {},
+): Promise<string> {
   const staffDb = await sessionFor(tenant.ownerEmail);
   const { data: template } = await must(admin.from("proposal_templates").select("id").eq("tenant_id", tenant.id).eq("name", "Wedding (DEMO)").single());
   const { data: input } = await must(staffDb.rpc("proposal_offer_input_from_template", { p_template_id: template!.id }));
-  const { data: proposalId } = await must(staffDb.rpc("open_proposal_draft", { p_event_id: eventId, p_offer: input }));
+  const offer = opts.discount ? { ...(input as Record<string, unknown>), discount: opts.discount } : input;
+  const { data: proposalId } = await must(staffDb.rpc("open_proposal_draft", { p_event_id: eventId, p_offer: offer }));
   const { data: draft } = await must(admin.from("proposals").select("draft_version").eq("id", proposalId).single());
   await must(staffDb.rpc("send_proposal", { p_proposal_id: proposalId, p_expected_draft_version: draft!.draft_version, p_access_link_id: randomUUID(), p_token_hash: randomUUID().replaceAll("-", "").repeat(2) }));
   await submitAsClient(tenant, proposalId as string);
@@ -46,7 +56,9 @@ export async function bookEvent(tenant: TestTenant, eventId: string, clientEmail
   const linkId = randomUUID();
   await must(staffDb.rpc("send_contract", { p_contract_id: contractId, p_link_id: linkId, p_token_hash: createHash("sha256").update(randomUUID()).digest("hex") }));
 
-  const { data: user } = await must(admin.auth.admin.createUser({ email: clientEmail, email_confirm: true }));
+  // A new client account, or the existing one when the client already has an event.
+  const created = await admin.auth.admin.createUser({ email: clientEmail, email_confirm: true });
+  const user = created.data.user ? created.data : (await must(admin.auth.admin.generateLink({ type: "magiclink", email: clientEmail }))).data;
   const clientDb = await sessionFor(clientEmail);
   await must(clientDb.rpc("accept_contract_invitation", { p_link_id: linkId, p_tenant_slug: tenant.slug }));
   const { data: c } = await must(admin.from("contracts").select("content_sha256, consent_version, deposit_cents").eq("id", contractId).single());
@@ -64,6 +76,7 @@ export async function bookEvent(tenant: TestTenant, eventId: string, clientEmail
   for (const j of (jobs ?? []) as { job_id: string; lease_token: string }[]) {
     await admin.rpc("fail_document_job", { p_job_id: j.job_id, p_lease_token: j.lease_token, p_error: "planning e2e: PDF not needed", p_permanent: true });
   }
+  if (opts.recordDeposit === false) return contractId;
   const { data: paid } = await must(staffDb.rpc("record_event_payment", {
     p_event_id: eventId, p_amount_cents: c!.deposit_cents, p_paid_on: new Date(Date.now() - 86_400_000).toISOString().slice(0, 10),
     p_reference: "E2E-PAYMENT-REF-SECRET", p_note: "E2E staff payment note", p_idempotency_key: randomUUID(), p_confirm_duplicate: false,

@@ -18,8 +18,8 @@ export function ClientHeader({
   email: string | null;
   staffLink?: string | null;
   signOut?: () => Promise<void>;
-  /** Shown on pages below the client home. */
-  back?: boolean;
+  /** Shown on pages below the client home: back to "Your events", or to `back.href` (an event's hub, "Your event"). */
+  back?: boolean | { href: string; label: string };
   /** Matches a page wider than the usual reading column (planning). */
   wide?: boolean;
 }) {
@@ -28,9 +28,9 @@ export function ClientHeader({
       <div className={`mx-auto flex w-full ${wide ? "max-w-5xl" : "max-w-3xl"} items-center justify-between gap-3 px-4 py-2`}>
         <div className="flex min-w-0 items-center gap-2">
           {back ? (
-            <Link href="/my" className="inline-flex min-h-11 items-center gap-1.5 rounded-md pr-2 text-sm font-medium outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+            <Link href={typeof back === "object" ? back.href : "/my"} className="inline-flex min-h-11 items-center gap-1.5 rounded-md pr-2 text-sm font-medium outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
               <ArrowLeft aria-hidden className="size-4" />
-              Your events
+              {typeof back === "object" ? back.label : "Your events"}
             </Link>
           ) : (
             <FluxWordmark href="/my" className="h-6" />

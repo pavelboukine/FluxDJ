@@ -36,6 +36,7 @@ import { createClient } from "@/lib/supabase/server";
 import { saveClientItemAction } from "./actions";
 import { BrandLogo } from "@/components/app/brand-logo";
 import { brandStyle } from "@/lib/branding/colors";
+import { eventHubPath } from "@/lib/client-event";
 import { liveBrand } from "@/lib/branding/logo.server";
 
 export const metadata: Metadata = { title: "Event planning", robots: { index: false, follow: false }, referrer: "strict-origin" };
@@ -128,7 +129,7 @@ export default async function ClientPlanningPage({ params }: PageProps<"/[tenant
     // Closed when the page loaded: answers read as a review, not as disabled forms (globals.css). A plan
     // that closes while open keeps its editors on screen, unsaved input marked as such.
     <div data-plan-shell data-plan-readonly={view.editing?.state === "closed" ? "" : undefined} className="min-h-dvh bg-plan-canvas">
-      <ClientHeader email={email} back wide signOut={signOut} />
+      <ClientHeader email={email} back={{ href: eventHubPath(slug, eventId), label: "Your event" }} wide signOut={signOut} />
       <main style={pageStyle} className="mx-auto grid w-full max-w-5xl gap-5 px-4 pt-5 pb-[max(2.5rem,env(safe-area-inset-bottom))] sm:gap-8 sm:pt-8">
         <PlanProgressProvider initial={view.progress} warnings={view.timeline_warnings} basics={view.basics.answers} editing={view.editing}>
           <SaveRegistryProvider>
