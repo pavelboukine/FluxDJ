@@ -154,8 +154,8 @@ export function SignPanel(props: Props) {
   if (result?.status === "signed") {
     return (
       <section role="status" className="grid gap-1 rounded-2xl border-2 border-emerald-600 bg-card p-4 text-base shadow-sm sm:p-6">
-        <h2 className="text-lg font-semibold">Contract signed.</h2>
-        <p>Your DJ will follow up with the next steps.</p>
+        <h2 className="text-lg font-semibold">Your contract is signed!</h2>
+        <p>One moment while we show your next step.</p>
       </section>
     );
   }

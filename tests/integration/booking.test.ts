@@ -154,6 +154,10 @@ describe("booking confirmation (local Supabase)", () => {
       expect(body.subject).toMatch(/booking .* is confirmed/i);
       expect(body.text).toContain("Still to pay:");
       expect(body.text).not.toMatch(/planning|Renamed Booking DJ/i);
+      // A link to this event's page in this business (no token: the page asks the client to sign in).
+      expect(body.text).toContain(`/${catalog.slug}/events/${c.eventId}`);
+      expect(body.text).toContain("View your event");
+      expect(body.text).not.toMatch(/token_hash|#[A-Za-z0-9_-]{43}/);
       expect(body.attachments).toBeUndefined();
       expect((await must(admin.from("email_outbox").select("status").eq("id", row.id).single())).data!.status).toBe("sent");
     } finally {

@@ -8,6 +8,7 @@ import { BrandLogo } from "@/components/app/brand-logo";
 import { ClientHeader } from "@/components/app/client-header";
 import { ContractDocument } from "@/components/contract/contract-document";
 import { ClientPayments } from "@/components/payments/client-payments";
+import { BRAND_BUTTON } from "@/components/app/tenant-public-shell";
 import { signOut } from "@/app/auth/confirm/actions";
 import { renderedContentSchema } from "@/lib/contracts/content";
 import { SIGNATURE_BUCKET } from "@/lib/contracts/signing";
@@ -109,17 +110,19 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
   const isDemo = c.signing_mode === "demo";
   const signing = view.signing;
   // Read-only client views, for the same verified access as the contract itself.
-  const [{ data: paymentData }, { data: plans }, { data: mine }, { data: events }] = await Promise.all([
+  const [{ data: paymentData }, { data: mine }, { data: events }] = await Promise.all([
     supabase.rpc("client_payment_summary", { p_contract_id: contractId, p_tenant_slug: slug }),
-    signing.signed ? supabase.rpc("my_plans") : Promise.resolve({ data: [] }),
     supabase.rpc("my_contracts"),
     supabase.rpc("my_events"),
   ]);
   const payments = paymentData as ClientPaymentSummary | null;
-  // Planning opens once the booking is confirmed; the database decides.
-  const plan = (plans ?? []).find((p) => p.contract_id === contractId);
   // The event's venue and time zone, from the client's own event list.
   const eventId = (mine ?? []).find((m) => m.contract_id === contractId)?.event_id;
+  // Once booked: whether planning is actually open to this client (not just created and still being set up).
+  const planningOpen =
+    signing.signed && payments?.booking_status === "booked" && eventId
+      ? ((await supabase.rpc("client_planning_view", { p_event_id: eventId, p_tenant_slug: slug })).data as { state?: string } | null)?.state === "available"
+      : false;
   const event = (events ?? []).find((e) => e.event_id === eventId);
   let signatureUrl: string | null = null;
   if (signing.signed) {
@@ -143,6 +146,13 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
     done: "bg-emerald-100 text-emerald-950 dark:bg-emerald-500/20 dark:text-emerald-100",
   };
   const canSign = !signing.signed && signing.enabled && signing.consent_version && signing.consent_text;
+  // After signing, from the database's booking status only: never "booked" while a required deposit is outstanding.
+  const outcome =
+    payments?.booking_status === "booked"
+      ? { state: "booked", heading: "Your event is officially booked!", lead: "Your agreement is complete, and everything is ready for the next stage." }
+      : payments?.booking_status === "awaiting_deposit"
+        ? { state: "awaiting_deposit", heading: "Your contract is signed!", lead: "Your signature is complete. The next step is your deposit to finalize the booking." }
+        : { state: "signed", heading: "Your contract is signed!", lead: `Your signature is complete. ${dj} will confirm your booking.` };
 
   const paymentsCard = (
     <ClientPayments
@@ -157,7 +167,7 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
   const back = eventId ? { href: eventHubPath(slug, eventId), label: "Your event" } : true;
 
   return (
-    <div className="min-h-dvh bg-muted/40">
+    <div data-plan-shell className="min-h-dvh bg-plan-canvas">
       <ClientHeader email={auth.user.email ?? null} back={back} signOut={signOut} />
       <main style={pageStyle} className="mx-auto grid w-full max-w-3xl gap-5 px-4 pt-5 pb-[max(2.5rem,env(safe-area-inset-bottom))] sm:gap-6 sm:pt-8">
         {isDemo ? (
@@ -199,7 +209,7 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
                     <span className="font-medium">Next:</span> read the agreement and payment terms, then sign at the end of this page.
                   </p>
                   {canSign ? (
-                    <a href="#sign" className="inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-[var(--brand)] px-4 font-semibold text-[var(--brand-foreground)] outline-none focus-visible:ring-3 focus-visible:ring-ring/60 max-sm:w-full max-sm:justify-center">
+                    <a href="#sign" className="inline-flex min-h-11 items-center gap-1.5 rounded-[10px] bg-brand-ink px-4 font-semibold text-white outline-none hover:bg-[color-mix(in_oklab,var(--brand-ink),black_14%)] focus-visible:ring-2 focus-visible:ring-brand-ink focus-visible:ring-offset-2 max-sm:w-full max-sm:justify-center">
                       <PenLine aria-hidden className="size-4" />
                       Go to signing
                     </a>
@@ -215,56 +225,84 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
         </section>
 
         {signing.signed ? (
-          <section role="status" aria-labelledby="signed-heading" className="grid gap-3 rounded-2xl border-2 border-emerald-600 bg-card p-4 text-sm shadow-sm sm:p-6">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 aria-hidden className="size-6 shrink-0 text-emerald-600" />
-              <h2 id="signed-heading" className="text-lg font-semibold">
-                Contract signed.
-              </h2>
+          <section
+            role="status"
+            aria-labelledby="signed-heading"
+            data-testid="signed-outcome"
+            data-state={outcome.state}
+            className="grid gap-4 rounded-2xl border bg-card p-4 text-sm shadow-sm sm:p-6"
+          >
+            <div className="grid gap-1.5">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 aria-hidden className="size-6 shrink-0 text-emerald-600" />
+                <h2 id="signed-heading" className="text-lg font-semibold">
+                  {outcome.heading}
+                </h2>
+              </div>
+              <p className="text-base">{outcome.lead}</p>
             </div>
-            <p className="text-muted-foreground">
-              {/* en-CA times end in "p.m.", so no extra full stop is added. */}
-              Signed by {signing.typed_name} on {formatInstant(signing.signed_at, event?.timezone).replace(/\.?$/, ".")}
-            </p>
-            {signatureUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL, not an optimizable asset
-              <img src={signatureUrl} alt={`Signature of ${signing.typed_name}`} className="h-20 w-auto max-w-full self-start rounded-lg border bg-white" />
-            ) : null}
-            <div className="grid gap-1 text-base">
-              {payments?.booking_status === "booked" ? (
-                <p className="font-medium">Your booking is confirmed.</p>
-              ) : payments?.booking_status === "awaiting_deposit" ? (
+            {payments?.booking_status === "awaiting_deposit" ? (
+              // The deposit step: the amount still due, as recorded, and who to pay. Flux DJ takes no payments.
+              <div className="grid gap-1.5 rounded-xl bg-muted/60 p-3 text-sm sm:p-4">
+                {payments.deposit_outstanding_cents ? (
+                  <p className="text-base">
+                    Deposit to pay: <strong className="tabular-nums">{formatCents(payments.deposit_outstanding_cents, payments.currency)}</strong>
+                  </p>
+                ) : null}
                 <p>
-                  Your booking will be confirmed once {dj} has recorded your deposit
-                  {payments.deposit_outstanding_cents ? ` (${formatCents(payments.deposit_outstanding_cents, payments.currency)} still to pay)` : ""}.{" "}
-                  <a className="text-sm font-medium underline" href="#payments">
+                  Your booking will be confirmed once {dj} has recorded your deposit. Pay {dj} directly, as arranged with them; Flux DJ doesn&apos;t
+                  take payments.{" "}
+                  <a className="font-medium underline" href="#payments">
                     Deposit details
                   </a>
                 </p>
-              ) : null}
-              {plan ? (
+              </div>
+            ) : outcome.state === "booked" ? (
+              <>
                 <p>
-                  <Link className="font-medium underline" href={`/${slug}/planning/${plan.event_id}`}>
-                    Plan your event
-                  </Link>
-                  : event basics now, with more sections to come.
+                  {planningOpen
+                    ? "You can now start organizing your music, timing and special moments from your event page."
+                    : `${dj} will be in touch about what comes next. Your event page has your booking details in the meantime.`}
                 </p>
-              ) : (
-                <p>Your DJ will follow up with the next steps.</p>
-              )}
-              {/* The event's hub: its status (booked or awaiting the deposit), planning, contract and payments in one place. */}
-              {eventId ? (
-                <p>
-                  <Link className="font-medium underline" href={eventHubPath(slug, eventId)} data-testid="go-to-event">
-                    Go to your event
-                  </Link>
-                </p>
+                {/* A booking stands even if a payment later stops covering the deposit: said plainly, never as a new step. */}
+                {payments?.deposit_outstanding_cents ? (
+                  <p className="text-muted-foreground">
+                    {formatCents(payments.deposit_outstanding_cents, payments.currency)} of the deposit is still to settle with {dj}, as arranged with them.
+                  </p>
+                ) : null}
+              </>
+            ) : null}
+            {/* The event's hub: its status, planning, contract and payments in one place. */}
+            {eventId ? (
+              <div>
+                <Link
+                  href={eventHubPath(slug, eventId)}
+                  data-testid="go-to-event"
+                  className={
+                    // While the deposit is owed it is the next step, so the way to the event steps back to a secondary button.
+                    payments?.booking_status === "awaiting_deposit"
+                      ? "inline-flex min-h-11 items-center justify-center rounded-[10px] px-5 text-sm font-semibold ring-1 ring-border outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand-ink max-sm:w-full"
+                      : cn(BRAND_BUTTON, "sm:w-auto")
+                  }
+                >
+                  Go to your event
+                </Link>
+              </div>
+            ) : null}
+            <div className="grid gap-2 border-t pt-3">
+              <p className="text-muted-foreground">
+                {/* en-CA times end in "p.m.", so no extra full stop is added. */}
+                Signed by {signing.typed_name} on {formatInstant(signing.signed_at, event?.timezone).replace(/\.?$/, ".")}
+              </p>
+              {signatureUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL, not an optimizable asset
+                <img src={signatureUrl} alt={`Signature of ${signing.typed_name}`} className="h-20 w-auto max-w-full self-start rounded-lg border bg-white" />
               ) : null}
             </div>
-            <div className="flex flex-wrap items-center gap-3 border-t pt-3">
+            <div className="flex flex-wrap items-center gap-3">
               {signing.pdf_ready ? (
                 <PdfDownloadLink
-                  className="inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-[var(--brand)] px-4 text-sm font-semibold text-[var(--brand-foreground)] outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
+                  className="inline-flex min-h-11 items-center gap-1.5 rounded-[10px] px-4 text-sm font-medium ring-1 ring-border outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-brand-ink max-sm:w-full max-sm:justify-center"
                   href={`/${slug}/contracts/${contractId}/signed-pdf`}
                   fallbackName="signed-contract.pdf"
                 >

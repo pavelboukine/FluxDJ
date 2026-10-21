@@ -6,6 +6,7 @@ import { contractInviteToken, planningInviteToken, platformInviteToken, proposal
 import { IntegrityError, readVerifiedDocument } from "@/lib/contracts/documents.server";
 import { formatSignedAt, signedPdfFileName } from "@/lib/contracts/pdf/data";
 import { configuredTransport, type EmailAttachment, type EmailTransport } from "./transport.server";
+import { eventHubPath } from "@/lib/client-event";
 import { emailBranding, type LogoImage } from "./branding.server";
 import {
   renderContractEmail,
@@ -94,7 +95,7 @@ export async function processOutbox(
     result.claimed += 1;
     try {
       if (row.event_type === "booking_confirmed") {
-        const outcome = await deliverBookingConfirmed(admin, transport, row, fromAddress, logos);
+        const outcome = await deliverBookingConfirmed(admin, transport, row, appUrl, fromAddress, logos);
         result[outcome] += 1;
         continue;
       }
@@ -384,6 +385,7 @@ async function deliverBookingConfirmed(
   admin: ReturnType<typeof createAdminClient>,
   transport: EmailTransport,
   row: ClaimedRow,
+  appUrl: string,
   fromAddress: string,
   logos: LogoCache,
 ): Promise<"sent" | "cancelled" | "failed"> {
@@ -400,6 +402,12 @@ async function deliverBookingConfirmed(
   const payload = (row.payload ?? {}) as Record<string, unknown>;
   const cents = (value: unknown) => (typeof value === "number" && Number.isSafeInteger(value) ? value : 0);
   const branding = await emailBranding(admin, row, sender.display_name, logos);
+  // The client's event page, from the booked contract's own event in this row's business. No token: the page asks the
+  // client to sign in and comes back. Without it (lookup failed) the email is sent as before, without the button.
+  const { data: booked } = row.contract_id
+    ? await admin.from("contracts").select("event_id").eq("tenant_id", row.tenant_id).eq("id", row.contract_id).maybeSingle()
+    : { data: null };
+  const eventLink = booked?.event_id ? `${appUrl}${eventHubPath(row.tenant_slug, booked.event_id)}` : null;
   const email = renderBookingConfirmedEmail({
     brand: branding.brand,
     canReply: typeof sender.reply_to === "string",
@@ -417,6 +425,7 @@ async function deliverBookingConfirmed(
     creditCents: cents(payload.credit_cents),
     balanceDueDate: str(payload.balance_due_date) || null,
     bookedOn: str(payload.booked_on),
+    eventLink,
   });
   if (!(await dispatchAllowed(admin, row.id))) return "cancelled";
   const sent = await transport.send({

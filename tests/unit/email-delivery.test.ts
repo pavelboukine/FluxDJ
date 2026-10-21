@@ -250,4 +250,24 @@ describe("planning invitation email", () => {
     expect(booking.subject).not.toBe(email.subject);
     expect(booking.text).not.toMatch(/planning-invite|planning portal/i);
   });
+
+  it("links the booking confirmation to the client's event page, with no token and no planning promise", () => {
+    const input = {
+      tenantDisplayName: "Northside Sound", legalName: "Northside Sound Inc.", contactEmail: null, clientName: "Riya Patel", eventTitle: "Gala",
+      eventDate: "2027-06-12", currency: "CAD", totalCents: 100_000, depositCents: 30_000, receivedCents: 30_000, remainingCents: 70_000, creditCents: 0,
+      balanceDueDate: null, bookedOn: "2027-01-02",
+    };
+    const hub = "https://app.example/northside/events/0b9c7f3e-1a2b-4c3d-8e9f-0a1b2c3d4e5f";
+    const linked = renderBookingConfirmedEmail({ ...input, eventLink: hub });
+    expect(linked.html).toContain(`href="${hub}"`);
+    expect(linked.html).toContain("View your event");
+    expect(linked.text).toContain(hub);
+    expect(linked.text).toContain("Your event page has your booking, contract and payments in one place.");
+    expect(linked.text).not.toMatch(/token|planning/i);
+    // Everything else is as before, and without a link there's no button.
+    const plain = renderBookingConfirmedEmail(input);
+    expect(plain.subject).toBe(linked.subject);
+    expect(plain.text).not.toContain("View your event");
+    expect(plain.text).toContain("Northside Sound will be in touch about the next steps.");
+  });
 });

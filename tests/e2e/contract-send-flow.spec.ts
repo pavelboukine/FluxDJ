@@ -84,7 +84,8 @@ test.describe.serial("contract sending and verified client access", () => {
     const deviceA = await browser.newContext();
     const a = await deviceA.newPage();
     await a.goto(invite);
-    await expect(a.getByText(`Your contract from ${tenant.displayName}`)).toBeVisible();
+    await expect(a.getByRole("heading", { level: 1 })).toHaveText("Your agreement is ready");
+    await expect(a.locator("main")).toContainText(tenant.displayName);
     await expect(a).toHaveURL(`${BASE}/${tenant.slug}/invite`); // token removed from the address bar
     await expect(a.locator("body")).not.toContainText(eventTitle);
     const { count } = await admin.from("event_access").select("id", { count: "exact", head: true }).eq("event_id", eventId);
@@ -169,7 +170,8 @@ test.describe.serial("contract sending and verified client access", () => {
     await page.goto(/href="([^"]+\/auth\/confirm[^"]+)"/.exec(message.html)![1].replaceAll("&amp;", "&"));
     await page.getByRole("button", { name: "Sign in" }).click();
     await page.waitForURL("**/my");
-    await page.getByRole("link", { name: eventTitle }).click();
+    // The card's contract action (its title leads to the event page).
+    await page.getByRole("link", { name: `Review and sign contract for ${eventTitle}` }).click();
     await expect(page.getByRole("heading", { level: 1 })).toContainText(eventTitle);
 
     // Staff void it: the signed-in client can no longer read it, and keeps nothing else.

@@ -171,7 +171,7 @@ test.describe.serial("manual payments", () => {
     await client.getByRole("checkbox").check();
     await client.getByRole("button", { name: "Review and sign…" }).click();
     await client.getByRole("dialog", { name: "Confirm signing" }).getByRole("button", { name: "Sign contract" }).click();
-    await expect(client.getByRole("heading", { name: "Contract signed." }).first()).toBeVisible();
+    await expect(client.getByRole("heading", { name: "Your contract is signed!" }).first()).toBeVisible();
     await client.reload();
     await expect(client.getByText(/Your booking will be confirmed once .* has recorded your deposit/)).toBeVisible();
 
@@ -208,7 +208,7 @@ test.describe.serial("manual payments", () => {
     expect((await admin.from("events").select("booking_confirmed_at").eq("id", eventId).single()).data!.booking_confirmed_at).toBe(event!.booking_confirmed_at);
 
     await client.reload();
-    await expect(client.getByText("Your booking is confirmed.")).toBeVisible();
+    await expect(client.getByRole("heading", { name: "Your event is officially booked!" })).toBeVisible();
     await expect(client.getByRole("region", { name: "Payments" })).toContainText("Deposit still outstanding");
     await expect(client.locator("body")).not.toContainText(/Payment bounced|planning/i);
     await clientContext.close();

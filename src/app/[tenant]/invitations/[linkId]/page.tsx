@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FileSignature } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { PublicCard } from "@/components/app/public-shell";
+import { BRAND_BUTTON, TenantPublicCard } from "@/components/app/tenant-public-shell";
+import { liveBrand } from "@/lib/branding/logo.server";
 import { signOut } from "@/app/auth/confirm/actions";
 import { UUID_RE } from "@/lib/forms";
 import { SLUG_PATTERN } from "@/lib/proposals/client-session.server";
@@ -31,21 +34,35 @@ export default async function InvitationPage({ params }: PageProps<"/[tenant]/in
   const status: Status = auth.user
     ? (((await supabase.rpc("client_invitation_status", { p_link_id: linkId, p_tenant_slug: slug })).data as Status | null) ?? { state: "invalid" })
     : { state: "signed_out" };
-  const brand = status.tenant_display_name ?? "your DJ";
+  // The business's branding (active businesses only), once the signed-in status check has tied this invitation to the
+  // URL's business (it returns these states only for a usable invitation). Signed out or unusable: the neutral Flux
+  // frame and a generic message, so a stale, guessed or foreign link shows nothing of any business.
+  const verified = status.state === "ready" || status.state === "accepted" || status.state === "wrong_account" || status.state === "unverified";
+  const live = verified ? await liveBrand(slug) : null;
+  const title = status.state === "ready" || status.state === "accepted" ? "Your agreement is ready" : "Open your contract";
+  const frame = (children: ReactNode) =>
+    live ? (
+      <TenantPublicCard brand={live} title={title} description={status.state === "ready" || status.state === "accepted" ? <>Please review and sign your agreement with {live.displayName}.</> : undefined}>
+        {children}
+      </TenantPublicCard>
+    ) : (
+      <PublicCard icon={FileSignature} title={title}>{children}</PublicCard>
+    );
+  const primary = live ? BRAND_BUTTON : buttonVariants({ size: "lg", className: "w-full" });
 
-  return (
-    <PublicCard icon={FileSignature} title={status.state === "ready" || status.state === "accepted" ? `Your contract from ${brand}` : "Open your contract"}>
+  return frame(
+    <>
       {status.state === "ready" ? (
         <>
           <p>Hi {status.signer_name}. Your email is confirmed. Your contract for <strong>{status.event_title}</strong> is ready to read.</p>
           <form action={acceptInvitation.bind(null, slug, linkId)}>
-            <Button type="submit" size="lg" className="w-full">Open my contract</Button>
+            <button type="submit" className={primary}>Open my contract</button>
           </form>
         </>
       ) : status.state === "accepted" ? (
         <>
           <p>Your contract for <strong>{status.event_title}</strong> is ready to read.</p>
-          <Link className={buttonVariants({ size: "lg", className: "w-full" })} href={`/${slug}/contracts/${status.contract_id}`}>Open my contract</Link>
+          <Link className={primary} href={`/${slug}/contracts/${status.contract_id}`}>Open my contract</Link>
         </>
       ) : status.state === "wrong_account" ? (
         <>
@@ -63,6 +80,6 @@ export default async function InvitationPage({ params }: PageProps<"/[tenant]/in
           <strong>Confirm and continue</strong>, then <strong>Sign in</strong>. If that link expired, open your contract email again to get a new one.
         </p>
       )}
-    </PublicCard>
+    </>,
   );
 }

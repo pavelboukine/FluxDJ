@@ -4,7 +4,7 @@
  * specs): proposal sent, submitted and approved; contract generated, sent,
  * accepted and signed by the client; deposit recorded.
  */
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { expect } from "@playwright/test";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { admin, status } from "./support";
@@ -27,17 +27,13 @@ export async function sessionFor(email: string): Promise<SupabaseClient> {
   return db;
 }
 
+type Discount = { type: "percent"; percent_basis_points: number; label: string | null };
+
 /**
- * Books `eventId` for a new client account `clientEmail` (the event's primary contact). Returns the contract id.
- * `discount` puts a proposal discount on the offer; `recordDeposit: false` stops after signing (the event then
- * waits for its deposit, or is booked by signing alone when nothing is due).
+ * Sends a contract for `eventId` (proposal sent, submitted and approved; contract generated and sent), as staff do.
+ * Returns the contract, its invitation link id and the invitation token the email would carry (/{slug}/invite#token).
  */
-export async function bookEvent(
-  tenant: TestTenant,
-  eventId: string,
-  clientEmail: string,
-  opts: { discount?: { type: "percent"; percent_basis_points: number; label: string | null }; recordDeposit?: boolean } = {},
-): Promise<string> {
+export async function sendContractFor(tenant: TestTenant, eventId: string, opts: { discount?: Discount } = {}): Promise<{ contractId: string; linkId: string; token: string }> {
   const staffDb = await sessionFor(tenant.ownerEmail);
   const { data: template } = await must(admin.from("proposal_templates").select("id").eq("tenant_id", tenant.id).eq("name", "Wedding (DEMO)").single());
   const { data: input } = await must(staffDb.rpc("proposal_offer_input_from_template", { p_template_id: template!.id }));
@@ -54,8 +50,36 @@ export async function bookEvent(
   const { data: generated } = await must(staffDb.rpc("generate_contract_draft", { p_approval_id: (approval as { approval_id: string }).approval_id, p_template_version_id: versionId }));
   const contractId = (generated as { contract_id: string }).contract_id;
   const linkId = randomUUID();
-  await must(staffDb.rpc("send_contract", { p_contract_id: contractId, p_link_id: linkId, p_token_hash: createHash("sha256").update(randomUUID()).digest("hex") }));
+  const token = randomBytes(32).toString("base64url");
+  await must(staffDb.rpc("send_contract", { p_contract_id: contractId, p_link_id: linkId, p_token_hash: createHash("sha256").update(token).digest("hex") }));
+  return { contractId, linkId, token };
+}
 
+/**
+ * Books `eventId` for a new client account `clientEmail` (the event's primary contact). Returns the contract id.
+ * `discount` puts a proposal discount on the offer; `recordDeposit: false` stops after signing (the event then
+ * waits for its deposit, or is booked by signing alone when nothing is due).
+ */
+export async function bookEvent(
+  tenant: TestTenant,
+  eventId: string,
+  clientEmail: string,
+  opts: { discount?: Discount; recordDeposit?: boolean } = {},
+): Promise<string> {
+  const { contractId, linkId } = await sendContractFor(tenant, eventId, { discount: opts.discount });
+  return signContractFor(tenant, eventId, clientEmail, contractId, linkId, opts);
+}
+
+/** Accepts the invitation and signs the contract as the client (then records the deposit unless `recordDeposit: false`). */
+export async function signContractFor(
+  tenant: TestTenant,
+  eventId: string,
+  clientEmail: string,
+  contractId: string,
+  linkId: string,
+  opts: { recordDeposit?: boolean } = {},
+): Promise<string> {
+  const staffDb = await sessionFor(tenant.ownerEmail);
   // A new client account, or the existing one when the client already has an event.
   const created = await admin.auth.admin.createUser({ email: clientEmail, email_confirm: true });
   const user = created.data.user ? created.data : (await must(admin.auth.admin.generateLink({ type: "magiclink", email: clientEmail }))).data;

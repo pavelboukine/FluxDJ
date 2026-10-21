@@ -320,7 +320,7 @@ test.describe.serial("client home and contract", () => {
 
     await signer.getByRole("button", { name: "Review and sign…" }).click();
     await signer.getByRole("dialog", { name: "Confirm signing" }).getByRole("button", { name: "Sign contract" }).click();
-    await expect(signer.getByRole("heading", { name: "Contract signed." }).first()).toBeVisible();
+    await expect(signer.getByRole("heading", { name: "Your contract is signed!" }).first()).toBeVisible();
     const { data: evidence } = await admin.from("contract_signatures").select("typed_name, signer_email").eq("contract_id", ev.unsigned.contractId!).single();
     expect(evidence).toMatchObject({ typed_name: "Jordan Lee", signer_email: signerEmail });
 
@@ -333,7 +333,7 @@ test.describe.serial("client home and contract", () => {
 
   test("signed, awaiting deposit: outcome, payments without internal details, PDF still being prepared", async () => {
     await signer.goto(`/${a.tenant.slug}/contracts/${ev.deposit.contractId}`);
-    await expect(signer.getByRole("heading", { name: "Contract signed." })).toBeVisible();
+    await expect(signer.getByRole("heading", { name: "Your contract is signed!" })).toBeVisible();
     await expect(signer.getByText(/^Signed by Jordan Lee on /)).toBeVisible();
     await expect(signer.getByRole("region", { name: "Contract overview" })).toContainText("Signed · awaiting deposit");
     await expect(signer.getByText(/Your booking will be confirmed once .* has recorded your deposit/)).toBeVisible();
@@ -349,9 +349,11 @@ test.describe.serial("client home and contract", () => {
 
   test("booked: confirmed, planning link, payments recorded without staff references", async () => {
     await signer.goto(`/${a.tenant.slug}/contracts/${ev.booked.contractId}`);
-    await expect(signer.getByText("Your booking is confirmed.")).toBeVisible();
+    await expect(signer.getByRole("heading", { name: "Your event is officially booked!" })).toBeVisible();
     await expect(signer.getByRole("region", { name: "Contract overview" })).toContainText("Signed · booked");
-    await expect(signer.getByRole("link", { name: "Plan your event" })).toHaveAttribute("href", `/${a.tenant.slug}/planning/${ev.booked.id}`);
+    // Planning is open: the event page is where it starts.
+    await expect(signer.getByTestId("signed-outcome")).toContainText("You can now start organizing your music, timing and special moments");
+    await expect(signer.getByRole("link", { name: "Go to your event" })).toHaveAttribute("href", `/${a.tenant.slug}/events/${ev.booked.id}`);
     const payments = signer.getByRole("region", { name: "Payments" });
     await expect(payments).toContainText("DepositReceived in full");
     await expect(signer.locator("body")).not.toContainText(new RegExp(`E2E-PAYMENT-REF-SECRET|staff payment note|Staff-only note ${run}|user agent|ip address`, "i"));

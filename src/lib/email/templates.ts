@@ -307,6 +307,8 @@ export function renderBookingConfirmedEmail(
     creditCents: number;
     balanceDueDate: string | null;
     bookedOn: string;
+    /** The client's event page (/{slug}/events/{id}); it asks them to sign in when needed. No token: safe to forward. */
+    eventLink?: string | null;
   },
 ): RenderedEmail {
   const dj = input.tenantDisplayName;
@@ -325,8 +327,11 @@ export function renderBookingConfirmedEmail(
         : input.creditCents > 0
           ? `Nothing remains to be paid. You have paid ${money(input.creditCents)} more than the total; ${dj} will contact you about it.`
           : "Nothing remains to be paid.",
-      `${dj} will be in touch about the next steps.`,
+      input.eventLink
+        ? `Your event page has your booking, contract and payments in one place. ${dj} will be in touch about the next steps.`
+        : `${dj} will be in touch about the next steps.`,
     ],
+    ...(input.eventLink ? { action: { label: "View your event", href: input.eventLink } } : {}),
     details: [
       ["Event", input.eventTitle],
       ["Date", formatDay(input.eventDate)],

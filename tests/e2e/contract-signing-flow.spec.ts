@@ -164,7 +164,7 @@ test.describe.serial("contract signing", () => {
     expect((await admin.from("contracts").select("status").eq("id", contractId).single()).data!.status).toBe("sent");
   });
 
-  test("consent, explicit confirmation, then 'Contract signed.' without booking promises", async () => {
+  test("consent, explicit confirmation, then signed with the deposit as the next step and no booking promise", async () => {
     await client.getByRole("checkbox").uncheck();
     await client.getByRole("button", { name: "Review and sign…" }).click();
     await expect(client.getByRole("alert").filter({ hasText: "To sign" })).toHaveText("To sign, check the consent box.");
@@ -173,13 +173,14 @@ test.describe.serial("contract signing", () => {
     const dialog = client.getByRole("dialog", { name: "Confirm signing" });
     await expect(dialog).toContainText("Sign this contract as Morgan Lee?");
     await dialog.getByRole("button", { name: "Sign contract" }).click();
-    await expect(client.getByRole("heading", { name: "Contract signed." }).first()).toBeVisible();
-    await expect(client.getByText("Your DJ will follow up with the next steps.").first()).toBeVisible();
+    await expect(client.getByRole("heading", { name: "Your contract is signed!" }).first()).toBeVisible();
+    await expect(client.getByTestId("signed-outcome")).toHaveAttribute("data-state", "awaiting_deposit");
+    await expect(client.getByText("The next step is your deposit to finalize the booking.")).toBeVisible();
     // No booking or planning promise (a signed-PDF download is expected now).
-    await expect(client.locator("body")).not.toContainText(/booked|planning/i);
+    await expect(client.locator("body")).not.toContainText(/booked|planning|pay now/i);
 
     await client.reload();
-    await expect(client.getByRole("heading", { name: "Contract signed." })).toBeVisible();
+    await expect(client.getByRole("heading", { name: "Your contract is signed!" })).toBeVisible();
     await expect(client.getByText(/^Signed by Morgan Lee on /)).toBeVisible();
     await expect(client.getByRole("img", { name: "Signature of Morgan Lee" })).toBeVisible();
     await expect(client.getByRole("heading", { name: "Sign this contract" })).toHaveCount(0);

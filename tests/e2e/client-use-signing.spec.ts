@@ -157,7 +157,7 @@ test.describe.serial("client-use agreements", () => {
     await consent.check();
     await client.getByRole("button", { name: "Review and sign…" }).click();
     await client.getByRole("dialog", { name: "Confirm signing" }).getByRole("button", { name: "Sign contract" }).click();
-    await expect(client.getByRole("heading", { name: "Contract signed." }).first()).toBeVisible();
+    await expect(client.getByRole("heading", { name: "Your contract is signed!" }).first()).toBeVisible();
 
     const { data: evidence } = await admin.from("contract_signatures").select("consent_version, consent_text").eq("contract_id", contractId).single();
     expect(evidence).toEqual({ consent_version: "client-v1", consent_text: CLIENT_V1 });
