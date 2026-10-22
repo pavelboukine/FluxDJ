@@ -24,7 +24,8 @@ import {
   type Db,
 } from "./support/fixtures";
 
-const MAILPIT = "http://127.0.0.1:54324";
+// The local stack's Mailpit, as the app's email transport is configured (.env.local).
+const MAILPIT = (process.env.MAILPIT_URL || "http://127.0.0.1:54324").replace(/\/$/, "");
 
 class RecordingTransport implements EmailTransport {
   readonly name = "recording";

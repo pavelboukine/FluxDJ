@@ -1,0 +1,46 @@
+# Critical browser flows (`pnpm test:e2e:smoke`) on a fresh local stack:
+# proposal submission and approval, client verification and contract signing,
+# the deposit confirming the booking, and a planning invitation through to a
+# client planning save. Not a required check until it has proved reliable;
+# the full browser suite stays a local, pre-release run (docs/operations.md).
+name: Browser smoke
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  smoke:
+    name: Browser smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/local-supabase
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      # Playwright starts `pnpm dev` itself (playwright.config.ts) with the .env.local written above.
+      - name: Browser smoke tests
+        run: pnpm test:e2e:smoke
+      # Traces and screenshots of failures (local test data only); kept briefly.
+      - name: Upload failure traces
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: browser-smoke-results
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore

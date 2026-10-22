@@ -15,10 +15,13 @@
     "db:lint": "supabase db lint --level warning --fail-on warning",
     "db:versions": "node scripts/supabase-versions.mjs",
     "db:types": "supabase gen types typescript --local --schema public > src/lib/supabase/database.types.ts",
+    "db:schema": "node scripts/schema-snapshot.mjs",
+    "db:schema:check": "node scripts/schema-snapshot.mjs --check",
     "check": "pnpm lint && pnpm typecheck && pnpm test:unit && pnpm db:lint && pnpm db:test && pnpm test:integration && pnpm test:e2e",
     "test:integration": "vitest run tests/integration --no-file-parallelism --reporter=verbose",
     "test:unit": "vitest run tests/unit",
     "test:e2e": "playwright test",
+    "test:e2e:smoke": "playwright test tests/e2e/proposal-flow.spec.ts tests/e2e/contract-signing-flow.spec.ts tests/e2e/payments-flow.spec.ts tests/e2e/flux-planning-invitation.spec.ts",
     "outbox:work": "node --env-file=.env.local scripts/outbox-worker.mjs"
   },
   "dependencies": {
