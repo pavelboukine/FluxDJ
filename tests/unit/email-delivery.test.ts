@@ -151,6 +151,14 @@ describe("delivery status shown to staff", () => {
   it("never shows raw provider or unexpected error text", () => {
     expect(errorSummary("Unexpected token at https://internal/secret?key=abc")).toBe("The last attempt failed.");
     expect(errorSummary("Could not create a verification link (500)")).toBe("Could not create a verification link.");
+    // Outcomes where an earlier attempt may have arrived are never shown as a plain refusal or failure.
+    expect(
+      errorSummary(
+        "An earlier attempt of this email may already have been delivered: the email provider refused a changed repeat (Resend 409, invalid_idempotent_request). Check the provider's log before retrying.",
+      ),
+    ).toBe("An earlier attempt may already have been delivered: the email provider refused a changed repeat. Check before retrying.");
+    expect(errorSummary("delivery did not complete")).toBe("The last attempt didn't finish, so it may have been delivered. Check before retrying.");
+    expect(errorSummary("Resend responded 409 (concurrent_idempotent_requests)")).toBe("The email provider refused it (HTTP 409).");
   });
   it("names each email's purpose, marking the team's own copies", () => {
     expect(emailPurpose({ event_type: "proposal_sent", payload: { revision: 2 } })).toEqual({ label: "Revised proposal (revision 2)", toTeam: false });

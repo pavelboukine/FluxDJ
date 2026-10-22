@@ -59,6 +59,14 @@ export class MailpitTransport implements EmailTransport {
   }
 }
 
+/**
+ * The provider already processed a request with this idempotency key, but
+ * with different content, and refuses the repeat for its 24-hour window. An
+ * earlier attempt may well have been delivered, so it is never a plain
+ * "not delivered".
+ */
+export class IdempotencyConflictError extends Error {}
+
 /** Hosted delivery through Resend. Not used locally; requires RESEND_API_KEY. */
 export class ResendTransport implements EmailTransport {
   readonly name = "resend";
@@ -90,8 +98,14 @@ export class ResendTransport implements EmailTransport {
       }),
       cache: "no-store",
     });
-    // Never include the request body (links, attachments) in errors.
-    if (!response.ok) throw new Error(`Resend responded ${response.status}`);
+    // Never include the request body (links, attachments) in errors. Resend's error name is a fixed code
+    // (e.g. "invalid_idempotent_request" or "concurrent_idempotent_requests"), never message content.
+    if (!response.ok) {
+      const name = ((await response.json().catch(() => null)) as { name?: unknown } | null)?.name;
+      const message = `Resend responded ${response.status}${typeof name === "string" && /^[a-z_]{1,60}$/.test(name) ? ` (${name})` : ""}`;
+      if (response.status === 409 && name === "invalid_idempotent_request") throw new IdempotencyConflictError(message);
+      throw new Error(message);
+    }
     const body = (await response.json()) as { id?: string };
     return { id: body.id ?? "resend" };
   }

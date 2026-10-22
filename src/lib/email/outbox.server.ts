@@ -5,7 +5,7 @@ import { serverEnv } from "@/lib/env.server";
 import { contractInviteToken, planningInviteToken, platformInviteToken, proposalLinkToken, sha256Hex, staffInviteToken } from "@/lib/proposals/tokens.server";
 import { IntegrityError, readVerifiedDocument } from "@/lib/contracts/documents.server";
 import { formatSignedAt, signedPdfFileName } from "@/lib/contracts/pdf/data";
-import { configuredTransport, type EmailAttachment, type EmailTransport } from "./transport.server";
+import { configuredTransport, IdempotencyConflictError, type EmailAttachment, type EmailTransport } from "./transport.server";
 import { eventHubPath } from "@/lib/client-event";
 import { emailBranding, type LogoImage } from "./branding.server";
 import {
@@ -25,7 +25,114 @@ import {
   type RenderedEmail,
 } from "./templates";
 
-export type OutboxRunResult = { claimed: number; sent: number; failed: number; cancelled: number };
+/**
+ * `unconfirmed`: accepted by the provider, but the outbox couldn't record it
+ * as sent (see completeSent). Such a row is left to be claimed again.
+ */
+export type OutboxRunResult = { claimed: number; sent: number; failed: number; cancelled: number; unconfirmed: number };
+
+/**
+ * A run that hit a database problem: a claim that failed, so that category
+ * delivered nothing this run, or an email the provider accepted that couldn't
+ * be recorded as sent. Every other category and row was still processed, and
+ * `result` counts them. Problems name categories, row ids and error codes
+ * only, never links, addresses or contents.
+ */
+export class OutboxRunError extends Error {
+  constructor(
+    readonly result: OutboxRunResult,
+    readonly problems: string[],
+  ) {
+    super(`Outbox run incomplete: ${problems.join("; ")}`);
+    this.name = "OutboxRunError";
+  }
+}
+
+type Admin = ReturnType<typeof createAdminClient>;
+type DbError = { code?: string } | null;
+
+/** The provider accepted the email, but recording it as sent failed. */
+class CompletionError extends Error {}
+
+/**
+ * Records a provider-accepted email as sent, retrying once. A failure is never
+ * turned into a delivery failure, because the provider already has the email.
+ * The row stays "sending" and is claimed again once its lease ends
+ * (at-least-once). Where the email has an idempotency key, the provider drops
+ * that repeat within its 24-hour window.
+ */
+async function completeSent(admin: Admin, rowId: string, providerMessageId: string): Promise<void> {
+  let error: DbError = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    ({ error } = await admin.rpc("complete_email_outbox", { p_id: rowId, p_provider_message_id: providerMessageId }));
+    if (!error) return;
+  }
+  throw new CompletionError(`email ${rowId} was accepted by the provider but could not be recorded as sent (${error?.code ?? "error"})`);
+}
+
+/**
+ * The provider idempotency key of an email whose request is identical on every
+ * attempt: one per outbox row, reused by its retries. Never for emails that
+ * carry a fresh sign-in link (each attempt is a different request). The
+ * provider refuses a changed request under a used key, so everything in a
+ * keyed request is frozen on the row at its first attempt: the branding
+ * (emailBranding, including the reply-to) and the sender (frozenSender).
+ */
+const retryKey = (row: { id: string; event_type: string }) => `flux-${row.event_type.replaceAll("_", "-")}-${row.id}`;
+
+type Sender = { displayName: string; fromName: string; fromAddress: string };
+
+/**
+ * The row's sender, frozen at its first attempt by freeze_email_sender (as
+ * booking confirmations and signed copies already are). A business renamed
+ * between attempts doesn't change a retry. Null if it couldn't be prepared
+ * (the attempt then fails and is retried). The first attempt freezes exactly
+ * what it sends: the business's current name and the configured address.
+ */
+async function frozenSender(admin: Admin, rowId: string, fromAddress: string): Promise<Sender | null> {
+  const { data, error } = await admin.rpc("freeze_email_sender", { p_id: rowId, p_from_address: fromAddress });
+  const s = data as { display_name?: unknown; from_name?: unknown; from_address?: unknown } | null;
+  if (error || !s || typeof s.display_name !== "string" || typeof s.from_name !== "string" || typeof s.from_address !== "string") return null;
+  return { displayName: s.display_name, fromName: s.from_name, fromAddress: s.from_address };
+}
+
+const SENDER_UNAVAILABLE = "The sender could not be prepared. It will be retried.";
+
+/**
+ * The last error of an email the provider refused as a changed repeat of an
+ * earlier attempt (IdempotencyConflictError). That attempt may have been
+ * delivered, so it isn't retried automatically: every repeat gets the same
+ * answer for 24 hours, and resending after that could duplicate it.
+ */
+export const POSSIBLY_DELIVERED =
+  "An earlier attempt of this email may already have been delivered: the email provider refused a changed repeat (Resend 409, invalid_idempotent_request). Check the provider's log before retrying.";
+
+/** A claim that failed: recorded as a problem of the run, never mistaken for an empty queue. */
+function claimFailed(problems: string[], category: string, error: DbError) {
+  problems.push(`${category} emails could not be claimed (${error?.code ?? "error"})`);
+}
+
+/**
+ * A row whose delivery threw. An email the provider accepted but that couldn't
+ * be recorded stays as it is (see completeSent). Anything else failed before or
+ * at the provider and is retried with backoff.
+ */
+async function rowFailed(admin: Admin, rowId: string, cause: unknown, result: OutboxRunResult, problems: string[]) {
+  if (cause instanceof CompletionError) {
+    result.unconfirmed += 1;
+    problems.push(cause.message);
+    return;
+  }
+  if (cause instanceof IdempotencyConflictError) {
+    await admin.rpc("fail_email_outbox", { p_id: rowId, p_error: POSSIBLY_DELIVERED, p_permanent: true });
+    result.failed += 1;
+    return;
+  }
+  // Error text must never include the link: transports report status codes only.
+  const message = cause instanceof Error ? cause.message.slice(0, 300) : "Unknown delivery error";
+  await admin.rpc("fail_email_outbox", { p_id: rowId, p_error: message, p_permanent: false });
+  result.failed += 1;
+}
 
 /**
  * Delivers due emails from the durable outbox.
@@ -64,23 +171,38 @@ export type OutboxRunResult = { claimed: number; sent: number; failed: number; c
  * deliverPlatformEmails, deliverStaffEmails and deliverPlanningEmails.
  * `tenantId` limits a run to one business's emails, `platformInvitationId`
  * and `staffInvitationId` to one invitation's.
+ *
+ * Emails whose request is identical on every attempt carry a provider
+ * idempotency key per row (retryKey), so a retry after a send the outbox
+ * couldn't record isn't delivered twice within the provider's 24 hours. Sign-in
+ * emails carry a fresh verification link on each attempt and have none.
+ *
+ * A failed claim doesn't stop the other categories, and neither does an email
+ * that was sent but couldn't be recorded. The run still throws OutboxRunError
+ * at the end, so the failure is never reported as an empty queue. `admin` is
+ * for tests only (fault injection around the real client).
  */
 export async function processOutbox(
-  options: { transport?: EmailTransport; tenantId?: string; platformInvitationId?: string; staffInvitationId?: string; limit?: number } = {},
+  options: { transport?: EmailTransport; tenantId?: string; platformInvitationId?: string; staffInvitationId?: string; limit?: number; admin?: Admin } = {},
 ): Promise<OutboxRunResult> {
-  const admin = createAdminClient();
+  const admin = options.admin ?? createAdminClient();
   const transport = options.transport ?? configuredTransport();
   const appUrl = publicEnv().NEXT_PUBLIC_APP_URL;
   const fromAddress = serverEnv().EMAIL_FROM_ADDRESS;
-  const result: OutboxRunResult = { claimed: 0, sent: 0, failed: 0, cancelled: 0 };
+  const result: OutboxRunResult = { claimed: 0, sent: 0, failed: 0, cancelled: 0, unconfirmed: 0 };
+  const problems: string[] = [];
+  const finish = () => {
+    if (problems.length) throw new OutboxRunError(result, problems);
+    return result;
+  };
   // Logos prepared once per run (keyed by storage path, so per business).
   const logos: LogoCache = new Map();
 
-  if (!options.tenantId) await deliverPlatformEmails(admin, transport, appUrl, fromAddress, result, options);
-  if (options.platformInvitationId) return result;
-  await deliverStaffEmails(admin, transport, appUrl, fromAddress, result, options, logos);
-  if (options.staffInvitationId) return result;
-  await deliverPlanningEmails(admin, transport, appUrl, fromAddress, result, options, logos);
+  if (!options.tenantId) await deliverPlatformEmails(admin, transport, appUrl, fromAddress, result, problems, options);
+  if (options.platformInvitationId) return finish();
+  await deliverStaffEmails(admin, transport, appUrl, fromAddress, result, problems, options, logos);
+  if (options.staffInvitationId) return finish();
+  await deliverPlanningEmails(admin, transport, appUrl, fromAddress, result, problems, options, logos);
 
   const { data: rows, error } = await admin.rpc("claim_email_outbox", {
     p_limit: options.limit ?? 20,
@@ -89,9 +211,9 @@ export async function processOutbox(
     // This worker delivers booking confirmations (older workers never claim them).
     p_include_booking: true,
   });
-  if (error) throw new Error(`Could not claim outbox emails (${error.code ?? "error"})`);
+  if (error) claimFailed(problems, "Business", error);
 
-  for (const row of rows ?? []) {
+  for (const row of error ? [] : (rows ?? [])) {
     result.claimed += 1;
     try {
       if (row.event_type === "booking_confirmed") {
@@ -131,11 +253,17 @@ export async function processOutbox(
 
       const branding = await emailBranding(admin, row, row.tenant_display_name, logos);
       const replyTo = branding.replyTo === undefined ? row.tenant_reply_to : branding.replyTo;
+      const sender = await frozenSender(admin, row.id, fromAddress);
+      if (!sender) {
+        await admin.rpc("fail_email_outbox", { p_id: row.id, p_error: SENDER_UNAVAILABLE, p_permanent: false });
+        result.failed += 1;
+        continue;
+      }
       const email = renderEmail({
         brand: branding.brand,
         canReply: Boolean(replyTo),
         eventType: row.event_type as OutboxEventType,
-        tenantDisplayName: row.tenant_display_name,
+        tenantDisplayName: sender.displayName,
         tenantSlug: row.tenant_slug,
         proposalId: row.entity_id,
         payload: (row.payload ?? {}) as Record<string, unknown>,
@@ -147,23 +275,22 @@ export async function processOutbox(
         continue;
       }
       const sent = await transport.send({
-        fromName: `${row.tenant_display_name} via Flux DJ`,
-        fromAddress,
+        fromName: sender.fromName,
+        fromAddress: sender.fromAddress,
         to: row.recipient_email,
         replyTo,
         ...email,
         attachments: inline(branding.attachments),
+        // Proposal emails: the link is re-derived from the link id, everything else is frozen on the row.
+        idempotencyKey: retryKey(row),
       });
-      await admin.rpc("complete_email_outbox", { p_id: row.id, p_provider_message_id: sent.id });
+      await completeSent(admin, row.id, sent.id);
       result.sent += 1;
     } catch (cause) {
-      // Error text must never include the link: transports report status codes only.
-      const message = cause instanceof Error ? cause.message.slice(0, 300) : "Unknown delivery error";
-      await admin.rpc("fail_email_outbox", { p_id: row.id, p_error: message, p_permanent: false });
-      result.failed += 1;
+      await rowFailed(admin, row.id, cause, result, problems);
     }
   }
-  return result;
+  return finish();
 }
 
 type LogoCache = Map<string, Promise<LogoImage | null>>;
@@ -221,26 +348,32 @@ async function deliverContractEmail(
       await admin.rpc("cancel_email_outbox", { p_id: row.id, p_reason: "The contract is not void." });
       return "cancelled";
     }
+    const sender = await frozenSender(admin, row.id, fromAddress);
+    if (!sender) {
+      await admin.rpc("fail_email_outbox", { p_id: row.id, p_error: SENDER_UNAVAILABLE, p_permanent: false });
+      return "failed";
+    }
     const payload = (row.payload ?? {}) as Record<string, unknown>;
     const email = renderContractVoidedEmail({
       brand: branding.brand,
       canReply,
-      tenantDisplayName: row.tenant_display_name,
-      legalName: str(payload.legal_name) || row.tenant_display_name,
+      tenantDisplayName: sender.displayName,
+      legalName: str(payload.legal_name) || sender.displayName,
       contactEmail: str(payload.contact_email) || null,
       clientName: str(payload.client_name) || "there",
       eventTitle: str(payload.event_title) || "your event",
     });
     if (!(await dispatchAllowed(admin, row.id))) return "cancelled";
     const sent = await transport.send({
-      fromName: `${row.tenant_display_name} via Flux DJ`,
-      fromAddress,
+      fromName: sender.fromName,
+      fromAddress: sender.fromAddress,
       to: row.recipient_email,
       replyTo,
       ...email,
       attachments: inline(branding.attachments),
+      idempotencyKey: retryKey(row),
     });
-    await admin.rpc("complete_email_outbox", { p_id: row.id, p_provider_message_id: sent.id });
+    await completeSent(admin, row.id, sent.id);
     return "sent";
   }
   if (!row.contract_deliverable || !row.access_link_id) {
@@ -249,6 +382,15 @@ async function deliverContractEmail(
       p_reason: "The contract is no longer sent and current, its invitation was revoked or expired, or the event was archived.",
     });
     return "cancelled";
+  }
+  // The invitation (keyed) uses the frozen sender; a sign-in email (fresh link, no key) the business's current name, as before.
+  const sender =
+    row.event_type === "contract_sent"
+      ? await frozenSender(admin, row.id, fromAddress)
+      : { displayName: row.tenant_display_name, fromName: `${row.tenant_display_name} via Flux DJ`, fromAddress };
+  if (!sender) {
+    await admin.rpc("fail_email_outbox", { p_id: row.id, p_error: SENDER_UNAVAILABLE, p_permanent: false });
+    return "failed";
   }
   const payload = (row.payload ?? {}) as Record<string, unknown>;
   let email: RenderedEmail;
@@ -266,8 +408,8 @@ async function deliverContractEmail(
       brand: branding.brand,
       canReply,
       eventDate: str(payload.event_date) || null,
-      tenantDisplayName: row.tenant_display_name,
-      legalName: str(payload.legal_name) || row.tenant_display_name,
+      tenantDisplayName: sender.displayName,
+      legalName: str(payload.legal_name) || sender.displayName,
       contactEmail: str(payload.contact_email) || null,
       clientName: str(payload.client_name) || "there",
       eventTitle: str(payload.event_title) || "your event",
@@ -290,14 +432,16 @@ async function deliverContractEmail(
   }
   if (!(await dispatchAllowed(admin, row.id))) return "cancelled";
   const sent = await transport.send({
-    fromName: `${row.tenant_display_name} via Flux DJ`,
-    fromAddress,
+    fromName: sender.fromName,
+    fromAddress: sender.fromAddress,
     to: row.recipient_email,
     replyTo,
     ...email,
     attachments: inline(branding.attachments),
+    // The invitation link is re-derived from its link id; a sign-in email carries a fresh link on every attempt.
+    idempotencyKey: row.event_type === "contract_sent" ? retryKey(row) : undefined,
   });
-  await admin.rpc("complete_email_outbox", { p_id: row.id, p_provider_message_id: sent.id });
+  await completeSent(admin, row.id, sent.id);
   return "sent";
 }
 
@@ -372,7 +516,7 @@ async function deliverSignedCopy(
     attachments: [{ filename: signedPdfFileName(eventTitle, eventDate), contentType: "application/pdf", content: pdf }, ...branding.attachments],
     idempotencyKey: `flux-signed-copy-${row.id}`,
   });
-  await admin.rpc("complete_email_outbox", { p_id: row.id, p_provider_message_id: sent.id });
+  await completeSent(admin, row.id, sent.id);
   return "sent";
 }
 
@@ -437,7 +581,7 @@ async function deliverBookingConfirmed(
     attachments: inline(branding.attachments),
     idempotencyKey: `flux-booking-${row.id}`,
   });
-  await admin.rpc("complete_email_outbox", { p_id: row.id, p_provider_message_id: sent.id });
+  await completeSent(admin, row.id, sent.id);
   return "sent";
 }
 
@@ -456,6 +600,7 @@ async function deliverPlatformEmails(
   appUrl: string,
   fromAddress: string,
   result: OutboxRunResult,
+  problems: string[],
   options: { platformInvitationId?: string; limit?: number },
 ) {
   const { data: rows, error } = await admin.rpc("claim_platform_email_outbox", {
@@ -463,8 +608,7 @@ async function deliverPlatformEmails(
     p_lock_seconds: 120,
     p_invitation_id: options.platformInvitationId,
   });
-  // Before migration 20261018000100 there is nothing to claim; business emails still go out.
-  if (error) return;
+  if (error) return claimFailed(problems, "DJ invitation", error);
 
   for (const row of rows ?? []) {
     result.claimed += 1;
@@ -499,13 +643,10 @@ async function deliverPlatformEmails(
         });
       }
       const sent = await transport.send({ fromName: "Flux DJ", fromAddress, to: row.recipient_email, replyTo: null, ...email, idempotencyKey });
-      await admin.rpc("complete_email_outbox", { p_id: row.id, p_provider_message_id: sent.id });
+      await completeSent(admin, row.id, sent.id);
       result.sent += 1;
     } catch (cause) {
-      // Error text must never include the link: transports report status codes only.
-      const message = cause instanceof Error ? cause.message.slice(0, 300) : "Unknown delivery error";
-      await admin.rpc("fail_email_outbox", { p_id: row.id, p_error: message, p_permanent: false });
-      result.failed += 1;
+      await rowFailed(admin, row.id, cause, result, problems);
     }
   }
 }
@@ -525,6 +666,7 @@ async function deliverStaffEmails(
   appUrl: string,
   fromAddress: string,
   result: OutboxRunResult,
+  problems: string[],
   options: { tenantId?: string; staffInvitationId?: string; limit?: number },
   logos: LogoCache,
 ) {
@@ -534,8 +676,7 @@ async function deliverStaffEmails(
     p_tenant_id: options.tenantId,
     p_invitation_id: options.staffInvitationId,
   });
-  // Before migration 20261030000100 there is nothing to claim; other emails still go out.
-  if (error) return;
+  if (error) return claimFailed(problems, "Staff invitation", error);
 
   for (const row of rows ?? []) {
     result.claimed += 1;
@@ -589,13 +730,10 @@ async function deliverStaffEmails(
         attachments: inline(branding.attachments),
         idempotencyKey,
       });
-      await admin.rpc("complete_email_outbox", { p_id: row.id, p_provider_message_id: sent.id });
+      await completeSent(admin, row.id, sent.id);
       result.sent += 1;
     } catch (cause) {
-      // Error text must never include the link: transports report status codes only.
-      const message = cause instanceof Error ? cause.message.slice(0, 300) : "Unknown delivery error";
-      await admin.rpc("fail_email_outbox", { p_id: row.id, p_error: message, p_permanent: false });
-      result.failed += 1;
+      await rowFailed(admin, row.id, cause, result, problems);
     }
   }
 }
@@ -617,6 +755,7 @@ async function deliverPlanningEmails(
   appUrl: string,
   fromAddress: string,
   result: OutboxRunResult,
+  problems: string[],
   options: { tenantId?: string; limit?: number },
   logos: LogoCache,
 ) {
@@ -625,8 +764,7 @@ async function deliverPlanningEmails(
     p_lock_seconds: 120,
     p_tenant_id: options.tenantId,
   });
-  // Before migration 20261115000100 there is nothing to claim; other emails still go out.
-  if (error) return;
+  if (error) return claimFailed(problems, "Planning invitation", error);
 
   for (const row of rows ?? []) {
     result.claimed += 1;
@@ -689,13 +827,10 @@ async function deliverPlanningEmails(
         attachments: inline(branding.attachments),
         idempotencyKey,
       });
-      await admin.rpc("complete_email_outbox", { p_id: row.id, p_provider_message_id: sent.id });
+      await completeSent(admin, row.id, sent.id);
       result.sent += 1;
     } catch (cause) {
-      // Error text must never include the link: transports report status codes only.
-      const message = cause instanceof Error ? cause.message.slice(0, 300) : "Unknown delivery error";
-      await admin.rpc("fail_email_outbox", { p_id: row.id, p_error: message, p_permanent: false });
-      result.failed += 1;
+      await rowFailed(admin, row.id, cause, result, problems);
     }
   }
 }
@@ -705,19 +840,31 @@ async function deliverPlanningEmails(
  * claimed by this run (not cancelled, for example by a workspace suspension
  * since the claim) and its workspace not suspended. It narrows the race to the
  * provider call itself; an email already handed over can't be recalled.
- * Before migration 20261019000100 the check doesn't exist and sending
- * proceeds as before.
+ * Fails closed: if the check can't run (any database error, including a
+ * missing function), nothing is sent. The error fails the attempt, which is
+ * retried with backoff like any other delivery error.
  */
-async function dispatchAllowed(admin: ReturnType<typeof createAdminClient>, id: string): Promise<boolean> {
+async function dispatchAllowed(admin: Admin, id: string): Promise<boolean> {
   const { data, error } = await admin.rpc("email_outbox_dispatch_allowed", { p_id: id });
-  return error ? error.code === "PGRST202" : data === true;
+  if (error) throw new Error(`The delivery check could not run (${error.code ?? "error"}); nothing was sent.`);
+  return data === true;
 }
 
-/** Runs the outbox after the response, swallowing errors (they are recorded per email). */
+/**
+ * Logs a failed worker run without any email content: OutboxRunError lists
+ * categories, row ids and error codes only. Other errors log their message only.
+ */
+export function logOutboxFailure(where: string, cause: unknown): void {
+  const detail = cause instanceof OutboxRunError ? cause.message : cause instanceof Error ? `${cause.name}: ${cause.message.slice(0, 300)}` : "unknown error";
+  console.error(`[outbox] ${where}: ${detail}`);
+}
+
+/** Runs the outbox after the response. Errors are logged; each email keeps its own state for the next run. */
 export async function processOutboxQuietly(tenantId?: string): Promise<void> {
   try {
     await processOutbox({ tenantId, limit: 10 });
-  } catch {
+  } catch (cause) {
     // The worker (pnpm outbox:work), cron or the staff Email page will retry.
+    logOutboxFailure("after-action run", cause);
   }
 }
