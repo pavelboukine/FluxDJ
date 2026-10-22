@@ -1,4 +1,4 @@
-import { isHttpsUrl } from "@/lib/payments";
+import { isHttpsUrl } from "@/lib/urls";
 import { UUID_RE } from "@/lib/forms";
 
 /**
@@ -62,10 +62,9 @@ export function musicFormFromAnswers(answers: MusicAnswers): MusicForm {
 export const songField = (id: string, field: string) => `song:${id}:${field}`;
 export const playlistField = (id: string, field: string) => `playlist:${id}:${field}`;
 
-/** The database's private.is_https_url, so the browser refuses what the database would. */
-const HTTPS_URL = /^https:\/\/[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+(:[0-9]{1,5})?([/?#][^\s<>"\\]*)?$/;
+/** A playlist link: an https address as private.is_https_url decides it, within the playlist length limit. */
 export function isPlaylistUrl(value: string): boolean {
-  return value.length <= PLAYLIST_LIMITS.url && HTTPS_URL.test(value) && isHttpsUrl(value);
+  return value.length <= PLAYLIST_LIMITS.url && isHttpsUrl(value);
 }
 
 /**

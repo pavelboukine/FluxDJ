@@ -5,7 +5,7 @@ import type { IntroductionsAnswers, McAnswers, Person, ProcessionalAnswers, Spee
 import { GRAND_ENTRANCE_MOMENTS, grandEntranceOf, grandEntranceOpen, nextDayLabel, REQUIREMENT_NOTES, requirementLabel } from "@/lib/planning/stages";
 import type { ArrivalAnswers, TimedAnswers, TimedEntry } from "@/lib/planning/timed";
 import { formatInstant } from "@/lib/planning/cutoff";
-import { isHttpsUrl } from "@/lib/payments";
+import { isHttpsUrl } from "@/lib/urls";
 import { djIdentity } from "@/lib/planning/dj";
 import { formatEventDate, formatImportedAnswer, type StaffPlanningView } from "@/lib/planning/view";
 
@@ -185,10 +185,6 @@ export function listCount(l: { songs: unknown[]; playlists: unknown[] }): string
 function person(p: Partial<Person>): PersonLine | null {
   const names = str(p.names);
   return names ? { names, pronunciation: str(p.pronunciation), role: str(p.role), wording: str(p.wording) } : null;
-}
-
-export function songText(s: SongLine): string {
-  return `${s.title} by ${s.artist}${s.version ? ` (${s.version})` : ""}`;
 }
 
 const MOMENT_CHOICE: Record<string, Status> = {

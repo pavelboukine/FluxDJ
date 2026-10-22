@@ -49,6 +49,12 @@ Full commands and rationale: README, "Day-to-day testing". In short:
   wakeup much longer than the expected run time.
 - `pnpm build` is safe while `pnpm dev` runs (separate `.next/dev` output).
 
+# Database
+
+Before changing SQL, read `docs/database-architecture.md`: what is authoritative
+(migrations; the snapshot and types are generated), where each rule lives, how
+to find a function's current definition, and how JSON responses are validated.
+
 # Branches, CI and releases
 
 Full procedure: `docs/operations.md`.

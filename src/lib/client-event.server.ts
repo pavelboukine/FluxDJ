@@ -3,7 +3,9 @@ import type { HubFacts } from "@/lib/client-event";
 import type { HomeEvent } from "@/lib/client-home";
 import { clientEditingSchema, type ClientEditing } from "@/lib/planning/cutoff";
 import { progressPercent, progressSchema, type PlanProgress } from "@/lib/planning/view";
-import type { ClientPaymentSummary } from "@/lib/payments";
+import { clientContractViewSchema } from "@/lib/contracts/responses";
+import { checkDbResponse } from "@/lib/db-response";
+import { readPaymentSummary, type ClientPaymentSummary } from "@/lib/payments";
 import type { Database } from "@/lib/supabase/database.types";
 
 /**
@@ -42,12 +44,6 @@ export type ClientEventFacts = {
 };
 
 type Db = SupabaseClient<Database>;
-type ContractViewRow = {
-  state: string;
-  contract?: { id: string; status: "sent" | "signed"; currency: string; total_cents: number; deposit_percent: number; deposit_cents: number; balance_cents: number; balance_due_date: string | null };
-  signing?: { signed: boolean; enabled?: boolean; signed_at?: string; pdf_ready?: boolean; pdf_pending?: boolean };
-};
-
 /** Every event this client can open, or only `only` (one event of one business) when given. */
 export async function loadClientEvents(supabase: Db, only?: { slug: string; eventId: string }): Promise<ClientEventFacts[]> {
   const [{ data: events }, { data: contracts }, { data: plans }] = await Promise.all([
@@ -67,8 +63,10 @@ export async function loadClientEvents(supabase: Db, only?: { slug: string; even
           supabase.rpc("client_contract_view", { p_contract_id: c.contract_id, p_tenant_slug: c.tenant_slug }),
           supabase.rpc("client_payment_summary", { p_contract_id: c.contract_id, p_tenant_slug: c.tenant_slug }),
         ]);
-        const v = view as ContractViewRow | null;
-        if (v?.state !== "available" || !v.contract || !v.signing) return;
+        // A contract whose view fails validation is logged and left out (no partial terms).
+        const checked = view === null ? null : checkDbResponse(clientContractViewSchema, view, "client_contract_view");
+        if (!checked?.ok || checked.data.state !== "available") return;
+        const v = checked.data;
         const existing = contractByEvent.get(c.event_id!);
         if (existing && existing.order < order) return;
         const k = v.contract;
@@ -82,10 +80,10 @@ export async function loadClientEvents(supabase: Db, only?: { slug: string; even
           balanceCents: k.balance_cents,
           balanceDueDate: k.balance_due_date,
           signing: v.signing.signed
-            ? { signed: true, signedAt: v.signing.signed_at ?? "", pdfReady: v.signing.pdf_ready === true, pdfPending: v.signing.pdf_pending === true }
-            : { signed: false, enabled: v.signing.enabled === true },
+            ? { signed: true, signedAt: v.signing.signed_at, pdfReady: v.signing.pdf_ready, pdfPending: v.signing.pdf_pending }
+            : { signed: false, enabled: v.signing.enabled },
         };
-        contractByEvent.set(c.event_id!, { contract: facts, payments: (summary as ClientPaymentSummary | null) ?? null, order });
+        contractByEvent.set(c.event_id!, { contract: facts, payments: readPaymentSummary(summary, "client_payment_summary"), order });
       }),
   );
 

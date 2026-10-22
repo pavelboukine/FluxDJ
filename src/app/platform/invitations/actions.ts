@@ -3,14 +3,11 @@
 import { randomUUID } from "node:crypto";
 import { after } from "next/server";
 import { revalidatePath } from "next/cache";
-import { z } from "zod";
 import { requirePlatformAdmin } from "@/lib/auth/platform";
 import { describeDbError } from "@/lib/db-errors";
 import { processOutboxQuietly } from "@/lib/email/outbox.server";
-import { fail, ok, text, UUID_RE, type ActionState } from "@/lib/forms";
+import { emailAddress, fail, ok, text, UUID_RE, type ActionState } from "@/lib/forms";
 import { platformInviteToken, sha256Hex } from "@/lib/proposals/tokens.server";
-
-const emailSchema = z.email().max(320);
 
 function newLink() {
   const linkId = randomUUID();
@@ -25,9 +22,9 @@ const formatExpiry = (value: unknown) =>
 /** Invites a DJ business owner. The database authorizes the platform administrator. */
 export async function inviteDj(_state: ActionState, form: FormData): Promise<ActionState> {
   const { supabase } = await requirePlatformAdmin();
-  const email = emailSchema.safeParse(text(form, "email").toLowerCase());
-  if (!email.success) return fail("Enter a valid email address.");
-  const { data, error } = await supabase.rpc("create_platform_invitation", { p_email: email.data, ...newLink() });
+  const email = emailAddress(text(form, "email"));
+  if (!email) return fail("Enter a valid email address.");
+  const { data, error } = await supabase.rpc("create_platform_invitation", { p_email: email, ...newLink() });
   if (error) return fail(describeDbError(error));
   const result = data as { status?: string; state?: string; email?: string; expires_at?: string };
   revalidatePath("/platform/invitations");

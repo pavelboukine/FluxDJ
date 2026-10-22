@@ -1,3 +1,5 @@
+import { z } from "zod";
+import { centsSchema, checkDbResponse, currencySchema, dateSchema, idSchema, timestampSchema } from "@/lib/db-response";
 import { discountDescription } from "@/lib/pricing/discount";
 
 /**
@@ -7,61 +9,105 @@ import { discountDescription } from "@/lib/pricing/discount";
  * from the event's authoritative contract; this module only describes them.
  */
 
+const termsStatus = z.enum(["signed", "sent"]);
+
 /** private.event_payment_summary, as staff receive it. */
-export type PaymentSummary = {
-  currency: string;
-  terms: {
-    status: "signed" | "sent";
-    contract_id: string;
-    total_cents: number;
-    deposit_percent: number;
-    deposit_cents: number;
-    balance_cents: number;
-    balance_due_date: string | null;
-  } | null;
-  received_cents: number;
-  valid_payments: number;
-  other_currency_payments: number;
-  deposit_outstanding_cents: number | null;
-  remaining_balance_cents: number | null;
-  credit_cents: number | null;
-  invoice_url: string | null;
-  booking: {
-    lifecycle_status: string;
-    booking_confirmed_at: string | null;
+export const paymentSummarySchema = z.object({
+  currency: currencySchema,
+  terms: z
+    .object({
+      status: termsStatus,
+      contract_id: idSchema,
+      total_cents: centsSchema,
+      deposit_percent: z.int().min(0).max(100),
+      deposit_cents: centsSchema,
+      balance_cents: centsSchema,
+      balance_due_date: dateSchema.nullable(),
+    })
+    .refine((t) => t.deposit_cents + t.balance_cents === t.total_cents, "deposit and balance don't add up to the total")
+    .nullable(),
+  received_cents: centsSchema,
+  valid_payments: z.int().nonnegative(),
+  other_currency_payments: z.int().nonnegative(),
+  deposit_outstanding_cents: centsSchema.nullable(),
+  remaining_balance_cents: centsSchema.nullable(),
+  credit_cents: centsSchema.nullable(),
+  invoice_url: z.string().nullable(),
+  booking: z.object({
+    // Shown and compared, never branched on exhaustively: a new status (added by a migration first) stays readable.
+    lifecycle_status: z.string().min(1),
+    booking_confirmed_at: timestampSchema.nullable(),
     /** The signed contract's frozen policy; null before signing or for legacy contracts. */
-    policy: "on_deposit" | "on_signature" | null;
+    policy: z.enum(["on_deposit", "on_signature"]).nullable(),
     /** Signed before booking policies existed: staff check it explicitly. */
-    legacy_signed: boolean;
+    legacy_signed: z.boolean(),
     /** Booked under the deposit policy, but valid payments no longer cover the deposit. */
-    deposit_no_longer_met: boolean;
-  };
-};
+    deposit_no_longer_met: z.boolean(),
+  }),
+});
+export type PaymentSummary = z.infer<typeof paymentSummarySchema>;
+
+/**
+ * A discounted contract's frozen price breakdown (its commercial snapshot,
+ * or client_payment_summary's "pricing", the same fields). Built by
+ * generate_contract_draft from the verified selection, so the discounted
+ * subtotal and the total follow from the other figures.
+ */
+const frozenPricingSchema = z
+  .object({
+    subtotal_cents: centsSchema,
+    discount: z.object({
+      type: z.enum(["percent", "fixed"]),
+      label: z.string(),
+      percent_basis_points: z.int().min(1).max(10_000).optional(),
+      amount_cents: centsSchema,
+    }),
+    discounted_subtotal_cents: centsSchema,
+    tax_breakdown: z.array(z.object({ label: z.string(), rate_ppm: z.int().min(0).max(1_000_000), amount_cents: centsSchema })),
+    total_cents: centsSchema,
+  })
+  .refine((f) => f.discounted_subtotal_cents === f.subtotal_cents - f.discount.amount_cents, "discounted subtotal doesn't follow from the discount")
+  .refine((f) => f.total_cents === f.discounted_subtotal_cents + f.tax_breakdown.reduce((a, t) => a + t.amount_cents, 0), "total doesn't follow from the taxes");
 
 /** client_payment_summary: only what the client may see. */
-export type ClientPaymentSummary = {
-  currency: string;
-  terms_status: "signed" | "sent" | null;
-  total_cents: number | null;
-  deposit_percent: number | null;
-  deposit_cents: number | null;
-  balance_due_date: string | null;
-  received_cents: number;
-  deposit_outstanding_cents: number | null;
-  remaining_balance_cents: number | null;
-  credit_cents: number | null;
-  invoice_url: string | null;
-  booking_status: "booked" | "awaiting_deposit" | null;
+export const clientPaymentSummarySchema = z.object({
+  currency: currencySchema,
+  terms_status: termsStatus.nullable(),
+  total_cents: centsSchema.nullable(),
+  deposit_percent: z.int().min(0).max(100).nullable(),
+  deposit_cents: centsSchema.nullable(),
+  balance_due_date: dateSchema.nullable(),
+  received_cents: centsSchema,
+  deposit_outstanding_cents: centsSchema.nullable(),
+  remaining_balance_cents: centsSchema.nullable(),
+  credit_cents: centsSchema.nullable(),
+  invoice_url: z.string().nullable(),
+  booking_status: z.enum(["booked", "awaiting_deposit"]).nullable(),
   /** Only for a contract generated from a discounted proposal: its frozen price breakdown (see discountBreakdown). */
-  pricing?: unknown;
-};
+  pricing: frozenPricingSchema.optional(),
+});
+export type ClientPaymentSummary = z.infer<typeof clientPaymentSummarySchema>;
+
+/**
+ * A payment summary (staff or client), or null when there is none (the
+ * function returned null, or failed). One that fails validation is logged
+ * and treated as unavailable: no payment figures rather than wrong ones.
+ */
+export function readPaymentSummary(data: unknown, operation: "event_payment_summary"): PaymentSummary | null;
+export function readPaymentSummary(data: unknown, operation: "client_payment_summary"): ClientPaymentSummary | null;
+export function readPaymentSummary(data: unknown, operation: "event_payment_summary" | "client_payment_summary") {
+  if (data === null || data === undefined) return null;
+  const checked = checkDbResponse(operation === "event_payment_summary" ? paymentSummarySchema : clientPaymentSummarySchema, data, operation);
+  return checked.ok ? checked.data : null;
+}
 
 /**
  * A discounted contract's frozen price breakdown, as shown with its payment
  * summary: subtotal before the discount, the discount, the subtotal after
  * it, each tax and the total. Read from the contract's commercial snapshot
- * (or client_payment_summary's "pricing", the same fields); never
- * recalculated. Null when the contract has no discount.
+ * (or client_payment_summary's "pricing"); never recalculated. Null when the
+ * contract has no discount, and when its breakdown fails validation (logged):
+ * the agreed total is still shown from the contract's terms.
  */
 export type DiscountBreakdown = {
   subtotalCents: number;
@@ -71,49 +117,19 @@ export type DiscountBreakdown = {
   totalCents: number;
 };
 
-const isCents = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0;
-
 export function discountBreakdown(frozen: unknown): DiscountBreakdown | null {
-  if (!frozen || typeof frozen !== "object") return null;
-  const f = frozen as Record<string, unknown>;
-  const d = f.discount as Record<string, unknown> | undefined;
-  if (!d || typeof d !== "object" || typeof d.label !== "string" || !isCents(d.amount_cents)) return null;
-  if (!isCents(f.subtotal_cents) || !isCents(f.discounted_subtotal_cents) || !isCents(f.total_cents) || !Array.isArray(f.tax_breakdown)) return null;
-  const bp = typeof d.percent_basis_points === "number" ? d.percent_basis_points : undefined;
+  if (!frozen || typeof frozen !== "object" || !("discount" in frozen)) return null;
+  const checked = checkDbResponse(frozenPricingSchema, frozen, "contract discount breakdown");
+  if (!checked.ok) return null;
+  const f = checked.data;
   return {
     subtotalCents: f.subtotal_cents,
-    discount: { description: discountDescription({ type: String(d.type), label: d.label, percent_basis_points: bp }), amountCents: d.amount_cents },
+    discount: { description: discountDescription(f.discount), amountCents: f.discount.amount_cents },
     discountedSubtotalCents: f.discounted_subtotal_cents,
-    taxes: (f.tax_breakdown as Record<string, unknown>[])
-      .filter((t) => isCents(t.amount_cents) && (t.amount_cents as number) > 0)
-      .map((t) => ({ label: String(t.label), ratePpm: Number(t.rate_ppm), amountCents: t.amount_cents as number })),
+    // A tax that came to nothing (a zero rate, or nothing taxable) isn't listed.
+    taxes: f.tax_breakdown.filter((t) => t.amount_cents > 0).map((t) => ({ label: t.label, ratePpm: t.rate_ppm, amountCents: t.amount_cents })),
     totalCents: f.total_cents,
   };
-}
-
-/**
- * An absolute https:// address with a dotted host name and no credentials,
- * whitespace or angle brackets. Mirrors private.is_https_url, which is the
- * authority; this only gives an earlier, clearer message.
- */
-export function isHttpsUrl(value: string): boolean {
-  if (value.length > 2000 || /[\s<>"\\]/.test(value)) return false;
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    return false;
-  }
-  return url.protocol === "https:" && !url.username && !url.password && /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(url.hostname) && value.toLowerCase().startsWith("https://");
-}
-
-/** The host shown next to an invoice link, so staff and clients see where it goes. */
-export function linkHost(value: string): string {
-  try {
-    return new URL(value).hostname;
-  } catch {
-    return value;
-  }
 }
 
 /** Today's date (YYYY-MM-DD) in a time zone, for the payment date default. */

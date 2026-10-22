@@ -7,7 +7,6 @@ import {
   programAnswersFromForm,
   programForm,
   timedAnswersFromForm,
-  timedEntryResolved,
   timedForm,
   type TimedEditor,
 } from "@/lib/planning/timed";
@@ -48,13 +47,11 @@ describe("timed entries (mirror of private.normalize_plan_timed)", () => {
     expect(timedAnswersFromForm("program", { choice: "", entries: [entry("program", { title: "x", timing: "anytime" })] })).toMatchObject({ ok: false, field: `entry:${E1}:timing` });
   });
 
-  it("dedications: any time is a timing; a song is needed to count, never invented", () => {
+  // Whether a dedication counts (it needs a song) is the database's progress rule (pgTAP 30_remaining_editors).
+  it("dedications: any time is a timing, and an unfinished one is kept without an invented song", () => {
     const unfinished = entry("dedications", { recipient: "Our grandparents" });
     expect(unfinished.timing).toBe("anytime");
     expect(timedAnswersFromForm("dedications", { choice: "", entries: [unfinished] })).toEqual({ ok: true, answers: { entries: [{ id: E1, recipient: "Our grandparents", timing: "anytime" }] } });
-    expect(timedEntryResolved("dedications", unfinished)).toBe(false);
-    expect(timedEntryResolved("dedications", { ...unfinished, song_title: "Moon River", song_artist: "Andy Williams" })).toBe(true);
-    expect(timedEntryResolved("activities", entry("activities", { name: "Toss", timing: "cue", cue: "" }))).toBe(false);
   });
 
   it("round-trips saved answers unchanged, the program's own times and host included", () => {

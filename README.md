@@ -1454,6 +1454,20 @@ checks uploads, downloads, signed URLs, cross-tenant access, overwrites,
 deletes, MIME types, clients and anonymous users, then removes everything it
 created. It refuses to run unless the Supabase URL is local.
 
+Two pairs keep the app and the database from drifting apart (see
+`docs/database-architecture.md`, "TypeScript types and Zod schemas"):
+
+- `tests/integration/db-responses.test.ts` parses the local database's real
+  contract, signing, payment and approved-offer answers with the app's Zod
+  schemas. It also checks that a signing commit with a malformed answer keeps
+  the signature image and replays on retry. `tests/unit/db-responses.test.ts`
+  covers malformed answers and checks that failures never log values.
+- `tests/integration/rule-parity.test.ts` and `tests/unit/rule-parity.test.ts`
+  run the database's functions and the app's own checks against the same
+  cases in `tests/support/rule-cases.ts`: https links, phones, emails, keys,
+  playlist duplicates, rule conditions, discount rounding, draft discounts
+  and tax settings.
+
 ## How tenant isolation works
 
 Isolation is enforced by the database, not by application code.
@@ -3206,6 +3220,7 @@ src/app/                       Next.js routes (placeholder home page for now)
 src/components/ui/             shadcn/ui components
 .github/workflows/             CI (required checks) and the browser smoke run
 docs/operations.md             Release, migration and recovery runbook
+docs/database-architecture.md  Current schema map: authority, domains, access, lifecycles, migration workflow
 supabase/schema-snapshot.sql   Generated schema-only snapshot (pnpm db:schema); migrations are authoritative
 src/lib/env.ts, env.server.ts  Validated public and server-only environment
 src/lib/supabase/              Browser, server and admin clients, generated DB types

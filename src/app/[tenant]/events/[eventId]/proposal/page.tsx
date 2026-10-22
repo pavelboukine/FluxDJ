@@ -11,24 +11,14 @@ import { liveBrand } from "@/lib/branding/logo.server";
 import { eventHubPath } from "@/lib/client-event";
 import { loadClientEvents } from "@/lib/client-event.server";
 import { dateIn } from "@/lib/dates";
+import { approvedOfferSchema } from "@/lib/contracts/responses";
+import { parseDbResponse } from "@/lib/db-response";
 import { UUID_RE } from "@/lib/forms";
 import { formatEventDate } from "@/lib/planning/view";
-import type { OfferSnapshot, PricedSelection } from "@/lib/pricing";
 import { SLUG_PATTERN } from "@/lib/proposals/client-session.server";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Your approved proposal", robots: { index: false, follow: false }, referrer: "strict-origin" };
-
-type Approved =
-  | { state: "unavailable" }
-  | {
-      state: "available";
-      event_id: string;
-      contract: { id: string; status: "sent" | "signed" };
-      proposal: { revision: number; offer: OfferSnapshot };
-      selection: { version: number; submitted_at: string | null; priced: PricedSelection };
-      approved_at: string;
-    };
 
 const SHEET = "grid min-w-0 content-start gap-4 border-plan-hairline bg-plan-surface p-4 max-sm:-mx-4 max-sm:border-y sm:rounded-2xl sm:border sm:p-6";
 
@@ -47,7 +37,8 @@ export default async function ApprovedProposal({ params }: PageProps<"/[tenant]/
 
   const [facts] = await loadClientEvents(supabase, { slug, eventId });
   const { data } = facts?.contract ? await supabase.rpc("client_approved_offer", { p_contract_id: facts.contract.id, p_tenant_slug: slug }) : { data: null };
-  const approved = (data as Approved | null) ?? { state: "unavailable" };
+  // A response that fails validation shows the error page: never prices from an unchecked offer or selection.
+  const approved = data === null ? { state: "unavailable" as const } : parseDbResponse(approvedOfferSchema, data, "client_approved_offer");
   if (!facts || approved.state !== "available" || approved.event_id !== eventId) {
     return (
       <div data-plan-shell className="flex min-h-dvh flex-col bg-plan-canvas">

@@ -1,4 +1,4 @@
-import { isHttpsUrl } from "@/lib/payments";
+import { isHttpsUrl } from "@/lib/urls";
 import { UUID_RE } from "@/lib/forms";
 import { entryField, type ListChoice } from "./participants";
 
@@ -185,12 +185,6 @@ export function timedAnswersFromForm(editor: TimedEditor, form: TimedForm): Pars
   }
   if (entries.length > 0) answers.entries = entries;
   return { ok: true, answers };
-}
-
-/** An entry is complete with a resolved timing, and for dedications a song. */
-export function timedEntryResolved(editor: TimedEditor, e: TimedEntryForm): boolean {
-  const timed = e.timing === "anytime" || (e.timing === "time" && Boolean(e.time)) || (e.timing === "cue" && Boolean(e.cue.trim()));
-  return timed && (!TIMED_RULES[editor].requiresSong || Boolean(e.song_title.trim() && e.song_artist.trim()));
 }
 
 // Program details: the overall times and host besides the agenda.

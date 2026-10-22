@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { eventHubPath, hubNextStep, hubStatus, noPaymentDue, type HubFacts } from "@/lib/client-event";
+import { eventHubPath, hubNextStep, hubStatus, type HubFacts } from "@/lib/client-event";
 import type { HomeEvent } from "@/lib/client-home";
 
 const home: HomeEvent = {
@@ -65,10 +65,7 @@ describe("event hub: next step", () => {
     });
   });
 
-  it("knows a legitimate $0 booking and builds the hub's address", () => {
-    expect(noPaymentDue({ totalCents: 0 })).toBe(true);
-    expect(noPaymentDue({ totalCents: 1 })).toBe(false);
-    expect(noPaymentDue(null)).toBe(false);
+  it("builds the hub's address", () => {
     expect(eventHubPath("dj", "e1")).toBe("/dj/events/e1");
   });
 });

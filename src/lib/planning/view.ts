@@ -302,10 +302,6 @@ export function progressScopeNote(p: PlanProgress): string {
     : `Progress covers the ${available}.`;
 }
 
-export function basicsProgress(p: PlanProgress) {
-  return p.items.find((i) => i.key === "basics") ?? null;
-}
-
 export function itemProgress(p: PlanProgress, itemId: string) {
   return p.items.find((i) => i.item_id === itemId) ?? null;
 }

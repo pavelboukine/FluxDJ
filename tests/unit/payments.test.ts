@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { isHttpsUrl, linkHost, todayIn } from "@/lib/payments";
+import { todayIn } from "@/lib/payments";
+import { isHttpsUrl, linkHost } from "@/lib/urls";
 import { parseMoneyToCents } from "@/lib/money";
 
 describe("payments helpers", () => {

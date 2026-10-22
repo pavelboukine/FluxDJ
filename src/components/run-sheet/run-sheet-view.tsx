@@ -2,7 +2,7 @@ import Link from "next/link";
 import { PdfDownloadLink } from "@/components/app/pwa";
 import { Badge } from "@/components/ui/badge";
 import { formatInstant } from "@/lib/planning/cutoff";
-import { linkHost } from "@/lib/payments";
+import { linkHost } from "@/lib/urls";
 import { listCount, whenText, type PersonLine, type PlaylistLine, type Row, type RunSheet, type SongLine, type StageSheet } from "@/lib/run-sheet/model";
 import { cn } from "@/lib/utils";
 

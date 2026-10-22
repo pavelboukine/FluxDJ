@@ -15,7 +15,6 @@ import {
   processionalAnswersFromForm,
   processionalForm,
   songLabel,
-  speechResolved,
   speechesAnswersFromForm,
   speechesForm,
   withNewSongs,
@@ -141,13 +140,6 @@ describe("Speeches", () => {
     expect(speechesAnswersFromForm({ entries: [speech({ timing: "time", time: "8pm" })], choice: "" })).toMatchObject({ ok: false, field: `entry:${P1}:time` });
     expect(speechesAnswersFromForm({ entries: [speech({ timing: "cue", cue: "x", duration: "0" })], choice: "" })).toMatchObject({ ok: false, field: `entry:${P1}:duration` });
     expect(speechesAnswersFromForm({ entries: [speech({ speaker: " " })], choice: "" })).toMatchObject({ ok: false, field: `entry:${P1}:speaker` });
-  });
-
-  it("counts a speech once it has a time or a cue; undecided stays open", () => {
-    expect(speechResolved({ id: P1, speaker: "Dana", timing: "cue", cue: "Dessert" })).toBe(true);
-    expect(speechResolved({ id: P1, speaker: "Dana", timing: "time", time: "20:00" })).toBe(true);
-    expect(speechResolved({ id: P1, speaker: "Dana", timing: "cue" })).toBe(false);
-    expect(speechResolved({ id: P1, speaker: "Dana", timing: "undecided" })).toBe(false);
   });
 
   it("round-trips saved answers unchanged", () => {

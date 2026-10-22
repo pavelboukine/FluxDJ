@@ -12,13 +12,15 @@ import { ClientPayments } from "@/components/payments/client-payments";
 import { BRAND_BUTTON } from "@/components/app/tenant-public-shell";
 import { signOut } from "@/app/auth/confirm/actions";
 import { renderedContentSchema } from "@/lib/contracts/content";
+import { clientContractViewSchema } from "@/lib/contracts/responses";
 import { SIGNATURE_BUCKET } from "@/lib/contracts/signing";
 import { brandStyle } from "@/lib/branding/colors";
 import { liveBrand } from "@/lib/branding/logo.server";
+import { parseDbResponse } from "@/lib/db-response";
 import { UUID_RE } from "@/lib/forms";
 import { eventHubPath } from "@/lib/client-event";
 import { formatCents } from "@/lib/money";
-import type { ClientPaymentSummary } from "@/lib/payments";
+import { readPaymentSummary } from "@/lib/payments";
 import { formatEventDate } from "@/lib/planning/view";
 import { SLUG_PATTERN } from "@/lib/proposals/client-session.server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -27,22 +29,6 @@ import { cn } from "@/lib/utils";
 import { SignPanel } from "./sign-panel";
 
 export const metadata: Metadata = { title: "Your contract", robots: { index: false, follow: false }, referrer: "strict-origin" };
-
-type View =
-  | { state: "unavailable" }
-  | {
-      state: "available";
-      brand: { display_name: string; brand_colors: { primary?: string; accent?: string } };
-      contract: {
-        id: string; status: "sent" | "signed"; sent_at: string; content_sha256: string; rendered_content: unknown; signer_name: string; currency: string;
-        total_cents: number; deposit_percent: number; deposit_cents: number; balance_cents: number; balance_due_date: string | null;
-        signing_mode: "demo" | "client_use" | "none";
-        event_title: string; event_date: string; legal_name: string;
-      };
-      signing:
-        | { signed: true; typed_name: string; signed_at: string; pdf_ready: boolean; pdf_pending: boolean }
-        | { signed: false; enabled: boolean; consent_version: string | null; consent_text: string | null };
-    };
 
 function Notice({ title, icon: Icon, email, children }: { title: string; icon: typeof Lock; email?: string | null; children: React.ReactNode }) {
   return (
@@ -92,7 +78,8 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
     );
   }
   const { data } = await supabase.rpc("client_contract_view", { p_contract_id: contractId, p_tenant_slug: slug });
-  const view = (data as View | null) ?? { state: "unavailable" };
+  // A response that isn't a valid contract view shows the error page, never partial terms.
+  const view = data === null ? { state: "unavailable" as const } : parseDbResponse(clientContractViewSchema, data, "client_contract_view");
   if (view.state !== "available") {
     return (
       <Notice title="This contract isn't available" icon={FileText} email={auth.user.email ?? null}>
@@ -117,7 +104,7 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
     supabase.rpc("my_contracts"),
     supabase.rpc("my_events"),
   ]);
-  const payments = paymentData as ClientPaymentSummary | null;
+  const payments = readPaymentSummary(paymentData, "client_payment_summary");
   // The event's venue and time zone, from the client's own event list.
   const eventId = (mine ?? []).find((m) => m.contract_id === contractId)?.event_id;
   // Once booked: whether planning is actually open to this client (not just created and still being set up).

@@ -8,7 +8,7 @@ import { REQUIREMENT_NOTES, requirementLabel } from "@/lib/planning/stages";
 import type { SectionState } from "@/lib/planning/navigation";
 import { ProgressGlyph } from "./status-glyph";
 import { cn } from "@/lib/utils";
-import { itemProgress, progressHeadline, progressPercent, progressPercentText, progressScopeNote, type PlanProgress, type Requirement, type TimelineWarning } from "@/lib/planning/view";
+import { itemProgress, progressHeadline, progressPercent, progressPercentText, type PlanProgress, type Requirement, type TimelineWarning } from "@/lib/planning/view";
 import type { SaveState } from "./use-autosave";
 
 /**
@@ -181,26 +181,6 @@ export function ProgressMeter({ progress, bar, compact = false }: { progress: Pl
         </div>
       ) : null}
     </div>
-  );
-}
-
-export function ProgressSummary() {
-  const ctx = usePlanProgress();
-  if (!ctx) return null;
-  const p = ctx.progress;
-  const discuss = p.items.flatMap((i) => i.requirements).filter((r) => r.discuss).length;
-  return (
-    <section aria-labelledby="progress-heading" className="grid gap-2 rounded-xl border p-4">
-      <h2 id="progress-heading" className="text-sm font-semibold">Progress</h2>
-      <ProgressMeter progress={p} bar="bg-[var(--brand,#059669)]" />
-      <p className="text-sm text-muted-foreground">{progressScopeNote(p)}</p>
-      {discuss > 0 ? <p className="text-sm">{discuss === 1 ? "1 detail is" : `${discuss} details are`} marked &quot;discuss with DJ&quot; and still open.</p> : null}
-      {ctx.warnings.length > 0 ? (
-        <p className="text-sm text-amber-700 dark:text-amber-400" data-testid="timing-summary">
-          {ctx.warnings.length === 1 ? "1 timing note to check" : `${ctx.warnings.length} timing notes to check`} (see the stages below).
-        </p>
-      ) : null}
-    </section>
   );
 }
 

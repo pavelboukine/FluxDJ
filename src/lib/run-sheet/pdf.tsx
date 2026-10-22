@@ -1,6 +1,6 @@
 import { Document, Link, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import { formatInstant } from "@/lib/planning/cutoff";
-import { linkHost } from "@/lib/payments";
+import { linkHost } from "@/lib/urls";
 import { listCount, whenText, type PersonLine, type Row, type RunSheet, type SongLine, type StageSheet } from "./model";
 
 /**
