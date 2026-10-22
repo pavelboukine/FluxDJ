@@ -123,7 +123,8 @@ Every email is a row in `email_outbox`, with status `pending`, `sending`,
   `retry_email_outbox` re-queues only a failed row, with three more attempts.
   Each email has a dedup key, so retrying never creates a second email for the
   same business event. **Process queue** delivers that business's queued
-  emails now.
+  emails now. If part of the run hit a database problem, it says so; the
+  rest was still processed.
 - **Across businesses** (read-only, Supabase dashboard → SQL editor):
 
   ```sql
@@ -166,11 +167,38 @@ the cron retries failures and catches up on anything missed.
 - Vercel → project → Settings → Cron Jobs shows the schedule and recent
   runs. Logs → filter on `/api/internal/outbox` shows each call's status.
 - **404:** `CRON_SECRET` doesn't equal `OUTBOX_WORKER_SECRET` (or the latter is
-  unset). **500:** the main email claim failed.
-- Known limitation, to fix in Phase 7C: a PDF-worker error is reported only
-  inside a 200 response (`"documents": {"error": true}`), and a failing
-  platform, staff or planning invitation claim is skipped silently. Until
-  then, use the SQL checks above when emails or PDFs seem late.
+  unset).
+- **500:** the run hit a database problem after doing everything else it
+  could. The causes are:
+  - the PDF worker failed as a whole;
+  - an email category couldn't be claimed (DJ, staff or planning invitations,
+    or business emails), so that category sent nothing this run;
+  - an email was accepted by the provider but couldn't be recorded as sent.
+
+  The function log has a line starting `[outbox]` for each, naming the category,
+  row id and error code (never addresses, links or contents). The JSON body
+  lists the same `problems`. A failed single email or PDF doesn't fail the
+  run; it shows on its row.
+- An email counted as `unconfirmed` was handed to the provider but couldn't be
+  recorded. Its row stays `sending` until the lease ends (2 minutes), then is
+  claimed again. Emails with an idempotency key (everything except sign-in
+  emails) are dropped by Resend as a repeat within 24 hours. A sign-in email
+  can arrive twice; the newest link is the one that works. On the row's last
+  attempt it is marked failed with "delivery did not complete", and staff
+  see "may have been delivered, check before retrying". This was already the
+  case before Batch 7C, for example after a worker crash. Check Resend's log
+  before retrying.
+- Everything in a keyed email is frozen on its row at the first attempt
+  (sender name and address, reply-to, branding, content), so renaming the
+  business or changing its reply-to doesn't change a retry.
+- A failed email whose staff explanation says "An earlier attempt may already
+  have been delivered" got `Resend 409 invalid_idempotent_request`. Resend
+  processed an earlier request under this row's key with different content
+  and refuses the repeat for 24 hours. It isn't retried automatically. Check
+  Resend's log: the earlier attempt usually arrived. A staff retry within the
+  24 hours gets the same refusal; after them it sends a new copy. A 409
+  `concurrent_idempotent_requests` is an ordinary, automatically retried
+  failure.
 - **Confirm**: a schedule more often than daily needs a Vercel Pro plan.
 
 ### Backups and point-in-time recovery

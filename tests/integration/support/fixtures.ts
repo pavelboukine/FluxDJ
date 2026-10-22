@@ -169,6 +169,30 @@ export async function archiveTestTenants(admin: Db, ...tenantIds: (string | unde
   }
 }
 
+/**
+ * The real admin client, except that the database function `fn` answers with
+ * an error (`times` times, or always): fault injection for the outbox worker
+ * (processOutbox's `admin` option). Everything else is the real database.
+ */
+export function failingRpc(admin: Db, fn: string, code = "XX000", times = Infinity): Db {
+  let left = times;
+  return new Proxy(admin, {
+    get(target, prop, receiver) {
+      if (prop === "rpc") {
+        return (name: string, ...args: unknown[]) => {
+          if (name === fn && left > 0) {
+            left -= 1;
+            return Promise.resolve({ data: null, error: { code, message: "injected failure", details: "", hint: "" }, count: null, status: 500, statusText: "" });
+          }
+          return (target.rpc as (...a: unknown[]) => unknown)(name, ...args);
+        };
+      }
+      const value = Reflect.get(target, prop, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  }) as Db;
+}
+
 /** An event with a new primary contact. */
 export async function createEvent(admin: Db, catalog: Catalog, clientEmail: string): Promise<{ eventId: string; clientId: string }> {
   const eventId = randomUUID();

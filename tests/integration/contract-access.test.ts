@@ -18,6 +18,7 @@ import {
   createEvent,
   createTenantWithCatalog,
   draftAndSend,
+  failingRpc,
   localStatus,
   must,
   openLink,
@@ -107,6 +108,9 @@ describe("contract sending and verified client access (local Supabase)", () => {
     const contractEmail = transport.messages.find((m) => m.to === clientEmail && /sent your contract/.test(m.subject))!;
     expect(contractEmail.subject).toMatch(/sent your contract/);
     expect(contractEmail.text).toContain(`/${catalog.slug}/invite#${inviteToken}`);
+    // Identical on every attempt, so retries reuse one provider idempotency key per outbox row.
+    const { data: sentRow } = await must(admin.from("email_outbox").select("id").eq("entity_id", contractId).eq("event_type", "contract_sent").single());
+    expect(contractEmail.idempotencyKey).toBe(`flux-contract-sent-${sentRow!.id}`);
     expect(JSON.stringify((await must(admin.from("email_outbox").select("payload").eq("entity_id", contractId))).data)).not.toContain(inviteToken);
 
     // 2. No identity exists yet, and public signup is disabled.
@@ -121,6 +125,8 @@ describe("contract sending and verified client access (local Supabase)", () => {
     await processOutbox({ transport, tenantId: catalog.tenantId });
     const link = verification(transport.messages.at(-1)!)!;
     expect(link).toMatchObject({ type: "invite", next: `/${catalog.slug}/invitations/${linkId}` });
+    // A fresh verification link on every attempt: never deduplicated by the provider.
+    expect(transport.messages.at(-1)!.idempotencyKey).toBeUndefined();
     const { data: after } = await admin.auth.admin.listUsers({ perPage: 1000 });
     const invited = after.users.find((u) => u.email === clientEmail)!;
     expect(invited.email_confirmed_at ?? null).toBeNull();
@@ -270,5 +276,35 @@ describe("contract sending and verified client access (local Supabase)", () => {
     expect(notices.map((m) => m.to)).toEqual([revisedEmail]);
     expect(notices[0].text).not.toMatch(/revised offer|https?:\/\//);
     expect((await must(admin.from("contracts").select("status").eq("id", archived.contractId).single())).data).toEqual({ status: "sent" });
+  });
+
+  it("retries the contract and void emails with the identical request, even after the business is renamed", async () => {
+    const clientEmail = `it-stable-${randomUUID().slice(0, 8)}@example.test`;
+    const { contractId } = await sentContract(clientEmail);
+    const { data: before } = await must(admin.from("tenants").select("display_name, reply_to_email").eq("id", catalog.tenantId).single());
+    const transport = new RecordingTransport();
+    // Accepted by the provider but never recorded, then the business changes, then the lease ends and the row is retried.
+    const acceptedNotRecorded = async (rename: string) => {
+      await processOutbox({ transport, tenantId: catalog.tenantId, admin: failingRpc(admin, "complete_email_outbox") }).catch(() => undefined);
+      await must(admin.from("tenants").update({ display_name: rename, reply_to_email: `${rename.toLowerCase().replace(/\W+/g, "-")}@example.test` }).eq("id", catalog.tenantId));
+      await must(admin.from("email_outbox").update({ locked_until: new Date(Date.now() - 60_000).toISOString() }).eq("tenant_id", catalog.tenantId).eq("status", "sending"));
+      await processOutbox({ transport, tenantId: catalog.tenantId });
+    };
+    try {
+      await acceptedNotRecorded("Renamed Before Retry");
+      await must(staff.rpc("void_contract", { p_contract_id: contractId, p_reason: "Wrong date" }));
+      await acceptedNotRecorded("Renamed Again");
+    } finally {
+      await must(admin.from("tenants").update(before!).eq("id", catalog.tenantId));
+    }
+    const { data: rows } = await must(admin.from("email_outbox").select("id, event_type, status").eq("entity_id", contractId).in("event_type", ["contract_sent", "contract_voided"]));
+    expect(rows!.map((r) => r.status)).toEqual(["sent", "sent"]);
+    for (const r of rows!) {
+      const copies = transport.messages.filter((m) => m.idempotencyKey === `flux-${r.event_type.replaceAll("_", "-")}-${r.id}`);
+      expect(copies).toHaveLength(2);
+      expect(copies[1]).toEqual(copies[0]);
+      // Each keeps the name from its own first attempt (the void notice was queued after the first rename).
+      expect(copies[0].fromName).toBe(`${r.event_type === "contract_sent" ? before!.display_name : "Renamed Before Retry"} via Flux DJ`);
+    }
   });
 });

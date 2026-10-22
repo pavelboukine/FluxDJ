@@ -75,6 +75,12 @@ export function emailPurpose(row: Pick<OutboxRow, "event_type" | "payload">): { 
  */
 export function errorSummary(error: string | null): string | null {
   if (!error) return null;
+  // Outcomes where an earlier attempt may have reached the recipient: never a plain "not sent".
+  // (The worker's POSSIBLY_DELIVERED, and the claim's "delivery did not complete" for an attempt that never finished.)
+  if (/^An earlier attempt of this email may already have been delivered/.test(error)) {
+    return "An earlier attempt may already have been delivered: the email provider refused a changed repeat. Check before retrying.";
+  }
+  if (/^delivery did not complete/.test(error)) return "The last attempt didn't finish, so it may have been delivered. Check before retrying.";
   const http = /responded (\d{3})/.exec(error);
   if (http) return `The email provider refused it (HTTP ${http[1]}).`;
   const known = [

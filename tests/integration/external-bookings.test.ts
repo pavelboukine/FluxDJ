@@ -121,6 +121,8 @@ describe("events booked elsewhere (local Supabase)", () => {
     await deliver(verifyMail);
     const message = verifyMail.messages.find((m) => m.subject.startsWith("Confirm your email to plan your event"))!;
     expect(message.to).toBe(clientEmail);
+    // A fresh verification link on every attempt: never deduplicated by the provider.
+    expect(message.idempotencyKey).toBeUndefined();
     const confirm = new URL(linkIn(message, /(https?:\/\/\S+\/auth\/confirm\?\S+)/)!);
     expect(confirm.searchParams.get("next")).toBe(`/${catalog.slug}/planning-invitations/${invitationId}`);
     const db = freshClient();
