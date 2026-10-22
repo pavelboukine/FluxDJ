@@ -1,5 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { errorCode, logEvent } from "@/lib/observability";
 import { publicEnv } from "@/lib/env";
 import { serverEnv } from "@/lib/env.server";
 import { contractInviteToken, planningInviteToken, platformInviteToken, proposalLinkToken, sha256Hex, staffInviteToken } from "@/lib/proposals/tokens.server";
@@ -851,12 +852,19 @@ async function dispatchAllowed(admin: Admin, id: string): Promise<boolean> {
 }
 
 /**
- * Logs a failed worker run without any email content: OutboxRunError lists
- * categories, row ids and error codes only. Other errors log their message only.
+ * Logs a failed worker run (one structured line, see lib/observability)
+ * without any email content: OutboxRunError's problems list categories, row
+ * ids and error codes only. Any other error logs its code and class name,
+ * never its message.
  */
 export function logOutboxFailure(where: string, cause: unknown): void {
-  const detail = cause instanceof OutboxRunError ? cause.message : cause instanceof Error ? `${cause.name}: ${cause.message.slice(0, 300)}` : "unknown error";
-  console.error(`[outbox] ${where}: ${detail}`);
+  logEvent({
+    level: "error",
+    category: "worker",
+    operation: where,
+    code: cause instanceof OutboxRunError ? "outbox_run_incomplete" : errorCode(cause),
+    detail: cause instanceof OutboxRunError ? cause.problems.join("; ") : cause instanceof Error && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(cause.name) ? cause.name : undefined,
+  });
 }
 
 /** Runs the outbox after the response. Errors are logged; each email keeps its own state for the next run. */

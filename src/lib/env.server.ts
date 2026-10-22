@@ -32,6 +32,10 @@ export const serverEnvSchema = z
     // Checked only by the webhook route (a malformed value refuses webhooks;
     // it must never stop the rest of the app from starting).
     RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
+    // Dead-man's-switch URL of an external uptime monitor (e.g. Healthchecks.io), pinged by the
+    // outbox cron after each run: the monitor alerts when pings stop or report a failure. Optional;
+    // checked only where it is used (an invalid value disables the ping, never the app).
+    MONITOR_HEARTBEAT_URL: z.string().min(1).optional(),
   })
   .refine((env) => env.EMAIL_TRANSPORT !== "resend" || env.RESEND_API_KEY, {
     message: "RESEND_API_KEY is required when EMAIL_TRANSPORT=resend",
@@ -52,6 +56,7 @@ export function serverEnv(): ServerEnv {
     RESEND_API_KEY: process.env.RESEND_API_KEY || undefined,
     OUTBOX_WORKER_SECRET: process.env.OUTBOX_WORKER_SECRET || undefined,
     RESEND_WEBHOOK_SECRET: process.env.RESEND_WEBHOOK_SECRET || undefined,
+    MONITOR_HEARTBEAT_URL: process.env.MONITOR_HEARTBEAT_URL || undefined,
   });
   return cachedServerEnv;
 }

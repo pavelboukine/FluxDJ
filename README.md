@@ -3111,6 +3111,7 @@ See `.env.example`. Only `NEXT_PUBLIC_*` values reach the browser.
 | `RESEND_API_KEY` | Required only with `EMAIL_TRANSPORT=resend` |
 | `OUTBOX_WORKER_SECRET` | Bearer secret for `/api/internal/outbox`. The endpoint returns 404 when it isn't set. |
 | `RESEND_WEBHOOK_SECRET` | Optional. The Resend webhook signing secret (`whsec_…`) for `/api/webhooks/resend` (delivery, bounce and complaint events). The endpoint returns 404 when it isn't set. |
+| `MONITOR_HEARTBEAT_URL` | Optional. An external heartbeat monitor's https ping URL (e.g. Healthchecks.io), pinged by the outbox cron after each run (`/fail` appended when the run had a worker-level problem). It alerts when runs stop or fail. Unset: no ping. See docs/operations.md, "Alerts". |
 
 Hosted configuration, still to review before real clients:
 - Set every variable above as a server-side environment variable.

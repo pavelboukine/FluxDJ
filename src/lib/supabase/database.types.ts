@@ -1557,12 +1557,27 @@ isOneToOne: false
               "default_label": string,"description": string,"editor": string,"key": string,"kind": string,"library_order": number,"parent_keys": (string)[],"removable": boolean
             }[]
                            },
+"platform_document_issues":
+{ Args: { "p_limit"?: number }; Returns: {
+              "attempts": number,"contract_id": string,"created_at": string,"error_summary": string,"id": string,"issue": string,"max_attempts": number,"next_attempt_at": string,"status": string,"tenant_name": string,"tenant_slug": string,"updated_at": string
+            }[]
+                           },
+"platform_email_issues":
+{ Args: { "p_limit"?: number }; Returns: {
+              "attempts": number,"created_at": string,"error_summary": string,"event_type": string,"id": string,"issue": string,"max_attempts": number,"next_attempt_at": string,"possibly_delivered": boolean,"status": string,"tenant_name": string,"tenant_slug": string,"updated_at": string
+            }[]
+                           },
 "platform_invitation_status":
 { Args: { "p_invitation_id": string }; Returns: Json
                            },
 "platform_invitations_overview":
 { Args: Record<PropertyKey, never>; Returns: {
               "accepted_at": string,"created_at": string,"delivery_status": string,"email": string,"expires_at": string,"id": string,"last_sent_at": string,"revoked_at": string,"send_count": number,"state": string,"workspace_name": string,"workspace_slug": string
+            }[]
+                           },
+"platform_operations_summary":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "checked_at": string,"documents_failed": number,"documents_overdue": number,"emails_failed": number,"emails_overdue": number,"emails_possibly_delivered": number,"emails_retrying": number,"grace_minutes": number,"window_days": number,"worker_consecutive_failures": number,"worker_last_failure_at": string,"worker_last_finished_at": string,"worker_last_outcome": string,"worker_last_success_at": string,"worker_last_summary": Json
             }[]
                            },
 "platform_workspaces_overview":
@@ -1595,6 +1610,9 @@ isOneToOne: false
                            },
 "record_event_payment":
 { Args: { "p_amount_cents": number,"p_confirm_duplicate"?: boolean,"p_event_id": string,"p_idempotency_key": string,"p_note": string,"p_paid_on": string,"p_reference": string }; Returns: Json
+                           },
+"record_worker_run":
+{ Args: { "p_cancelled"?: number,"p_claimed"?: number,"p_documents_failed"?: number,"p_failed"?: number,"p_ok": boolean,"p_problems"?: number,"p_sent"?: number,"p_unconfirmed"?: number,"p_worker": string }; Returns: undefined
                            },
 "register_tenant_logo":
 { Args: { "p_byte_size": number,"p_height": number,"p_needs_dark_background": boolean,"p_sha256": string,"p_storage_path": string,"p_tenant_id": string,"p_user_id": string,"p_width": number }; Returns: string

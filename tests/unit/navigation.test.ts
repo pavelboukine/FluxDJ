@@ -13,7 +13,7 @@ describe("staff navigation", () => {
       ["Business", ["Emails", "Settings"]],
     ]);
     const admin = staffNavigation("dj", { platformAdmin: true });
-    expect(labels(admin).at(-1)).toEqual(["Admin", ["DJ invitations", "Workspaces"]]);
+    expect(labels(admin).at(-1)).toEqual(["Admin", ["DJ invitations", "Workspaces", "Operations"]]);
   });
 
   it("points only at existing routes", () => {
@@ -32,6 +32,7 @@ describe("staff navigation", () => {
       "/staff/dj/settings",
       "/platform/invitations",
       "/platform/workspaces",
+      "/platform/operations",
     ]);
   });
 
@@ -48,6 +49,7 @@ describe("staff navigation", () => {
     expect(activeLabels(nav, "/staff/dj/planning-templates")).toEqual(["Planning templates"]);
     expect(activeLabels(nav, "/staff/dj/questions/abc")).toEqual(["Questions & rules"]);
     expect(activeLabels(nav, "/platform/workspaces")).toEqual(["Workspaces"]);
+    expect(activeLabels(nav, "/platform/operations")).toEqual(["Operations"]);
     // Another business's pages, or a slug that merely starts the same, light nothing.
     expect(activeLabels(nav, "/staff/dj2/events")).toEqual([]);
     expect(activeLabels(nav, "/staff/other")).toEqual([]);
@@ -56,7 +58,7 @@ describe("staff navigation", () => {
 
 describe("platform navigation", () => {
   it("offers the way back only to administrators who have a business", () => {
-    expect(labels(platformNavigation({ hasWorkspaces: false }))).toEqual([["Admin", ["DJ invitations", "Workspaces"]]]);
+    expect(labels(platformNavigation({ hasWorkspaces: false }))).toEqual([["Admin", ["DJ invitations", "Workspaces", "Operations"]]]);
     expect(labels(platformNavigation({ hasWorkspaces: true })).at(-1)).toEqual(["Workspace", ["Your businesses"]]);
     expect(activeLabels(platformNavigation({ hasWorkspaces: true }), "/staff/dj")).toEqual([]);
   });

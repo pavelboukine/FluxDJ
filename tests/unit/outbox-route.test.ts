@@ -9,8 +9,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const SECRET = "s".repeat(40);
 const processOutbox = vi.fn();
 const processDocumentJobs = vi.fn();
+const reportScheduledRun = vi.fn();
 
 vi.mock("@/lib/env.server", () => ({ serverEnv: () => ({ OUTBOX_WORKER_SECRET: SECRET }) }));
+vi.mock("@/lib/supabase/admin", () => ({ createAdminClient: () => ({}) }));
+vi.mock("@/lib/operations.server", () => ({ reportScheduledRun: (...args: unknown[]) => reportScheduledRun(...args) }));
 vi.mock("@/lib/contracts/documents.server", () => ({ processDocumentJobs: (...args: unknown[]) => processDocumentJobs(...args) }));
 vi.mock("@/lib/email/outbox.server", async () => {
   class OutboxRunError extends Error {
@@ -43,6 +46,7 @@ beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation((line: string) => void logged.push(line));
   processDocumentJobs.mockReset().mockResolvedValue(documents);
   processOutbox.mockReset().mockResolvedValue(emails);
+  reportScheduledRun.mockReset().mockResolvedValue(undefined);
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -51,13 +55,33 @@ describe("outbox cron route", () => {
     expect((await call("wrong")).status).toBe(404);
     expect(processOutbox).not.toHaveBeenCalled();
     expect(processDocumentJobs).not.toHaveBeenCalled();
+    expect(reportScheduledRun).not.toHaveBeenCalled();
   });
 
-  it("answers 200 when both workers completed", async () => {
+  it("answers 200 when both workers completed, and reports a healthy run", async () => {
     const response = await call();
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ status: "ok", ...emails, documents });
     expect(logged).toEqual([]);
+    expect(reportScheduledRun).toHaveBeenCalledWith(expect.anything(), { ok: true, emails, problems: 0, documentsFailed: 0 });
+  });
+
+  it("an empty run is a healthy run", async () => {
+    const empty = { claimed: 0, sent: 0, failed: 0, cancelled: 0, unconfirmed: 0 };
+    processOutbox.mockResolvedValue(empty);
+    expect((await call()).status).toBe(200);
+    expect(reportScheduledRun).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ ok: true, emails: empty }));
+  });
+
+  it("single emails failing (retried automatically) don't fail the run", async () => {
+    processOutbox.mockResolvedValue({ ...emails, sent: 1, failed: 1 });
+    expect((await call()).status).toBe(200);
+    expect(reportScheduledRun).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ ok: true }));
+  });
+
+  it("still answers when reporting the run fails", async () => {
+    reportScheduledRun.mockRejectedValue(new Error("monitor down"));
+    expect((await call()).status).toBe(200);
   });
 
   it("answers 500 with what was done when an email claim failed", async () => {
@@ -66,6 +90,7 @@ describe("outbox cron route", () => {
     expect(response.status).toBe(500);
     expect(await response.json()).toMatchObject({ status: "error", sent: 2, problems: ["Planning invitation emails could not be claimed (XX000)"], documents });
     expect(logged).toEqual(["[outbox] scheduled run: Outbox run incomplete: Planning invitation emails could not be claimed (XX000)"]);
+    expect(reportScheduledRun).toHaveBeenCalledWith(expect.anything(), { ok: false, emails, problems: 1, documentsFailed: 0 });
   });
 
   it("answers 500 when the PDF worker failed, after still delivering emails", async () => {

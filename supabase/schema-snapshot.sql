@@ -1436,6 +1436,214 @@ $$;
 ALTER FUNCTION "private"."current_verified_email"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."document_error_summary"("p_error" "text") RETURNS "text"
+    LANGUAGE "sql" IMMUTABLE
+    SET "search_path" TO ''
+    AS $$
+  select case
+    when p_error is null then null
+    when p_error = 'PDF generation did not complete' then 'The last attempt didn''t finish.'
+    when p_error like 'The stored signed PDF does not match%' or p_error like 'The stored signature image does not match%'
+      then 'A stored file failed its integrity check. Investigate before requesting it again.'
+    when p_error like 'The signed contract or its signature record could not be loaded%' then 'The signed contract or its signature record could not be loaded.'
+    when p_error like 'The signature image could not be read%' then 'The signature image could not be read from storage.'
+    when p_error like 'The signed PDF could not be read%' then 'The signed PDF could not be read from storage.'
+    when p_error like 'The signed PDF could not be stored%' then 'The signed PDF could not be stored.'
+    when p_error like 'The signed PDF could not be recorded%' then 'The signed PDF could not be recorded.'
+    when p_error like 'The rendered PDF is larger than%' then 'The rendered PDF is larger than 10 MB.'
+    else 'The PDF could not be generated (unexpected error).'
+  end;
+$$;
+
+
+ALTER FUNCTION "private"."document_error_summary"("p_error" "text") OWNER TO "postgres";
+
+SET default_tablespace = '';
+
+SET default_table_access_method = "heap";
+
+
+CREATE TABLE IF NOT EXISTS "public"."document_jobs" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "tenant_id" "uuid" NOT NULL,
+    "contract_id" "uuid" NOT NULL,
+    "kind" "text" DEFAULT 'signed_contract_pdf'::"text" NOT NULL,
+    "status" "text" DEFAULT 'pending'::"text" NOT NULL,
+    "deliver_copies" boolean NOT NULL,
+    "attempts" integer DEFAULT 0 NOT NULL,
+    "max_attempts" integer DEFAULT 5 NOT NULL,
+    "next_attempt_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "lease_token" "uuid",
+    "locked_until" timestamp with time zone,
+    "last_error" "text",
+    "document_id" "uuid",
+    "requested_by_user_id" "uuid",
+    "completed_at" timestamp with time zone,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    CONSTRAINT "document_jobs_attempts_nonnegative" CHECK (("attempts" >= 0)),
+    CONSTRAINT "document_jobs_kind_valid" CHECK (("kind" = 'signed_contract_pdf'::"text")),
+    CONSTRAINT "document_jobs_last_error_length" CHECK (("length"("last_error") <= 1000)),
+    CONSTRAINT "document_jobs_max_attempts_range" CHECK ((("max_attempts" >= 1) AND ("max_attempts" <= 50))),
+    CONSTRAINT "document_jobs_status_valid" CHECK (("status" = ANY (ARRAY['pending'::"text", 'running'::"text", 'succeeded'::"text", 'failed'::"text"]))),
+    CONSTRAINT "document_jobs_succeeded_has_document" CHECK ((("status" = 'succeeded'::"text") = ("document_id" IS NOT NULL)))
+);
+
+
+ALTER TABLE "public"."document_jobs" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."document_jobs" IS 'Durable PDF work, one per signed contract. Claimed with expiring leases; bounded retries; errors shown to staff.';
+
+
+
+CREATE OR REPLACE FUNCTION "private"."document_job_needs_attention"("j" "public"."document_jobs", "p_since" timestamp with time zone) RETURNS boolean
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+  select j.status = 'failed' and j.updated_at >= p_since
+     and exists (select 1 from public.tenants t where t.id = j.tenant_id and t.archived_at is null);
+$$;
+
+
+ALTER FUNCTION "private"."document_job_needs_attention"("j" "public"."document_jobs", "p_since" timestamp with time zone) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."document_job_overdue"("j" "public"."document_jobs", "p_grace" interval) RETURNS boolean
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+  select ((j.status = 'pending' and j.next_attempt_at < now() - p_grace)
+          or (j.status = 'running' and j.locked_until < now() - p_grace))
+     and j.attempts < j.max_attempts
+     and exists (select 1 from public.tenants t where t.id = j.tenant_id and t.suspended_at is null);
+$$;
+
+
+ALTER FUNCTION "private"."document_job_overdue"("j" "public"."document_jobs", "p_grace" interval) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."email_error_summary"("p_error" "text") RETURNS "text"
+    LANGUAGE "sql" IMMUTABLE
+    SET "search_path" TO ''
+    AS $$
+  select case
+    when p_error is null then null
+    when private.email_possibly_delivered(p_error) and p_error = 'delivery did not complete'
+      then 'The last attempt didn''t finish, so it may have been delivered. Check before retrying.'
+    when private.email_possibly_delivered(p_error)
+      then 'An earlier attempt may already have been delivered: the email provider refused a changed repeat. Check before retrying.'
+    when p_error ~ 'responded [0-9]{3}'
+      then 'The email provider refused it (HTTP ' || substring(p_error from 'responded ([0-9]{3})')
+           || coalesce(', ' || substring(p_error from 'responded [0-9]{3} \(([a-z_]{1,60})\)'), '') || ').'
+    when p_error like 'The link secret changed%' then 'The link secret changed after this link was created; send a new one.'
+    when p_error like 'The signed PDF is not available yet%' then 'The signed PDF was not available yet.'
+    when p_error like 'The signed PDF%' or p_error like 'The stored signed PDF%' then 'The signed PDF could not be read or verified.'
+    when p_error like 'The sender could not be prepared%' then 'The sender could not be prepared.'
+    when p_error like 'Could not create a verification link%' then 'A sign-in link could not be created.'
+    when p_error like 'The delivery check could not run%' then 'The delivery check could not run, so nothing was sent.'
+    when p_error like 'Email delivery is disabled%' then 'Email delivery is disabled on this deployment.'
+    else 'The last attempt failed (unexpected error).'
+  end;
+$$;
+
+
+ALTER FUNCTION "private"."email_error_summary"("p_error" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."is_valid_email"("email" "text") RETURNS boolean
+    LANGUAGE "sql" IMMUTABLE STRICT
+    SET "search_path" TO ''
+    AS $_$
+  select length(email) <= 320
+     and email = lower(btrim(email))
+     and email ~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$';
+$_$;
+
+
+ALTER FUNCTION "private"."is_valid_email"("email" "text") OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."email_outbox" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "tenant_id" "uuid",
+    "event_type" "text" NOT NULL,
+    "recipient_email" "text" NOT NULL,
+    "entity_type" "text" DEFAULT 'proposal'::"text" NOT NULL,
+    "entity_id" "uuid" NOT NULL,
+    "access_link_id" "uuid",
+    "payload" "jsonb" DEFAULT '{}'::"jsonb" NOT NULL,
+    "dedup_key" "text" NOT NULL,
+    "status" "text" DEFAULT 'pending'::"text" NOT NULL,
+    "attempts" integer DEFAULT 0 NOT NULL,
+    "max_attempts" integer DEFAULT 5 NOT NULL,
+    "next_attempt_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "locked_until" timestamp with time zone,
+    "last_error" "text",
+    "provider_message_id" "text",
+    "sent_at" timestamp with time zone,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "sender" "jsonb",
+    "branding" "jsonb",
+    "provider_status" "text",
+    "provider_status_at" timestamp with time zone,
+    "provider_detail" "text",
+    CONSTRAINT "email_outbox_attempts_nonnegative" CHECK (("attempts" >= 0)),
+    CONSTRAINT "email_outbox_branding_object" CHECK ((("branding" IS NULL) OR ("jsonb_typeof"("branding") = 'object'::"text"))),
+    CONSTRAINT "email_outbox_dedup_key_length" CHECK ((("length"("dedup_key") >= 1) AND ("length"("dedup_key") <= 200))),
+    CONSTRAINT "email_outbox_entity_type_valid" CHECK (("entity_type" = ANY (ARRAY['proposal'::"text", 'contract'::"text", 'platform_invitation'::"text", 'staff_invitation'::"text", 'planning_invitation'::"text"]))),
+    CONSTRAINT "email_outbox_event_type_valid" CHECK (("event_type" = ANY (ARRAY['proposal_sent'::"text", 'proposal_link_opened'::"text", 'proposal_submitted'::"text", 'proposal_approved'::"text", 'contract_sent'::"text", 'contract_sign_in'::"text", 'contract_voided'::"text", 'contract_signed_copy'::"text", 'booking_confirmed'::"text", 'platform_invitation'::"text", 'platform_sign_in'::"text", 'staff_invitation'::"text", 'staff_sign_in'::"text", 'planning_invitation'::"text", 'planning_sign_in'::"text"]))),
+    CONSTRAINT "email_outbox_last_error_length" CHECK (("length"("last_error") <= 1000)),
+    CONSTRAINT "email_outbox_max_attempts_range" CHECK ((("max_attempts" >= 1) AND ("max_attempts" <= 50))),
+    CONSTRAINT "email_outbox_payload_object" CHECK (("jsonb_typeof"("payload") = 'object'::"text")),
+    CONSTRAINT "email_outbox_planning_scope" CHECK (((("entity_type" = 'planning_invitation'::"text") = ("event_type" = ANY (ARRAY['planning_invitation'::"text", 'planning_sign_in'::"text"]))) AND (("entity_type" <> 'planning_invitation'::"text") OR ("access_link_id" IS NULL)))),
+    CONSTRAINT "email_outbox_platform_scope" CHECK (((("tenant_id" IS NULL) = ("event_type" = ANY (ARRAY['platform_invitation'::"text", 'platform_sign_in'::"text"]))) AND (("tenant_id" IS NOT NULL) OR (("entity_type" = 'platform_invitation'::"text") AND ("access_link_id" IS NULL))))),
+    CONSTRAINT "email_outbox_provider_detail_length" CHECK (("length"("provider_detail") <= 200)),
+    CONSTRAINT "email_outbox_provider_status_complete" CHECK ((("provider_status" IS NULL) = ("provider_status_at" IS NULL))),
+    CONSTRAINT "email_outbox_provider_status_valid" CHECK (("provider_status" = ANY (ARRAY['delayed'::"text", 'delivered'::"text", 'failed'::"text", 'bounced'::"text", 'suppressed'::"text", 'complained'::"text"]))),
+    CONSTRAINT "email_outbox_recipient_valid" CHECK ("private"."is_valid_email"("recipient_email")),
+    CONSTRAINT "email_outbox_sender_object" CHECK ((("sender" IS NULL) OR ("jsonb_typeof"("sender") = 'object'::"text"))),
+    CONSTRAINT "email_outbox_staff_scope" CHECK (((("entity_type" = 'staff_invitation'::"text") = ("event_type" = ANY (ARRAY['staff_invitation'::"text", 'staff_sign_in'::"text"]))) AND (("entity_type" <> 'staff_invitation'::"text") OR ("access_link_id" IS NULL)))),
+    CONSTRAINT "email_outbox_status_valid" CHECK (("status" = ANY (ARRAY['pending'::"text", 'sending'::"text", 'sent'::"text", 'failed'::"text", 'cancelled'::"text"])))
+);
+
+
+ALTER TABLE "public"."email_outbox" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."email_outbox" IS 'Durable outbox. Business state commits first; delivery happens afterwards with bounded retries. Dedup keys stop duplicate emails.';
+
+
+
+COMMENT ON COLUMN "public"."email_outbox"."tenant_id" IS 'The sending business. Null only for platform emails (DJ invitations), which staff never see.';
+
+
+
+COMMENT ON COLUMN "public"."email_outbox"."sender" IS 'Frozen sender for emails sent with a provider idempotency key (signed copies): display_name, from_name and reply_to when queued, from_address at the first attempt. Set-once per key.';
+
+
+
+COMMENT ON COLUMN "public"."email_outbox"."branding" IS 'Header branding frozen at the first delivery attempt: display_name, primary colour and the business''s own logo path. See freeze_email_branding.';
+
+
+
+COMMENT ON COLUMN "public"."email_outbox"."provider_status" IS 'Latest delivery outcome reported by the provider''s webhooks after acceptance (status = sent). Null: only acceptance is known.';
+
+
+
+CREATE OR REPLACE FUNCTION "private"."email_needs_attention"("o" "public"."email_outbox", "p_since" timestamp with time zone) RETURNS boolean
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+  select o.status = 'failed' and o.updated_at >= p_since
+     and (o.tenant_id is null or exists (select 1 from public.tenants t where t.id = o.tenant_id and t.archived_at is null));
+$$;
+
+
+ALTER FUNCTION "private"."email_needs_attention"("o" "public"."email_outbox", "p_since" timestamp with time zone) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."email_outbox_branding_frozen"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     SET "search_path" TO ''
@@ -1466,6 +1674,33 @@ $$;
 
 
 ALTER FUNCTION "private"."email_outbox_sender_frozen"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."email_overdue"("o" "public"."email_outbox", "p_grace" interval) RETURNS boolean
+    LANGUAGE "sql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+  select (o.status = 'pending' or (o.status = 'sending' and o.locked_until < now() - p_grace))
+     and o.next_attempt_at < now() - p_grace
+     and o.attempts < o.max_attempts
+     and (o.tenant_id is null
+          or exists (select 1 from public.tenants t where t.id = o.tenant_id and t.archived_at is null and t.suspended_at is null));
+$$;
+
+
+ALTER FUNCTION "private"."email_overdue"("o" "public"."email_outbox", "p_grace" interval) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."email_possibly_delivered"("p_last_error" "text") RETURNS boolean
+    LANGUAGE "sql" IMMUTABLE
+    SET "search_path" TO ''
+    AS $$
+  select coalesce(p_last_error = 'delivery did not complete'
+                  or p_last_error like 'An earlier attempt of this email may already have been delivered%', false);
+$$;
+
+
+ALTER FUNCTION "private"."email_possibly_delivered"("p_last_error" "text") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."enqueue_contract_email"("p_tenant_id" "uuid", "p_event_type" "text", "p_recipient" "text", "p_contract_id" "uuid", "p_link_id" "uuid", "p_payload" "jsonb", "p_dedup_key" "text") RETURNS "void"
@@ -1819,10 +2054,6 @@ $$;
 
 
 ALTER FUNCTION "private"."is_valid_timezone"("tz" "text") OWNER TO "postgres";
-
-SET default_tablespace = '';
-
-SET default_table_access_method = "heap";
 
 
 CREATE TABLE IF NOT EXISTS "public"."events" (
@@ -2515,19 +2746,6 @@ $$;
 
 
 ALTER FUNCTION "private"."is_valid_draft_offer"("draft" "jsonb") OWNER TO "postgres";
-
-
-CREATE OR REPLACE FUNCTION "private"."is_valid_email"("email" "text") RETURNS boolean
-    LANGUAGE "sql" IMMUTABLE STRICT
-    SET "search_path" TO ''
-    AS $_$
-  select length(email) <= 320
-     and email = lower(btrim(email))
-     and email ~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$';
-$_$;
-
-
-ALTER FUNCTION "private"."is_valid_email"("email" "text") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."is_valid_gear_media_path"("object_name" "text", "p_tenant_id" "uuid", "p_gear_item_id" "uuid") RETURNS boolean
@@ -9646,6 +9864,63 @@ $$;
 ALTER FUNCTION "public"."planning_library"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."platform_document_issues"("p_limit" integer DEFAULT 50) RETURNS TABLE("id" "uuid", "issue" "text", "tenant_slug" "text", "tenant_name" "text", "contract_id" "uuid", "status" "text", "attempts" integer, "max_attempts" integer, "error_summary" "text", "next_attempt_at" timestamp with time zone, "updated_at" timestamp with time zone, "created_at" timestamp with time zone)
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  v_since timestamptz := now() - interval '30 days';
+  v_grace interval := interval '15 minutes';
+begin
+  perform private.require_platform_admin();
+  return query
+  select j.id,
+         case when j.status = 'failed' then 'failed' else 'overdue' end,
+         t.slug, t.display_name, j.contract_id, j.status, j.attempts, j.max_attempts,
+         private.document_error_summary(j.last_error), j.next_attempt_at, j.updated_at, j.created_at
+  from public.document_jobs j
+  join public.tenants t on t.id = j.tenant_id
+  where (j.status = 'failed' and private.document_job_needs_attention(j, v_since))
+     or (j.status in ('pending', 'running') and private.document_job_overdue(j, v_grace))
+  order by (j.status <> 'failed') desc, j.updated_at desc
+  limit greatest(1, least(coalesce(p_limit, 50), 200));
+end;
+$$;
+
+
+ALTER FUNCTION "public"."platform_document_issues"("p_limit" integer) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."platform_email_issues"("p_limit" integer DEFAULT 50) RETURNS TABLE("id" "uuid", "issue" "text", "tenant_slug" "text", "tenant_name" "text", "event_type" "text", "status" "text", "attempts" integer, "max_attempts" integer, "possibly_delivered" boolean, "error_summary" "text", "next_attempt_at" timestamp with time zone, "updated_at" timestamp with time zone, "created_at" timestamp with time zone)
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+#variable_conflict use_column
+declare
+  v_since timestamptz := now() - interval '30 days';
+  v_grace interval := interval '15 minutes';
+begin
+  perform private.require_platform_admin();
+  return query
+  select o.id,
+         case when o.status = 'failed' then 'failed' else 'overdue' end,
+         t.slug, t.display_name, o.event_type, o.status, o.attempts, o.max_attempts,
+         o.status = 'failed' and private.email_possibly_delivered(o.last_error),
+         private.email_error_summary(o.last_error), o.next_attempt_at, o.updated_at, o.created_at
+  from public.email_outbox o
+  left join public.tenants t on t.id = o.tenant_id
+  where (o.status = 'failed' and private.email_needs_attention(o, v_since))
+     or (o.status in ('pending', 'sending') and private.email_overdue(o, v_grace))
+  order by (o.status <> 'failed') desc, o.updated_at desc
+  limit greatest(1, least(coalesce(p_limit, 50), 200));
+end;
+$$;
+
+
+ALTER FUNCTION "public"."platform_email_issues"("p_limit" integer) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."platform_invitation_status"("p_invitation_id" "uuid") RETURNS "jsonb"
     LANGUAGE "plpgsql" STABLE SECURITY DEFINER
     SET "search_path" TO ''
@@ -9714,6 +9989,36 @@ $$;
 
 
 ALTER FUNCTION "public"."platform_invitations_overview"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."platform_operations_summary"() RETURNS TABLE("checked_at" timestamp with time zone, "window_days" integer, "grace_minutes" integer, "emails_failed" bigint, "emails_possibly_delivered" bigint, "emails_overdue" bigint, "emails_retrying" bigint, "documents_failed" bigint, "documents_overdue" bigint, "worker_last_finished_at" timestamp with time zone, "worker_last_outcome" "text", "worker_last_success_at" timestamp with time zone, "worker_last_failure_at" timestamp with time zone, "worker_consecutive_failures" integer, "worker_last_summary" "jsonb")
+    LANGUAGE "plpgsql" STABLE SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  v_since timestamptz := now() - interval '30 days';
+  v_grace interval := interval '15 minutes';
+begin
+  perform private.require_platform_admin();
+  return query
+  select now(), 30, 15,
+    (select count(*) from public.email_outbox o where o.status = 'failed' and private.email_needs_attention(o, v_since)),
+    (select count(*) from public.email_outbox o
+      where o.status = 'failed' and private.email_needs_attention(o, v_since) and private.email_possibly_delivered(o.last_error)),
+    (select count(*) from public.email_outbox o where o.status in ('pending', 'sending') and private.email_overdue(o, v_grace)),
+    -- Retrying normally: a failed attempt waiting for its next try (attempts left, not overdue).
+    (select count(*) from public.email_outbox o
+      where o.status = 'pending' and o.attempts > 0 and o.attempts < o.max_attempts and not private.email_overdue(o, v_grace)),
+    (select count(*) from public.document_jobs j where j.status = 'failed' and private.document_job_needs_attention(j, v_since)),
+    (select count(*) from public.document_jobs j where j.status in ('pending', 'running') and private.document_job_overdue(j, v_grace)),
+    h.last_finished_at, h.last_outcome, h.last_success_at, h.last_failure_at, h.consecutive_failures, h.last_summary
+  from (select 1) one
+  left join private.worker_heartbeats h on h.worker = 'outbox_cron';
+end;
+$$;
+
+
+ALTER FUNCTION "public"."platform_operations_summary"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."platform_workspaces_overview"() RETURNS TABLE("id" "uuid", "slug" "text", "display_name" "text", "created_at" timestamp with time zone, "archived_at" timestamp with time zone, "suspended_at" timestamp with time zone, "suspension_version" integer, "suspension_reason" "text", "suspended_by_email" "text", "is_member" boolean)
@@ -10051,6 +10356,39 @@ $$;
 
 
 ALTER FUNCTION "public"."record_event_payment"("p_event_id" "uuid", "p_amount_cents" bigint, "p_paid_on" "date", "p_reference" "text", "p_note" "text", "p_idempotency_key" "uuid", "p_confirm_duplicate" boolean) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."record_worker_run"("p_worker" "text", "p_ok" boolean, "p_claimed" integer DEFAULT 0, "p_sent" integer DEFAULT 0, "p_failed" integer DEFAULT 0, "p_cancelled" integer DEFAULT 0, "p_unconfirmed" integer DEFAULT 0, "p_problems" integer DEFAULT 0, "p_documents_failed" integer DEFAULT 0) RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  v_summary jsonb := jsonb_build_object(
+    'claimed', greatest(coalesce(p_claimed, 0), 0), 'sent', greatest(coalesce(p_sent, 0), 0),
+    'failed', greatest(coalesce(p_failed, 0), 0), 'cancelled', greatest(coalesce(p_cancelled, 0), 0),
+    'unconfirmed', greatest(coalesce(p_unconfirmed, 0), 0), 'problems', greatest(coalesce(p_problems, 0), 0),
+    'documents_failed', greatest(coalesce(p_documents_failed, 0), 0));
+  v_ok boolean := coalesce(p_ok, false);
+begin
+  if p_worker is distinct from 'outbox_cron' then
+    raise exception 'unknown worker' using errcode = 'invalid_parameter_value';
+  end if;
+  insert into private.worker_heartbeats as h (worker, last_finished_at, last_outcome, last_success_at, last_failure_at, consecutive_failures, last_summary)
+  values (p_worker, now(), case when v_ok then 'ok' else 'error' end,
+          case when v_ok then now() end, case when v_ok then null else now() end,
+          case when v_ok then 0 else 1 end, v_summary)
+  on conflict (worker) do update set
+    last_finished_at = now(),
+    last_outcome = excluded.last_outcome,
+    last_success_at = case when v_ok then now() else h.last_success_at end,
+    last_failure_at = case when v_ok then h.last_failure_at else now() end,
+    consecutive_failures = case when v_ok then 0 else h.consecutive_failures + 1 end,
+    last_summary = excluded.last_summary;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."record_worker_run"("p_worker" "text", "p_ok" boolean, "p_claimed" integer, "p_sent" integer, "p_failed" integer, "p_cancelled" integer, "p_unconfirmed" integer, "p_problems" integer, "p_documents_failed" integer) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."register_tenant_logo"("p_tenant_id" "uuid", "p_user_id" "uuid", "p_storage_path" "text", "p_sha256" "text", "p_byte_size" integer, "p_width" integer, "p_height" integer, "p_needs_dark_background" boolean) RETURNS "uuid"
@@ -12655,6 +12993,23 @@ CREATE TABLE IF NOT EXISTS "private"."rate_limit_counters" (
 ALTER TABLE "private"."rate_limit_counters" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "private"."worker_heartbeats" (
+    "worker" "text" NOT NULL,
+    "last_finished_at" timestamp with time zone NOT NULL,
+    "last_outcome" "text" NOT NULL,
+    "last_success_at" timestamp with time zone,
+    "last_failure_at" timestamp with time zone,
+    "consecutive_failures" integer DEFAULT 0 NOT NULL,
+    "last_summary" "jsonb" DEFAULT '{}'::"jsonb" NOT NULL,
+    CONSTRAINT "worker_heartbeats_failures_valid" CHECK (("consecutive_failures" >= 0)),
+    CONSTRAINT "worker_heartbeats_outcome_valid" CHECK (("last_outcome" = ANY (ARRAY['ok'::"text", 'error'::"text"]))),
+    CONSTRAINT "worker_heartbeats_worker_valid" CHECK (("worker" = 'outbox_cron'::"text"))
+);
+
+
+ALTER TABLE "private"."worker_heartbeats" OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "public"."access_links" (
     "id" "uuid" NOT NULL,
     "tenant_id" "uuid" NOT NULL,
@@ -12793,108 +13148,6 @@ ALTER TABLE "public"."contract_templates" OWNER TO "postgres";
 
 
 COMMENT ON TABLE "public"."contract_templates" IS 'A named contract template of one DJ business. Its text lives in contract_template_versions. Archive with active = false; never deleted.';
-
-
-
-CREATE TABLE IF NOT EXISTS "public"."document_jobs" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "tenant_id" "uuid" NOT NULL,
-    "contract_id" "uuid" NOT NULL,
-    "kind" "text" DEFAULT 'signed_contract_pdf'::"text" NOT NULL,
-    "status" "text" DEFAULT 'pending'::"text" NOT NULL,
-    "deliver_copies" boolean NOT NULL,
-    "attempts" integer DEFAULT 0 NOT NULL,
-    "max_attempts" integer DEFAULT 5 NOT NULL,
-    "next_attempt_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "lease_token" "uuid",
-    "locked_until" timestamp with time zone,
-    "last_error" "text",
-    "document_id" "uuid",
-    "requested_by_user_id" "uuid",
-    "completed_at" timestamp with time zone,
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    CONSTRAINT "document_jobs_attempts_nonnegative" CHECK (("attempts" >= 0)),
-    CONSTRAINT "document_jobs_kind_valid" CHECK (("kind" = 'signed_contract_pdf'::"text")),
-    CONSTRAINT "document_jobs_last_error_length" CHECK (("length"("last_error") <= 1000)),
-    CONSTRAINT "document_jobs_max_attempts_range" CHECK ((("max_attempts" >= 1) AND ("max_attempts" <= 50))),
-    CONSTRAINT "document_jobs_status_valid" CHECK (("status" = ANY (ARRAY['pending'::"text", 'running'::"text", 'succeeded'::"text", 'failed'::"text"]))),
-    CONSTRAINT "document_jobs_succeeded_has_document" CHECK ((("status" = 'succeeded'::"text") = ("document_id" IS NOT NULL)))
-);
-
-
-ALTER TABLE "public"."document_jobs" OWNER TO "postgres";
-
-
-COMMENT ON TABLE "public"."document_jobs" IS 'Durable PDF work, one per signed contract. Claimed with expiring leases; bounded retries; errors shown to staff.';
-
-
-
-CREATE TABLE IF NOT EXISTS "public"."email_outbox" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "tenant_id" "uuid",
-    "event_type" "text" NOT NULL,
-    "recipient_email" "text" NOT NULL,
-    "entity_type" "text" DEFAULT 'proposal'::"text" NOT NULL,
-    "entity_id" "uuid" NOT NULL,
-    "access_link_id" "uuid",
-    "payload" "jsonb" DEFAULT '{}'::"jsonb" NOT NULL,
-    "dedup_key" "text" NOT NULL,
-    "status" "text" DEFAULT 'pending'::"text" NOT NULL,
-    "attempts" integer DEFAULT 0 NOT NULL,
-    "max_attempts" integer DEFAULT 5 NOT NULL,
-    "next_attempt_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "locked_until" timestamp with time zone,
-    "last_error" "text",
-    "provider_message_id" "text",
-    "sent_at" timestamp with time zone,
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "sender" "jsonb",
-    "branding" "jsonb",
-    "provider_status" "text",
-    "provider_status_at" timestamp with time zone,
-    "provider_detail" "text",
-    CONSTRAINT "email_outbox_attempts_nonnegative" CHECK (("attempts" >= 0)),
-    CONSTRAINT "email_outbox_branding_object" CHECK ((("branding" IS NULL) OR ("jsonb_typeof"("branding") = 'object'::"text"))),
-    CONSTRAINT "email_outbox_dedup_key_length" CHECK ((("length"("dedup_key") >= 1) AND ("length"("dedup_key") <= 200))),
-    CONSTRAINT "email_outbox_entity_type_valid" CHECK (("entity_type" = ANY (ARRAY['proposal'::"text", 'contract'::"text", 'platform_invitation'::"text", 'staff_invitation'::"text", 'planning_invitation'::"text"]))),
-    CONSTRAINT "email_outbox_event_type_valid" CHECK (("event_type" = ANY (ARRAY['proposal_sent'::"text", 'proposal_link_opened'::"text", 'proposal_submitted'::"text", 'proposal_approved'::"text", 'contract_sent'::"text", 'contract_sign_in'::"text", 'contract_voided'::"text", 'contract_signed_copy'::"text", 'booking_confirmed'::"text", 'platform_invitation'::"text", 'platform_sign_in'::"text", 'staff_invitation'::"text", 'staff_sign_in'::"text", 'planning_invitation'::"text", 'planning_sign_in'::"text"]))),
-    CONSTRAINT "email_outbox_last_error_length" CHECK (("length"("last_error") <= 1000)),
-    CONSTRAINT "email_outbox_max_attempts_range" CHECK ((("max_attempts" >= 1) AND ("max_attempts" <= 50))),
-    CONSTRAINT "email_outbox_payload_object" CHECK (("jsonb_typeof"("payload") = 'object'::"text")),
-    CONSTRAINT "email_outbox_planning_scope" CHECK (((("entity_type" = 'planning_invitation'::"text") = ("event_type" = ANY (ARRAY['planning_invitation'::"text", 'planning_sign_in'::"text"]))) AND (("entity_type" <> 'planning_invitation'::"text") OR ("access_link_id" IS NULL)))),
-    CONSTRAINT "email_outbox_platform_scope" CHECK (((("tenant_id" IS NULL) = ("event_type" = ANY (ARRAY['platform_invitation'::"text", 'platform_sign_in'::"text"]))) AND (("tenant_id" IS NOT NULL) OR (("entity_type" = 'platform_invitation'::"text") AND ("access_link_id" IS NULL))))),
-    CONSTRAINT "email_outbox_provider_detail_length" CHECK (("length"("provider_detail") <= 200)),
-    CONSTRAINT "email_outbox_provider_status_complete" CHECK ((("provider_status" IS NULL) = ("provider_status_at" IS NULL))),
-    CONSTRAINT "email_outbox_provider_status_valid" CHECK (("provider_status" = ANY (ARRAY['delayed'::"text", 'delivered'::"text", 'failed'::"text", 'bounced'::"text", 'suppressed'::"text", 'complained'::"text"]))),
-    CONSTRAINT "email_outbox_recipient_valid" CHECK ("private"."is_valid_email"("recipient_email")),
-    CONSTRAINT "email_outbox_sender_object" CHECK ((("sender" IS NULL) OR ("jsonb_typeof"("sender") = 'object'::"text"))),
-    CONSTRAINT "email_outbox_staff_scope" CHECK (((("entity_type" = 'staff_invitation'::"text") = ("event_type" = ANY (ARRAY['staff_invitation'::"text", 'staff_sign_in'::"text"]))) AND (("entity_type" <> 'staff_invitation'::"text") OR ("access_link_id" IS NULL)))),
-    CONSTRAINT "email_outbox_status_valid" CHECK (("status" = ANY (ARRAY['pending'::"text", 'sending'::"text", 'sent'::"text", 'failed'::"text", 'cancelled'::"text"])))
-);
-
-
-ALTER TABLE "public"."email_outbox" OWNER TO "postgres";
-
-
-COMMENT ON TABLE "public"."email_outbox" IS 'Durable outbox. Business state commits first; delivery happens afterwards with bounded retries. Dedup keys stop duplicate emails.';
-
-
-
-COMMENT ON COLUMN "public"."email_outbox"."tenant_id" IS 'The sending business. Null only for platform emails (DJ invitations), which staff never see.';
-
-
-
-COMMENT ON COLUMN "public"."email_outbox"."sender" IS 'Frozen sender for emails sent with a provider idempotency key (signed copies): display_name, from_name and reply_to when queued, from_address at the first attempt. Set-once per key.';
-
-
-
-COMMENT ON COLUMN "public"."email_outbox"."branding" IS 'Header branding frozen at the first delivery attempt: display_name, primary colour and the business''s own logo path. See freeze_email_branding.';
-
-
-
-COMMENT ON COLUMN "public"."email_outbox"."provider_status" IS 'Latest delivery outcome reported by the provider''s webhooks after acceptance (status = sent). Null: only acceptance is known.';
 
 
 
@@ -13845,6 +14098,11 @@ ALTER TABLE ONLY "private"."rate_limit_counters"
 
 
 
+ALTER TABLE ONLY "private"."worker_heartbeats"
+    ADD CONSTRAINT "worker_heartbeats_pkey" PRIMARY KEY ("worker");
+
+
+
 ALTER TABLE ONLY "public"."access_links"
     ADD CONSTRAINT "access_links_pkey" PRIMARY KEY ("id");
 
@@ -14660,6 +14918,10 @@ CREATE INDEX "document_jobs_due_idx" ON "public"."document_jobs" USING "btree" (
 
 
 
+CREATE INDEX "document_jobs_failed_idx" ON "public"."document_jobs" USING "btree" ("updated_at" DESC) WHERE ("status" = 'failed'::"text");
+
+
+
 CREATE INDEX "document_jobs_tenant_contract_idx" ON "public"."document_jobs" USING "btree" ("tenant_id", "contract_id");
 
 
@@ -14669,6 +14931,10 @@ CREATE INDEX "document_jobs_tenant_document_idx" ON "public"."document_jobs" USI
 
 
 CREATE INDEX "email_outbox_due_idx" ON "public"."email_outbox" USING "btree" ("next_attempt_at") WHERE ("status" = ANY (ARRAY['pending'::"text", 'sending'::"text"]));
+
+
+
+CREATE INDEX "email_outbox_failed_idx" ON "public"."email_outbox" USING "btree" ("updated_at" DESC) WHERE ("status" = 'failed'::"text");
 
 
 
@@ -16968,11 +17234,55 @@ REVOKE ALL ON FUNCTION "private"."current_verified_email"() FROM PUBLIC;
 
 
 
+REVOKE ALL ON FUNCTION "private"."document_error_summary"("p_error" "text") FROM PUBLIC;
+
+
+
+GRANT ALL ON TABLE "public"."document_jobs" TO "service_role";
+GRANT SELECT ON TABLE "public"."document_jobs" TO "authenticated";
+
+
+
+REVOKE ALL ON FUNCTION "private"."document_job_needs_attention"("j" "public"."document_jobs", "p_since" timestamp with time zone) FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."document_job_overdue"("j" "public"."document_jobs", "p_grace" interval) FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."email_error_summary"("p_error" "text") FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."is_valid_email"("email" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "private"."is_valid_email"("email" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "private"."is_valid_email"("email" "text") TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."email_outbox" TO "service_role";
+GRANT SELECT ON TABLE "public"."email_outbox" TO "authenticated";
+
+
+
+REVOKE ALL ON FUNCTION "private"."email_needs_attention"("o" "public"."email_outbox", "p_since" timestamp with time zone) FROM PUBLIC;
+
+
+
 REVOKE ALL ON FUNCTION "private"."email_outbox_branding_frozen"() FROM PUBLIC;
 
 
 
 REVOKE ALL ON FUNCTION "private"."email_outbox_sender_frozen"() FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."email_overdue"("o" "public"."email_outbox", "p_grace" interval) FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."email_possibly_delivered"("p_last_error" "text") FROM PUBLIC;
 
 
 
@@ -17216,12 +17526,6 @@ GRANT ALL ON FUNCTION "private"."is_valid_discount"("d" "jsonb") TO "service_rol
 REVOKE ALL ON FUNCTION "private"."is_valid_draft_offer"("draft" "jsonb") FROM PUBLIC;
 GRANT ALL ON FUNCTION "private"."is_valid_draft_offer"("draft" "jsonb") TO "authenticated";
 GRANT ALL ON FUNCTION "private"."is_valid_draft_offer"("draft" "jsonb") TO "service_role";
-
-
-
-REVOKE ALL ON FUNCTION "private"."is_valid_email"("email" "text") FROM PUBLIC;
-GRANT ALL ON FUNCTION "private"."is_valid_email"("email" "text") TO "authenticated";
-GRANT ALL ON FUNCTION "private"."is_valid_email"("email" "text") TO "service_role";
 
 
 
@@ -18219,6 +18523,18 @@ GRANT ALL ON FUNCTION "public"."planning_library"() TO "authenticated";
 
 
 
+REVOKE ALL ON FUNCTION "public"."platform_document_issues"("p_limit" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."platform_document_issues"("p_limit" integer) TO "service_role";
+GRANT ALL ON FUNCTION "public"."platform_document_issues"("p_limit" integer) TO "authenticated";
+
+
+
+REVOKE ALL ON FUNCTION "public"."platform_email_issues"("p_limit" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."platform_email_issues"("p_limit" integer) TO "service_role";
+GRANT ALL ON FUNCTION "public"."platform_email_issues"("p_limit" integer) TO "authenticated";
+
+
+
 REVOKE ALL ON FUNCTION "public"."platform_invitation_status"("p_invitation_id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."platform_invitation_status"("p_invitation_id" "uuid") TO "service_role";
 GRANT ALL ON FUNCTION "public"."platform_invitation_status"("p_invitation_id" "uuid") TO "authenticated";
@@ -18228,6 +18544,12 @@ GRANT ALL ON FUNCTION "public"."platform_invitation_status"("p_invitation_id" "u
 REVOKE ALL ON FUNCTION "public"."platform_invitations_overview"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."platform_invitations_overview"() TO "service_role";
 GRANT ALL ON FUNCTION "public"."platform_invitations_overview"() TO "authenticated";
+
+
+
+REVOKE ALL ON FUNCTION "public"."platform_operations_summary"() FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."platform_operations_summary"() TO "service_role";
+GRANT ALL ON FUNCTION "public"."platform_operations_summary"() TO "authenticated";
 
 
 
@@ -18286,6 +18608,11 @@ GRANT ALL ON FUNCTION "public"."record_email_provider_event"("p_provider_message
 REVOKE ALL ON FUNCTION "public"."record_event_payment"("p_event_id" "uuid", "p_amount_cents" bigint, "p_paid_on" "date", "p_reference" "text", "p_note" "text", "p_idempotency_key" "uuid", "p_confirm_duplicate" boolean) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."record_event_payment"("p_event_id" "uuid", "p_amount_cents" bigint, "p_paid_on" "date", "p_reference" "text", "p_note" "text", "p_idempotency_key" "uuid", "p_confirm_duplicate" boolean) TO "service_role";
 GRANT ALL ON FUNCTION "public"."record_event_payment"("p_event_id" "uuid", "p_amount_cents" bigint, "p_paid_on" "date", "p_reference" "text", "p_note" "text", "p_idempotency_key" "uuid", "p_confirm_duplicate" boolean) TO "authenticated";
+
+
+
+REVOKE ALL ON FUNCTION "public"."record_worker_run"("p_worker" "text", "p_ok" boolean, "p_claimed" integer, "p_sent" integer, "p_failed" integer, "p_cancelled" integer, "p_unconfirmed" integer, "p_problems" integer, "p_documents_failed" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."record_worker_run"("p_worker" "text", "p_ok" boolean, "p_claimed" integer, "p_sent" integer, "p_failed" integer, "p_cancelled" integer, "p_unconfirmed" integer, "p_problems" integer, "p_documents_failed" integer) TO "service_role";
 
 
 
@@ -18723,16 +19050,6 @@ GRANT UPDATE("name") ON TABLE "public"."contract_templates" TO "authenticated";
 
 
 GRANT UPDATE("active") ON TABLE "public"."contract_templates" TO "authenticated";
-
-
-
-GRANT ALL ON TABLE "public"."document_jobs" TO "service_role";
-GRANT SELECT ON TABLE "public"."document_jobs" TO "authenticated";
-
-
-
-GRANT ALL ON TABLE "public"."email_outbox" TO "service_role";
-GRANT SELECT ON TABLE "public"."email_outbox" TO "authenticated";
 
 
 
