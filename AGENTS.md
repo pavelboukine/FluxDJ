@@ -48,3 +48,29 @@ Full commands and rationale: README, "Day-to-day testing". In short:
   ≈ 1–2 min, pgTAP ≈ 12 s: check progress every 30–60 s and schedule no fallback
   wakeup much longer than the expected run time.
 - `pnpm build` is safe while `pnpm dev` runs (separate `.next/dev` output).
+
+# Branches, CI and releases
+
+Full procedure: `docs/operations.md`.
+
+- Work on a feature branch; `main` changes only through a pull request. Never
+  commit, push, open a PR, merge or deploy without the user's explicit approval.
+- Before proposing a change: `pnpm lint`, `pnpm typecheck`, the affected unit
+  tests, and the pgTAP or integration files for any affected business logic
+  or SQL. A migration also needs `pnpm db:types` and `pnpm db:schema`, both
+  committed with it.
+- CI (`.github/workflows/ci.yml`) runs the required checks on every PR:
+  **App checks** (lint, typecheck, unit) and **Database tests** (fresh local
+  Supabase: db lint, pgTAP, integration, schema snapshot and types drift).
+  **Browser smoke** (`pnpm test:e2e:smoke`) also runs; it isn't required yet.
+  CI is the full regression for database and integration tests; don't rerun
+  them locally just to duplicate it.
+- Merge only after the required checks pass and the change is reviewed.
+  Vercel deploys `main` to production.
+- Migrations: migration first (applied to production with explicit
+  authorization, backward compatible with the deployed code), then the app.
+  CI never touches the hosted database.
+- Run the full browser suite locally only for releases that touch
+  authentication, contracts, payments, booking, planning access or
+  migrations, or when the user asks. Ordinary UI changes rely on the
+  targeted specs plus CI.

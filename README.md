@@ -927,6 +927,23 @@ is running: Next.js 16 writes development output to `.next/dev` and builds
 to `.next`, and a build's cleanup keeps `.next/dev`. Run the build with
 `next start` stopped (`next start` serves `.next`).
 
+### Continuous integration
+
+Every pull request into `main`, and every commit on `main`, runs GitHub
+Actions on a fresh local Supabase stack (no secrets, no hosted project):
+
+| Check | Workflow | Runs |
+|---|---|---|
+| **App checks** (required) | `ci.yml` | `pnpm lint`, `pnpm typecheck`, `pnpm test:unit` |
+| **Database tests** (required) | `ci.yml` | every migration and the seed, then `pnpm db:lint`, `pnpm db:test`, `pnpm test:integration`, `pnpm db:schema:check` |
+| **Browser smoke** (advisory for now) | `browser-smoke.yml` | `pnpm test:e2e:smoke` |
+
+The full browser suite isn't in CI; run it locally before releases that touch
+authentication, contracts, payments, booking, planning access or migrations.
+`supabase/schema-snapshot.sql` is a generated, schema-only view of the current
+database for reading. The migrations remain authoritative. Release and
+recovery steps are in [docs/operations.md](docs/operations.md).
+
 ### Day-to-day testing
 
 Run the smallest check that covers the change. Full regression runs are
@@ -942,6 +959,8 @@ reserved for release checkpoints.
 | Change server code with integration tests | `pnpm exec vitest run tests/integration/planning.test.ts --no-file-parallelism` (`pnpm test:integration` with a file still runs every integration file) |
 | Change SQL | `pnpm db:test` (pgTAP, about 12 seconds) and `pnpm db:lint` |
 | Restarted local Supabase | `pnpm db:versions` (local must match the hosted versions) |
+| Add or change a migration | `pnpm db:types` and `pnpm db:schema`, then commit both (CI fails if either is stale) |
+| Touch a critical client flow | `pnpm test:e2e:smoke` (proposal, signing, booking, planning: the specs CI runs) |
 | Finish an individual task | `pnpm lint`, `pnpm typecheck`, affected unit tests and the specifically affected browser/integration specs |
 | Reach an explicitly requested release checkpoint | `pnpm check` once, then `pnpm build` |
 
@@ -3184,6 +3203,9 @@ does.
 docs/                          Product and data specification
 src/app/                       Next.js routes (placeholder home page for now)
 src/components/ui/             shadcn/ui components
+.github/workflows/             CI (required checks) and the browser smoke run
+docs/operations.md             Release, migration and recovery runbook
+supabase/schema-snapshot.sql   Generated schema-only snapshot (pnpm db:schema); migrations are authoritative
 src/lib/env.ts, env.server.ts  Validated public and server-only environment
 src/lib/supabase/              Browser, server and admin clients, generated DB types
 supabase/migrations/           SQL migrations (source of truth for the schema)

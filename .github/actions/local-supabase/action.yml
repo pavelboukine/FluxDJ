@@ -1,0 +1,40 @@
+name: Start local Supabase
+description: >
+  Starts a fresh local Supabase stack on the runner (Docker), which applies
+  every migration in order and the local-only seed, then writes .env.local for
+  it with scripts/ci-env.mjs. Never links to or contacts a hosted project.
+
+runs:
+  using: composite
+  steps:
+    # The hosted project's service versions, which `supabase link` normally
+    # records in the gitignored supabase/.temp. CI pins the same ones, because
+    # behaviour differs between versions (PostgREST v14 retries SQLSTATE 40001
+    # forever, see README "Version conflicts"). When `pnpm db:versions` shows a
+    # new hosted version locally, update it here too.
+    - name: Pin service versions to hosted
+      shell: bash
+      run: |
+        mkdir -p supabase/.temp
+        printf '%s' 'v14.18'      > supabase/.temp/rest-version
+        printf '%s' 'v2.197.0'    > supabase/.temp/gotrue-version
+        printf '%s' 'v1.77.5'     > supabase/.temp/storage-version
+        printf '%s' '17.11.0.002' > supabase/.temp/postgres-version
+
+    # Output goes to a file: `supabase start` prints the local keys. They are
+    # throwaway local values, but they still stay out of the log. On failure
+    # the log's tail is shown without key, secret or JWT lines.
+    - name: Start Supabase (migrations and seed)
+      shell: bash
+      run: |
+        log="$RUNNER_TEMP/supabase-start.log"
+        if ! pnpm exec supabase start -x studio,imgproxy,realtime,edge-runtime,logflare,vector,supavisor,postgres-meta > "$log" 2>&1; then
+          echo "::error::supabase start failed (migrations, seed or containers). Last lines:"
+          grep -viE 'key|secret|jwt|token' "$log" | tail -n 60
+          exit 1
+        fi
+        echo "Local Supabase is running."
+
+    - name: Write .env.local for the local stack
+      shell: bash
+      run: node scripts/ci-env.mjs

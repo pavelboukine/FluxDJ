@@ -1,0 +1,58 @@
+# Required checks for every pull request into main, and again after each merge.
+# Local services only: no secrets, no hosted Supabase, no deployments, no
+# writes to the repository. See docs/operations.md.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same pull request cancels its older run; every commit on
+# main is checked to the end.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  app:
+    # Job names are the required status check names; keep them stable.
+    name: App checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Lint
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Unit tests
+        run: pnpm test:unit
+
+  database:
+    name: Database tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/local-supabase
+      - name: Database lint
+        run: pnpm db:lint
+      - name: Database tests (pgTAP)
+        run: pnpm db:test
+      - name: Integration tests
+        run: pnpm test:integration
+      # Last, so a stale snapshot never hides test results. Fix: pnpm db:schema / pnpm db:types.
+      - name: Schema snapshot and database types are current
+        run: pnpm db:schema:check

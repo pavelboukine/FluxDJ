@@ -3,12 +3,13 @@ import { createHash } from "node:crypto";
 import { expect, type Page } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 
-export const MAILPIT = "http://127.0.0.1:54324";
-
 export const status = JSON.parse(
   execFileSync("node_modules/.bin/supabase", ["status", "-o", "json"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }),
-) as { API_URL: string; ANON_KEY: string; SERVICE_ROLE_KEY: string };
+) as { API_URL: string; ANON_KEY: string; SERVICE_ROLE_KEY: string; MAILPIT_URL?: string; INBUCKET_URL?: string };
 if (!/^http:\/\/(127\.0\.0\.1|localhost)[:/]/.test(status.API_URL)) throw new Error("E2E tests run against local Supabase only");
+
+/** The local stack's Mailpit (http://127.0.0.1:54324 with the default ports). */
+export const MAILPIT = (status.MAILPIT_URL || status.INBUCKET_URL || "http://127.0.0.1:54324").replace(/\/$/, "");
 
 export const admin = createClient(status.API_URL, status.SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 
