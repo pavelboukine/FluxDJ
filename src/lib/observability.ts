@@ -22,7 +22,9 @@ export type LogCategory =
   /** Signed-PDF work outside the worker's own error reporting. */
   | "pdf"
   /** The monitoring itself (heartbeat, worker health record). */
-  | "monitoring";
+  | "monitoring"
+  /** A database response that failed validation at a trust boundary (lib/db-response.ts). */
+  | "data";
 
 export type LogEvent = {
   level: LogLevel;

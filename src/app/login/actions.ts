@@ -2,15 +2,12 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { publicEnv } from "@/lib/env";
-import { fail, ok, type ActionState } from "@/lib/forms";
+import { emailAddress, fail, ok, type ActionState } from "@/lib/forms";
 import { allowRequest, clientIp } from "@/lib/rate-limit.server";
 import { signInDestination, signInRole } from "@/lib/auth/redirects";
 import { SIGN_IN_NEXT_COOKIE } from "@/lib/auth/sign-in-next";
-
-const emailSchema = z.email().max(320);
 
 /** This app's /auth/confirm, with the destination when it isn't the default. */
 const confirmUrl = (destination: string) =>
@@ -23,8 +20,8 @@ const confirmUrl = (destination: string) =>
  * have accounts. The role only words the page; access is checked by every page.
  */
 export async function sendMagicLink(_state: ActionState, form: FormData): Promise<ActionState> {
-  const parsed = emailSchema.safeParse(String(form.get("email") ?? "").trim().toLowerCase());
-  if (!parsed.success) return fail("Enter a valid email address.");
+  const email = emailAddress(String(form.get("email") ?? ""));
+  if (!email) return fail("Enter a valid email address.");
 
   // Durable per-IP limit, in addition to Supabase's own per-email limits.
   if (!(await allowRequest("sign_in_link", await clientIp(), 30, 600))) {
@@ -33,7 +30,7 @@ export async function sendMagicLink(_state: ActionState, form: FormData): Promis
   const destination = signInDestination(signInRole(form.get("role")), form.get("next"));
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithOtp({
-    email: parsed.data,
+    email,
     // The destination travels in the email too (redirect_to, read by /auth/confirm once the email
     // template includes it), so a link opened in another browser or app still continues there.
     options: { shouldCreateUser: false, emailRedirectTo: confirmUrl(destination) },
@@ -65,15 +62,15 @@ export async function sendMagicLink(_state: ActionState, form: FormData): Promis
  * limits; never creates accounts.
  */
 export async function verifySignInCode(_state: ActionState, form: FormData): Promise<ActionState> {
-  const email = emailSchema.safeParse(String(form.get("email") ?? "").trim().toLowerCase());
+  const email = emailAddress(String(form.get("email") ?? ""));
   const code = String(form.get("code") ?? "").replace(/\s+/g, "");
-  if (!email.success) return fail("Enter your email address again, then request a new code.");
+  if (!email) return fail("Enter your email address again, then request a new code.");
   if (!/^[0-9]{6,10}$/.test(code)) return fail("Enter the code from the email (digits only).");
   if (!(await allowRequest("sign_in_code", await clientIp(), 20, 900))) {
     return fail("Too many code attempts. Wait 15 minutes, or use the link in the email.");
   }
   const supabase = await createClient();
-  const { error } = await supabase.auth.verifyOtp({ email: email.data, token: code, type: "email" });
+  const { error } = await supabase.auth.verifyOtp({ email, token: code, type: "email" });
   if (error) return fail("That code is wrong or has expired. Check the newest email, or request a new one.");
   (await cookies()).delete({ name: SIGN_IN_NEXT_COOKIE, path: "/auth/confirm" });
   // Back to the page that asked for sign-in (allow-listed), else the role's home.

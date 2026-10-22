@@ -6,29 +6,13 @@ import { PageHeader } from "@/components/app/fields";
 import { ContractDocument } from "@/components/contract/contract-document";
 import { requireStaff } from "@/lib/auth/staff";
 import { renderedContentSchema } from "@/lib/contracts/content";
+import { contractReviewSchema } from "@/lib/contracts/responses";
+import { checkDbResponse } from "@/lib/db-response";
 import { describeDbError } from "@/lib/db-errors";
 import { contractChanges } from "@/lib/events/workspace";
 import { UUID_RE } from "@/lib/forms";
 import { formatCents } from "@/lib/money";
 import { SendPanel } from "./send-panel";
-
-type Review = {
-  status: string;
-  sent_at: string | null;
-  eligible: boolean;
-  problems: { code: string; message: string }[];
-  can_send: boolean;
-  send_unavailable_reason: string | null;
-  signer: { name: string; email: string };
-  business: { legal_name?: string | null; name?: string; address?: string | null; contact_email?: string | null; display_name?: string };
-  deposit_percent: number;
-  deposit_cents: number;
-  balance_cents: number;
-  total_cents: number;
-  currency: string;
-  balance_due_date: string | null;
-  content_sha256: string;
-};
 
 /**
  * Review before sending: exactly what the client would receive, and the
@@ -50,7 +34,11 @@ export default async function ReviewContract({ params }: PageProps<"/staff/[tena
   if (error) {
     return <p role="alert" className="text-sm text-destructive">{describeDbError(error)}</p>;
   }
-  const review = data as unknown as Review;
+  const checked = checkDbResponse(contractReviewSchema, data, "review_contract_for_send");
+  if (!checked.ok) {
+    return <p role="alert" className="text-sm text-destructive">This contract&apos;s review couldn&apos;t be loaded. Reload the page, and contact support if it keeps happening.</p>;
+  }
+  const review = checked.data;
   // Details edited after generation aren't in this draft (it keeps what it froze); say so before sending.
   const { data: signerLink } = await supabase.from("event_clients").select("clients(phone)").eq("tenant_id", tenant.id).eq("event_id", contract.event_id).eq("can_sign", true).maybeSingle();
   const snapshot = contract.party_snapshot as { event?: Record<string, string | null>; client?: { phone?: string | null } } | null;

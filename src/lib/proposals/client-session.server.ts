@@ -8,12 +8,14 @@ import {
   normalizeSelectionDraft,
   parseOfferSnapshot,
   priceSelection,
+  selectionRecordSchema,
   toSelectionRecord,
   type AnswerValue,
   type OfferSnapshot,
   type PricedSelection,
   type PricingError,
 } from "@/lib/pricing";
+import { checkDbResponse, idSchema, parseDbResponse } from "@/lib/db-response";
 import { sha256Hex } from "./tokens.server";
 
 /**
@@ -77,10 +79,18 @@ const viewSchema = z.discriminatedUnion("state", [
         version: z.number(),
       })
       .nullable(),
-    submission: z.object({ version: z.number(), submitted_at: z.string(), selection: z.unknown() }).nullable(),
+    // The stored record, as the database verified it when it was submitted.
+    submission: z.object({ version: z.number(), submitted_at: z.string(), selection: selectionRecordSchema }).nullable(),
     approved_at: z.string().nullable(),
   }),
 ]);
+
+/** client_save_selection_draft: "ok" always carries the new version; other states pass through. */
+const saveResultSchema = z
+  .object({ status: z.string().min(1), version: z.int().nonnegative().optional() })
+  .refine((r) => r.status !== "ok" || r.version !== undefined, "ok without a version");
+/** client_submit_selection: a first submission names its business (for the staff email); a replay doesn't. Other states pass through. */
+const submitResultSchema = z.object({ status: z.string().min(1), replayed: z.boolean().optional(), tenant_id: idSchema.optional() });
 
 export type ClientSelectionDraft = {
   package_key: string | null;
@@ -113,8 +123,8 @@ export async function loadClientView(slug: string, proposalId: string): Promise<
     p_tenant_slug: slug,
   });
   if (error) return { state: "invalid" };
-  const parsed = viewSchema.safeParse(data);
-  if (!parsed.success) return { state: "invalid" };
+  const parsed = checkDbResponse(viewSchema, data, "client_proposal_view");
+  if (!parsed.ok) return { state: "invalid" };
   const view = parsed.data;
   if (view.state === "invalid" || view.state === "superseded" || view.state === "unavailable") return { state: view.state };
   return {
@@ -123,7 +133,7 @@ export async function loadClientView(slug: string, proposalId: string): Promise<
     event: view.event,
     proposal: { ...view.proposal, offer: parseOfferSnapshot(view.proposal.offer) },
     selectionDraft: view.selection_draft,
-    submission: view.submission ? { ...view.submission, selection: view.submission.selection as PricedSelection } : null,
+    submission: view.submission,
     approvedAt: view.approved_at,
   };
 }
@@ -157,7 +167,7 @@ export async function saveClientDraft(slug: string, proposalId: string, expected
     p_logistics_answers: normalized.draft.logistics_answers,
   });
   if (error) throw new Error("Could not save the selection");
-  const result = data as { status: string; version?: number };
+  const result = parseDbResponse(saveResultSchema, data, "client_save_selection_draft");
   if (result.status === "ok") return { status: "ok", version: result.version! };
   if (result.status === "conflict") return { status: "conflict" };
   if (result.status === "invalid_input") return { status: "invalid_input" };
@@ -210,7 +220,7 @@ export async function submitClientSelection(
     p_selection: JSON.parse(JSON.stringify(record)),
   });
   if (error) throw new Error("Could not submit the selection");
-  const result = data as { status: string; replayed?: boolean; tenant_id?: string };
+  const result = parseDbResponse(submitResultSchema, data, "client_submit_selection");
   if (result.status === "submitted") return { status: "submitted", replayed: Boolean(result.replayed), tenantId: result.tenant_id };
   if (result.status === "conflict") return { status: "conflict" };
   if (result.status === "invalid_selection" || result.status === "invalid_input") {

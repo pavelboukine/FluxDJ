@@ -154,6 +154,8 @@ describe("contract signing (local Supabase)", () => {
 
   it("returns the existing signature to the signer after a lost response, without a second record", async () => {
     const c = await sentContract();
+    // The view a tab loaded before signing: replayed below as a stale preflight.
+    const { data: unsignedView } = await must(c.client.db.rpc("client_contract_view", { p_contract_id: c.contractId, p_tenant_slug: catalog.slug }));
     const first = await sign(c);
     const retry = await sign(c, { typedName: "Someone Else", signature: signaturePng(40) });
     expect(retry).toEqual({ ...first, replayed: true });
@@ -162,7 +164,7 @@ describe("contract signing (local Supabase)", () => {
     const { count } = await admin.from("audit_events").select("id", { count: "exact", head: true }).eq("entity_id", c.contractId).eq("action", "signed");
     expect(count).toBe(1);
     // A replay that reaches the commit (bypassing the preflight) also keeps the first signature and removes its upload.
-    const raced = await sign(c, {}, { userDb: { rpc: async () => ({ data: { state: "available", contract: { status: "sent", content_sha256: c.contentSha256 }, signing: { signed: false, enabled: true } }, error: null }) } as unknown as Db });
+    const raced = await sign(c, {}, { userDb: { rpc: async () => ({ data: unsignedView, error: null }) } as unknown as Db });
     expect(raced).toMatchObject({ status: "signed", replayed: true });
     expect(await objectsFor(c.contractId)).toHaveLength(1);
   });

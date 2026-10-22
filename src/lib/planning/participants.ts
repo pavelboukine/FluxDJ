@@ -1,5 +1,5 @@
 import { UUID_RE } from "@/lib/forms";
-import { isHttpsUrl } from "@/lib/payments";
+import { isHttpsUrl } from "@/lib/urls";
 import { MUSIC_RULES, SONG_LIMITS, emptySong, musicAnswersFromForm, type MusicAnswers, type MusicForm, type Song, type SongForm } from "./music";
 
 /**
@@ -276,11 +276,6 @@ export function speechesAnswersFromForm(form: SpeechesForm): Parsed<SpeechesAnsw
     out.push(o);
   }
   return withChoice(out, form.choice);
-}
-
-/** A speech counts once it has a speaker and a resolved timing: a time, or a cue. */
-export function speechResolved(s: Speech): boolean {
-  return (s.timing === "time" && Boolean(s.time)) || (s.timing === "cue" && Boolean(s.cue));
 }
 
 // ---------------------------------------------------------------------------

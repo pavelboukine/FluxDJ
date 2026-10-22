@@ -6,7 +6,8 @@ import { InvoiceLink, PaymentFigures } from "@/components/payments/payment-summa
 import type { StaffContext } from "@/lib/auth/staff";
 import { shortDate, shortInstant } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
-import { discountBreakdown, linkHost, todayIn, type PaymentSummary } from "@/lib/payments";
+import { discountBreakdown, readPaymentSummary, todayIn, type PaymentSummary } from "@/lib/payments";
+import { linkHost } from "@/lib/urls";
 import { recordPayment, saveInvoiceUrl } from "../payment-actions";
 import { CheckBooking } from "./check-booking";
 import { InvalidatePayment } from "./invalidate-payment";
@@ -40,7 +41,8 @@ export async function loadPayments(staff: StaffContext, eventId: string) {
       .order("created_at", { ascending: false }),
     supabase.from("event_billing").select("invoice_url, version").eq("tenant_id", tenant.id).eq("event_id", eventId).maybeSingle(),
   ]);
-  const summary = summaryData as PaymentSummary | null;
+  // Null when it can't be read or fails validation (logged): no figures rather than wrong ones.
+  const summary = readPaymentSummary(summaryData, "event_payment_summary");
   // The contract's frozen proposal discount, if any (the terms' total already includes it).
   const { data: terms } = summary?.terms
     ? await supabase.from("contracts").select("commercial_snapshot").eq("tenant_id", tenant.id).eq("id", summary.terms.contract_id).maybeSingle()

@@ -8,6 +8,8 @@ import { processDocumentJobs } from "@/lib/contracts/documents.server";
 import { contractInviteToken, sha256Hex } from "@/lib/proposals/tokens.server";
 import { requireStaff } from "@/lib/auth/staff";
 import type { MissingItem } from "@/lib/contracts/content";
+import { generateContractResultSchema } from "@/lib/contracts/responses";
+import { checkDbResponse } from "@/lib/db-response";
 import { describeDbError } from "@/lib/db-errors";
 import { fail, ok, UUID_RE, type ActionState } from "@/lib/forms";
 
@@ -44,20 +46,19 @@ export async function generateContract(
     ...(input.replaceContractId ? { p_replace_contract_id: input.replaceContractId } : {}),
   });
   if (error) return { status: "error", message: describeDbError(error) };
-  const result = data as { status: string; contract_id?: string | null; missing?: MissingItem[] };
   revalidatePath(`/staff/${slug}`, "layout");
+  const checked = checkDbResponse(generateContractResultSchema, data, "generate_contract_draft");
+  if (!checked.ok) return { status: "error", message: "Something went wrong. Reload the page to see the contract's current state." };
+  const result = checked.data;
   switch (result.status) {
     case "created":
     case "replayed":
-      return { status: result.status, contractId: result.contract_id! };
-    case "incomplete":
-      return { status: "incomplete", missing: result.missing ?? [] };
     case "draft_exists":
-      return { status: "draft_exists", contractId: result.contract_id! };
+      return { status: result.status, contractId: result.contract_id };
+    case "incomplete":
+      return { status: "incomplete", missing: result.missing };
     case "conflict":
       return { status: "error", message: "The contract draft changed since this page loaded. Reload the page and try again." };
-    default:
-      return { status: "error", message: "Something went wrong. Try again." };
   }
 }
 

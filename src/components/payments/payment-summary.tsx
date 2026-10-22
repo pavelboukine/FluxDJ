@@ -1,7 +1,8 @@
 import { shortDate } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
 import { taxRateLabel } from "@/components/proposal/price-summary";
-import { linkHost, type DiscountBreakdown } from "@/lib/payments";
+import type { DiscountBreakdown } from "@/lib/payments";
+import { linkHost } from "@/lib/urls";
 
 /** The figures both staff and clients see; computed in the database. */
 export type SummaryFigures = {

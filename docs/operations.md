@@ -269,7 +269,13 @@ writes one JSON line to the Vercel function logs:
 {"source":"flux-dj","ts":"…","level":"error","category":"request","operation":"POST /staff/[tenant]/emails (action)","code":"2847561093","detail":"TypeError"}
 ```
 
-- `category`: `request`, `worker`, `email`, `pdf` or `monitoring`.
+- `category`: `request`, `worker`, `email`, `pdf`, `monitoring` or `data`.
+  `data` means a database function returned JSON that failed the app's
+  validation (`src/lib/db-response.ts`): `operation` names the function and
+  `detail` lists the failing field paths and issue codes, never values. The
+  app showed or did nothing with that response. Usually a migration and the
+  deployed code disagree about a response's shape; see
+  `docs/database-architecture.md`, "TypeScript types and Zod schemas".
 - `code`: a database code, HTTP status, error class or Next.js digest. A digest
   matches the "Digest" on the error page the visitor saw.
 - `id`: only a row, job or contract id.

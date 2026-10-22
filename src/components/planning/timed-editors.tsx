@@ -26,7 +26,7 @@ import {
   type TimedForm,
   type Timing,
 } from "@/lib/planning/timed";
-import { isHttpsUrl, linkHost } from "@/lib/payments";
+import { isHttpsUrl, linkHost } from "@/lib/urls";
 import { FieldBox } from "./basics-editor";
 import { SongFields } from "./song-fields";
 import { TimeField } from "./time-field";

@@ -1,5 +1,4 @@
-import { z } from "zod";
-import { optionalText, text } from "@/lib/forms";
+import { emailAddress, optionalText, text } from "@/lib/forms";
 import { checkClientPhone } from "@/lib/phone";
 
 /**
@@ -10,10 +9,10 @@ import { checkClientPhone } from "@/lib/phone";
  */
 export function readClientForm(form: FormData, currentPhone?: string | null) {
   const name = text(form, "client_name");
-  const email = text(form, "client_email").toLowerCase();
+  const email = emailAddress(text(form, "client_email"));
   const rawPhone = optionalText(form, "client_phone");
   if (name.length < 1 || name.length > 200) return { ok: false, error: "Client name is required." } as const;
-  if (!z.email().max(320).safeParse(email).success) return { ok: false, error: "Enter a valid client email." } as const;
+  if (!email) return { ok: false, error: "Enter a valid client email." } as const;
   let phone: string | null = rawPhone;
   if (!(currentPhone && rawPhone === currentPhone.trim())) {
     const checked = checkClientPhone(rawPhone);

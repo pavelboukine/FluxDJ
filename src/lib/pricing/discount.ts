@@ -59,8 +59,6 @@ export function discountDescription(discount: Pick<OfferDiscount, "label"> & { t
   return discount.type === "percent" && discount.percent_basis_points ? `${discount.label} (${discountRateLabel(discount.percent_basis_points)})` : discount.label;
 }
 
-export const DEFAULT_DISCOUNT_LABEL = "Discount";
-
 /** A draft offer's discount, as staff entered it (proposals.draft_offer "discount"). */
 export type DraftDiscount =
   | { type: "percent"; percent_basis_points: number; label: string | null }

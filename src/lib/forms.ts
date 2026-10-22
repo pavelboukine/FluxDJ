@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 /** Shared shape for Server Action results consumed by useActionState. */
 export type ActionState =
   | { status: "idle" }
@@ -42,6 +44,20 @@ export function int(form: FormData, name: string, min: number, max: number): num
   return value >= min && value <= max ? value : null;
 }
 
+const EMAIL_ADDRESS = z.email().max(320);
+
+/**
+ * An email address as typed (a client's, an invitee's, a sign-in), trimmed and
+ * lowercased as the database stores it, or null when it isn't valid. Stricter
+ * than private.is_valid_email by design, and never accepts an address it
+ * refuses (tests/support/rule-cases.ts).
+ */
+export function emailAddress(input: string): string | null {
+  const email = input.trim().toLowerCase();
+  return EMAIL_ADDRESS.safeParse(email).success ? email : null;
+}
+
+/** A stable key: the same rule as private.is_valid_key (and KEY_PATTERN in offer snapshots). */
 export const KEY_RE = /^[a-z][a-z0-9_]{0,63}$/;
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 

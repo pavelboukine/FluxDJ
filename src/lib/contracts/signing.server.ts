@@ -2,7 +2,9 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { isIP } from "node:net";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { checkDbResponse } from "@/lib/db-response";
 import type { Database } from "@/lib/supabase/database.types";
+import { clientContractViewSchema, signContractResultSchema } from "./responses";
 import { decodeSignatureDataUrl, processSignatureImage } from "./signature-image.server";
 import { MAX_SIGNATURE_DATA_URL_LENGTH, SIGNATURE_BUCKET, type SignInput, type SignResult } from "./signing";
 
@@ -87,16 +89,14 @@ export async function signContractAs(opts: {
     }
     return error("network", "We couldn't check your contract. Nothing was signed. Try again.");
   }
-  const view = viewData as {
-    state: string;
-    contract?: { id: string; status: string; content_sha256: string };
-    signing?: { signed: boolean; enabled?: boolean; typed_name?: string; signed_at?: string };
-  };
-  if (view.state !== "available" || !view.contract) return error("unavailable", "This contract isn't available.");
-  if (view.contract.status === "signed" && view.signing?.signed) {
-    return { status: "signed", contractId: view.contract.id, signedAt: view.signing.signed_at!, typedName: view.signing.typed_name!, replayed: true };
+  const checkedView = checkDbResponse(clientContractViewSchema, viewData, "client_contract_view");
+  if (!checkedView.ok) return error("network", "We couldn't check your contract. Nothing was signed. Try again.");
+  const view = checkedView.data;
+  if (view.state !== "available") return error("unavailable", "This contract isn't available.");
+  if (view.contract.status === "signed" && view.signing.signed) {
+    return { status: "signed", contractId: view.contract.id, signedAt: view.signing.signed_at, typedName: view.signing.typed_name, replayed: true };
   }
-  if (view.signing?.enabled === false) return error("signing_disabled", "This contract can't be signed online. Contact your DJ for an updated contract.");
+  if (!view.signing.signed && !view.signing.enabled) return error("signing_disabled", "This contract can't be signed online. Contact your DJ for an updated contract.");
   if (view.contract.content_sha256 !== input.contentSha256) {
     return error("content_changed", "This contract is not the one you were shown. Reload the page and read it again before signing.");
   }
@@ -142,10 +142,14 @@ export async function signContractAs(opts: {
     // Retrying is safe: a committed signature comes back as a replay.
     return error("network", "We couldn't confirm your signature. Try again; you won't sign twice.");
   }
-  const result = data as { status: string; code?: string; message?: string; contract_id?: string; signed_at?: string; typed_name?: string; replayed?: boolean };
+  // An answer that isn't a valid outcome is treated like a lost response: the
+  // upload is kept and a retry gets the committed signature back, if any.
+  const checked = checkDbResponse(signContractResultSchema, data, "sign_contract");
+  if (!checked.ok) return error("network", "We couldn't confirm your signature. Try again; you won't sign twice.");
+  const result = checked.data;
   // Definitive answers: a rejection stored nothing, and a replay kept the
   // first signature, so this upload is unused either way.
   if (result.status !== "signed" || result.replayed) await discardUpload();
-  if (result.status !== "signed") return error(result.code ?? "unavailable", result.message ?? "This contract isn't available.");
-  return { status: "signed", contractId: result.contract_id!, signedAt: result.signed_at!, typedName: result.typed_name!, replayed: Boolean(result.replayed) };
+  if (result.status !== "signed") return error(result.code, result.message);
+  return { status: "signed", contractId: result.contract_id, signedAt: result.signed_at, typedName: result.typed_name, replayed: result.replayed };
 }

@@ -7,7 +7,7 @@ import { describeDbError } from "@/lib/db-errors";
 import { processOutboxQuietly } from "@/lib/email/outbox.server";
 import { checkbox, fail, int, ok, optionalText, text, UUID_RE, type ActionState } from "@/lib/forms";
 import { parseMoneyToCents } from "@/lib/money";
-import { isHttpsUrl } from "@/lib/payments";
+import { isHttpsUrl } from "@/lib/urls";
 
 /**
  * Manual payment tracking. Every action re-checks staff membership with

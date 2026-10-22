@@ -28,9 +28,6 @@ export function hubStatus(home: HomeEvent): { label: string; tone: HomeTone } {
   return { label: card.status, tone: card.tone };
 }
 
-/** A legitimate $0 booking: nothing to pay, so no deposit or balance wording. */
-export const noPaymentDue = (contract: { totalCents: number } | null) => contract !== null && contract.totalCents === 0;
-
 export function hubNextStep(f: HubFacts): HubStep {
   const e = f.home;
   const dj = e.tenantName;

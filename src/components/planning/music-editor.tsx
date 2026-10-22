@@ -4,7 +4,7 @@ import { createContext, useContext, useRef, useState, type ReactNode } from "rea
 import { ExternalLink, Link2, ListMusic } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { isHttpsUrl, linkHost } from "@/lib/payments";
+import { isHttpsUrl, linkHost } from "@/lib/urls";
 import { djRef } from "@/lib/planning/dj";
 import { SongFields } from "./song-fields";
 import {

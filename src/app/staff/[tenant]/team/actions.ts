@@ -3,14 +3,11 @@
 import { randomUUID } from "node:crypto";
 import { after } from "next/server";
 import { revalidatePath } from "next/cache";
-import { z } from "zod";
 import { requireStaff } from "@/lib/auth/staff";
 import { describeDbError } from "@/lib/db-errors";
 import { processOutboxQuietly } from "@/lib/email/outbox.server";
-import { fail, ok, text, UUID_RE, type ActionState } from "@/lib/forms";
+import { emailAddress, fail, ok, text, UUID_RE, type ActionState } from "@/lib/forms";
 import { sha256Hex, staffInviteToken } from "@/lib/proposals/tokens.server";
-
-const emailSchema = z.email().max(320);
 
 const formatExpiry = (value: unknown) =>
   typeof value === "string"
@@ -28,13 +25,13 @@ export async function inviteStaff(slug: string, _state: ActionState, form: FormD
   if (membership.role !== "owner") return fail("Only the owner can invite staff.");
   const requestId = text(form, "request_id");
   if (!UUID_RE.test(requestId)) return fail("Reload the page and try again.");
-  const email = emailSchema.safeParse(text(form, "email").toLowerCase());
-  if (!email.success) return fail("Enter a valid email address.");
+  const email = emailAddress(text(form, "email"));
+  if (!email) return fail("Enter a valid email address.");
   const linkId = randomUUID();
   const { data, error } = await supabase.rpc("create_staff_invitation", {
     p_tenant_id: tenant.id,
     p_invitation_id: requestId,
-    p_email: email.data,
+    p_email: email,
     p_link_id: linkId,
     p_token_hash: sha256Hex(staffInviteToken(linkId)),
   });
