@@ -19,6 +19,7 @@ export type NavIcon =
   | "settings"
   | "invitations"
   | "workspaces"
+  | "operations"
   | "businesses";
 
 export type NavItem = {
@@ -38,6 +39,7 @@ const ADMIN: NavGroup = {
   items: [
     { href: "/platform/invitations", label: "DJ invitations", icon: "invitations" },
     { href: "/platform/workspaces", label: "Workspaces", icon: "workspaces" },
+    { href: "/platform/operations", label: "Operations", icon: "operations" },
   ],
 };
 

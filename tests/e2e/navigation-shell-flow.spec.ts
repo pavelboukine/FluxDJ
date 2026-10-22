@@ -233,7 +233,7 @@ test.describe.serial("staff navigation shell", () => {
     await expect(brand(operator).getByRole("img")).toHaveCount(0);
     await expectCentred(operator);
     const adminGroup = nav(operator).locator("div").filter({ has: operator.getByRole("heading", { name: "Admin", exact: true }) });
-    await expect(adminGroup.getByRole("link")).toHaveText(["DJ invitations", "Workspaces"]);
+    await expect(adminGroup.getByRole("link")).toHaveText(["DJ invitations", "Workspaces", "Operations"]);
     await adminGroup.getByRole("link", { name: "Workspaces" }).click();
     await expect(operator).toHaveURL(/\/platform\/workspaces$/);
     // Platform pages: no business logo, the platform navigation, and a way back.

@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { Dialog } from "@base-ui/react/dialog";
 import { Menu } from "@base-ui/react/menu";
 import {
+  Activity,
   Building2,
   CalendarDays,
   Check,
@@ -54,6 +55,7 @@ const ICONS: Record<NavIcon, LucideIcon> = {
   settings: Settings,
   invitations: MailPlus,
   workspaces: Building2,
+  operations: Activity,
   businesses: Store,
 };
 

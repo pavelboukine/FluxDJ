@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { errorCode, logEvent } from "@/lib/observability";
 import { SIGNATURE_BUCKET } from "./signing";
 import { buildSignedContractPdfData } from "./pdf/data";
 import { PDF_RENDERER, renderSignedContractPdf } from "./pdf/render.server";
@@ -181,7 +182,9 @@ async function commit(admin: Db, jobId: string, path: string, pdfSha: string, si
 export async function processContractPdfQuietly(contractId: string): Promise<void> {
   try {
     await processDocumentJobs({ contractId, limit: 1 });
-  } catch {
-    // The scheduled worker or the staff retry control will pick the job up.
+  } catch (cause) {
+    // The scheduled worker or the staff retry control will pick the job up. A single job's own
+    // failure is recorded on the job (and shown on the contract page); only a worker failure gets here.
+    logEvent({ level: "error", category: "pdf", operation: "after-signing PDF run", code: errorCode(cause), id: contractId });
   }
 }

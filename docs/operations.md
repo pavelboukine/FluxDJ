@@ -175,10 +175,15 @@ the cron retries failures and catches up on anything missed.
     or business emails), so that category sent nothing this run;
   - an email was accepted by the provider but couldn't be recorded as sent.
 
-  The function log has a line starting `[outbox]` for each, naming the category,
-  row id and error code (never addresses, links or contents). The JSON body
-  lists the same `problems`. A failed single email or PDF doesn't fail the
-  run; it shows on its row.
+  The function log has a structured line for each (`"category":"worker"`, see
+  section 5), naming the category, row id and error code, never addresses,
+  links or contents. The JSON body lists the same `problems`. A failed single
+  email or PDF doesn't fail the run; it shows on its row and in Platform →
+  Operations.
+- HTTP 200 only means the worker had no worker-level problem. Single emails can
+  still be retrying (pending, with attempts) or failed (every attempt used, or
+  refused). Check them on the business's Emails page or in Platform →
+  Operations.
 - An email counted as `unconfirmed` was handed to the provider but couldn't be
   recorded. Its row stays `sending` until the lease ends (2 minutes), then is
   claimed again. Emails with an idempotency key (everything except sign-in
@@ -216,7 +221,120 @@ Supabase backups cover the database. **Confirm** separately how Storage
 (signatures, signed PDFs, logos, gear media) is backed up, if at all. Record
 the answers here once checked.
 
-## 4. Local CI environment
+## 5. Monitoring and alerts
+
+### Platform → Operations
+
+`/platform/operations` is for platform administrators only (the same grant as
+DJ invitations and Workspaces); everyone else gets a 404. It's read-only and
+covers every business:
+
+- **Scheduled worker:** its last recorded run (the cron route writes one row,
+  `private.worker_heartbeats`, at the end of every run).
+  - *Running:* the last run, under 15 minutes ago, had no worker-level problem.
+  - *Last run failed:* a database problem; the function logs name it.
+  - *Not running:* no run has finished for 15 minutes (three intervals).
+  - *No run recorded:* nothing written yet; expect a run within 5 minutes of
+    the first deploy with this record.
+- **Counts:**
+  - *Failed emails:* every attempt used, or refused, in the last 30 days, from
+    active businesses and platform emails. Of these, *possibly delivered* are
+    an attempt that never finished, or the provider refusing a changed repeat:
+    check Resend's log before retrying them.
+  - *Overdue emails:* what the worker should already have claimed, more than
+    15 minutes past due.
+  - *Retrying:* normal and automatic; no action needed.
+  - *Failed PDFs* and *overdue PDFs:* the same, for signed-contract PDF jobs.
+- **Lists:** the 50 newest email and PDF issues. Each shows its id, business,
+  category, state, attempts and time, never recipients, links or contents.
+  The error is a fixed sentence chosen in the database. The worker's own known
+  messages are named; a provider refusal shows only its HTTP status and fixed
+  code; anything else reads "unexpected error". The raw text never leaves the
+  database; read it with the SQL checks in section 3 when needed.
+
+Retrying stays where it was, on the business's Emails page or contract page.
+There are no cross-business retry or cancel controls.
+
+Archived businesses send nothing on purpose, so their emails are never shown
+as failed or overdue. Suspended businesses' emails are cancelled by the
+suspension, and their PDF jobs wait for restoration.
+
+### Application errors in the logs
+
+Every unexpected server error (a page, route handler, server action or the
+proxy, through `src/instrumentation.ts`) and every worker-level failure
+writes one JSON line to the Vercel function logs:
+
+```json
+{"source":"flux-dj","ts":"…","level":"error","category":"request","operation":"POST /staff/[tenant]/emails (action)","code":"2847561093","detail":"TypeError"}
+```
+
+- `category`: `request`, `worker`, `email`, `pdf` or `monitoring`.
+- `code`: a database code, HTTP status, error class or Next.js digest. A digest
+  matches the "Digest" on the error page the visitor saw.
+- `id`: only a row, job or contract id.
+- Request errors log the error's **class only, never its message**: an
+  unexpected message can quote a name or a database value that no redaction
+  reliably removes. Worker failures log only their fixed problem list
+  (category, row id, code). Free text is also redacted (email addresses,
+  URLs, token-like strings, credentials, long numbers). Request paths, query
+  strings, headers, cookies and bodies are never logged.
+- The message and stack are in Next.js's own error line in the same logs (the
+  framework prints it). Find it by the digest. Treat those lines as
+  potentially containing client data.
+- Not logged: validation and permission refusals (returned, not thrown),
+  redirects and not-found, a visitor leaving mid-response, and single emails
+  or PDFs failing and retrying. Those keep their state in the database.
+  React can report one failure twice; it's logged once per server instance
+  per minute.
+
+In Vercel → the project → Logs, search `"source":"flux-dj"`, then filter on
+`"level":"error"` or a `category`.
+
+### Alerts
+
+**Nothing alerts yet.** The code is ready; the steps below are manual and
+unverified until you complete them.
+
+1. **Worker heartbeat (recommended, free): Healthchecks.io.** It alerts by its
+   own email, independent of Flux's outbox and Resend.
+   1. Create an account and a check named "Flux DJ outbox cron": period
+      **5 minutes**, grace **15 minutes**. Confirm the plan's limits at
+      signup; the free tier was enough for this when checked.
+   2. Copy its ping URL (`https://hc-ping.com/<uuid>`).
+   3. In Vercel → Settings → Environment Variables, add
+      `MONITOR_HEARTBEAT_URL` with that URL (Production, Sensitive), then
+      redeploy.
+   4. Check: within 5 minutes the check turns "up". The Operations page shows
+      "Running".
+
+   Each run pings the URL (success) or `<url>/fail` (a worker-level problem),
+   with counts only in the body. Healthchecks alerts once when runs **stop**
+   (the cron is disabled, deploys fail, the secret is wrong) or **fail**, and
+   once when they recover, so an outage is one alert, not hundreds. Better
+   Stack heartbeats accept the same URLs. An invalid or `http:` URL disables
+   the ping (logged as a `monitoring` warning); it never affects the run.
+2. **Application exceptions (recommended next step): Sentry**, free Developer
+   plan. This isn't installed: it adds `@sentry/nextjs` and its build
+   configuration, and needs an account and `SENTRY_DSN`. The single place to
+   add it is `onRequestError` in `src/instrumentation.ts` and `logEvent` in
+   `src/lib/observability.ts`, with the same redaction. Until then,
+   exceptions are only in the Vercel logs. **Confirm** whether your Vercel
+   plan offers log-based alerts or a log drain.
+
+**What should alert:**
+- the worker not running, or failing (heartbeat);
+- repeated unexpected server errors (Sentry, once added).
+
+**What shouldn't:** an empty queue, a single retried email, expected
+invitation or sign-in refusals, permission denials, redirects, visitors
+leaving mid-page.
+
+**Not pushed as alerts yet:** failed emails or PDFs that need a decision. Check
+Platform → Operations, for example weekly. A daily digest would be a future
+improvement.
+
+## 6. Local CI environment
 
 CI uses the repository's own scripts and a local Supabase stack on the
 runner:
