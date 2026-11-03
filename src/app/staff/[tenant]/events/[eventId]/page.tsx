@@ -1,6 +1,6 @@
 import Link from "@/components/app/pending-link";
 import { notFound } from "next/navigation";
-import { AlertTriangle, ArrowLeft, ArrowRight, Clock } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowRight, Clock, Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -178,16 +178,15 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
         <Link className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground active:opacity-70" href={`/staff/${slug}/events`}>
           <ArrowLeft aria-hidden className="size-3.5" /> Back to events
         </Link>
-        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
-          <div className="grid min-w-0 gap-1">
-            <h1 className="text-2xl font-semibold tracking-tight break-words">{event.title}</h1>
-            <p className="text-sm text-muted-foreground" data-testid="event-meta">
-              {shortDate(event.event_date)} · {event.venue_name ?? "Venue not set"} · {TYPE_LABEL[event.event_type] ?? event.event_type}
-            </p>
-            {when ? <p className={cn("text-sm font-medium", when.soon ? "text-amber-800 dark:text-amber-300" : "text-foreground/80")} data-testid="event-when">{when.label}</p> : null}
-            {external ? <p className="text-sm text-muted-foreground" data-testid="booking-source-note">{BOOKED_EXTERNALLY_DETAIL}</p> : null}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
+        {/*
+          One wrapping row, so nothing is duplicated: the title, then the status badge beside it (on its own line
+          when the title is long). On phones the date and venue follow, then Edit details as a quiet text action;
+          from sm, the title takes the free width and the badge and an outlined Edit details sit at the right, with
+          the date and venue on the line below.
+        */}
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 sm:gap-x-3">
+          <h1 className="order-1 min-w-0 max-w-full text-2xl font-semibold tracking-tight break-words sm:flex-1">{event.title}</h1>
+          <div className="order-2 flex flex-wrap items-center gap-2">
             {archived ? <Badge variant="secondary">Archived</Badge> : null}
             <Badge
               variant="outline"
@@ -201,7 +200,26 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
             >
               {status}
             </Badge>
-            <a className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-11 sm:h-7")} href="#edit-details">Edit details</a>
+          </div>
+          <a
+            className={cn(
+              buttonVariants({ variant: "outline", size: "sm" }),
+              "order-4 sm:order-3 sm:h-7",
+              // Phones: a quiet text action with a 44px tap area, not a bordered button.
+              "max-sm:-ml-1 max-sm:h-11 max-sm:border-transparent max-sm:bg-transparent max-sm:px-1 max-sm:text-muted-foreground max-sm:hover:bg-transparent max-sm:hover:text-foreground max-sm:dark:border-transparent max-sm:dark:bg-transparent",
+            )}
+            href="#edit-details"
+            data-testid="edit-details-link"
+          >
+            <Pencil aria-hidden className="sm:hidden" />
+            Edit details
+          </a>
+          <div className="order-3 grid basis-full gap-1 sm:order-4">
+            <p className="text-sm text-muted-foreground" data-testid="event-meta">
+              {shortDate(event.event_date)} · {event.venue_name ?? "Venue not set"} · {TYPE_LABEL[event.event_type] ?? event.event_type}
+            </p>
+            {when ? <p className={cn("text-sm font-medium", when.soon ? "text-amber-800 dark:text-amber-300" : "text-foreground/80")} data-testid="event-when">{when.label}</p> : null}
+            {external ? <p className="text-sm text-muted-foreground" data-testid="booking-source-note">{BOOKED_EXTERNALLY_DETAIL}</p> : null}
           </div>
         </div>
       </header>
@@ -387,10 +405,12 @@ function contactsLine(rows: { is_primary: boolean; can_sign: boolean; clients: {
   return `${primary.clients.name} · ${role}${rows.length > 1 ? ` +${rows.length - 1}` : ""}`;
 }
 
-/** The collapsed Event details line: what isn't in the header (the address, the DJ, whether there are notes). */
-function detailsLine(e: { venue_address: string | null; dj_name: string | null; internal_notes: string | null }): string {
-  const parts = [e.venue_address ?? "No address", e.dj_name ? `DJ ${e.dj_name}` : null, e.internal_notes ? "Notes" : null];
-  return parts.filter(Boolean).join(" · ");
+/**
+ * The collapsed Event details line: short, whatever was entered ("Address saved · Notes", "No address"). The
+ * address and notes themselves are inside; the DJ's name, when set, is too.
+ */
+function detailsLine(e: { venue_address: string | null; internal_notes: string | null }): string {
+  return [e.venue_address ? "Address saved" : "No address", e.internal_notes ? "Notes" : null].filter(Boolean).join(" · ");
 }
 
 /** A collapsed section's warning: amber with an icon, so it never depends on colour alone. */
