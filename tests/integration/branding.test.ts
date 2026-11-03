@@ -5,7 +5,8 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createHash, randomUUID } from "node:crypto";
-import { frozenOfferLogo, liveBrand, LOGO_BUCKET, processLogo, storeLogo, type ProcessedLogo } from "@/lib/branding/logo.server";
+import { frozenOfferLogo, liveBrand, LOGO_BUCKET } from "@/lib/branding/logo.server";
+import { processLogo, storeLogo, type ProcessedLogo } from "@/lib/branding/logo-upload.server";
 import { adminClient, archiveTestTenants, createEvent, createTenantWithCatalog, draftAndSend, must, signedInUser, type Catalog, type Db } from "./support/fixtures";
 import { transparentPng, opaqueJpeg } from "../support/logo-fixtures";
 

@@ -106,6 +106,29 @@ test.describe.serial("installable app shell", () => {
     expect(pngSize(await appleIcon.body())).toEqual({ width: 180, height: 180 });
     expect((await request.get("/favicon.ico")).headers()["content-type"]).toBe("image/x-icon");
 
+    // Launch images for the installed iPhone app (instead of a blank screen while iOS starts it): one per
+    // iPhone screen, each exactly that screen's pixels, white at the edges like the app, nothing personal.
+    await expect(page.locator('meta[name="apple-mobile-web-app-capable"]')).toHaveAttribute("content", "yes");
+    const launch = await page.locator('link[rel="apple-touch-startup-image"]').evaluateAll((links) => links.map((l) => [l.getAttribute("href")!, l.getAttribute("media")!]));
+    expect(launch.length).toBeGreaterThanOrEqual(13);
+    for (const width of [390, 393, 402, 430, 440]) expect(launch.some(([, media]) => media.includes(`(device-width: ${width}px)`))).toBe(true);
+    for (const [href, media] of launch) {
+      const [, w, h, ratio] = /device-width: (\d+)px\) and \(device-height: (\d+)px\) and \(-webkit-device-pixel-ratio: (\d)\) and \(orientation: portrait\)/.exec(media)!;
+      expect(href).toMatch(/^\/startup\/launch-\d+x\d+\.png$/);
+      const image = await request.get(href);
+      expect(image.status()).toBe(200);
+      expect(image.headers()["content-type"]).toBe("image/png");
+      expect(pngSize(await image.body())).toEqual({ width: Number(w) * Number(ratio), height: Number(h) * Number(ratio) });
+    }
+    // The page under the launch image starts white too: no colour change when the app appears.
+    const bodyPixel = await page.evaluate(() => {
+      const c = document.createElement("canvas").getContext("2d")!;
+      c.fillStyle = getComputedStyle(document.body).backgroundColor;
+      c.fillRect(0, 0, 1, 1);
+      return [...c.getImageData(0, 0, 1, 1).data];
+    });
+    expect(bodyPixel).toEqual([255, 255, 255, 255]);
+
     // Chromium's own verdict: installable without a service worker.
     const cdp = await page.context().newCDPSession(page);
     const { installabilityErrors } = (await cdp.send("Page.getInstallabilityErrors")) as { installabilityErrors: { errorId: string }[] };

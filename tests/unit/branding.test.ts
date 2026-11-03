@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import sharp from "sharp";
 import { BRAND_INK_CONTRAST, brandStyle, brandTheme, contrastRatio, normalizeHex } from "@/lib/branding/colors";
-import { LOGO_MAX_UPLOAD_BYTES, processLogo } from "@/lib/branding/logo.server";
+import { LOGO_MAX_UPLOAD_BYTES, processLogo } from "@/lib/branding/logo-upload.server";
 import { describeDbError } from "@/lib/db-errors";
 import {
   animatedWebp,

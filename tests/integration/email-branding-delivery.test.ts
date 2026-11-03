@@ -14,7 +14,8 @@ const WEBHOOK_SECRET = `whsec_${Buffer.from(`it-webhook-${randomUUID()}`).toStri
 process.env.RESEND_WEBHOOK_SECRET = WEBHOOK_SECRET; // before the first serverEnv() read
 
 import { POST as webhook } from "@/app/api/webhooks/resend/route";
-import { LOGO_BUCKET, processLogo, storeLogo } from "@/lib/branding/logo.server";
+import { LOGO_BUCKET } from "@/lib/branding/logo.server";
+import { processLogo, storeLogo } from "@/lib/branding/logo-upload.server";
 import { fitLogo } from "@/lib/email/branding.server";
 import { processOutbox } from "@/lib/email/outbox.server";
 import type { EmailMessage, EmailTransport } from "@/lib/email/transport.server";
