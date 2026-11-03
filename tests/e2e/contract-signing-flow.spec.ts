@@ -277,7 +277,10 @@ test.describe.serial("contract signing", () => {
     await expect(staff.getByText("awaiting signature", { exact: true })).toHaveCount(0);
     await expect(staff.getByText("A contract has been signed for this event, so its terms can't be revised.")).toBeVisible();
     await expect(staff.getByRole("button", { name: "Start a revised offer" })).toHaveCount(0);
-    await expect(staff.getByText(/was signed .*A signed contract can't be voided, replaced or revised/)).toBeVisible();
+    // The signed contract is a document now: one row to it, with when it was signed (its page has the evidence, without Void or Resend).
+    const signedRow = staff.getByTestId("documents").getByTestId("document-contract");
+    await expect(signedRow).toContainText(/signed \w{3} \d{1,2}, \d{4}, \d{1,2}:\d{2} [ap]\.m\./);
+    await expect(signedRow).toHaveAttribute("href", new URL(contractUrl).pathname);
     await staff.goto(`/staff/${tenant.slug}/events`);
     await expect(staff.getByTestId("event-row").filter({ hasText: eventTitle })).toContainText("Signed · awaiting deposit");
     const { data: stored } = await admin.from("events").select("lifecycle_status, booking_confirmed_at").eq("id", eventId).single();

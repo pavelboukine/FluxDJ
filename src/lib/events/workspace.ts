@@ -1,10 +1,9 @@
 import type { PaymentSummary } from "@/lib/payments";
 import { formatCents } from "@/lib/money";
-import { shortDate, shortInstant } from "@/lib/dates";
+import { compactInstant, shortDate } from "@/lib/dates";
 import { deliveryState, type OutboxRow } from "@/lib/email/history";
 import type { StaffEditing } from "@/lib/planning/cutoff";
-import { progressSummaryLine, type PlanProgress } from "@/lib/planning/view";
-import { BOOKED_EXTERNALLY, BOOKED_EXTERNALLY_DETAIL } from "./status";
+import type { PlanProgress } from "@/lib/planning/view";
 
 /**
  * The staff event workspace: what to do next and one-line summaries, decided
@@ -81,6 +80,8 @@ export type WorkspaceFacts = {
    * contract they belong to.
    */
   emailProblems?: EmailProblem[];
+  /** The business's own time zone: deadlines in another zone name it. */
+  businessTimeZone?: string;
 };
 
 export type EmailProblem = { entityId: string; eventType: string; label: string; state: string };
@@ -180,7 +181,7 @@ export function nextAction(f: WorkspaceFacts): NextAction {
       // Planning is ready but the client hasn't been told: inviting is always a separate staff step.
       const invite: Link | null = f.planningAccess && !f.planningAccess.invitation ? { label: "Send planning invitation", href: "#client-access" } : null;
       return f.planning.exists
-        ? { ...blank, key: "review_planning", title: "Review planning", detail: planningLine(f.planning) ?? "The event is booked.", primary: { label: "Review planning", href: planningHref }, secondary: invite ?? runSheet, warning }
+        ? { ...blank, key: "review_planning", title: "Review planning", detail: planningNext(f, "Check the client's answers") ?? "The event is booked.", primary: { label: "Review planning", href: planningHref }, secondary: invite ?? runSheet, warning }
         : { ...blank, key: "set_up_planning", title: "Set up planning", detail: "The event is booked but has no plan yet. You choose a template when you set it up.", primary: { label: "Set up planning", href: planningHref }, warning };
     }
     if (f.lifecycle === "awaiting_deposit") {
@@ -357,7 +358,7 @@ function externalNextAction(
           ...blank,
           key: "monitor_planning",
           title: "Follow the client's planning",
-          detail: planningLine(f.planning) ?? "The client can open planning.",
+          detail: planningNext(f, "The client is filling planning in") ?? "The client can open planning.",
           primary: review,
           secondary: runSheet,
         };
@@ -395,137 +396,110 @@ function externalNextAction(
 }
 
 // ---------------------------------------------------------------------------
-// Overview summaries
+// Section summaries
 // ---------------------------------------------------------------------------
 
-/** The booking tile of an event booked elsewhere (replaces the proposal tile). */
-export function bookingSummary(): Summary {
-  return { status: BOOKED_EXTERNALLY, detail: BOOKED_EXTERNALLY_DETAIL, link: { label: "Details", href: "#details" } };
-}
-
-/** The client access tile of an event booked elsewhere (replaces the contract tile). */
-export function clientAccessSummary(f: WorkspaceFacts, fmt: (iso: string) => string): Summary {
-  const access = f.planningAccess ?? { invitation: null, clientHasAccess: false };
-  const link: Link = { label: "Details", href: "#client-access" };
-  if (access.clientHasAccess) return { status: "Client has access", detail: "Verified and able to open planning.", link };
-  const i = access.invitation;
-  if (i && invitationOpen(i, f.now)) return { status: "Invited", detail: `Invited ${fmt(i.createdAt)} at ${i.email}; not accepted yet.`, link };
-  if (i) return { status: i.stale ? "Invitation outdated" : "Invitation expired", detail: "Send a new invitation.", link, attention: !f.archived };
-  return { status: "Not invited", detail: f.planning.exists && !f.planning.awaitingSetup ? "Invite the client when planning is ready." : "Set up planning first.", link };
-}
-
-export type Summary = { status: string; detail: string | null; link: Link; attention?: boolean };
-
-const PROPOSAL_STATUS: Record<string, string> = {
-  draft: "Draft, not sent",
-  sent: "Sent, waiting for the client",
-  submitted: "Submitted, ready to review",
-  approved: "Approved",
-  expired: "Expired",
-  declined: "Declined",
-  superseded: "Replaced by a newer revision",
-};
-
-export function proposalSummary(f: WorkspaceFacts): Summary {
-  const { draft, active } = currentProposals(f);
-  const current = draft ?? active;
-  if (!current) return { status: "No proposal yet", detail: null, link: { label: "Create", href: "#proposal" } };
-  const status = current === active && isExpired(current, f.now) ? "Expired" : (PROPOSAL_STATUS[current.status] ?? current.status);
-  const also = draft && active && draft !== active ? `Revision ${active.revision}: ${(PROPOSAL_STATUS[active.status] ?? active.status).toLowerCase()}` : null;
-  return {
-    status,
-    detail: [`Revision ${current.revision}`, also].filter(Boolean).join(" · "),
-    link: { label: "Open", href: `/staff/${f.slug}/proposals/${current.id}` },
-    attention: current.status === "submitted" && !f.archived,
-  };
-}
-
-export function contractSummary(f: WorkspaceFacts, fmt: (iso: string) => string): Summary {
-  const { signed, sent, draft } = currentContracts(f.contracts);
-  const current = signed ?? sent ?? draft;
-  if (!current) {
-    if (f.signerPhoneMissing && !f.archived) {
-      return {
-        status: f.approvalId ? "Phone number needed" : "Not yet",
-        detail: "Client phone number needed before generating the contract (your template includes it).",
-        link: { label: f.approvalId ? "Add phone" : "Contacts", href: f.approvalId ? "#contract" : "#contacts" },
-        attention: Boolean(f.approvalId),
-      };
-    }
-    return { status: f.approvalId ? "Ready to prepare" : "Not yet", detail: f.approvalId ? "The selection is approved." : "Generated once the proposal is approved.", link: { label: "Details", href: "#contract" } };
-  }
-  const status = current.status === "signed" ? `Signed ${current.signed_at ? fmt(current.signed_at) : ""}`.trim() : current.status === "sent" ? "Sent, waiting for signature" : "Draft, not sent";
-  return { status, detail: current.label, link: { label: "Open", href: `/staff/${f.slug}/contracts/${current.id}` } };
-}
-
 export type PaymentOverview = {
-  /** Which terms the figures use; never mixed across contract versions. */
-  basis: string;
-  rows: { label: string; value: string }[];
-  booking: string;
-  warning: string | null;
+  /** Total, received and remaining balance (and any credit) against the contract's terms; null without terms, so no total is invented. */
+  figures: { label: string; value: string }[] | null;
+  /** What is owed next: the deposit still due, else the balance's due date; null when nothing is owed or there are no terms. */
+  next: string | null;
 };
 
-/** Read straight from the database summary; nothing is recalculated here. */
+/** The payment overview, read straight from the database summary; nothing is recalculated here. */
 export function paymentOverview(s: PaymentSummary | null): PaymentOverview | null {
   if (!s) return null;
   const money = (cents: number) => formatCents(cents, s.currency);
   const t = s.terms;
-  const rows: { label: string; value: string }[] = [];
-  if (t) rows.push({ label: "Total", value: money(t.total_cents) });
-  rows.push({ label: "Received", value: money(s.received_cents) });
-  if (t) {
-    if (t.deposit_cents > 0) {
-      rows.push({ label: "Deposit", value: money(t.deposit_cents) });
-      // An amount still owed toward the deposit (due on signing), not a date.
-      rows.push({ label: "Deposit outstanding", value: s.deposit_outstanding_cents ? money(s.deposit_outstanding_cents) : "Received" });
-    }
-    rows.push({ label: "Balance", value: s.remaining_balance_cents ? money(s.remaining_balance_cents) : "Paid in full" });
-    if (s.remaining_balance_cents && t.balance_due_date) rows.push({ label: "Balance due", value: shortDate(t.balance_due_date) });
-    if (s.credit_cents) rows.push({ label: "Credit", value: money(s.credit_cents) });
-  }
-  const b = s.booking;
-  const booking =
-    b.lifecycle_status === "booked"
-      ? "Booking confirmed"
-      : b.lifecycle_status === "awaiting_deposit"
-        ? "Signed · awaiting deposit"
-        : b.legacy_signed
-          ? "Signed · booking not checked yet"
-          : "Not booked";
-  return {
-    basis: t ? (t.status === "signed" ? "Signed contract terms" : "Sent contract terms (not signed yet)") : "No contract terms yet",
-    rows,
-    booking,
-    warning: b.deposit_no_longer_met ? "Valid payments no longer cover the deposit; the booking stands." : s.other_currency_payments > 0 ? `${s.other_currency_payments} payment(s) in another currency aren't counted.` : null,
-  };
+  if (!t) return { figures: null, next: null };
+  const figures = [
+    { label: "Total", value: money(t.total_cents) },
+    { label: "Received", value: money(s.received_cents) },
+    { label: "Balance", value: s.remaining_balance_cents ? money(s.remaining_balance_cents) : "Paid in full" },
+  ];
+  if (s.credit_cents) figures.push({ label: "Credit", value: money(s.credit_cents) });
+  // The deposit is an amount owed on signing (it has no date of its own); the balance has the contract's due date.
+  const next = s.deposit_outstanding_cents
+    ? `${money(s.deposit_outstanding_cents)} still due toward the deposit`
+    : s.remaining_balance_cents
+      ? t.balance_due_date
+        ? `Balance due ${shortDate(t.balance_due_date)}`
+        : "The contract sets no balance due date"
+      : null;
+  return { figures, next };
 }
 
-/** "Client editing open until Oct 16, 2026, 12:00 a.m. EDT (America/Toronto)" and similar; null without a plan. */
-export function planningLine(p: WorkspaceFacts["planning"]): string | null {
-  if (!p.exists || !p.editing) return null;
-  const e = p.editing;
-  const zone = ` (${e.timezone})`;
-  if (e.state === "open") return `Client editing open until ${shortInstant(e.closes_at ?? e.deadline, e.timezone)}${zone}.`;
-  if (e.state === "reopened") return `Client editing reopened until ${shortInstant(e.closes_at ?? e.deadline, e.timezone)}${zone}.`;
-  if (e.closed_at) return `Client editing closed by staff since ${shortInstant(e.closed_at, e.timezone)}${zone}. Staff can still edit.`;
-  return `Client planning is read-only since ${shortInstant(e.deadline, e.timezone)}${zone}. Staff can still edit.`;
+/**
+ * "Client editing closes Oct 16, 12:00 a.m." and similar, in the event's time
+ * zone; its abbreviation is added when that isn't the business's own zone.
+ * The time is always shown: a midnight deadline is the start of that day.
+ */
+export function editingLine(e: StaffEditing, opts: { now: Date; businessTimeZone?: string }): string {
+  const at = (iso: string) => editingAt(iso, e, opts);
+  if (e.state === "open") return `Client editing closes ${at(e.closes_at ?? e.deadline)}`;
+  if (e.state === "reopened") return `Client editing reopened, closes ${at(e.closes_at ?? e.deadline)}`;
+  if (e.closed_at) return `Client editing closed by staff ${at(e.closed_at)}; staff can still edit`;
+  return `Client editing closed ${at(e.deadline)}; staff can still edit`;
 }
 
-export function planningSummary(f: WorkspaceFacts): Summary {
-  const event = `/staff/${f.slug}/events/${f.eventId}`;
-  if (!f.planning.exists) {
-    const detail = f.bookingSource === "external" || f.lifecycle === "booked" ? "Set it up from the planning page." : "Set up automatically when the event is booked.";
-    return { status: "Not set up", detail, link: { label: "Details", href: "#planning" } };
-  }
-  if (f.planning.awaitingSetup) {
-    return { status: "Not set up", detail: "Event basics only: choose a planning template.", link: { label: "Set up", href: `${event}/planning` } };
-  }
-  return {
-    status: f.planning.progress ? progressSummaryLine(f.planning.progress) : "Set up",
-    detail: f.planning.editing ? (f.planning.editing.state === "open" ? "Client editing open" : f.planning.editing.state === "reopened" ? "Reopened for the client" : "Read-only for the client") : null,
-    link: { label: "Open", href: `${event}/planning` },
-  };
+const editingAt = (iso: string, e: StaffEditing, opts: { now: Date; businessTimeZone?: string }) =>
+  compactInstant(iso, e.timezone, { now: opts.now, zone: Boolean(opts.businessTimeZone && opts.businessTimeZone !== e.timezone) });
+
+/**
+ * The next step's planning detail: what to do, and until when the client can
+ * still edit (the Planning section states the editing status itself, so the
+ * same sentence isn't shown twice). Null without a plan or a deadline.
+ */
+function planningNext(f: WorkspaceFacts, action: string): string | null {
+  const e = f.planning.exists ? f.planning.editing : null;
+  if (!e) return null;
+  if (e.state === "closed") return "Client editing is closed. Check the final answers and the run sheet.";
+  return `${action}; they can edit until ${editingAt(e.closes_at ?? e.deadline, e, { now: f.now, businessTimeZone: f.businessTimeZone })}`;
+}
+
+
+// ---------------------------------------------------------------------------
+// Layout stage
+// ---------------------------------------------------------------------------
+
+/**
+ * What the workspace leads with: presentation order only. It never decides
+ * what is allowed (the database does) or what to do next (nextAction). Read
+ * from the stored lifecycle, as eventDisplayStatus is, with a signed contract
+ * refining awaiting_signature exactly as eventStatusLabel does.
+ *  - booking: lead, pending_approval, awaiting_signature (draft, sent,
+ *    submitted, approved, contract draft or sent): proposal and contract first.
+ *  - deposit: signed but not confirmed (awaiting_deposit, or awaiting_signature
+ *    with a signed contract: signed before booking rules, not checked yet):
+ *    payments first.
+ *  - booked: booked or completed: payments and planning first; the proposal
+ *    and contract are reference documents.
+ *  - external: booked elsewhere: planning only (no proposal, contract or
+ *    payments), whatever the lifecycle.
+ * cancelled (allowed by the database, set by nothing in the app today) keeps
+ * the records' stage: booked once a contract was signed, otherwise booking.
+ * Archived, completed and cancelled events keep their stage; `archived` and
+ * `ended` are reported so the page can emphasise unarchiving or history.
+ */
+export type WorkspaceStage = "booking" | "deposit" | "booked" | "external";
+export type WorkspaceLayout = { stage: WorkspaceStage; archived: boolean; ended: "completed" | "cancelled" | null };
+
+export function workspaceStage(f: Pick<WorkspaceFacts, "archived" | "lifecycle" | "bookingSource" | "contracts">): WorkspaceLayout {
+  const signed = f.contracts.some((c) => c.status === "signed");
+  const ended = f.lifecycle === "completed" || f.lifecycle === "cancelled" ? f.lifecycle : null;
+  const stage: WorkspaceStage =
+    f.bookingSource === "external"
+      ? "external"
+      : f.lifecycle === "booked" || f.lifecycle === "completed"
+        ? "booked"
+        : f.lifecycle === "awaiting_deposit"
+          ? "deposit"
+          : f.lifecycle === "cancelled"
+            ? signed ? "booked" : "booking"
+            : signed
+              ? "deposit"
+              : "booking";
+  return { stage, archived: f.archived, ended };
 }
 
 /** "venue", "event date and venue", "event title, event date and venue". */

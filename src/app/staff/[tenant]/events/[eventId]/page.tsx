@@ -7,56 +7,36 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { ActionForm } from "@/components/app/action-form";
 import { Disclosure } from "@/components/app/disclosure";
 import { ClientPicker } from "@/components/app/client-picker";
-import { CheckboxField, SelectField } from "@/components/app/fields";
+import { CheckboxField } from "@/components/app/fields";
 import { requireStaff } from "@/lib/auth/staff";
 import { dateIn, shortDate } from "@/lib/dates";
 import { BOOKED_EXTERNALLY_DETAIL, eventDisplayStatus } from "@/lib/events/status";
-import {
-  bookingSummary,
-  clientAccessSummary,
-  contractChanges,
-  contractSummary,
-  currentProposals,
-  nextAction,
-  paymentOverview,
-  planningLine,
-  planningSummary,
-  proposalSummary,
-  type NextAction,
-  type Summary,
-  type WorkspaceFacts,
-} from "@/lib/events/workspace";
+import { contractChanges, currentProposals, nextAction, workspaceStage, type NextAction, type WorkspaceFacts } from "@/lib/events/workspace";
 import { UUID_RE } from "@/lib/forms";
 import { planAwaitingSetup } from "@/lib/planning/view";
 import { telHref } from "@/lib/phone";
 import { cn } from "@/lib/utils";
 import { searchClients } from "../../clients/actions";
 import { ContractCard, loadContracts } from "../../contracts/contract-card";
-import { addEventContact, openProposalDraft, removeEventContact, updateEvent } from "../actions";
+import { addEventContact, removeEventContact, updateEvent } from "../actions";
 import { EventFields } from "../event-fields";
 import { EVENT_TYPES } from "../event-form";
 import { ArchivePanel } from "./archive-panel";
-import { ClientAccessCard, loadPlanningAccess } from "./client-access-card";
-import { CommunicationsCard, emailProblems, loadCommunications } from "./communications-card";
+import { ClientAccess, loadPlanningAccess } from "./client-access-card";
+import { EventEmails, emailProblems, loadCommunications } from "./communications-card";
+import { DocumentsSection, ProposalCard } from "./documents-section";
 import { PaymentsCard, loadPayments } from "./payments-card";
 import { PlanningCard, loadPlanning } from "./planning-card";
 import { RemoveContact } from "./remove-contact";
 
 const TYPE_LABEL = Object.fromEntries(EVENT_TYPES) as Record<string, string>;
-const PROPOSAL_STATUS: Record<string, string> = {
-  draft: "draft",
-  sent: "sent",
-  submitted: "submitted",
-  approved: "approved",
-  expired: "expired",
-  declined: "declined",
-  superseded: "replaced by a revision",
-};
 
 /**
  * The staff event workspace: what the event is, the recommended next step,
- * short summaries of proposal, contract, payments and planning, then the
- * sections where each is handled. Rendering only reads: it never sets up a
+ * then the sections where each part is handled, ordered by the event's stage
+ * (workspaceStage): the proposal and contract while booking, payments and
+ * planning once signed or booked, with documents, emails, contacts and
+ * details as supporting sections. Each section shows its own status. Rendering only reads: it never sets up a
  * plan, books, or changes anything. Every action stays on its existing
  * screen or form, with the database checking eligibility.
  */
@@ -142,9 +122,10 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
     signerPhoneMissing,
     contractChanges: changes,
     emailProblems: emailProblems(communications.rows),
+    businessTimeZone: tenant.timezone,
   };
   const action = nextAction(facts);
-  const pay = paymentOverview(payments.summary);
+  const layout = workspaceStage(facts);
   const { draft, active } = currentProposals({ proposals: event.proposals, activeProposalId: event.active_proposal_id });
   const olderProposals = [...event.proposals].filter((p) => p.id !== draft?.id && p.id !== active?.id).sort((a, b) => b.revision - a.revision);
   const onEvent = event.event_clients.flatMap((c) => (c.clients ? [c.clients.id] : []));
@@ -159,20 +140,17 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
   const when = archived ? null : daysAway(event.event_date, dateIn(event.timezone, facts.now));
   const frozenDocs = Boolean(active) || contracts.contracts.some((c) => ["draft", "sent", "signed"].includes(c.status));
   const fmtDate = (iso: string) => shortDate(dateIn(event.timezone, new Date(iso)));
-  // Flux DJ records no payments for an event booked elsewhere (the database refuses them).
-  const showPayments = !external;
-  const sections: [string, string][] = external
-    ? [["#planning", "Planning"], ["#client-access", "Client access"], ["#communications", "Emails"], ["#contacts", "Contacts & details"]]
-    : [
-        ["#proposal", "Proposal & contract"],
-        ["#payments", "Payments"],
-        ["#planning", "Planning"],
-        ...(showClientAccess ? ([["#client-access", "Client access"]] as [string, string][]) : []),
-        ["#communications", "Emails"],
-        ["#contacts", "Contacts & details"],
-      ];
+  // Once a contract is signed and the event is waiting for its deposit or booked, the proposal and contract are
+  // reference documents (a signed contract leaves nothing to generate or revise): a compact Documents section.
+  const documentsSecondary = (layout.stage === "deposit" || layout.stage === "booked") && hasSignedContract;
+  // After booking (or for an event booked elsewhere), contacts and details are reference: one line each until opened.
+  const compact = layout.stage !== "booking";
+  // What a collapsed Contacts section still says (and opens for): the problems its contents would show.
+  const signerPhoneNeeded = Boolean(!external && signerClient && !signerClient.phone && anyVersionNeedsPhone && !hasSignedContract);
+  const contactsAttention = !primary?.clients ? "No primary contact" : primary.clients.archived_at ? "Primary contact archived" : signerPhoneNeeded ? "Signer phone needed" : null;
+  const emailAttention = facts.emailProblems?.length ?? 0;
   const clientAccess = showClientAccess ? (
-    <ClientAccessCard
+    <ClientAccess
       slug={slug}
       eventId={event.id}
       access={planningAccess.access}
@@ -186,6 +164,13 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
       fmt={fmtDate}
     />
   ) : null;
+  const planningSection = (
+    <PlanningCard slug={slug} eventId={event.id} view={planning} archived={archived} external={external} businessTimeZone={tenant.timezone} access={clientAccess} />
+  );
+  // Flux DJ records no payments for an event booked elsewhere (the database refuses them).
+  const paymentsSection = external ? null : (
+    <PaymentsCard staff={staff} slug={slug} eventId={event.id} archived={archived} data={payments} recordOpen={action.key === "record_payment"} timeZone={event.timezone} />
+  );
 
   return (
     <>
@@ -216,144 +201,89 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
             >
               {status}
             </Badge>
-            <a className={buttonVariants({ variant: "outline", size: "sm" })} href="#edit-details">Edit details</a>
+            <a className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-11 sm:h-7")} href="#edit-details">Edit details</a>
           </div>
         </div>
       </header>
 
-      {contact === "failed" ? <p role="alert" className="text-sm text-destructive">The event was created but its contact could not be attached. Add the contact below.</p> : null}
+      {contact === "failed" ? <p role="alert" className="text-sm text-destructive">The event was created but its contact could not be attached. Add the contact under Contacts.</p> : null}
 
-      <NextStep action={action} archived={archived} external={external} />
-
-      <section aria-label="Overview" className={cn("grid gap-3 sm:grid-cols-2", showPayments ? "xl:grid-cols-4" : "xl:grid-cols-3")}>
-        {external ? (
-          <>
-            <Tile title="Booking" summary={bookingSummary()} testId="overview-booking" />
-            <Tile title="Client access" summary={clientAccessSummary(facts, fmtDate)} testId="overview-client-access" />
-          </>
-        ) : (
-          <>
-            <Tile title="Proposal" summary={proposalSummary(facts)} testId="overview-proposal" />
-            <Tile title="Contract" summary={contractSummary(facts, fmtDate)} testId="overview-contract" />
-          </>
-        )}
-        {showPayments ? <div className="grid content-start gap-1.5 rounded-xl border bg-card p-3.5 text-sm" data-testid="overview-payments">
-          <div className="flex items-baseline justify-between gap-2">
-            <h2 className="text-xs font-medium tracking-wider text-muted-foreground uppercase">Payments</h2>
-            <a className="text-xs font-medium underline-offset-4 hover:underline" href="#payments">Details</a>
-          </div>
-          {pay ? (
+      {/*
+        One DOM order at every width: the work for the event's stage, then the supporting sections. Below xl they
+        stack in that order; from xl the supporting sections sit in a second column (not sticky). On phones, the
+        forms' buttons, fields and selects are touch-sized here (the shared components keep their size elsewhere).
+      */}
+      <div
+        className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_18rem] max-sm:[&_[data-slot=button]]:min-h-11 max-sm:[&_[data-slot=input]]:min-h-11 max-sm:[&_select]:min-h-11"
+        data-testid="workspace"
+        data-stage={layout.stage}
+      >
+        <div className="grid min-w-0 gap-6" data-testid="workspace-main">
+          <NextStep action={action} archived={archived} external={external} />
+          {external ? (
+            planningSection
+          ) : documentsSecondary ? (
             <>
-              <p className="font-medium">{pay.booking}</p>
-              <dl className="grid gap-0.5">
-                {pay.rows.map((r) => (
-                  <div key={r.label} className="flex flex-wrap justify-between gap-x-3">
-                    <dt className="text-muted-foreground">{r.label}</dt>
-                    <dd className="text-right tabular-nums">{r.value}</dd>
-                  </div>
-                ))}
-              </dl>
-              <p className="text-xs text-muted-foreground">{pay.basis}</p>
-              {pay.warning ? (
-                <p className="flex gap-1.5 text-xs font-medium text-amber-800 dark:text-amber-300">
-                  <AlertTriangle aria-hidden className="mt-px size-3.5 shrink-0" /> {pay.warning}
-                </p>
-              ) : null}
+              {paymentsSection}
+              {planningSection}
             </>
           ) : (
-            <p className="text-muted-foreground">Unavailable</p>
+            <>
+              <ProposalCard
+                slug={slug}
+                eventId={event.id}
+                draft={draft}
+                active={active}
+                older={olderProposals}
+                hasSignedContract={hasSignedContract}
+                archived={archived}
+                revising={Boolean(event.active_proposal_id)}
+                templates={templates ?? []}
+              />
+              <ContractCard
+                slug={slug}
+                approvalId={approval?.id ?? null}
+                data={contracts}
+                signer={signerClient ? { clientId: signerClient.id, name: signerClient.name, phone: signerClient.phone } : null}
+                changes={changes}
+              />
+              {paymentsSection}
+              {planningSection}
+            </>
           )}
-        </div> : null}
-        <Tile title="Planning" summary={planningSummary(facts)} testId="overview-planning" extra={planningLine(facts.planning)} />
-      </section>
+        </div>
 
-      <nav aria-label="Event sections" className="flex flex-wrap gap-x-4 gap-y-1 border-b pb-2 text-sm">
-        {sections.map(([href, label]) => (
-          <a key={href} className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline" href={href}>{label}</a>
-        ))}
-      </nav>
+        <aside aria-label="Event information" className="grid min-w-0 gap-3" data-testid="workspace-secondary">
+          {documentsSecondary ? <DocumentsSection slug={slug} draft={draft} active={active} older={olderProposals} contracts={contracts} /> : null}
 
-      <div className="grid gap-6">
-        {external ? (
-          <>
-            <PlanningCard slug={slug} eventId={event.id} view={planning} archived={archived} external />
-            {clientAccess}
-          </>
-        ) : (
-        <>
-        <Card id="proposal" className="scroll-mt-20">
-          <CardHeader>
-            <CardTitle>Proposal</CardTitle>
-            <CardDescription>One editable draft per event. The client sees an offer only once it&apos;s sent.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4 text-sm">
-            {hasSignedContract ? (
-              <p role="status">A contract has been signed for this event, so its terms can&apos;t be revised. Amendments aren&apos;t available yet.</p>
-            ) : null}
-            {draft || active ? (
-              <ul className="grid gap-1.5">
-                {[draft, active].filter((p, i, all) => p && all.indexOf(p) === i).map((p) => (
-                  <li key={p!.id} className="flex flex-wrap items-baseline gap-x-2">
-                    <Link className="font-medium underline active:opacity-70" href={`/staff/${slug}/proposals/${p!.id}`}>
-                      {p === draft ? `Continue the draft (revision ${p!.revision})` : `Revision ${p!.revision}`}
-                    </Link>
-                    {p !== draft ? <span className="text-muted-foreground">{PROPOSAL_STATUS[p!.status] ?? p!.status}{p!.offer_frozen_at ? " · offer frozen" : ""}</span> : null}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            {archived && !draft && !hasSignedContract ? <p className="text-muted-foreground">Unarchive the event to start or revise an offer.</p> : null}
-            {draft || hasSignedContract || archived ? null : (
-              <ActionForm action={openProposalDraft.bind(null, slug, event.id)} submitLabel={event.active_proposal_id ? "Start a revised offer" : "Start proposal draft"} pendingLabel="Opening…">
-                <SelectField
-                  label="Start from template"
-                  name="template_id"
-                  options={(templates ?? []).map((t) => ({ value: t.id, label: t.name }))}
-                  placeholder={event.active_proposal_id ? "— the current offer —" : "— blank proposal —"}
-                />
-              </ActionForm>
-            )}
-            {olderProposals.length > 0 ? (
-              <Disclosure id="proposal-history" summary={`Proposal history (${olderProposals.length})`}>
-                <ul className="grid gap-1">
-                  {olderProposals.map((p) => (
-                    <li key={p.id}>
-                      <Link className="underline active:opacity-70" href={`/staff/${slug}/proposals/${p.id}`}>Revision {p.revision}</Link>
-                      <span className="text-muted-foreground"> · {PROPOSAL_STATUS[p.status] ?? p.status}{p.offer_frozen_at ? " · offer frozen" : ""}</span>
-                    </li>
-                  ))}
-                </ul>
-              </Disclosure>
-            ) : null}
-          </CardContent>
-        </Card>
+          <Disclosure
+            id="communications"
+            summary="Emails"
+            defaultOpen={emailAttention > 0}
+            hint={
+              emailAttention > 0 ? (
+                <Attention>{emailAttention === 1 ? "1 needs attention" : `${emailAttention} need attention`}</Attention>
+              ) : communications.total === 0 ? (
+                "None yet"
+              ) : (
+                `${communications.total} email${communications.total === 1 ? "" : "s"}`
+              )
+            }
+          >
+            <EventEmails slug={slug} data={communications} timeZone={event.timezone} />
+          </Disclosure>
 
-        <ContractCard
-          slug={slug}
-          approvalId={approval?.id ?? null}
-          data={contracts}
-          signer={signerClient ? { clientId: signerClient.id, name: signerClient.name, phone: signerClient.phone } : null}
-          changes={changes}
-        />
-
-        <PaymentsCard staff={staff} slug={slug} eventId={event.id} archived={archived} data={payments} recordOpen={action.key === "record_payment"} timeZone={event.timezone} />
-
-        <PlanningCard slug={slug} eventId={event.id} view={planning} archived={archived} />
-        {clientAccess}
-        </>
-        )}
-
-        <CommunicationsCard slug={slug} data={communications} timeZone={event.timezone} />
-
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Card id="contacts" className="scroll-mt-20">
-            <CardHeader>
-              <CardTitle>Contacts</CardTitle>
-              <CardDescription>
+          <Disclosure
+            id="contacts"
+            summary="Contacts"
+            targets={["add-contact"]}
+            defaultOpen={!compact || contact === "failed" || Boolean(contactsAttention)}
+            hint={contactsAttention ? <Attention>{contactsAttention}</Attention> : contactsLine(event.event_clients, external)}
+          >
+            <div className="grid gap-3 text-sm">
+              <p className="text-xs text-muted-foreground">
                 {external ? "The primary contact is the one you invite to planning." : "The primary contact receives proposals; the signer signs the contract."}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-3 text-sm">
+              </p>
               <ul className="grid gap-2">
                 {event.event_clients.map((ec) => (
                   <li key={ec.id} className="flex flex-wrap items-center justify-between gap-2 border-b pb-2 last:border-b-0">
@@ -406,21 +336,15 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
                   />
                 </ActionForm>
               </Disclosure>
-            </CardContent>
-          </Card>
+            </div>
+          </Disclosure>
 
-          <Card id="details" className="scroll-mt-20">
-            <CardHeader>
-              <CardTitle>Event details</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-3 text-sm">
+          {/* The title, date, venue, type and booking status are in the header; editing still covers every field. */}
+          <Disclosure id="details" summary="Event details" targets={["edit-details"]} defaultOpen={!compact} hint={detailsLine(event)}>
+            <div className="grid gap-3 text-sm">
               <dl className="grid gap-2" data-testid="event-details">
-                <Detail label="Date">{shortDate(event.event_date)}</Detail>
-                <Detail label="Time zone">{event.timezone}</Detail>
-                <Detail label="Type">{TYPE_LABEL[event.event_type] ?? event.event_type}</Detail>
-                <Detail label="Booking">{external ? `Booked externally. ${BOOKED_EXTERNALLY_DETAIL}` : "Through Flux DJ"}</Detail>
-                <Detail label="Venue">{event.venue_name ?? <span className="text-muted-foreground">Not set</span>}</Detail>
                 <Detail label="Address">{event.venue_address ?? <span className="text-muted-foreground">Not set</span>}</Detail>
+                <Detail label="Time zone">{event.timezone === tenant.timezone ? event.timezone : `${event.timezone} (not your business's ${tenant.timezone})`}</Detail>
                 <Detail label="DJ">{event.dj_name ?? <span className="text-muted-foreground">Not set (planning uses the business&apos;s DJ name, or says “your DJ”)</span>}</Detail>
                 <Detail label="Internal notes · staff only">
                   {event.internal_notes ? <span className="whitespace-pre-line">{event.internal_notes}</span> : <span className="text-muted-foreground">None</span>}
@@ -437,21 +361,45 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
                   <EventFields event={event} defaultTimezone={tenant.timezone} />
                 </ActionForm>
               </Disclosure>
+            </div>
+          </Disclosure>
+
+          <Card id="manage" size="sm" className="scroll-mt-20">
+            <CardHeader>
+              <CardTitle>{archived ? "Archived" : "Manage event"}</CardTitle>
+              <CardDescription>{external ? "Archiving pauses client planning and cancels an open invitation. Nothing is deleted." : "Archiving is separate from cancelling or booking. Nothing is deleted."}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ArchivePanel slug={slug} eventId={event.id} archived={archived} />
             </CardContent>
           </Card>
-        </div>
-
-        <Card id="manage" size="sm" className="scroll-mt-20">
-          <CardHeader>
-            <CardTitle>{archived ? "Archived" : "Manage event"}</CardTitle>
-            <CardDescription>{external ? "Archiving pauses client planning and cancels an open invitation. Nothing is deleted." : "Archiving is separate from cancelling or booking. Nothing is deleted."}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ArchivePanel slug={slug} eventId={event.id} archived={archived} />
-          </CardContent>
-        </Card>
+        </aside>
       </div>
     </>
+  );
+}
+
+/** "Noam Levi · primary & signer +1": who the event's contacts are, in one line. */
+function contactsLine(rows: { is_primary: boolean; can_sign: boolean; clients: { name: string } | null }[], external: boolean): string {
+  const primary = rows.find((r) => r.is_primary);
+  if (!primary?.clients) return rows.length === 0 ? "None yet" : `${rows.length} contact${rows.length === 1 ? "" : "s"}`;
+  const role = primary.can_sign && !external ? "primary & signer" : "primary";
+  return `${primary.clients.name} · ${role}${rows.length > 1 ? ` +${rows.length - 1}` : ""}`;
+}
+
+/** The collapsed Event details line: what isn't in the header (the address, the DJ, whether there are notes). */
+function detailsLine(e: { venue_address: string | null; dj_name: string | null; internal_notes: string | null }): string {
+  const parts = [e.venue_address ?? "No address", e.dj_name ? `DJ ${e.dj_name}` : null, e.internal_notes ? "Notes" : null];
+  return parts.filter(Boolean).join(" · ");
+}
+
+/** A collapsed section's warning: amber with an icon, so it never depends on colour alone. */
+function Attention({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1 font-medium text-amber-800 dark:text-amber-300">
+      <AlertTriangle aria-hidden className="size-3.5 shrink-0" />
+      {children}
+    </span>
   );
 }
 
@@ -462,6 +410,9 @@ function daysAway(eventDate: string, today: string): { label: string; soon: bool
   if (diff < 0 || diff > 60) return null;
   return { label: diff === 0 ? "Today" : diff === 1 ? "Tomorrow" : `In ${diff} days`, soon: diff <= 14 };
 }
+
+/** The page's own actions: touch-sized on phones, the usual size from sm. */
+const touch = "h-11 sm:h-8";
 
 function NextStep({ action, archived, external }: { action: NextAction; archived: boolean; external: boolean }) {
   return (
@@ -513,12 +464,12 @@ function NextStep({ action, archived, external }: { action: NextAction; archived
       {action.primary || action.secondary ? (
         <div className="flex flex-wrap gap-2">
           {action.primary ? (
-            <ActionLink className={buttonVariants()} href={action.primary.href} testId="next-action-primary">
+            <ActionLink className={cn(buttonVariants(), touch)} href={action.primary.href} testId="next-action-primary">
               {action.primary.label} <ArrowRight aria-hidden />
             </ActionLink>
           ) : null}
           {action.secondary ? (
-            <ActionLink className={buttonVariants({ variant: "outline" })} href={action.secondary.href} testId="next-action-secondary">
+            <ActionLink className={cn(buttonVariants({ variant: "outline" }), touch)} href={action.secondary.href} testId="next-action-secondary">
               {action.secondary.label}
             </ActionLink>
           ) : null}
@@ -534,26 +485,6 @@ function ActionLink({ href, className, testId, children }: { href: string; class
     <a className={className} href={href} data-testid={testId}>{children}</a>
   ) : (
     <Link className={className} href={href} data-testid={testId}>{children}</Link>
-  );
-}
-
-function Tile({ title, summary, testId, extra }: { title: string; summary: Summary; testId: string; extra?: string | null }) {
-  const internal = summary.link.href.startsWith("#");
-  const link = internal ? (
-    <a className="text-xs font-medium underline-offset-4 hover:underline" href={summary.link.href}>{summary.link.label}</a>
-  ) : (
-    <Link className="text-xs font-medium underline-offset-4 hover:underline active:opacity-70" href={summary.link.href}>{summary.link.label}</Link>
-  );
-  return (
-    <div className={cn("grid content-start gap-1.5 rounded-xl border bg-card p-3.5 text-sm", summary.attention ? "border-foreground/30" : null)} data-testid={testId}>
-      <div className="flex items-baseline justify-between gap-2">
-        <h2 className="text-xs font-medium tracking-wider text-muted-foreground uppercase">{title}</h2>
-        {link}
-      </div>
-      <p className="font-medium">{summary.status}</p>
-      {summary.detail ? <p className="text-muted-foreground">{summary.detail}</p> : null}
-      {extra ? <p className="text-xs text-muted-foreground">{extra}</p> : null}
-    </div>
   );
 }
 

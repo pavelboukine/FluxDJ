@@ -67,6 +67,7 @@ export async function loadContracts(staff: StaffContext, eventId: string) {
     created_at: c.created_at,
     signed_at: c.signed_at,
     balance_due_date: c.balance_due_date,
+    title: `${c.contract_template_versions?.contract_templates?.name ?? "Contract"} v${c.contract_template_versions?.version_number ?? "?"}`,
     label: `${c.contract_template_versions?.contract_templates?.name ?? "Contract"} v${c.contract_template_versions?.version_number ?? "?"}, generated ${fmt(c.created_at)}`,
     frozen: c.status === "draft" || c.status === "sent" ? frozenDetails(c.party_snapshot) : null,
   }));
@@ -144,20 +145,30 @@ export function ContractCard({
         ) : (
           <p className="text-muted-foreground">A contract can be generated once the current proposal is approved.</p>
         )}
-        {history.length > 0 ? (
-          <Disclosure id="contract-history" summary={`Contract history (${history.length})`}>
-            <ul className="grid gap-1">
-              {history.map((c) => (
-                <li key={c.id}>
-                  <Link className="underline active:opacity-70" href={href(c.id)}>{c.label}</Link>
-                  <span className="text-muted-foreground"> · {CONTRACT_STATUS_LABEL[c.status] ?? c.status} · {SIGNING_MODE_LABELS[c.signing_mode as SigningMode]}</span>
-                </li>
-              ))}
-            </ul>
-          </Disclosure>
-        ) : null}
+        <ContractHistory slug={slug} contracts={history} />
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Older drafts, replaced, superseded and void contracts (everything but the
+ * current one), behind a disclosure. Shared by the contract card and the
+ * event's Documents. Renders nothing without history.
+ */
+export function ContractHistory({ slug, contracts, className }: { slug: string; contracts: { id: string; status: string; signing_mode: string; label: string }[]; className?: string }) {
+  if (contracts.length === 0) return null;
+  return (
+    <Disclosure id="contract-history" summary={`Contract history (${contracts.length})`} className={className}>
+      <ul className="grid gap-1">
+        {contracts.map((c) => (
+          <li key={c.id}>
+            <Link className="underline active:opacity-70" href={`/staff/${slug}/contracts/${c.id}`}>{c.label}</Link>
+            <span className="text-muted-foreground"> · {CONTRACT_STATUS_LABEL[c.status] ?? c.status} · {SIGNING_MODE_LABELS[c.signing_mode as SigningMode]}</span>
+          </li>
+        ))}
+      </ul>
+    </Disclosure>
   );
 }
 

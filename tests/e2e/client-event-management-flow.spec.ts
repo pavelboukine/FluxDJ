@@ -234,8 +234,9 @@ test.describe.serial("client and event management", () => {
     await page.goto(`/staff/${tenant.slug}/events/${ev.sentnophone.id}`);
     await expect(page.getByTestId("next-action")).toHaveAttribute("data-key", "awaiting_selection");
     await expect(page.getByTestId("next-action")).not.toContainText("phone");
-    await expect(page.getByTestId("overview-contract")).toContainText("Client phone number needed before generating the contract");
+    // Said early, where the contact is (open while booking).
     await expect(page.getByTestId("signer-phone-needed")).toBeVisible();
+    await expect(page.locator("#contacts > summary")).toContainText("Signer phone needed");
 
     // Approved, signer without a phone: the blocker names it and points at the fix.
     const eventUrl = `/staff/${tenant.slug}/events/${ev.nophone.id}`;
@@ -244,7 +245,6 @@ test.describe.serial("client and event management", () => {
     await expect(next).toHaveAttribute("data-key", "prepare_contract");
     await expect(next).toContainText("Client nophone, the signer, has no phone number, and your contract template includes the client's phone.");
     await expect(page.getByTestId("next-action-primary")).toHaveCount(0);
-    await expect(page.getByTestId("overview-contract")).toContainText("Phone number needed");
     await next.getByRole("link", { name: "Add phone number" }).click();
     const fix = page.getByTestId("contract-phone-needed");
     await expect(fix).toBeVisible();

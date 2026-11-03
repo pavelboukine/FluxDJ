@@ -25,3 +25,24 @@ export function shortInstant(iso: string, timeZone: string): string {
   // dateStyle can't be combined with timeZoneName, so the fields are spelled out.
   return new Intl.DateTimeFormat("en-CA", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", timeZone, timeZoneName: "short" }).format(new Date(iso));
 }
+
+/**
+ * "Jun 26, 12:00 a.m.": an instant in a time zone, compactly. The year only
+ * when it isn't the current one there, and the zone's abbreviation only when
+ * asked (when it differs from the reader's usual zone). Always with the time,
+ * so a midnight deadline never reads as the end of that day.
+ */
+export function compactInstant(iso: string, timeZone: string, opts: { now?: Date; zone?: boolean } = {}): string {
+  const date = new Date(iso);
+  const yearOf = (d: Date) => new Intl.DateTimeFormat("en-CA", { year: "numeric", timeZone }).format(d);
+  const thisYear = yearOf(date) === yearOf(opts.now ?? new Date());
+  return new Intl.DateTimeFormat("en-CA", {
+    month: "short",
+    day: "numeric",
+    ...(thisYear ? {} : { year: "numeric" }),
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone,
+    ...(opts.zone ? { timeZoneName: "short" } : {}),
+  }).format(date);
+}

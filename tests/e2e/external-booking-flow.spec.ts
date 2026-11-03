@@ -69,13 +69,12 @@ test.describe.serial("event booked elsewhere", () => {
     await expect(staff.getByTestId("event-header-status")).toHaveText("Booked externally");
     await expect(staff.getByTestId("booking-source-note")).toHaveText("Booked outside Flux DJ. Planning is managed here.");
     await expect(staff.getByTestId("next-action")).toHaveAttribute("data-key", "set_up_planning");
-    await expect(staff.getByTestId("overview-booking")).toContainText("Booked externally");
-    await expect(staff.getByTestId("overview-client-access")).toContainText("Not invited");
-    // No proposal, contract or payment workflow is offered.
-    await expect(staff.getByTestId("overview-proposal")).toHaveCount(0);
-    await expect(staff.getByTestId("overview-contract")).toHaveCount(0);
-    await expect(staff.getByTestId("overview-payments")).toHaveCount(0);
+    // No proposal, contract or payment workflow is offered: planning leads, then client access.
+    await expect(staff.getByTestId("workspace")).toHaveAttribute("data-stage", "external");
     await expect(staff.locator("#proposal")).toHaveCount(0);
+    await expect(staff.locator("#contract")).toHaveCount(0);
+    await expect(staff.locator("#payments")).toHaveCount(0);
+    await expect(staff.locator("#documents")).toHaveCount(0);
     await expect(staff.locator("main")).not.toContainText(/Create a proposal|Prepare the contract|Record the deposit|Waiting for the client to sign/);
     await expect(staff.getByTestId("client-access-state")).toHaveText("Not invited to planning yet.");
     await expect(staff.getByTestId("client-access-blocker")).toContainText("Set up planning before inviting your client.");
@@ -108,7 +107,6 @@ test.describe.serial("event booked elsewhere", () => {
     await expect(access.getByTestId("planning-invitation-recipient")).toHaveText(clientEmail);
     await expect(access.getByTestId("planning-invitation-status")).toHaveText(/^(Queued|Sent)$/);
     await expect(staff.getByTestId("next-action")).toHaveAttribute("data-key", "awaiting_planning_acceptance");
-    await expect(staff.getByTestId("overview-client-access")).toContainText("Invited");
 
     const email = await waitForEmail(clientEmail, { after: sentAfter, subject: /^It's time to plan your event!/ });
     expect(email.subject).toBe("It's time to plan your event!");
@@ -157,7 +155,7 @@ test.describe.serial("event booked elsewhere", () => {
   test("staff follow the answers and open the web and PDF run sheet", async () => {
     await staff.goto(eventUrl);
     await expect(staff.getByTestId("next-action")).toHaveAttribute("data-key", "monitor_planning");
-    await expect(staff.getByTestId("overview-client-access")).toContainText("Client has access");
+    await expect(staff.getByTestId("client-access-state")).toContainText("The client has verified access and can open planning");
     await staff.goto(`${eventUrl}/planning?section=basics`);
     await expect(staff.getByLabel("Guest count (needed)")).toHaveValue("120");
     await expect(staff.getByText("Last saved by the client.")).toBeVisible();
@@ -190,7 +188,8 @@ test.describe.serial("event booked elsewhere", () => {
     const fluxId = new URL(staff.url()).pathname.split("/").pop()!;
     await expect(staff.getByTestId("next-action")).toHaveAttribute("data-key", "create_proposal");
     await expect(staff.getByTestId("event-header-status")).toHaveText("New inquiry");
-    await expect(staff.getByTestId("overview-proposal")).toBeVisible();
+    await expect(staff.getByTestId("workspace")).toHaveAttribute("data-stage", "booking");
+    await expect(staff.locator("#proposal").getByRole("button", { name: "Start proposal draft" })).toBeVisible();
     await expect(staff.getByTestId("client-access")).toHaveCount(0);
     const { data: flux } = await must(admin.from("events").select("booking_source").eq("id", fluxId).single());
     expect(flux!.booking_source).toBe("flux");

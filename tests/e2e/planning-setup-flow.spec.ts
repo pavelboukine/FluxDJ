@@ -73,10 +73,9 @@ test.describe.serial("planning setup after booking", () => {
     const next = staff.getByTestId("next-action");
     await expect(next).toHaveAttribute("data-key", "set_up_planning");
     await expect(next.getByTestId("next-action-primary")).toHaveAttribute("href", staffPlanningUrl);
-    await expect(staff.getByTestId("overview-planning")).toContainText("Not set up");
     const card = staff.locator("#planning");
     await expect(card).toContainText("Not set up: booked with Event basics only.");
-    await expect(card.getByRole("link", { name: "Edit planning" })).toHaveCount(0);
+    await expect(card.getByRole("link", { name: "Open planning" })).toHaveCount(0);
     await card.getByRole("link", { name: "Set up planning" }).click();
     await staff.waitForURL(`**${staffPlanningUrl}`);
 
@@ -133,7 +132,7 @@ test.describe.serial("planning setup after booking", () => {
 
     await staff.goto(`/staff/${tenant.slug}/events/${eventId}`);
     await expect(staff.getByTestId("next-action")).toHaveAttribute("data-key", "review_planning");
-    await expect(staff.locator("#planning").getByRole("link", { name: "Edit planning" })).toBeVisible();
+    await expect(staff.locator("#planning").getByRole("link", { name: "Open planning" })).toBeVisible();
   });
 
   test("the client plans the configured event and staff see the answers; staff close and reopen editing", async () => {

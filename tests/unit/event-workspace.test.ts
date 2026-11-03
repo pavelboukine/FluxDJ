@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bookingSummary, clientAccessSummary, contractChanges, contractSummary, invitationStatus, nextAction, paymentOverview, planningLine, planningSummary, proposalSummary, type ContractRecord, type WorkspaceFacts } from "@/lib/events/workspace";
+import { contractChanges, editingLine, invitationStatus, nextAction, paymentOverview, workspaceStage, type ContractRecord, type WorkspaceFacts } from "@/lib/events/workspace";
 import type { OutboxRow } from "@/lib/email/history";
 import type { PaymentSummary } from "@/lib/payments";
 
@@ -153,10 +153,7 @@ describe("next action", () => {
     const booked = { lifecycle: "booked", contracts: [contract("c1", "signed")], payments: summary({ booking: { lifecycle_status: "booked", booking_confirmed_at: "2026-10-05T03:53:00Z" } }) };
     const awaiting = nextAction(facts({ ...booked, planning: { exists: true, awaitingSetup: true, progress, editing: editing("open") } }));
     expect(awaiting).toMatchObject({ key: "set_up_planning", title: "Set up planning", primary: { label: "Set up planning", href: "/staff/dj/events/ev/planning" }, secondary: null });
-    expect(awaiting.detail).not.toContain("Client editing open");
-    expect(planningSummary(facts({ ...booked, planning: { exists: true, awaitingSetup: true, progress, editing: editing("open") } }))).toMatchObject({
-      status: "Not set up", detail: "Event basics only: choose a planning template.",
-    });
+    expect(awaiting.detail).not.toContain("Client editing");
     // Before the booking, the deposit gate still decides (planning setup never jumps ahead of it).
     const deposit = nextAction(facts({ lifecycle: "awaiting_deposit", contracts: [contract("c1", "signed")], payments: summary(), planning: { exists: true, awaitingSetup: true, progress, editing: null } }));
     expect(deposit.key).toBe("record_payment");
@@ -171,62 +168,61 @@ describe("next action", () => {
   });
 });
 
-describe("summaries", () => {
-  it("proposal: the draft first, and what the sent revision is doing", () => {
-    const f = facts({ proposals: [{ id: "p1", revision: 1, status: "sent", expires_at: "2026-10-20T00:00:00Z" }, { id: "p2", revision: 2, status: "draft", expires_at: null }], activeProposalId: "p1" });
-    expect(proposalSummary(f)).toMatchObject({ status: "Draft, not sent", detail: "Revision 2 · Revision 1: sent, waiting for the client", link: { href: "/staff/dj/proposals/p2" } });
-    expect(proposalSummary(facts())).toMatchObject({ status: "No proposal yet", link: { href: "#proposal" } });
-  });
-
-  it("contract: the current one, never a replaced or void one", () => {
-    const fmt = () => "Oct 5, 2026";
-    expect(contractSummary(facts({ contracts: [contract("c2", "signed"), contract("c1", "void")] }), fmt)).toMatchObject({ status: "Signed Oct 5, 2026", link: { href: "/staff/dj/contracts/c2" } });
-    expect(contractSummary(facts({ contracts: [contract("c1", "replaced")], approvalId: "a1" }), fmt)).toMatchObject({ status: "Ready to prepare" });
-  });
-
-  it("payments: figures straight from the summary, labelled by their terms", () => {
+describe("section summaries", () => {
+  it("payments: total, received and balance straight from the summary, with what is owed next", () => {
     const signed = paymentOverview(summary({ received_cents: 100_000, deposit_outstanding_cents: 62_115, remaining_balance_cents: 224_229 }))!;
-    expect(signed.basis).toBe("Signed contract terms");
-    expect(signed.rows).toEqual([
+    expect(signed.figures).toEqual([
       { label: "Total", value: "$3,242.29" },
       { label: "Received", value: "$1,000.00" },
-      { label: "Deposit", value: "$1,621.15" },
-      { label: "Deposit outstanding", value: "$621.15" },
       { label: "Balance", value: "$2,242.29" },
     ]);
-    // The remaining balance's due date, as a calendar date (never shifted by time zones).
-    const dated = paymentOverview(summary({ terms: { ...summary().terms!, balance_due_date: "2027-08-21" } }))!;
-    expect(dated.rows.at(-1)).toEqual({ label: "Balance due", value: "Sat, Aug 21, 2027" });
-    const sent = paymentOverview(summary({ terms: { ...summary().terms!, status: "sent" }, booking: { lifecycle_status: "awaiting_signature", policy: null } }))!;
-    expect(sent.basis).toBe("Sent contract terms (not signed yet)");
-    expect(sent.booking).toBe("Not booked");
+    // The deposit first (owed on signing, no date of its own), then the balance's due date as a calendar date.
+    expect(signed.next).toBe("$621.15 still due toward the deposit");
+    const dated = paymentOverview(summary({ deposit_outstanding_cents: 0, terms: { ...summary().terms!, balance_due_date: "2027-08-21" } }))!;
+    expect(dated.next).toBe("Balance due Sat, Aug 21, 2027");
+    const undated = paymentOverview(summary({ deposit_outstanding_cents: 0 }))!;
+    expect(undated.next).toBe("The contract sets no balance due date");
+    // A sent contract's terms are figures too (the section labels them as not signed).
+    expect(paymentOverview(summary({ terms: { ...summary().terms!, status: "sent" } }))!.figures).toHaveLength(3);
   });
 
-  it("payments: overpayment is a credit, no terms means only what was received", () => {
+  it("payments: overpayment is a credit; without terms nothing is invented", () => {
     const over = paymentOverview(summary({ received_cents: 400_000, deposit_outstanding_cents: 0, remaining_balance_cents: 0, credit_cents: 75_771, booking: { lifecycle_status: "booked" } }))!;
-    expect(over.rows).toContainEqual({ label: "Balance", value: "Paid in full" });
-    expect(over.rows).toContainEqual({ label: "Credit", value: "$757.71" });
-    expect(over.rows).toContainEqual({ label: "Deposit outstanding", value: "Received" });
-    expect(over.rows.map((r) => r.label)).not.toContain("Balance due"); // paid in full: no due date to chase
-    expect(over.booking).toBe("Booking confirmed");
+    expect(over.figures).toContainEqual({ label: "Balance", value: "Paid in full" });
+    expect(over.figures).toContainEqual({ label: "Credit", value: "$757.71" });
+    expect(over.next).toBeNull(); // paid in full: nothing to chase
     const none = paymentOverview(summary({ terms: null, received_cents: 25_000, deposit_outstanding_cents: null, remaining_balance_cents: null, credit_cents: null, booking: { lifecycle_status: "lead", policy: null } }))!;
-    expect(none.rows).toEqual([{ label: "Received", value: "$250.00" }]);
-    expect(none.basis).toBe("No contract terms yet");
+    expect(none).toEqual({ figures: null, next: null });
+    expect(paymentOverview(null)).toBeNull();
   });
 
-  it("payments: a corrected deposit after booking keeps the booking and says so", () => {
-    const o = paymentOverview(summary({ deposit_outstanding_cents: 10_000, booking: { lifecycle_status: "booked", deposit_no_longer_met: true } }))!;
-    expect(o.booking).toBe("Booking confirmed");
-    expect(o.warning).toBe("Valid payments no longer cover the deposit; the booking stands.");
+  it("planning: open, reopened and closed, compact, in the event's time zone", () => {
+    const now = NOW;
+    expect(editingLine(editing("open"), { now })).toBe("Client editing closes Oct 16, 12:00 a.m.");
+    expect(editingLine(editing("reopened"), { now })).toBe("Client editing reopened, closes Oct 20, 12:00 a.m.");
+    expect(editingLine(editing("closed"), { now })).toBe("Client editing closed Oct 16, 12:00 a.m.; staff can still edit");
+    expect(editingLine({ ...editing("closed"), closed_at: "2026-10-02T15:00:00+00:00" }, { now })).toBe("Client editing closed by staff Oct 2, 11:00 a.m.; staff can still edit");
   });
 
-  it("planning: open, reopened and read-only, in the event's time zone", () => {
-    expect(planningLine({ exists: true, progress, editing: editing("open") })).toBe("Client editing open until Oct 16, 2026, 12:00 a.m. EDT (America/Toronto).");
-    expect(planningLine({ exists: true, progress, editing: editing("reopened") })).toBe("Client editing reopened until Oct 20, 2026, 12:00 a.m. EDT (America/Toronto).");
-    expect(planningLine({ exists: true, progress, editing: editing("closed") })).toContain("read-only since Oct 16, 2026");
-    expect(planningLine({ exists: true, progress, editing: { ...editing("closed"), closed_at: "2026-10-02T15:00:00+00:00" } }))
-      .toBe("Client editing closed by staff since Oct 2, 2026, 11:00 a.m. EDT (America/Toronto). Staff can still edit.");
-    expect(planningLine({ exists: false, progress: null, editing: null })).toBeNull();
+  it("planning: the next step says what to do and until when, without repeating the Planning section's line", () => {
+    const booked = { lifecycle: "booked", contracts: [contract("c1", "signed")], payments: summary({ booking: { lifecycle_status: "booked" } }) };
+    const open = nextAction(facts({ ...booked, planning: { exists: true, progress, editing: editing("open") } }));
+    expect(open.detail).toBe("Check the client's answers; they can edit until Oct 16, 12:00 a.m.");
+    expect(open.detail).not.toBe(editingLine(editing("open"), { now: NOW }));
+    expect(nextAction(facts({ ...booked, planning: { exists: true, progress, editing: editing("reopened") } })).detail).toBe("Check the client's answers; they can edit until Oct 20, 12:00 a.m.");
+    expect(nextAction(facts({ ...booked, planning: { exists: true, progress, editing: editing("closed") } })).detail).toBe("Client editing is closed. Check the final answers and the run sheet.");
+    expect(nextAction(facts({ ...booked, planning: { exists: true, progress, editing: null } })).detail).toBe("The event is booked.");
+    // Booked elsewhere, the client planning: the same, worded for following along.
+    const ext = nextAction(facts({ bookingSource: "external", planning: { exists: true, progress, editing: editing("open") }, planningAccess: { invitation: null, clientHasAccess: true } }));
+    expect(ext).toMatchObject({ key: "monitor_planning", detail: "The client is filling planning in; they can edit until Oct 16, 12:00 a.m." });
+  });
+
+  it("planning: the zone is named when it isn't the business's, and the year when it isn't this one", () => {
+    expect(editingLine(editing("open"), { now: NOW, businessTimeZone: "America/Toronto" })).toBe("Client editing closes Oct 16, 12:00 a.m.");
+    expect(editingLine(editing("open"), { now: NOW, businessTimeZone: "America/Vancouver" })).toBe("Client editing closes Oct 16, 12:00 a.m. EDT");
+    expect(editingLine({ ...editing("open"), closes_at: "2027-06-26T04:00:00Z" }, { now: NOW })).toBe("Client editing closes Jun 26, 2027, 12:00 a.m.");
+    // In the event's zone, never the server's: 04:00 UTC is still the previous evening in Vancouver.
+    expect(editingLine({ ...editing("open"), timezone: "America/Vancouver" }, { now: NOW, businessTimeZone: "America/Toronto" })).toBe("Client editing closes Oct 15, 9:00 p.m. PDT");
   });
 });
 
@@ -247,12 +243,6 @@ describe("client phone needed by the contract template", () => {
     }
   });
 
-  it("the contract summary says it's needed before the step, and stays quiet once a contract exists", () => {
-    expect(contractSummary(facts({ signerPhoneMissing: phone }), (s) => s)).toMatchObject({ status: "Not yet", detail: expect.stringMatching(/phone number needed/i), link: { href: "#contacts" } });
-    expect(contractSummary(facts({ approvalId: "ap", signerPhoneMissing: phone }), (s) => s)).toMatchObject({ status: "Phone number needed", attention: true, link: { href: "#contract" } });
-    expect(contractSummary(facts({ approvalId: "ap", signerPhoneMissing: null }), (s) => s).status).toBe("Ready to prepare");
-    expect(contractSummary(facts({ archived: true, signerPhoneMissing: phone }), (s) => s).status).toBe("Not yet");
-  });
 });
 
 describe("details edited after a contract froze them", () => {
@@ -308,7 +298,6 @@ describe("events booked elsewhere", () => {
     const stale = ext({ planning: ready, planningAccess: { invitation: invitation({ stale: true }), clientHasAccess: false } });
     expect(nextAction(stale).key).toBe("invite_client");
     expect(nextAction(stale).detail).toMatch(/primary contact or their email changed/);
-    expect(clientAccessSummary(stale, (iso) => iso).status).toBe("Invitation outdated");
   });
 
   it("never show proposal, contract, signature or deposit steps, even with a lead lifecycle", () => {
@@ -316,15 +305,6 @@ describe("events booked elsewhere", () => {
       expect(keys(f)).not.toMatch(/proposal|contract|deposit|sign the|record payment/i);
     }
     expect(nextAction(ext({ archived: true })).detail).not.toMatch(/proposal|contract/i);
-  });
-
-  it("summaries say booked externally and who can open planning", () => {
-    const fmt = (iso: string) => iso.slice(0, 10);
-    expect(bookingSummary().status).toBe("Booked externally");
-    expect(clientAccessSummary(ext({ planning: ready }), fmt).status).toBe("Not invited");
-    expect(clientAccessSummary(ext({ planning: ready, planningAccess: { invitation: invitation(), clientHasAccess: false } }), fmt).status).toBe("Invited");
-    expect(clientAccessSummary(ext({ planning: ready, planningAccess: { invitation: invitation(), clientHasAccess: true } }), fmt).status).toBe("Client has access");
-    expect(planningSummary(ext()).detail).toBe("Set it up from the planning page.");
   });
 });
 
@@ -382,5 +362,68 @@ describe("planning invitation status", () => {
     expect(label(inv({ revoked: true }), row({ status: "sent" }))).toBe("Replaced or cancelled");
     expect(label(inv({ stale: true, accepted: true }), null)).toBe("Outdated");
     expect(label(inv({ expiresAt: "2026-10-01T00:00:00Z" }), row({ status: "sent" }))).toBe("Expired");
+  });
+});
+
+describe("workspaceStage", () => {
+  const proposal = (status: string) => ({ proposals: [{ id: "p1", revision: 1, status, expires_at: null }], activeProposalId: status === "draft" ? null : "p1" });
+  const stage = (over: Partial<WorkspaceFacts>) => workspaceStage(facts(over));
+  const openPlan = { exists: true, progress: null, editing: { state: "open", deadline: "2027-06-26T04:00:00Z", closes_at: null, closed_at: null, timezone: "America/Toronto" } as unknown as WorkspaceFacts["planning"]["editing"] };
+  const closedPlan = { exists: true, progress: null, editing: { state: "closed", deadline: "2026-09-01T04:00:00Z", closes_at: null, closed_at: null, timezone: "America/Toronto" } as unknown as WorkspaceFacts["planning"]["editing"] };
+
+  it("leads with the proposal and contract until a contract is signed", () => {
+    const cases: [string, Partial<WorkspaceFacts>][] = [
+      ["new", {}],
+      ["draft proposal", { ...proposal("draft") }],
+      ["proposal sent", { ...proposal("sent") }],
+      ["proposal expired", { ...proposal("expired") }],
+      ["proposal declined", { ...proposal("declined") }],
+      ["proposal submitted", { lifecycle: "pending_approval", ...proposal("submitted") }],
+      ["proposal approved", { lifecycle: "awaiting_signature", ...proposal("approved"), approvalId: "a1" }],
+      ["contract draft", { lifecycle: "awaiting_signature", ...proposal("approved"), approvalId: "a1", contracts: [contract("c1", "draft")] }],
+      ["contract sent", { lifecycle: "awaiting_signature", ...proposal("approved"), approvalId: "a1", contracts: [contract("c1", "sent")] }],
+      ["contract voided", { lifecycle: "awaiting_signature", ...proposal("approved"), approvalId: "a1", contracts: [contract("c1", "void")] }],
+    ];
+    for (const [name, over] of cases) expect(stage(over), name).toEqual({ stage: "booking", archived: false, ended: null });
+  });
+
+  it("leads with payments once signed but not confirmed", () => {
+    expect(stage({ lifecycle: "awaiting_deposit", contracts: [contract("c1", "signed")], payments: summary() }).stage).toBe("deposit");
+    // Signed before booking rules: the lifecycle stays awaiting_signature until Check booking (nextAction: check_booking).
+    expect(stage({ lifecycle: "awaiting_signature", contracts: [contract("c1", "signed")], payments: summary({ booking: { lifecycle_status: "awaiting_signature", legacy_signed: true } }) }).stage).toBe("deposit");
+  });
+
+  it("leads with payments and planning once booked, whatever planning's state", () => {
+    const booked = { lifecycle: "booked", contracts: [contract("c1", "signed")] };
+    for (const planning of [{ exists: false, progress: null, editing: null }, { exists: true, awaitingSetup: true, progress: null, editing: null }, openPlan, closedPlan]) {
+      expect(stage({ ...booked, planning }).stage).toBe("booked");
+    }
+    // A deposit invalidated after booking: the booking stands (deposit_no_longer_met), so it stays booked.
+    expect(stage({ ...booked, payments: summary({ booking: { lifecycle_status: "booked", deposit_no_longer_met: true } }) }).stage).toBe("booked");
+  });
+
+  it("keeps the records' stage for completed and cancelled events, and says they ended", () => {
+    expect(stage({ lifecycle: "completed", contracts: [contract("c1", "signed")] })).toEqual({ stage: "booked", archived: false, ended: "completed" });
+    expect(stage({ lifecycle: "cancelled", contracts: [contract("c1", "signed")] })).toEqual({ stage: "booked", archived: false, ended: "cancelled" });
+    expect(stage({ lifecycle: "cancelled", ...proposal("sent") })).toEqual({ stage: "booking", archived: false, ended: "cancelled" });
+  });
+
+  it("an event booked elsewhere is planning only, whatever else it has", () => {
+    expect(stage({ bookingSource: "external" })).toEqual({ stage: "external", archived: false, ended: null });
+    expect(stage({ bookingSource: "external", lifecycle: "booked", planning: openPlan }).stage).toBe("external");
+    expect(stage({ bookingSource: "external", archived: true })).toEqual({ stage: "external", archived: true, ended: null });
+  });
+
+  it("an archived event keeps its stage and reports it is archived", () => {
+    expect(stage({ archived: true, lifecycle: "pending_approval", ...proposal("submitted") })).toEqual({ stage: "booking", archived: true, ended: null });
+    expect(stage({ archived: true, lifecycle: "awaiting_deposit", contracts: [contract("c1", "signed")] })).toEqual({ stage: "deposit", archived: true, ended: null });
+    expect(stage({ archived: true, lifecycle: "booked", contracts: [contract("c1", "signed")] })).toEqual({ stage: "booked", archived: true, ended: null });
+  });
+
+  it("is presentation only: nextAction is unchanged by it", () => {
+    const f = facts({ lifecycle: "awaiting_deposit", contracts: [contract("c1", "signed")], payments: summary() });
+    const before = nextAction(f);
+    workspaceStage(f);
+    expect(nextAction(f)).toEqual(before);
   });
 });

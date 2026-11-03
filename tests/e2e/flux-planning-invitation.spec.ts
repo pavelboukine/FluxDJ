@@ -71,7 +71,7 @@ test.describe.serial("planning invitation for a Flux booking", () => {
     await expect(staff.getByTestId("next-action")).toHaveAttribute("data-key", "review_planning");
     await expect(staff.getByTestId("next-action-secondary")).toHaveText("Send planning invitation");
     const access = staff.getByTestId("client-access");
-    await expect(access).toContainText("Nothing is sent automatically: not when the event is created or booked");
+    await expect(access).toContainText("Nothing is sent until you do, not even when the event is booked.");
     await expect(access.getByTestId("planning-invitation")).toHaveCount(0);
     await expect(access).toContainText(clientEmail);
     await expect(access.getByRole("button", { name: "Send planning invitation" })).toBeVisible();
@@ -83,9 +83,10 @@ test.describe.serial("planning invitation for a Flux booking", () => {
     await staff.getByRole("button", { name: "Close client editing", exact: true }).click();
     await expect(staff.getByTestId("client-editing-control")).toHaveAttribute("data-state", "closed");
     await staff.goto(eventUrl);
-    await expect(access.getByTestId("client-access-blocker")).toContainText("Client editing is closed.");
+    await expect(access.getByTestId("client-access-blocker")).toContainText("Client editing is closed. Open it on the planning page");
     await expect(access.getByRole("button", { name: "Send planning invitation" })).toHaveCount(0);
-    await access.getByRole("link", { name: "Open the planning page" }).click();
+    // The way there is the Planning section's own link, just above.
+    await staff.locator("#planning").getByRole("link", { name: "Open planning" }).click();
     await staff.waitForURL(`**${eventUrl}/planning`);
     await staff.getByRole("button", { name: "Open client editing…" }).click();
     await staff.getByRole("button", { name: "Open client editing", exact: true }).click();

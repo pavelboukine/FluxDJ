@@ -258,7 +258,10 @@ test.describe.serial("planning cutoff and reopening", () => {
 
   test("the event page shows the planning status; nothing contractual changed", async () => {
     await staff.goto(`/staff/${tenant.slug}/events/${eventId}`);
-    await expect(staff.getByTestId("planning-card-editing")).toContainText("Client editing open until Saturday, August 21, 2027");
+    // Compact, with the time (a midnight deadline is the start of that day); the full date, time and zone on hover.
+    const line = staff.getByTestId("planning-card-editing");
+    await expect(line).toHaveText(/^Client editing closes Aug 21, 2027, \d{1,2}:\d{2} [ap]\.m\.$/);
+    await expect(line).toHaveAttribute("title", /^Saturday, August 21, 2027 at .* \(America\/Toronto\)$/);
     expect(await contractualState(eventId)).toBe(contractual);
     const { data: emails } = await must(admin.from("email_outbox").select("event_type").eq("tenant_id", tenant.id).like("event_type", "planning%"));
     expect(emails).toHaveLength(0);
