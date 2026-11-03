@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import Link from "next/link";
+import Link from "@/components/app/pending-link";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 

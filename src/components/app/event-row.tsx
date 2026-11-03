@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import Link from "next/link";
+import Link from "@/components/app/pending-link";
 import { Badge } from "@/components/ui/badge";
 import { shortDate } from "@/lib/dates";
 import { eventStatusLabel } from "@/lib/events/status";
@@ -64,7 +64,7 @@ export function EventRow({
           {near ? <span className="text-xs text-muted-foreground">{near}</span> : null}
         </span>
         <span className="grid min-w-0">
-          <Link className="truncate py-0.5 font-medium underline-offset-4 hover:underline" href={href}>{title}</Link>
+          <Link className="truncate py-0.5 font-medium underline-offset-4 hover:underline active:opacity-70" href={href}>{title}</Link>
           <span className="truncate text-muted-foreground">{details}</span>
         </span>
         <span className="flex flex-wrap gap-1 sm:justify-end">

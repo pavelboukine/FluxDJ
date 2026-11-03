@@ -3,7 +3,8 @@
  * businesses with generated logos (never a real business's): sidebar groups
  * and permissions, active items on detail pages, the centred business logo
  * (wide, light, none) across a workspace switch, the account menu, the phone
- * drawer's keyboard behaviour, narrow and installed-app layouts, and the
+ * drawer's keyboard behaviour, narrow and installed-app layouts, the
+ * navigation feedback (pressed links, the header's progress line), and the
  * platform pages. E2E_SCREENSHOTS=1 also keeps review screenshots.
  */
 import { createHash, randomUUID } from "node:crypto";
@@ -102,6 +103,28 @@ async function expectTopBarFits(page: Page) {
   expect(centre.x + centre.width).toBeLessThanOrEqual(right.x);
   expect(right.x + right.width).toBeLessThanOrEqual(page.viewportSize()!.width);
   expect(await sideways(page)).toBeLessThanOrEqual(0);
+}
+
+const progress = (page: Page) => page.getByTestId("navigation-progress");
+const opacity = (page: Page) => progress(page).evaluate((el) => getComputedStyle(el).opacity);
+
+/**
+ * Holds the server response of every client navigation to `path` (its RSC
+ * request, never a prefetch or a document) for `ms`, or fails it, so a slow
+ * or failed navigation can be watched. Returns the number of such requests.
+ */
+async function holdNavigation(page: Page, path: string, ms: number, outcome: "continue" | "abort" = "continue") {
+  const seen = { count: 0 };
+  await page.route((url) => url.pathname === path, async (route) => {
+    const headers = route.request().headers();
+    if (headers["rsc"] && !headers["next-router-prefetch"]) {
+      seen.count += 1;
+      await new Promise((r) => setTimeout(r, ms));
+      if (outcome === "abort") return route.abort().catch(() => {});
+    }
+    await route.continue().catch(() => {}); // the page may have moved on
+  });
+  return seen;
 }
 
 async function shot(page: Page, info: TestInfo, name: string, fullPage = false) {
@@ -307,6 +330,99 @@ test.describe.serial("staff navigation shell", () => {
     await page.goto(`/staff/${wide.slug}/settings`);
     expect(await sideways(page)).toBeLessThanOrEqual(0);
     await shot(page, info, "phone-settings");
+    await page.context().close();
+  });
+
+  test("navigation feedback: pressed links and a delayed progress line that always clears", async () => {
+    const page = await (await browser.newContext()).newPage();
+    await signInTo(page, wide.ownerEmail, wide);
+    const base = `/staff/${wide.slug}`;
+    await expect(progress(page)).not.toHaveAttribute("data-pending");
+    expect(await opacity(page)).toBe("0");
+
+    // Pressed: a dashboard row changes the moment it is pressed, before any navigation.
+    const row = page.getByTestId("upcoming-event").filter({ hasText: `E2E Shell Wedding ${run}` });
+    await row.hover();
+    const hovered = await row.evaluate((el) => getComputedStyle(el).backgroundColor);
+    await page.mouse.down();
+    await expect.poll(() => row.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(hovered);
+    await page.mouse.move(0, 0); // leave before releasing: no click, no navigation
+    await page.mouse.up();
+    await expect(page).toHaveURL(new RegExp(`${base}$`));
+
+    // A slow navigation: the line shows (after its delay), then clears when the page arrives. One request, no duplicates.
+    const toEvent = await holdNavigation(page, `${base}/events/${eventId}`, 1200);
+    await row.click();
+    await expect(progress(page)).toHaveAttribute("data-pending", "");
+    expect(await progress(page).evaluate((el) => getComputedStyle(el).transitionDelay)).toBe("0.15s");
+    await expect.poll(() => opacity(page)).toBe("1");
+    await expect(page.getByRole("heading", { level: 1, name: `E2E Shell Wedding ${run}` })).toBeVisible();
+    await expect(progress(page)).not.toHaveAttribute("data-pending");
+    await expect.poll(() => opacity(page)).toBe("0");
+    expect(toEvent.count).toBe(1);
+
+    // Superseded: a second tap elsewhere wins, and the line clears although the first request is still held.
+    await holdNavigation(page, `${base}/gear`, 5000);
+    await nav(page).getByRole("link", { name: "Gear" }).click();
+    await expect(progress(page)).toHaveAttribute("data-pending", "");
+    await nav(page).getByRole("link", { name: "Clients" }).click();
+    await expect(page).toHaveURL(new RegExp(`${base}/clients$`));
+    await expect(progress(page)).not.toHaveAttribute("data-pending");
+    await page.waitForTimeout(5500); // the held Gear response arrives: it must not navigate or bring the line back
+    await expect(page).toHaveURL(new RegExp(`${base}/clients$`));
+    await expect(progress(page)).not.toHaveAttribute("data-pending");
+
+    // Repeated taps on the same slow link: one destination, nothing left on.
+    await holdNavigation(page, `${base}/packages`, 800);
+    const packages = nav(page).getByRole("link", { name: "Packages" });
+    await packages.click();
+    await packages.click();
+    await expect(page.getByRole("heading", { level: 1, name: "Packages" })).toBeVisible();
+    await expect(progress(page)).not.toHaveAttribute("data-pending");
+
+    // Browser back during a slow navigation: the history entry wins, the held page never appears, the line clears.
+    await holdNavigation(page, `${base}/questions`, 4000);
+    await nav(page).getByRole("link", { name: "Questions & rules" }).click();
+    await expect(progress(page)).toHaveAttribute("data-pending", "");
+    await page.goBack();
+    await expect(progress(page)).not.toHaveAttribute("data-pending");
+    const backTo = page.url();
+    expect(backTo).not.toContain("/questions");
+    await page.waitForTimeout(4500);
+    expect(page.url()).toBe(backTo);
+    await expect(progress(page)).not.toHaveAttribute("data-pending");
+
+    // A failed request: Next.js falls back to loading the page normally; the line doesn't stay on.
+    await holdNavigation(page, `${base}/emails`, 300, "abort");
+    await nav(page).getByRole("link", { name: "Emails" }).click();
+    await expect(page).toHaveURL(new RegExp(`${base}/emails$`));
+    await expect(page.getByRole("heading", { level: 1, name: "Email delivery" })).toBeVisible();
+    await expect(progress(page)).not.toHaveAttribute("data-pending");
+    await page.context().close();
+  });
+
+  test("phone: a link tapped in the drawer shows the progress line until its page arrives", async () => {
+    const page = await (await browser.newContext(PHONE)).newPage();
+    await signInTo(page, wide.ownerEmail, wide);
+    const base = `/staff/${wide.slug}`;
+    await holdNavigation(page, `${base}/events`, 1000);
+    await page.getByRole("button", { name: "Open menu" }).click();
+    const drawer = page.getByRole("dialog", { name: "Menu" });
+    await nav(page).getByRole("link", { name: "Events" }).tap();
+    await expect(drawer).toHaveCount(0); // closes at once
+    await expect(progress(page)).toHaveAttribute("data-pending", "");
+    await expect.poll(() => opacity(page)).toBe("1");
+    await expect(page.getByRole("heading", { level: 1, name: "Events" })).toBeVisible();
+    await expect(progress(page)).not.toHaveAttribute("data-pending");
+    await expect.poll(() => opacity(page)).toBe("0");
+
+    // The event's own links report too (back to the list from an event).
+    await page.goto(`${base}/events/${eventId}`);
+    await holdNavigation(page, `${base}/events`, 1000);
+    await page.getByRole("link", { name: "Back to events" }).tap();
+    await expect(progress(page)).toHaveAttribute("data-pending", "");
+    await expect(page.getByRole("heading", { level: 1, name: "Events" })).toBeVisible();
+    await expect(progress(page)).not.toHaveAttribute("data-pending");
     await page.context().close();
   });
 

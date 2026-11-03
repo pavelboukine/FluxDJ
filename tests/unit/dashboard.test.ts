@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { attentionItems, closesIn, dashboardSchema, relativeDay, shortDate, upcomingRows, type DashboardFacts } from "@/lib/dashboard";
+import { attentionItems, closesIn, dashboardSchema, deliveryFetchSince, relativeDay, shortDate, upcomingRows, withinDeliveryWindow, type DashboardFacts } from "@/lib/dashboard";
 
 const NOW = "2026-10-07T16:00:00Z"; // 12:00 in Toronto, 05:00 on Oct 8 in Kiritimati
 
@@ -137,5 +137,30 @@ describe("needs attention", () => {
       planning: [ev("x", "2026-11-01", { timezone: "UTC", state: "closed", deadline: NOW, closes_at: null, requirements_met: 0, requirements_total: 1 })],
     });
     expect(attentionItems(twice, "dj").map((i) => i.key)).toEqual(["planning:x", "deposit:x"]);
+  });
+});
+
+describe("delivery problem window", () => {
+  // The database's clock (facts.now) decides the 30-day window, as the query filtered on it did.
+  const row = (id: string, at: string | null) => ({ id, provider_status: "bounced", provider_detail: null, provider_status_at: at });
+
+  it("keeps exactly the rows at or after facts.now minus 30 days", () => {
+    const rows = [
+      row("edge", "2026-09-07T16:00:00.000Z"), // exactly 30 days before NOW: kept (>=)
+      row("micro-after", "2026-09-07T16:00:00.000400+00:00"), // database precision, just inside
+      row("just-before", "2026-09-07T15:59:59.999Z"),
+      row("micro-before", "2026-09-07T15:59:59.999900+00:00"),
+      row("recent", "2026-10-07T15:00:00Z"),
+      row("unknown", null),
+    ];
+    expect(withinDeliveryWindow(rows, NOW).map((r) => r.id)).toEqual(["edge", "micro-after", "recent"]);
+    expect(withinDeliveryWindow(rows, "2026-10-07T16:00:00.000123+00:00").map((r) => r.id)).toEqual(["edge", "micro-after", "recent"]);
+  });
+
+  it("fetches from a day earlier by the server's clock, so clock skew never drops a row", () => {
+    expect(deliveryFetchSince(new Date(NOW))).toBe("2026-09-06T16:00:00.000Z");
+    // A server clock an hour behind the database still fetches everything the window keeps.
+    const since = Date.parse(deliveryFetchSince(new Date(Date.parse(NOW) - 3_600_000)));
+    expect(since).toBeLessThan(Date.parse("2026-09-07T16:00:00.000Z"));
   });
 });

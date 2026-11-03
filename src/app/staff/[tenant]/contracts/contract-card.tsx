@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/app/pending-link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Disclosure } from "@/components/app/disclosure";
 import type { StaffContext } from "@/lib/auth/staff";
@@ -111,12 +111,12 @@ export function ContractCard({
       <CardContent className="grid gap-4 text-sm">
         {signed ? (
           <p role="status">
-            <Link className="font-medium underline" href={href(signed.id)}>{signed.label}</Link> was signed {sentence(fmt(signed.signed_at!))} A signed
+            <Link className="font-medium underline active:opacity-70" href={href(signed.id)}>{signed.label}</Link> was signed {sentence(fmt(signed.signed_at!))} A signed
             contract can&apos;t be voided, replaced or revised. Its signed copy is on the contract page.
           </p>
         ) : sent ? (
           <p role="status">
-            <Link className="font-medium underline" href={href(sent.id)}>{sent.label}</Link> was sent and is waiting for the client&apos;s signature.
+            <Link className="font-medium underline active:opacity-70" href={href(sent.id)}>{sent.label}</Link> was sent and is waiting for the client&apos;s signature.
             To change it, void it on its page, then generate a replacement here.
             {changes.length > 0 ? (
               <span className="mt-1 block text-amber-800 dark:text-amber-300" data-testid="contract-changes">
@@ -138,7 +138,7 @@ export function ContractCard({
           />
         ) : draft ? (
           <p>
-            <Link className="font-medium underline" href={href(draft.id)}>{draft.label}</Link> is a draft. The proposal it came from is no longer the
+            <Link className="font-medium underline active:opacity-70" href={href(draft.id)}>{draft.label}</Link> is a draft. The proposal it came from is no longer the
             current approval.
           </p>
         ) : (
@@ -149,7 +149,7 @@ export function ContractCard({
             <ul className="grid gap-1">
               {history.map((c) => (
                 <li key={c.id}>
-                  <Link className="underline" href={href(c.id)}>{c.label}</Link>
+                  <Link className="underline active:opacity-70" href={href(c.id)}>{c.label}</Link>
                   <span className="text-muted-foreground"> · {CONTRACT_STATUS_LABEL[c.status] ?? c.status} · {SIGNING_MODE_LABELS[c.signing_mode as SigningMode]}</span>
                 </li>
               ))}

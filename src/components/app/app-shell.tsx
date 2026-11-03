@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState, type ReactNode } from "react";
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Dialog } from "@base-ui/react/dialog";
 import { Menu } from "@base-ui/react/menu";
@@ -33,12 +32,15 @@ import {
 import { signOut } from "@/app/auth/confirm/actions";
 import { isActive, type NavGroup, type NavIcon } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
+import Link, { NavigationPendingProvider, NavigationProgress } from "./pending-link";
 
 /*
  * The signed-in staff and platform shell: a white top bar (Flux wordmark,
  * the active business's logo centred on the viewport, account menu), a
  * persistent sidebar from the lg breakpoint, and a left drawer below it.
- * Navigation is presentation only; every page checks access again.
+ * Navigation is presentation only; every page checks access again. Links
+ * show a pressed state on touch, and the header's progress line (see
+ * pending-link.tsx) shows while a navigation takes longer than a moment.
  */
 
 const ICONS: Record<NavIcon, LucideIcon> = {
@@ -92,42 +94,45 @@ export function AppShell({
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-h-full flex-1 flex-col bg-shell">
-      <header className="sticky top-0 z-40 border-b bg-background pt-[env(safe-area-inset-top)]">
-        {/* Equal side columns and equal side padding (the larger safe-area inset on both sides) keep the
-            centre on the viewport's centre line, whatever the sides hold. */}
-        <div className="grid h-14 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 px-[max(0.5rem,env(safe-area-inset-left),env(safe-area-inset-right))] lg:px-5">
-          <div className="flex min-w-0 items-center gap-1 justify-self-start">
-            <NavDrawer navLabel={navLabel} groups={groups} homeHref={homeHref} />
-            <FluxWordmark href={homeHref} className="h-5 lg:h-[1.625rem]" />
+    <NavigationPendingProvider>
+      <div className="flex min-h-full flex-1 flex-col bg-shell">
+        <header className="sticky top-0 z-40 border-b bg-background pt-[env(safe-area-inset-top)]">
+          {/* Equal side columns and equal side padding (the larger safe-area inset on both sides) keep the
+              centre on the viewport's centre line, whatever the sides hold. */}
+          <div className="grid h-14 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 px-[max(0.5rem,env(safe-area-inset-left),env(safe-area-inset-right))] lg:px-5">
+            <div className="flex min-w-0 items-center gap-1 justify-self-start">
+              <NavDrawer navLabel={navLabel} groups={groups} homeHref={homeHref} />
+              <FluxWordmark href={homeHref} className="h-5 lg:h-[1.625rem]" />
+            </div>
+            <div className="flex min-w-0 max-w-[calc(100vw-15rem)] justify-center sm:max-w-[calc(100vw-20rem)] lg:max-w-80">{center}</div>
+            <div className="flex min-w-0 justify-self-end">
+              <AccountMenu account={account} />
+            </div>
           </div>
-          <div className="flex min-w-0 max-w-[calc(100vw-15rem)] justify-center sm:max-w-[calc(100vw-20rem)] lg:max-w-80">{center}</div>
-          <div className="flex min-w-0 justify-self-end">
-            <AccountMenu account={account} />
+          <NavigationProgress />
+        </header>
+        <div className="flex flex-1">
+          {/* The tinted column runs the page's full height; the navigation inside it stays in view. */}
+          <div className="hidden w-60 shrink-0 border-r bg-sidebar lg:block">
+            <aside className="sticky top-14 h-[calc(100dvh-3.5rem)] overflow-y-auto">
+              <NavGroups label={navLabel} groups={groups} className="px-3 py-5" />
+            </aside>
           </div>
+          <main className="min-w-0 flex-1 pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)] sm:p-6 lg:p-8">
+            <div className="mx-auto grid w-full max-w-6xl gap-6 bg-background px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:rounded-xl sm:border sm:p-6 lg:p-8">
+              {children}
+            </div>
+          </main>
         </div>
-      </header>
-      <div className="flex flex-1">
-        {/* The tinted column runs the page's full height; the navigation inside it stays in view. */}
-        <div className="hidden w-60 shrink-0 border-r bg-sidebar lg:block">
-          <aside className="sticky top-14 h-[calc(100dvh-3.5rem)] overflow-y-auto">
-            <NavGroups label={navLabel} groups={groups} className="px-3 py-5" />
-          </aside>
-        </div>
-        <main className="min-w-0 flex-1 pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)] sm:p-6 lg:p-8">
-          <div className="mx-auto grid w-full max-w-6xl gap-6 bg-background px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:rounded-xl sm:border sm:p-6 lg:p-8">
-            {children}
-          </div>
-        </main>
       </div>
-    </div>
+    </NavigationPendingProvider>
   );
 }
 
 /** The Flux wordmark (shared platform artwork, never a business's logo), linking to the staff landing route. */
 export function FluxWordmark({ href, className }: { href: string; className?: string }) {
   return (
-    <Link href={href} aria-label="Flux DJ home" className="inline-flex shrink-0 items-center rounded-md px-1 py-1.5 outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+    <Link href={href} aria-label="Flux DJ home" className="inline-flex shrink-0 items-center rounded-md px-1 py-1.5 outline-none active:opacity-70 focus-visible:ring-3 focus-visible:ring-ring/50">
       {/* 452 x 160 trimmed artwork: height set here, width follows (never stretched). */}
       {/* eslint-disable-next-line @next/next/no-img-element -- small static PNG; next/image adds nothing here */}
       <img src="/brand/flux-wordmark-black.png" alt="" width={452} height={160} className={cn("block w-auto", className)} />
@@ -156,7 +161,7 @@ function NavGroups({ label, groups, className, onNavigate }: { label: string; gr
                       "flex min-h-9 items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50",
                       active
                         ? "bg-background font-medium text-foreground shadow-xs ring-1 ring-border"
-                        : "text-muted-foreground hover:bg-foreground/[0.045] hover:text-foreground",
+                        : "text-muted-foreground hover:bg-foreground/[0.045] hover:text-foreground active:bg-foreground/[0.08] active:text-foreground",
                     )}
                   >
                     <Icon aria-hidden className={cn("size-4 shrink-0", active ? "text-foreground" : "text-muted-foreground")} />
@@ -185,7 +190,9 @@ function NavDrawer({ navLabel, groups, homeHref }: { navLabel: string; groups: N
       <Dialog.Trigger className={cn(iconButton, "lg:hidden")} aria-label="Open menu">
         <MenuIcon aria-hidden className="size-5" />
       </Dialog.Trigger>
-      <Dialog.Portal>
+      {/* Kept mounted (hidden while closed) so a link tapped in the drawer, which closes it at once,
+          keeps reporting its pending navigation to the header's progress line. */}
+      <Dialog.Portal keepMounted>
         <Dialog.Backdrop className="fixed inset-0 z-50 min-h-dvh bg-black/30 transition-opacity duration-200 data-ending-style:opacity-0 data-starting-style:opacity-0 supports-[-webkit-touch-callout:none]:absolute lg:hidden" />
         <Dialog.Popup
           initialFocus={closeButton}

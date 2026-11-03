@@ -1,22 +1,17 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { staffLanding } from "@/lib/auth/landing";
 import { isPlatformAdmin } from "@/lib/auth/platform";
-import { requireUser } from "@/lib/auth/staff";
 import { signOut } from "@/app/auth/confirm/actions";
 
 export default async function StaffHome() {
-  const { supabase } = await requireUser();
-  const { data: workspaces } = await supabase.rpc("my_workspaces");
-  const all = workspaces ?? [];
+  // One business: its dashboard. None: platform administration or /my (see staffLanding).
+  const landing = await staffLanding();
+  if ("redirect" in landing) redirect(landing.redirect);
+  const all = landing.choose;
   const active = all.filter((w) => !w.suspended);
-
-  if (active.length === 1 && all.length === 1) redirect(`/staff/${active[0].slug}`);
   const platformAdmin = await isPlatformAdmin();
-  // A platform administrator without a business of their own manages invitations.
-  if (all.length === 0 && platformAdmin) redirect("/platform/invitations");
-  // Signed in without any staff role: a client. Their home lists what they can read.
-  if (all.length === 0) redirect("/my");
 
   return (
     <main className="mx-auto grid w-full max-w-md gap-4 px-4 py-12">

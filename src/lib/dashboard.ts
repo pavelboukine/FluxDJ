@@ -243,6 +243,25 @@ export function attentionItems(facts: DashboardFacts, slug: string): AttentionIt
 /** How far back the dashboard looks for provider-reported problems. */
 export const DELIVERY_PROBLEM_DAYS = 30;
 
+const DAY_MS = 86_400_000;
+
+/**
+ * The dashboard reads delivery problems alongside staff_dashboard, before the
+ * database's own clock (facts.now) is known: it fetches from one extra day
+ * back by the server's clock, which more than covers any skew between the
+ * two, then keeps exactly the rows of the last DELIVERY_PROBLEM_DAYS by the
+ * database's clock (withinDeliveryWindow), as a query filtered on facts.now would.
+ */
+export function deliveryFetchSince(serverNow: Date): string {
+  return new Date(serverNow.getTime() - (DELIVERY_PROBLEM_DAYS + 1) * DAY_MS).toISOString();
+}
+
+/** Rows whose provider status changed at or after `now` minus DELIVERY_PROBLEM_DAYS (`now` is facts.now). */
+export function withinDeliveryWindow<T extends { provider_status_at: string | null }>(rows: T[], now: string): T[] {
+  const cutoff = new Date(now).getTime() - DELIVERY_PROBLEM_DAYS * DAY_MS;
+  return rows.filter((r) => r.provider_status_at !== null && new Date(r.provider_status_at).getTime() >= cutoff);
+}
+
 export type ProviderProblemRow = { id: string; provider_status: string | null; provider_detail: string | null };
 
 /**

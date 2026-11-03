@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/app/pending-link";
 import { notFound } from "next/navigation";
 import { AlertTriangle, ArrowLeft, Mail, Phone, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";

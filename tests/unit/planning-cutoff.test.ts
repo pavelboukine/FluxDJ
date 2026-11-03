@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { checkReason, clientDeadlinePassedText, zoneName, clientDeadlinePhrase, clientEditingText, formatInstant, localInputValue, parseLocalInput, staffEditingSchema, staffEditingText } from "@/lib/planning/cutoff";
 import { clientPlanningViewSchema, saveResultSchema } from "@/lib/planning/view";
 
@@ -76,9 +76,19 @@ describe("planning deadline display", () => {
   });
 
   it("names a time zone the way people say it", () => {
-    expect(zoneName("America/Toronto")).toBe("Eastern Time");
-    expect(zoneName("America/Vancouver")).toBe("Pacific Time");
-    expect(zoneName("Not/A_Zone")).toBe("A Zone time");
+    // zoneName reads the current date, so the clock is pinned. Each name is its region's own zone: a zone
+    // whose rules differ from that zone's on some date (Vancouver from November 2026) is named with its country.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      for (const now of ["2026-01-15T12:00:00Z", "2026-07-15T12:00:00Z", "2026-12-15T12:00:00Z"]) {
+        vi.setSystemTime(new Date(now));
+        expect(zoneName("America/Toronto")).toBe("Eastern Time");
+        expect(zoneName("America/Los_Angeles")).toBe("Pacific Time");
+        expect(zoneName("Not/A_Zone")).toBe("A Zone time");
+      }
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("says when planning closed, in the same words", () => {

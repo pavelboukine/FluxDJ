@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/app/pending-link";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -96,7 +96,7 @@ export default async function ContractPreview({ params }: PageProps<"/staff/[ten
     <>
       <PageHeader
         title={`Contract for ${contract.events?.title ?? "event"}`}
-        description={<><Link className="underline" href={`/staff/${slug}/events/${contract.event_id}`}>Back to event</Link> · <Link className="underline" href={`/staff/${slug}/proposals/${contract.proposal_id}`}>Approved proposal</Link></>}
+        description={<><Link className="underline active:opacity-70" href={`/staff/${slug}/events/${contract.event_id}`}>Back to event</Link> · <Link className="underline" href={`/staff/${slug}/proposals/${contract.proposal_id}`}>Approved proposal</Link></>}
         actions={
           <>
             <Badge variant={isDraft ? "secondary" : "outline"}>{CONTRACT_STATUS_LABEL[contract.status] ?? contract.status}</Badge>

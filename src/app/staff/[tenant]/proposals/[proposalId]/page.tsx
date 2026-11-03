@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/app/pending-link";
 import { ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -94,7 +94,7 @@ export default async function ProposalBuilder({ params, searchParams }: PageProp
         title={`Proposal for ${event.title}`}
         description={
           <>
-            <Link className="underline" href={`/staff/${slug}/events/${event.id}`}>Back to event</Link> · revision {proposal.revision} · {event.event_date}
+            <Link className="underline active:opacity-70" href={`/staff/${slug}/events/${event.id}`}>Back to event</Link> · revision {proposal.revision} · {event.event_date}
             {sourceTemplate ? <> · from template {sourceTemplate.name}</> : null}
           </>
         }
