@@ -5,7 +5,7 @@ import { requireStaff } from "@/lib/auth/staff";
 import { describeDbError } from "@/lib/db-errors";
 import { checkbox, fail, int, ok, text, type ActionState } from "@/lib/forms";
 import { normalizeHex } from "@/lib/branding/colors";
-import { processLogo, storeLogo } from "@/lib/branding/logo.server";
+import { processLogo, storeLogo } from "@/lib/branding/logo-upload.server";
 import { allowRequest } from "@/lib/rate-limit.server";
 import { CUTOFF_DAYS_MAX, CUTOFF_DAYS_MIN } from "@/lib/planning/cutoff";
 import { parseTaxSettingsForm } from "@/lib/pricing/tax-settings";

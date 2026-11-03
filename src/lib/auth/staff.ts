@@ -20,7 +20,7 @@ export const requireStaff = cache(async (tenantSlug: string) => {
   const { supabase, user } = await requireUser();
   const { data: tenant } = await supabase
     .from("tenants")
-    .select("id, slug, display_name, business_name, currency, timezone, tax_categories, archived_at")
+    .select("id, slug, display_name, business_name, currency, timezone, tax_categories, archived_at, logo_storage_path")
     .eq("slug", tenantSlug)
     .maybeSingle();
   if (!tenant) {

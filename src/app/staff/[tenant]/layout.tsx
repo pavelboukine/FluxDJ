@@ -1,8 +1,8 @@
 import { AppShell } from "@/components/app/app-shell";
 import { BrandLogo } from "@/components/app/brand-logo";
 import { isPlatformAdmin } from "@/lib/auth/platform";
-import { logoUrl } from "@/lib/branding/logo.server";
-import { requireStaff } from "@/lib/auth/staff";
+import { signedLogoUrl, type BrandLogo as Logo } from "@/lib/branding/logo.server";
+import { requireStaff, type StaffContext } from "@/lib/auth/staff";
 import { staffNavigation } from "@/lib/navigation";
 
 const ROLE_LABEL: Record<string, string> = { owner: "Owner", staff: "Staff" };
@@ -10,19 +10,14 @@ const ROLE_LABEL: Record<string, string> = { owner: "Owner", staff: "Staff" };
 export default async function StaffTenantLayout({ children, params }: LayoutProps<"/staff/[tenant]">) {
   const { tenant: slug } = await params;
   const { supabase, tenant, user, membership } = await requireStaff(slug);
-  const [{ data: active }, platformAdmin, { data: workspaces }, { data: plans }, { data: contracts }] = await Promise.all([
-    supabase.from("tenants").select("logo_storage_path").eq("id", tenant.id).single(),
+  const [platformAdmin, { data: workspaces }, { data: plans }, { data: contracts }, logo] = await Promise.all([
     isPlatformAdmin(),
     supabase.rpc("my_workspaces"),
     // Client access (as on /my): only what this verified identity may read as a client.
     supabase.rpc("my_plans").limit(1),
     supabase.rpc("my_contracts").limit(1),
+    activeLogo(supabase, tenant.id, tenant.logo_storage_path),
   ]);
-  // The active workspace's own logo (RLS: only its members read its logos).
-  const { data: logoRow } = active?.logo_storage_path
-    ? await supabase.from("tenant_logos").select("storage_path, needs_dark_background, width, height").eq("tenant_id", tenant.id).eq("storage_path", active.logo_storage_path).maybeSingle()
-    : { data: null };
-  const logo = await logoUrl(logoRow);
   // Bounded on every side so the logo never meets the wordmark or the account button, even at 320 px.
   const logoBox = "max-h-8 max-w-[calc(100vw-16rem)] sm:max-w-[calc(100vw-20rem)] lg:max-h-9 lg:max-w-72";
 
@@ -48,4 +43,20 @@ export default async function StaffTenantLayout({ children, params }: LayoutProp
       {children}
     </AppShell>
   );
+}
+
+/**
+ * The active workspace's own logo: its registered details (RLS: only the
+ * business's members read them) and a signed URL, fetched together. The path
+ * comes from the tenant row requireStaff read as this member; the URL is used
+ * only when the logo is registered for this business.
+ */
+async function activeLogo(supabase: StaffContext["supabase"], tenantId: string, path: string | null): Promise<Logo | null> {
+  if (!path) return null;
+  const [{ data: row }, url] = await Promise.all([
+    supabase.from("tenant_logos").select("needs_dark_background, width, height").eq("tenant_id", tenantId).eq("storage_path", path).maybeSingle(),
+    signedLogoUrl(path),
+  ]);
+  if (!row || !url) return null;
+  return { url, needsDarkBackground: row.needs_dark_background === true, width: row.width, height: row.height };
 }

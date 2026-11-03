@@ -854,8 +854,10 @@ offline use and there is no service worker.
 
 - **One app for everyone:** "Flux DJ" (`app/manifest.ts`), opening at the
   neutral `/start`, scoped to the whole site. `/start` sends signed-out people
-  to sign in and everyone else to `/staff`, which already routes staff to
-  their business (or the chooser) and clients to `/my`. No business, event,
+  to sign in and everyone else, in one redirect, where `/staff` would
+  (`src/lib/auth/landing.ts`): staff to their business (or the `/staff`
+  chooser), platform administrators without a business to administration,
+  and clients to `/my`. No business, event,
   token or personal data is in the manifest, start URL or icons. Inside the
   app each DJ's pages keep their own branding.
 - **Icons:** the supplied Flux app icon (`assets/brand/flux-app-icon.png`,
@@ -867,6 +869,16 @@ offline use and there is no service worker.
   square, ideally 1024 px or more) and run the script again; it warns if it
   would upscale. Installed iPhone apps keep their old icon until they are
   removed and added to the Home Screen again.
+- **Launch images:** while iOS starts the installed app it shows the launch
+  image for the screen, white with the Flux wordmark (the app's own
+  background, so the first page follows without a colour change), instead of
+  a blank screen. `node scripts/generate-startup-images.mjs` makes one per
+  iPhone size from `assets/brand/flux-wordmark-black.png` into
+  `public/startup/`, and the matching media-query list in
+  `src/lib/pwa-startup-images.ts` (used by `app/layout.tsx`); both are
+  committed. iOS matches sizes exactly, so a new iPhone size needs a line in
+  the script. Like the icon, an installed app may keep what it saw when it
+  was added until it is added to the Home Screen again.
 - **Install help:** a quiet one-line strip on the staff dashboard and a small
   card on `/my`. It
   offers the browser's own install prompt where there is one (Chrome, Edge,
@@ -2341,7 +2353,7 @@ their existing settings rules.
 **Logo uploads.**
 
 - PNG, JPEG or WebP; never SVG, never animated. Up to 4 MB, at least 16 and at
-  most 8000 pixels a side (`src/lib/branding/logo.server.ts`).
+  most 8000 pixels a side (`src/lib/branding/logo-upload.server.ts`).
 - The content is sniffed (`src/lib/media/sniff.ts`) and must agree with what
   the decoder finds; the declared type and extension are never trusted.
 - The image is decoded and re-encoded server-side with `sharp`: EXIF
