@@ -5,7 +5,8 @@
  * agents. It does not prove real iOS installation, Safari/app cookie
  * separation or email hand-off; those are manual checks on a real iPhone.
  *   - manifest and icons: fields, sizes, types, no personal or tenant data;
- *   - /start: signed out, staff, client, both roles, several businesses;
+ *   - /start: signed out, staff, client, both roles, several businesses, a
+ *     suspended business, a platform administrator; one redirect at most;
  *   - install help: native prompt, iPhone Safari, other iOS browsers, no
  *     wrong-platform instructions, dismissal, hidden when standalone;
  *   - standalone PDF download through the share sheet with the app's
@@ -13,10 +14,12 @@
  *   - phone layouts, links out of every page, no service worker or caches.
  */
 import { randomUUID } from "node:crypto";
-import { expect, test, type BrowserContext, type Page } from "@playwright/test";
+import { expect, test, type BrowserContext, type Page, type Response } from "@playwright/test";
 import { bookEvent, must, sessionFor } from "./booking";
 import { admin, openPlanSection, signInStaff, signInWithLink } from "./support";
 import { archiveTestTenant, createTestTenant, type TestTenant } from "./tenant";
+import { suspendLocally } from "../support/local-sql";
+import { grantPlatformAdminLocally, revokePlatformAdminLocally } from "../support/platform-admin";
 
 let tenant: TestTenant;
 let otherTenant: TestTenant;
@@ -34,6 +37,17 @@ const STANDALONE = () => {
   window.matchMedia = (q: string) => (q.includes("display-mode: standalone") ? ({ matches: true, media: q, addEventListener() {}, removeEventListener() {} } as unknown as MediaQueryList) : original(q));
   Object.defineProperty(navigator, "standalone", { value: true });
 };
+/** Every document a navigation loaded, in order: each redirect, then the page ("307 /start", "200 /staff/x"). */
+async function documentsFor(page: Page, url: string): Promise<string[]> {
+  const docs: string[] = [];
+  const record = (r: Response) => {
+    if (r.request().resourceType() === "document" && r.frame() === page.mainFrame()) docs.push(`${r.status()} ${new URL(r.url()).pathname}`);
+  };
+  page.on("response", record);
+  await page.goto(url);
+  page.off("response", record);
+  return docs;
+}
 function pngSize(bytes: Buffer) {
   expect(bytes.subarray(1, 4).toString("latin1")).toBe("PNG");
   return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
@@ -101,21 +115,26 @@ test.describe.serial("installable app shell", () => {
   test("/start sends signed-out visitors to sign in, staff to their workspace and clients to /my", async ({ browser }) => {
     const anon = await browser.newContext(PHONE);
     const a = await anon.newPage();
-    await a.goto("/start");
+    expect(await documentsFor(a, "/start")).toEqual(["307 /start", "200 /login"]);
     await expect(a).toHaveURL(/\/login$/);
     await anon.close();
 
     const staffContext = await browser.newContext(PHONE);
     const staff = await staffContext.newPage();
     await signInStaff(staff, tenant.ownerEmail);
-    await staff.goto("/start");
+    // Straight to the dashboard: one redirect, not /start -> /staff -> /staff/{slug}.
+    expect(await documentsFor(staff, "/start")).toEqual(["307 /start", `200 /staff/${tenant.slug}`]);
+    await expect(staff).toHaveURL(new RegExp(`/staff/${tenant.slug}$`));
+    await expect(staff.getByRole("heading", { name: "Dashboard", level: 1 })).toBeVisible();
+    // /staff itself still lands in the same place.
+    await staff.goto("/staff");
     await expect(staff).toHaveURL(new RegExp(`/staff/${tenant.slug}$`));
     await staffContext.close();
 
     const clientContext = await browser.newContext(PHONE);
     const client = await clientContext.newPage();
     await signInWithLink(client, clientEmail);
-    await client.goto("/start");
+    expect(await documentsFor(client, "/start")).toEqual(["307 /start", "200 /my"]);
     await expect(client).toHaveURL(/\/my$/);
     await expect(client.getByRole("link", { name: `Open your event for E2E PWA Wedding ${run}` })).toBeVisible();
     await clientContext.close();
@@ -131,7 +150,7 @@ test.describe.serial("installable app shell", () => {
     const dualContext = await browser.newContext(PHONE);
     const d = await dualContext.newPage();
     await signInStaff(d, dual);
-    await d.goto("/start");
+    expect(await documentsFor(d, "/start")).toEqual(["307 /start", `200 /staff/${otherTenant.slug}`]);
     await expect(d).toHaveURL(new RegExp(`/staff/${otherTenant.slug}$`));
     await d.goto("/my");
     await expect(d.getByRole("link", { name: "Go to your staff workspace" })).toBeVisible();
@@ -142,10 +161,46 @@ test.describe.serial("installable app shell", () => {
     const multiContext = await browser.newContext(PHONE);
     const mpage = await multiContext.newPage();
     await signInWithLink(mpage, dual); // signInStaff expects a single business's dashboard
-    await mpage.goto("/start");
+    expect(await documentsFor(mpage, "/start")).toEqual(["307 /start", "200 /staff"]);
     await expect(mpage).toHaveURL(/\/staff$/);
     await expect(mpage.getByRole("heading", { name: "Choose a business" })).toBeVisible();
     await multiContext.close();
+  });
+
+  test("/start: a suspended only business goes to the chooser, a platform administrator without one to administration", async ({ browser }) => {
+    // One business, suspended: the chooser explains it can't be opened (as /staff does), never its dashboard.
+    const suspended = await createTestTenant("pwa-suspended");
+    try {
+      const context = await browser.newContext(PHONE);
+      const page = await context.newPage();
+      await signInStaff(page, suspended.ownerEmail);
+      suspendLocally(suspended.id);
+      expect(await documentsFor(page, "/start")).toEqual(["307 /start", "200 /staff"]);
+      await expect(page.getByRole("heading", { name: "Choose a business" })).toBeVisible();
+      await expect(page.getByText("(unavailable)")).toBeVisible();
+      await expect(page.getByRole("link", { name: suspended.displayName })).toHaveCount(0);
+      await page.goto(`/staff/${suspended.slug}`);
+      await expect(page).toHaveURL(/\/unavailable$/);
+      await context.close();
+    } finally {
+      await archiveTestTenant(suspended);
+    }
+
+    // A platform administrator with no business of their own: invitations, as /staff does.
+    const operatorEmail = `e2e-pwa-operator-${run}@example.test`;
+    await must(admin.auth.admin.createUser({ email: operatorEmail, email_confirm: true }));
+    grantPlatformAdminLocally(operatorEmail);
+    try {
+      const context = await browser.newContext(PHONE);
+      const page = await context.newPage();
+      await signInWithLink(page, operatorEmail);
+      expect(await documentsFor(page, "/start")).toEqual(["307 /start", "200 /platform/invitations"]);
+      await page.goto("/staff");
+      await expect(page).toHaveURL(/\/platform\/invitations$/);
+      await context.close();
+    } finally {
+      revokePlatformAdminLocally(operatorEmail);
+    }
   });
 
   test("install help: native prompt, iPhone Safari steps, nothing on other platforms, dismissible, hidden when installed", async ({ browser }) => {

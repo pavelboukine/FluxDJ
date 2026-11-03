@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/app/pending-link";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { PageHeader } from "@/components/app/fields";
@@ -64,7 +64,7 @@ export default async function Clients({ params, searchParams }: PageProps<"/staf
               <li key={c.id} data-testid="client-row">
                 <div className="grid gap-x-4 gap-y-1 px-4 py-3 text-sm sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto] sm:items-center">
                   <span className="grid min-w-0">
-                    <Link className="truncate py-0.5 font-medium underline-offset-4 hover:underline" href={`${base}/${c.id}`}>{c.name}</Link>
+                    <Link className="truncate py-0.5 font-medium underline-offset-4 hover:underline active:opacity-70" href={`${base}/${c.id}`}>{c.name}</Link>
                     <span className="truncate text-muted-foreground">{c.email}{c.phone ? ` · ${c.phone}` : ""}</span>
                   </span>
                   <span className="grid min-w-0 text-muted-foreground">

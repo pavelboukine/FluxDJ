@@ -4,6 +4,15 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* The staff shell's navigation progress line (components/app/pending-link.tsx): indeterminate, no percentages. */
+@theme {
+  --animate-nav-progress: nav-progress 1.1s ease-in-out infinite;
+  @keyframes nav-progress {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(300%); }
+  }
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

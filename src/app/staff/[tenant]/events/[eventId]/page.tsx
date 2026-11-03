@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/app/pending-link";
 import { notFound } from "next/navigation";
 import { AlertTriangle, ArrowLeft, ArrowRight, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -190,7 +190,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
   return (
     <>
       <header className="grid gap-2">
-        <Link className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground" href={`/staff/${slug}/events`}>
+        <Link className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground active:opacity-70" href={`/staff/${slug}/events`}>
           <ArrowLeft aria-hidden className="size-3.5" /> Back to events
         </Link>
         <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
@@ -294,7 +294,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
               <ul className="grid gap-1.5">
                 {[draft, active].filter((p, i, all) => p && all.indexOf(p) === i).map((p) => (
                   <li key={p!.id} className="flex flex-wrap items-baseline gap-x-2">
-                    <Link className="font-medium underline" href={`/staff/${slug}/proposals/${p!.id}`}>
+                    <Link className="font-medium underline active:opacity-70" href={`/staff/${slug}/proposals/${p!.id}`}>
                       {p === draft ? `Continue the draft (revision ${p!.revision})` : `Revision ${p!.revision}`}
                     </Link>
                     {p !== draft ? <span className="text-muted-foreground">{PROPOSAL_STATUS[p!.status] ?? p!.status}{p!.offer_frozen_at ? " · offer frozen" : ""}</span> : null}
@@ -318,7 +318,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
                 <ul className="grid gap-1">
                   {olderProposals.map((p) => (
                     <li key={p.id}>
-                      <Link className="underline" href={`/staff/${slug}/proposals/${p.id}`}>Revision {p.revision}</Link>
+                      <Link className="underline active:opacity-70" href={`/staff/${slug}/proposals/${p.id}`}>Revision {p.revision}</Link>
                       <span className="text-muted-foreground"> · {PROPOSAL_STATUS[p.status] ?? p.status}{p.offer_frozen_at ? " · offer frozen" : ""}</span>
                     </li>
                   ))}
@@ -497,7 +497,7 @@ function NextStep({ action, archived, external }: { action: NextAction; archived
             <li key={b.text} className="flex flex-wrap items-baseline gap-x-2">
               <AlertTriangle aria-hidden className="size-3.5 shrink-0 self-center text-amber-700 dark:text-amber-400" />
               <span>{b.text}</span>
-              <ActionLink className="font-medium underline" href={b.link.href}>{b.link.label}</ActionLink>
+              <ActionLink className="font-medium underline active:opacity-70" href={b.link.href}>{b.link.label}</ActionLink>
             </li>
           ))}
         </ul>
@@ -542,7 +542,7 @@ function Tile({ title, summary, testId, extra }: { title: string; summary: Summa
   const link = internal ? (
     <a className="text-xs font-medium underline-offset-4 hover:underline" href={summary.link.href}>{summary.link.label}</a>
   ) : (
-    <Link className="text-xs font-medium underline-offset-4 hover:underline" href={summary.link.href}>{summary.link.label}</Link>
+    <Link className="text-xs font-medium underline-offset-4 hover:underline active:opacity-70" href={summary.link.href}>{summary.link.label}</Link>
   );
   return (
     <div className={cn("grid content-start gap-1.5 rounded-xl border bg-card p-3.5 text-sm", summary.attention ? "border-foreground/30" : null)} data-testid={testId}>

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/app/pending-link";
 import { notFound } from "next/navigation";
 import { ArrowRight, CheckCircle2, Circle, MailWarning } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { PageHeader } from "@/components/app/fields";
 import { InstallHelp } from "@/components/app/pwa";
 import { requireStaff } from "@/lib/auth/staff";
-import { ATTENTION_SHOWN, DELIVERY_PROBLEM_DAYS, UPCOMING_SHOWN, attentionItems, dashboardSchema, deliveryProblems, shortDate, upcomingRows } from "@/lib/dashboard";
+import { ATTENTION_SHOWN, UPCOMING_SHOWN, attentionItems, dashboardSchema, deliveryFetchSince, deliveryProblems, shortDate, upcomingRows, withinDeliveryWindow } from "@/lib/dashboard";
 import { offerablePackages, requiredSetup } from "@/lib/setup";
 import { cn } from "@/lib/utils";
 
@@ -16,32 +16,38 @@ export default async function Dashboard({ params, searchParams }: PageProps<"/st
   const { tenant: slug } = await params;
   const { welcome, attention } = await searchParams;
   const { supabase, tenant, membership } = await requireStaff(slug);
-  const { data, error } = await supabase.rpc("staff_dashboard", { p_tenant_id: tenant.id, p_upcoming_limit: UPCOMING_SHOWN });
+  // Independent reads, all as the staff member under RLS, made together.
+  const [{ data, error }, { data: problemRows }, { data: packages, error: packagesError }] = await Promise.all([
+    supabase.rpc("staff_dashboard", { p_tenant_id: tenant.id, p_upcoming_limit: UPCOMING_SHOWN }),
+    // Provider-confirmed delivery problems (webhook events) of the last 30 days, under the staff RLS policy
+    // (cut off by the database's clock below; see deliveryFetchSince). Newest first, so a response row
+    // limit could only ever drop the extra day's rows, never the window's.
+    supabase
+      .from("email_outbox")
+      .select("id, provider_status, provider_detail, provider_status_at")
+      .eq("tenant_id", tenant.id)
+      .in("provider_status", ["bounced", "failed", "suppressed", "complained"])
+      .gte("provider_status_at", deliveryFetchSince(new Date()))
+      .order("provider_status_at", { ascending: false }),
+    // Active packages whose included gear is all active, as sending requires.
+    supabase
+      .from("packages")
+      .select("package_items(gear_items!package_items_gear_item_fk(active))")
+      .eq("tenant_id", tenant.id)
+      .eq("active", true),
+  ]);
   const parsed = dashboardSchema.safeParse(data);
   if (error || !parsed.success) {
     if (error?.code === "P0002") notFound(); // no longer a member (require_staff_of)
     throw new Error("The dashboard couldn't be loaded.");
   }
   const facts = parsed.data;
-  // Provider-confirmed delivery problems (webhook events) of the last 30 days, under the staff RLS policy.
-  const { data: problemRows } = await supabase
-    .from("email_outbox")
-    .select("id, provider_status, provider_detail")
-    .eq("tenant_id", tenant.id)
-    .in("provider_status", ["bounced", "failed", "suppressed", "complained"])
-    .gte("provider_status_at", new Date(new Date(facts.now).getTime() - DELIVERY_PROBLEM_DAYS * 86_400_000).toISOString());
-  const problems = deliveryProblems(problemRows ?? []);
+  const problems = deliveryProblems(withinDeliveryWindow(problemRows ?? [], facts.now));
   const isOwner = membership.role === "owner";
   const upcoming = upcomingRows(facts, slug);
   const tasks = attentionItems(facts, slug);
   const showAll = attention === "all";
   const shownTasks = showAll ? tasks : tasks.slice(0, ATTENTION_SHOWN);
-  // Active packages whose included gear is all active, as sending requires.
-  const { data: packages, error: packagesError } = await supabase
-    .from("packages")
-    .select("package_items(gear_items!package_items_gear_item_fk(active))")
-    .eq("tenant_id", tenant.id)
-    .eq("active", true);
   if (packagesError) throw new Error("The dashboard couldn't be loaded.");
   const setup = requiredSetup({ ...facts.setup, offerable_packages: offerablePackages(packages) }, slug);
   const missing = setup.filter((s) => !s.done);
@@ -146,7 +152,7 @@ export default async function Dashboard({ params, searchParams }: PageProps<"/st
                     data-testid="attention-item"
                     data-kind={t.kind}
                     className={cn(
-                      "group grid gap-0.5 rounded-xl border bg-card px-3.5 py-3 text-sm transition-colors hover:bg-muted/50",
+                      "group grid gap-0.5 rounded-xl border bg-card px-3.5 py-3 text-sm transition-colors hover:bg-muted/50 active:bg-muted",
                       t.tone === "urgent" ? "border-amber-500/60 bg-amber-500/5" : null,
                     )}
                   >
@@ -182,7 +188,7 @@ export default async function Dashboard({ params, searchParams }: PageProps<"/st
             <ul className="divide-y overflow-hidden rounded-xl border bg-card" data-testid="upcoming-list">
               {upcoming.map((e) => (
                 <li key={e.id}>
-                  <Link href={e.href} data-testid="upcoming-event" className="grid gap-x-4 gap-y-1 px-4 py-3 text-sm transition-colors hover:bg-muted/50 sm:grid-cols-[8.5rem_minmax(0,1fr)_auto] sm:items-center">
+                  <Link href={e.href} data-testid="upcoming-event" className="grid gap-x-4 gap-y-1 px-4 py-3 text-sm transition-colors hover:bg-muted/50 active:bg-muted sm:grid-cols-[8.5rem_minmax(0,1fr)_auto] sm:items-center">
                     <span className="flex items-baseline gap-2 sm:grid sm:gap-0">
                       <span className="font-medium whitespace-nowrap">{e.date}</span>
                       {e.relative ? <span className="text-xs text-muted-foreground">{e.relative}</span> : null}

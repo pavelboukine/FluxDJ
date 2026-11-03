@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/app/pending-link";
 import { AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ActionForm } from "@/components/app/action-form";
@@ -113,11 +113,11 @@ export function CommunicationsCard({ slug, data, timeZone }: { slug: string; dat
                       </p>
                       <p>
                         {row.entity_type === "proposal" ? (
-                          <Link className="font-medium text-foreground underline-offset-4 hover:underline" href={`/staff/${slug}/proposals/${row.entity_id}`}>Open the proposal</Link>
+                          <Link className="font-medium text-foreground underline-offset-4 hover:underline active:opacity-70" href={`/staff/${slug}/proposals/${row.entity_id}`}>Open the proposal</Link>
                         ) : row.entity_type === "planning_invitation" ? (
                           <a className="font-medium text-foreground underline-offset-4 hover:underline" href="#client-access">Client access</a>
                         ) : (
-                          <Link className="font-medium text-foreground underline-offset-4 hover:underline" href={`/staff/${slug}/contracts/${row.entity_id}`}>Open the contract</Link>
+                          <Link className="font-medium text-foreground underline-offset-4 hover:underline active:opacity-70" href={`/staff/${slug}/contracts/${row.entity_id}`}>Open the contract</Link>
                         )}
                       </p>
                       {state.retryable ? (
