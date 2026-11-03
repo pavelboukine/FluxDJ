@@ -15,7 +15,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { admin, signInStaff } from "./support";
 import { must, sessionFor } from "./booking";
 import { archiveTestTenant, createTestTenant, publishContractTemplate, submitAsClient, type TestTenant } from "./tenant";
-import { clearBookingPolicyLocally } from "../support/local-sql";
+import { clearBookingPolicyLocally, placePlanningDeadline } from "../support/local-sql";
 
 const run = randomUUID().slice(0, 6);
 const PHONE = { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true };
@@ -31,6 +31,14 @@ async function shot(page: Page, info: TestInfo, name: string, fullPage = true) {
   await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => null))));
   await page.screenshot({ path: info.outputPath(`${name}.png`), fullPage });
 }
+const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** The workspace's sections, in document order (Documents contains the contract and proposal rows once signed). */
+const SECTIONS = ["proposal", "contract", "payments", "planning", "client-access", "documents", "communications", "contacts", "details", "manage"];
+const sectionOrder = (page: Page) =>
+  page.evaluate((ids) => ids.map((id) => document.getElementById(id)).filter((e): e is HTMLElement => e !== null)
+    .sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1)).map((e) => e.id), SECTIONS);
+/** The bottom of the shell's fixed header (its progress line sits on it): nothing should land under it. */
+const headerBottom = (page: Page) => page.getByTestId("navigation-progress").evaluate((e) => e.getBoundingClientRect().bottom);
 const sideways = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
 test.describe.serial("event workspace", () => {
@@ -46,11 +54,11 @@ test.describe.serial("event workspace", () => {
    * `planned`: staff set planning up (Event basics only) before the booking; otherwise booking does, and
    * without a default template it waits for staff to choose one.
    */
-  async function stage(key: string, title: string, upTo: Stage, opts: { venue?: string; legacy?: boolean; regenerate?: boolean; planned?: boolean } = {}) {
+  async function stage(key: string, title: string, upTo: Stage, opts: { venue?: string; legacy?: boolean; regenerate?: boolean; planned?: boolean; external?: boolean } = {}) {
     const id = randomUUID();
     const clientId = randomUUID();
     const clientEmail = `e2e-ws-${key}-${run}@example.test`;
-    await must(admin.from("events").insert({ id, tenant_id: tenant.id, title, event_type: "wedding", event_date: "2027-10-30", timezone: "America/Toronto", venue_name: opts.venue ?? null }));
+    await must(admin.from("events").insert({ id, tenant_id: tenant.id, title, event_type: "wedding", event_date: "2027-10-30", timezone: "America/Toronto", venue_name: opts.venue ?? null, ...(opts.external ? { booking_source: "external" } : {}) }));
     await must(admin.from("clients").insert({ id: clientId, tenant_id: tenant.id, name: `Client ${key}`, email: clientEmail }));
     await must(admin.from("event_clients").insert({ tenant_id: tenant.id, event_id: id, client_id: clientId, is_primary: true, can_sign: true }));
     ev[key] = { id };
@@ -131,6 +139,17 @@ test.describe.serial("event workspace", () => {
     await must(staffDb.rpc("invalidate_event_payment", { p_payment_id: pay!.id, p_reason: "E2E: payment bounced" }));
     await stage("archived", "Archived wedding", "submitted", { venue: "Le Windsor" });
     await must(staffDb.rpc("set_event_archived", { p_event_id: ev.archived.id, p_archived: true }));
+    await stage("external", "External wedding", "new", { venue: "Le Windsor", external: true });
+    // A revised offer: revision 1 is replaced by a sent revision 2, so the proposal has a history.
+    await stage("revised", "Revised wedding", "sent", { venue: "Le Windsor" });
+    const { data: template } = await must(admin.from("proposal_templates").select("id").eq("tenant_id", tenant.id).eq("name", "Wedding (DEMO)").single());
+    const { data: input } = await must(staffDb.rpc("proposal_offer_input_from_template", { p_template_id: template!.id }));
+    const { data: revision } = await must(staffDb.rpc("open_proposal_draft", { p_event_id: ev.revised.id, p_offer: input }));
+    const { data: revDraft } = await must(admin.from("proposals").select("draft_version").eq("id", revision).single());
+    await must(staffDb.rpc("send_proposal", { p_proposal_id: revision, p_expected_draft_version: revDraft!.draft_version, p_access_link_id: randomUUID(), p_token_hash: randomUUID().replaceAll("-", "").repeat(2) }));
+    // Booked, with the client's planning deadline passed.
+    await stage("passed", "Deadline passed wedding", "booked", { venue: "Château Example", planned: true });
+    placePlanningDeadline(ev.passed.id, -24);
   });
 
   test.afterAll(async () => {
@@ -183,32 +202,48 @@ test.describe.serial("event workspace", () => {
     // Date-only values are never shifted; a missing venue says so.
     await page.goto(`${base}/events/${ev.new.id}`);
     await expect(page.getByTestId("event-meta")).toHaveText("Sat, Oct 30, 2027 · Venue not set · Wedding");
-    await expect(page.getByTestId("overview-proposal")).toContainText("No proposal yet");
-    await expect(page.getByTestId("overview-payments")).toContainText("No contract terms yet");
-    await expect(page.getByTestId("overview-planning")).toContainText("Set up automatically when the event is booked.");
+    // Each section states its own status; there are no separate summary tiles or section links.
+    await expect(page.locator("[data-testid^='overview-']")).toHaveCount(0);
+    await expect(page.getByRole("navigation", { name: "Event sections" })).toHaveCount(0);
+    await expect(page.locator("#proposal").getByRole("button", { name: "Start proposal draft" })).toBeVisible();
+    await expect(page.locator("#payments")).toContainText("No contract has been sent yet, so there is no total or deposit to compare.");
+    await expect(page.locator("#planning")).toContainText("Booking sets it up automatically");
 
     // Awaiting the deposit: the signed terms from the summary, and the record form already open.
     await page.goto(`${base}/events/${ev.deposit.id}`);
     const { data: c } = await admin.from("contracts").select("total_cents, deposit_cents").eq("id", ev.deposit.contractId!).single();
     const money = (cents: number) => new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" }).format(cents / 100);
     await expect(page.locator("[data-slot=badge]", { hasText: "Signed · awaiting deposit" })).toBeVisible();
-    const pay = page.getByTestId("overview-payments");
-    await expect(pay).toContainText("Signed contract terms");
-    await expect(pay).toContainText(`Total${money(c!.total_cents)}`);
-    await expect(pay).toContainText(`Deposit${money(c!.deposit_cents)}`);
-    await expect(pay).toContainText(`Deposit outstanding${money(c!.deposit_cents)}`);
+    // At a glance: total, received and balance, and what is owed next (straight from the database summary).
+    const figures = page.getByTestId("payment-figures");
+    await expect(figures).toContainText(`Total${money(c!.total_cents)}`);
+    await expect(figures).toContainText("Received$0.00");
+    await expect(figures).toContainText(`Balance${money(c!.total_cents)}`);
+    await expect(page.getByTestId("payment-next")).toHaveText(`${money(c!.deposit_cents)} still due toward the deposit`);
+    // The full terms (deposit percentage, outstanding deposit) behind "Payment terms".
+    await expect(page.locator("#payment-terms")).not.toHaveAttribute("open", "");
+    await expect(page.locator("#payment-terms > summary")).toContainText(/Deposit \d+%/);
+    const pay = page.getByLabel("Payment summary");
+    await expect(pay).toContainText("Terms of the signed contract.");
+    await expect(pay).toContainText(`Total, including taxes${money(c!.total_cents)}`);
+    await expect(pay).toContainText(new RegExp(`Deposit required \\(\\d+%\\)${escape(money(c!.deposit_cents))}`));
+    await expect(pay).toContainText(`Deposit still outstanding${money(c!.deposit_cents)}`);
     await expect(page.getByTestId("next-action")).toContainText(`${money(c!.deposit_cents)} is still due toward the deposit`);
     await expect(page.locator("#record-payment")).toHaveAttribute("open", "");
     await expect(page.getByLabel(/Amount received/)).toBeVisible();
-    await expect(page.getByText("A contract has been signed for this event, so its terms can't be revised.")).toBeVisible();
-    await expect(page.getByText(/was signed .*A signed contract can't be voided, replaced or revised/)).toBeVisible();
+    // Signed: the proposal and contract are documents now, with the terms locked.
+    const documents = page.getByTestId("documents");
+    await expect(documents.getByText("A contract has been signed for this event, so its terms can't be revised.")).toBeVisible();
     // Times in the event's own zone, with its abbreviation (the server's zone is UTC in production).
-    await expect(page.getByText(/was signed \w{3} \d{1,2}, \d{4}, \d{1,2}:\d{2} [ap]\.m\. E[DS]T\./)).toBeVisible();
+    await expect(documents.getByTestId("document-contract")).toContainText(/signed \w{3} \d{1,2}, \d{4}, \d{1,2}:\d{2} [ap]\.m\. E[DS]T/);
+    await expect(documents.getByTestId("document-contract")).toHaveAttribute("href", `${base}/contracts/${ev.deposit.contractId}`);
+    await expect(documents.getByTestId("document-proposal")).toHaveAttribute("href", `${base}/proposals/${ev.deposit.proposalId}`);
+    await expect(documents.getByTestId("document-proposal")).toContainText("Approved");
 
     // A sent contract's terms are labelled as not signed.
     await page.goto(`${base}/events/${ev.csent.id}`);
-    await expect(page.getByTestId("overview-payments")).toContainText("Sent contract terms (not signed yet)");
-    await expect(page.getByTestId("overview-contract")).toContainText("Sent, waiting for signature");
+    await expect(page.getByLabel("Payment summary")).toContainText("Terms of the contract sent to the client. It isn't signed yet");
+    await expect(page.locator("#contract")).toContainText("was sent and is waiting for the client's signature");
 
     // A regenerated draft keeps the replaced one in the history.
     await page.goto(`${base}/events/${ev.cdraft.id}`);
@@ -219,16 +254,32 @@ test.describe.serial("event workspace", () => {
 
     // Booked: planning summary and links; a corrected deposit keeps the booking with a warning.
     await page.goto(`${base}/events/${ev.booked.id}`);
-    await expect(page.getByTestId("overview-payments")).toContainText("Booking confirmed");
-    await expect(page.getByTestId("overview-planning")).toContainText(/required answers|Available sections done|Nothing to fill in yet/);
-    await expect(page.getByTestId("overview-planning")).toContainText("(America/Toronto)");
-    await expect(page.locator("#planning").getByRole("link", { name: "Edit planning" })).toHaveAttribute("href", `${base}/events/${ev.booked.id}/planning`);
+    await expect(page.getByLabel("Booking")).toContainText("Booked · confirmed");
+    await expect(page.locator("#planning")).toContainText(/required answers|Available sections done|Nothing to fill in yet/);
+    // The deadline compactly, in the event's zone (also the business's, so not named), with the time; the full timestamp on hover.
+    const editingLine = page.getByTestId("planning-card-editing");
+    await expect(editingLine).toHaveText(/^Client editing closes \w{3} \d{1,2}(, \d{4})?, \d{1,2}:\d{2} [ap]\.m\.$/);
+    await expect(editingLine).toHaveAttribute("title", /\(America\/Toronto\)$/);
+    await expect(page.locator("#planning").getByRole("link", { name: "Open planning" })).toHaveAttribute("href", `${base}/events/${ev.booked.id}/planning`);
+    await expect(page.locator("#planning").getByRole("link", { name: "Open run sheet" })).toHaveAttribute("href", `${base}/events/${ev.booked.id}/run-sheet`);
+    // Client access is part of Planning: the signing client already has access (from the contract), and the
+    // separate planning invitation is offered right there.
+    const access = page.locator("#planning").getByTestId("client-access");
+    await expect(access.getByTestId("client-access-headline")).toHaveText("Has access");
+    await expect(access.getByTestId("client-access-state")).toContainText("The client has verified access and can open planning");
+    await expect(access.getByRole("button", { name: "Send planning invitation" })).toBeVisible();
+    // Event details no longer repeat the header (title, date, venue, type, booking); the edit form still has every field.
+    await expect(page.getByTestId("event-details")).not.toContainText(/Château Example|Wedding|Through Flux DJ/);
+    for (const field of ["Title", "Type", "Date", "Timezone", "Venue name", "Venue address"]) await expect(page.locator("#edit-details").getByLabel(field, { exact: true })).toHaveCount(1);
+    // Past the deadline: closed for the client, staff can still edit; the next step says so too.
+    await page.goto(`${base}/events/${ev.passed.id}`);
+    await expect(page.getByTestId("planning-card-editing")).toHaveText(/^Client editing closed \w{3} \d{1,2}, \d{1,2}:\d{2} [ap]\.m\.; staff can still edit$/);
+    await expect(page.getByTestId("next-action")).toContainText("Client editing is closed. Check the final answers and the run sheet.");
     await page.goto(`${base}/events/${ev.corrected.id}`);
     await expect(page.getByTestId("next-action")).toContainText("The booking stands, but valid payments no longer cover the deposit");
-    await expect(page.getByTestId("overview-planning")).toContainText("Not set up");
+    await expect(page.locator("#planning")).toContainText("Not set up");
     await expect(page.locator("#planning").getByRole("link", { name: "Set up planning" })).toHaveAttribute("href", `${base}/events/${ev.corrected.id}/planning`);
     await expect(page.getByLabel("Booking").getByRole("alert")).toContainText("The booking stands, but valid payments no longer cover the required deposit");
-    await expect(page.getByTestId("overview-payments")).toContainText("Valid payments no longer cover the deposit; the booking stands.");
 
     // Archived: the notice, history, and no blocked actions.
     await page.goto(`${base}/events/${ev.archived.id}`);
@@ -285,7 +336,7 @@ test.describe.serial("event workspace", () => {
     await edit.getByRole("button", { name: "Save event" }).click();
     await expect(edit.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
     await page.reload();
-    await expect(page.getByTestId("event-details")).toContainText("Le Windsor Ballroom");
+    await expect(page.getByTestId("event-meta")).toContainText("Le Windsor Ballroom");
 
     // Contacts: primary and signer are labelled; adding a primary says whom it replaces.
     await expect(page.locator("#contacts")).toContainText("Primary");
@@ -299,6 +350,237 @@ test.describe.serial("event workspace", () => {
     await page.getByLabel("Booking").getByRole("button", { name: "Check booking" }).click();
     await expect(page.getByTestId("next-action")).toHaveAttribute("data-key", "record_payment");
     await page.context().close();
+  });
+
+  test("sections follow the event's stage: one column on phones, two from xl, no summary tiles", async () => {
+    const expected: Record<string, { order: string[]; compact: boolean }> = {
+      // Booking: the proposal and contract lead; contacts and details are open.
+      new: { order: ["proposal", "contract", "payments", "planning", "communications", "contacts", "details", "manage"], compact: false },
+      archived: { order: ["proposal", "contract", "payments", "planning", "communications", "contacts", "details", "manage"], compact: false },
+      // Signed, awaiting the deposit: payments lead; the signed contract and proposal are documents.
+      deposit: { order: ["payments", "planning", "documents", "contract", "proposal", "communications", "contacts", "details", "manage"], compact: true },
+      // Booked: payments, then planning and client access; documents are secondary.
+      booked: { order: ["payments", "planning", "client-access", "documents", "contract", "proposal", "communications", "contacts", "details", "manage"], compact: true },
+      // Past the client's planning deadline: still the booked layout.
+      passed: { order: ["payments", "planning", "client-access", "documents", "contract", "proposal", "communications", "contacts", "details", "manage"], compact: true },
+      // A revised offer is still booking.
+      revised: { order: ["proposal", "contract", "payments", "planning", "communications", "contacts", "details", "manage"], compact: false },
+      // Booked elsewhere: planning only, never a proposal, contract or payments.
+      external: { order: ["planning", "client-access", "communications", "contacts", "details", "manage"], compact: true },
+    };
+    for (const width of [1440, 390, 320]) {
+      const context = await browser.newContext(width === 1440 ? { viewport: { width, height: 1000 } } : { ...PHONE, viewport: { width, height: 844 } });
+      const page = await context.newPage();
+      await signInStaff(page, tenant.ownerEmail);
+      for (const [key, want] of Object.entries(expected)) {
+        const at = `${key} at ${width}`;
+        await page.goto(`/staff/${tenant.slug}/events/${ev[key].id}`);
+        await expect(page.getByTestId("next-action"), at).toBeVisible();
+        expect(await sectionOrder(page), at).toEqual(want.order);
+        await expect(page.locator("[data-testid^='overview-']"), at).toHaveCount(0);
+        await expect(page.getByRole("navigation", { name: "Event sections" }), at).toHaveCount(0);
+        // The next step comes first in the main column; documents, emails, contacts, details and archiving are supporting.
+        const main = page.getByTestId("workspace-main");
+        const secondary = page.getByTestId("workspace-secondary");
+        await expect(main.locator(":scope > *").first(), at).toHaveAttribute("data-testid", "next-action");
+        for (const id of ["communications", "contacts", "details", "manage", ...(want.order.includes("documents") ? ["documents"] : [])]) {
+          await expect(secondary.locator(`#${id}`), `${id}, ${at}`).toHaveCount(1);
+        }
+        const signedDocs = want.order.includes("documents");
+        for (const id of want.order.filter((id) => ["payments", "planning", "client-access"].includes(id) || (!signedDocs && ["proposal", "contract"].includes(id)))) {
+          await expect(main.locator(`#${id}`), `${id}, ${at}`).toHaveCount(1);
+        }
+        // Contacts and details: one line each once booked, open while booking.
+        for (const id of ["contacts", "details"]) {
+          if (want.compact) await expect(page.locator(`#${id}`), `${id}, ${at}`).not.toHaveAttribute("open", "");
+          else await expect(page.locator(`#${id}`), `${id}, ${at}`).toHaveAttribute("open", "");
+        }
+        await expect(page.locator("#contacts > summary"), at).toContainText(`Client ${key} · ${key === "external" ? "primary" : "primary & signer"}`);
+        await expect(page.locator("#details > summary"), at).toContainText("No address");
+        const mainBox = (await main.boundingBox())!;
+        const sideBox = (await secondary.boundingBox())!;
+        if (width === 1440) {
+          expect(sideBox.x, at).toBeGreaterThan(mainBox.x + mainBox.width - 1);
+          expect(sideBox.y, at).toBeLessThan(mainBox.y + 1);
+        } else {
+          expect(Math.abs(sideBox.x - mainBox.x), at).toBeLessThanOrEqual(1);
+          expect(sideBox.y, at).toBeGreaterThan(mainBox.y + mainBox.height - 1);
+        }
+        expect(await sideways(page), at).toBeLessThanOrEqual(0);
+      }
+      await context.close();
+    }
+  });
+
+  test("document rows: the whole row opens the document, 44px tall, focus visible, with the pending line", async () => {
+    for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+      const context = await browser.newContext(viewport.width === 1440 ? { viewport } : { ...PHONE, viewport });
+      const page = await context.newPage();
+      await signInStaff(page, tenant.ownerEmail);
+      const at = `at ${viewport.width}`;
+      await page.goto(`/staff/${tenant.slug}/events/${ev.booked.id}`);
+      const row = page.getByTestId("document-contract");
+      await expect(row, at).toHaveAccessibleName(/^Contract .*signed .* Signed$/);
+      for (const r of [row, page.getByTestId("document-proposal")]) {
+        expect((await r.boundingBox())!.height, at).toBeGreaterThanOrEqual(44);
+        // Nothing interactive inside a row.
+        await expect(r.locator("a, button, input, select, textarea, [tabindex]"), at).toHaveCount(0);
+      }
+      // Keyboard focus is visible (the ring is a box shadow).
+      await row.focus();
+      await page.keyboard.press("Shift+Tab");
+      await page.keyboard.press("Tab");
+      await expect(row, at).toBeFocused();
+      expect(await row.evaluate((e) => e.matches(":focus-visible") && getComputedStyle(e).boxShadow !== "none"), at).toBe(true);
+      // Focus never leaves it under the shell's sticky header.
+      expect((await row.boundingBox())!.y, at).toBeGreaterThanOrEqual((await headerBottom(page)) - 1);
+      // A click anywhere on the row, here by its chevron, navigates; a slow response shows the shell's pending line.
+      const contractPath = `/staff/${tenant.slug}/contracts/${ev.booked.contractId}`;
+      await page.route((url) => url.pathname === contractPath, async (route) => {
+        await new Promise((r) => setTimeout(r, 1500));
+        await route.continue();
+      });
+      const box = (await row.boundingBox())!;
+      await page.mouse.click(box.x + box.width - 8, box.y + box.height / 2);
+      await expect(page.getByTestId("navigation-progress"), at).toHaveAttribute("data-pending", "");
+      await page.waitForURL(`**${contractPath}`);
+      await expect(page.getByTestId("navigation-progress"), at).not.toHaveAttribute("data-pending", "");
+      await context.close();
+    }
+  });
+
+  /**
+   * Every in-page destination the next step, the dashboard and other pages link to lands on what it
+   * names, below the shell's header, on a phone: on load, from another page, on hash changes and
+   * back/forward, on a second click of the same link, through collapsed and nested sections, and never
+   * over unsaved edits.
+   */
+  test("every section anchor lands on its section, also after hash changes and back/forward", async () => {
+    const page = await (await browser.newContext(PHONE)).newPage();
+    await signInStaff(page, tenant.ownerEmail);
+    const url = `/staff/${tenant.slug}/events/${ev.booked.id}`;
+    const lands = async (id: string) => {
+      const target = page.locator(`[id="${id}"]`);
+      await expect(target, id).toBeInViewport();
+      if ((await target.evaluate((el) => el.tagName)) === "DETAILS") await expect(target, id).toHaveAttribute("open", "");
+      // Every collapsed section around it is open too.
+      expect(await target.evaluate((el) => { const closed = el.parentElement?.closest("details:not([open])"); return closed ? closed.id : null; }), id).toBeNull();
+      const bottom = await headerBottom(page);
+      await expect.poll(() => target.evaluate((el) => el.getBoundingClientRect().top), id).toBeGreaterThanOrEqual(bottom - 1);
+    };
+    // Booked: contacts and details start collapsed; #add-contact and #edit-details are disclosures inside them.
+    await page.goto(url);
+    await expect(page.locator("#contacts")).not.toHaveAttribute("open", "");
+    await expect(page.locator("#details")).not.toHaveAttribute("open", "");
+    const anchors = ["proposal", "contract", "payments", "record-payment", "payment-history", "payment-terms", "invoice-link", "planning", "client-access", "communications", "contacts", "add-contact", "details", "edit-details", "manage"];
+    for (const id of anchors) {
+      await page.goto("about:blank");
+      await page.goto(`${url}#${id}`);
+      await lands(id);
+    }
+    // History disclosures (the contract draft was regenerated; the revised offer replaced revision 1).
+    await page.goto(`/staff/${tenant.slug}/events/${ev.cdraft.id}#contract-history`);
+    await lands("contract-history");
+    await page.goto(`/staff/${tenant.slug}/events/${ev.revised.id}#proposal-history`);
+    await lands("proposal-history");
+    await expect(page.locator("#proposal-history")).toContainText("Revision 1");
+    // A contact that couldn't be attached at creation: the alert, and Contacts open (even once booked).
+    await page.goto(`${url}?contact=failed`);
+    await expect(page.getByRole("alert").filter({ hasText: "its contact could not be attached" })).toBeVisible();
+    await expect(page.locator("#contacts")).toHaveAttribute("open", "");
+    await expect(page.locator("#add-contact > summary")).toBeVisible();
+
+    // From another page through the router: the dashboard's deposit item.
+    await page.goto(`/staff/${tenant.slug}`);
+    await page.locator(`a[href$="/events/${ev.deposit.id}#record-payment"]`).first().click();
+    await page.waitForURL(`**/events/${ev.deposit.id}#record-payment`);
+    await lands("record-payment");
+    await expect(page.getByLabel(/Amount received/)).toBeVisible();
+
+    // Hash changes on the open page, then back and forward between them.
+    await page.goto(url);
+    const invoice = page.locator("#invoice-link");
+    await expect(invoice).not.toHaveAttribute("open", "");
+    // The router records its first history entry once the page is live; a hash set before then is replaced.
+    await page.waitForFunction(() => (window.history.state as { __NA?: boolean } | null)?.__NA === true);
+    await page.evaluate(() => { window.location.hash = "#invoice-link"; });
+    await lands("invoice-link");
+    await invoice.locator("summary").click();
+    await expect(invoice).not.toHaveAttribute("open", "");
+    await page.evaluate(() => { window.location.hash = "#edit-details"; });
+    await lands("edit-details");
+    await page.goBack();
+    await expect(page).toHaveURL(/#invoice-link$/);
+    await lands("invoice-link");
+    await page.goForward();
+    await expect(page).toHaveURL(/#edit-details$/);
+    await lands("edit-details");
+
+    // The header's Edit details link, clicked again after its section was collapsed (the same hash: no hashchange).
+    const details = page.locator("#details");
+    await details.locator(":scope > summary").click();
+    await expect(details).not.toHaveAttribute("open", "");
+    await page.getByRole("link", { name: "Edit details" }).click();
+    await lands("edit-details");
+
+    // Unsaved edits: neither the form nor the section around it can be collapsed, and other anchors never close them.
+    const edit = page.locator("#edit-details");
+    await edit.getByLabel("Venue name").fill("Typed, not saved");
+    await details.locator(":scope > summary").click();
+    await expect(details).toHaveAttribute("open", "");
+    await expect(edit).toHaveAttribute("open", "");
+    await page.evaluate(() => { window.location.hash = "#manage"; });
+    await lands("manage");
+    await page.goBack();
+    await expect(edit).toHaveAttribute("open", "");
+    await expect(edit.getByLabel("Venue name")).toHaveValue("Typed, not saved");
+    // Closed without navigating: the unsaved-changes guard would hold a navigation.
+    await page.context().close();
+  });
+
+  test("every state fits from 320px to 1920px; page actions are touch-sized; keyboard focus stays clear of the header", async () => {
+    test.setTimeout(240_000);
+    const keys = ["new", "draft", "sent", "submitted", "approved", "csent", "deposit", "booked", "passed", "external", "archived", "revised"];
+    for (const width of [320, 430, 1024, 1280, 1920]) {
+      const phone = width < 640;
+      const context = await browser.newContext(phone ? { ...PHONE, viewport: { width, height: 844 } } : { viewport: { width, height: 1000 } });
+      const page = await context.newPage();
+      await signInStaff(page, tenant.ownerEmail);
+      for (const key of keys) {
+        const at = `${key} at ${width}`;
+        await page.goto(`/staff/${tenant.slug}/events/${ev[key].id}`);
+        await expect(page.getByTestId("next-action"), at).toBeVisible();
+        expect(await sideways(page), at).toBeLessThanOrEqual(0);
+        // Two columns only from xl (1280px): below it the supporting sections stack under the work.
+        const main = (await page.getByTestId("workspace-main").boundingBox())!;
+        const side = (await page.getByTestId("workspace-secondary").boundingBox())!;
+        expect(side.x > main.x + main.width - 1, at).toBe(width >= 1280);
+        if (phone) {
+          // The page's actions, rows and its forms' buttons, fields and selects are at least 44px tall.
+          const small = await page.evaluate(() =>
+            [...document.querySelectorAll("[data-testid=workspace] :is(summary, [data-slot=link-row], [data-slot=button], [data-slot=input], select), [data-testid^=next-action-], a[href='#edit-details']")]
+              .filter((e) => e.getBoundingClientRect().height > 0 && e.getBoundingClientRect().height < 44)
+              .map((e) => `${(e.textContent ?? "").trim().slice(0, 30)}: ${e.getBoundingClientRect().height}`),
+          );
+          expect(small, at).toEqual([]);
+        }
+      }
+      if (width === 320 || width === 1280) {
+        // Tab through the booked page: focus never ends up under the sticky header.
+        await page.goto(`/staff/${tenant.slug}/events/${ev.booked.id}`);
+        await page.locator("main h1").click();
+        for (let i = 0; i < 80; i++) {
+          await page.keyboard.press("Tab");
+          const f = await page.evaluate(() => {
+            const e = document.activeElement as HTMLElement;
+            const header = document.querySelector("[data-testid=navigation-progress]")!.getBoundingClientRect().bottom;
+            return { inMain: Boolean(e.closest("main")), top: e.getBoundingClientRect().top, header, what: (e.textContent ?? "").trim().slice(0, 30) };
+          });
+          if (f.inMain) expect(f.top, `${f.what} at ${width}`).toBeGreaterThanOrEqual(f.header - 1);
+        }
+      }
+      await context.close();
+    }
   });
 
   test("on a phone: compact header, stacked sections, nothing scrolls sideways", async ({}, info) => {

@@ -63,7 +63,9 @@ test.describe.serial("manual payments", () => {
     await expect(card.getByLabel(/Amount received/)).toHaveValue("");
     const { data: rows } = await admin.from("event_payments").select("amount_cents").eq("event_id", eventId);
     expect(rows).toEqual([{ amount_cents: 25000 }]);
-    await expect(card.getByLabel("Payment summary")).toContainText("Received so far$250.00");
+    // No contract terms: only what was received, never a total or balance.
+    await expect(card.getByLabel("Payment overview")).toContainText("$250.00 received so far.");
+    await expect(card.getByTestId("payment-figures")).toHaveCount(0);
 
     // The same amount and date again needs confirmation.
     await card.getByLabel(/Amount received/).fill("250.00");
@@ -73,9 +75,11 @@ test.describe.serial("manual payments", () => {
     await card.getByLabel(/This is a separate payment/).check();
     await card.getByRole("button", { name: "Record payment" }).click();
     await expect(card.getByText("Payment recorded.")).toBeVisible();
-    await expect(card.getByLabel("Payment summary")).toContainText("Received so far$500.00");
+    await expect(card.getByLabel("Payment overview")).toContainText("$500.00 received so far.");
 
-    // Invalidate the second one, with a reason; it stays in the history.
+    // Invalidate the second one, with a reason; it stays in the history (behind its disclosure, with the latest valid payment on it).
+    await expect(card.locator("#payment-history > summary")).toContainText("Payment history (2)");
+    await card.locator("#payment-history > summary").click();
     const history = card.getByLabel("Payment history");
     await history.getByRole("button", { name: "Invalidate…" }).first().click();
     const dialog = staff.getByRole("dialog", { name: "Confirm invalidating the payment" });
@@ -83,7 +87,7 @@ test.describe.serial("manual payments", () => {
     await dialog.getByLabel("Reason (required)").fill("Recorded twice by mistake");
     await dialog.getByRole("button", { name: "Invalidate payment" }).click();
     await expect(history).toContainText("Recorded twice by mistake");
-    await expect(card.getByLabel("Payment summary")).toContainText("Received so far$250.00");
+    await expect(card.getByLabel("Payment overview")).toContainText("$250.00 received so far.");
     await expect(history.locator("li")).toHaveCount(2);
 
     const { data: event } = await admin.from("events").select("lifecycle_status, booking_confirmed_at").eq("id", eventId).single();
@@ -182,13 +186,15 @@ test.describe.serial("manual payments", () => {
     const { data: c } = await admin.from("contracts").select("deposit_cents, total_cents, booking_policy").eq("id", contractId).single();
     expect(c!.booking_policy).toBe("on_deposit");
     const outstanding = c!.deposit_cents - 25000;
+    const money = (cents: number) => new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" }).format(cents / 100);
     const startedAt = Date.now();
     await staff.getByLabel(/Amount received/).fill((outstanding / 100).toFixed(2));
     await staff.getByRole("button", { name: "Record payment" }).click();
     await expect(staff.getByText("Payment recorded. The deposit is covered, so the booking is confirmed and the client is emailed.")).toBeVisible();
     await staff.reload();
     await expect(staff.getByText("Booked", { exact: true })).toBeVisible();
-    await expect(staff.getByLabel("Booking")).toContainText("is still to be paid, due Sat, Nov 6, 2027.");
+    await expect(staff.getByTestId("payment-figures")).toContainText(`Balance${money(c!.total_cents - c!.deposit_cents)}`);
+    await expect(staff.getByTestId("payment-next")).toHaveText("Balance due Sat, Nov 6, 2027");
     const { data: event } = await admin.from("events").select("lifecycle_status, booking_confirmed_at").eq("id", eventId).single();
     expect(event!.lifecycle_status).toBe("booked");
     expect(event!.booking_confirmed_at).not.toBeNull();
@@ -199,6 +205,7 @@ test.describe.serial("manual payments", () => {
     expect(mail.text).not.toMatch(/planning/i);
 
     // Invalidating the payment that completed the deposit keeps the booking, with a warning.
+    await staff.locator("#payment-history > summary").click();
     const history = staff.getByLabel("Payment history");
     await history.getByRole("button", { name: "Invalidate…" }).first().click();
     const dialog = staff.getByRole("dialog", { name: "Confirm invalidating the payment" });

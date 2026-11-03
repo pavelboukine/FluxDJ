@@ -1,7 +1,7 @@
 import Link from "@/components/app/pending-link";
 import { AlertTriangle } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ActionForm } from "@/components/app/action-form";
+import { Disclosure } from "@/components/app/disclosure";
 import { RequestIdField } from "@/components/app/request-id-field";
 import type { StaffContext } from "@/lib/auth/staff";
 import { deliveryState, type OutboxRow } from "@/lib/email/history";
@@ -63,13 +63,16 @@ type Blocker = { text: string; link?: { label: string; href: string } };
 
 /**
  * Client access to planning, for a Flux booking and an event booked
- * elsewhere alike: who can open planning, the latest invitation and its
- * delivery, what's missing before inviting, and the Send planning invitation
- * form. Inviting is always a deliberate staff action: creating the event,
- * booking it, setting up planning or opening client editing sends nothing.
- * The database checks every prerequisite again when sending.
+ * elsewhere alike, as part of the Planning section (#client-access, below
+ * its own planning links, so blockers name the step without repeating them): who can
+ * open planning, the latest invitation's status and recipient, what's missing
+ * before inviting, and the Send planning invitation form, all visible; the
+ * invitation's dates and delivery details behind a disclosure. Inviting is
+ * always a deliberate staff action: creating the event, booking it, setting
+ * up planning or opening client editing sends nothing. The database checks
+ * every prerequisite again when sending.
  */
-export function ClientAccessCard({
+export function ClientAccess({
   slug,
   eventId,
   access,
@@ -102,95 +105,105 @@ export function ClientAccessCard({
   const i = access.invitation;
   const open = invitationOpen(i, now);
   const status = invitationStatus(i, email, now);
-  const planningHref = `/staff/${slug}/events/${eventId}/planning`;
   const blocker: Blocker | null = archived
     ? { text: "Unarchive the event to invite the client." }
     : !booked
       ? { text: "The event isn't booked yet. You can send a planning invitation once the booking is confirmed." }
       : !planningReady
-        ? { text: "Set up planning before inviting your client.", link: { label: "Set up planning", href: planningHref } }
+        ? { text: "Set up planning before inviting your client." }
         : !editingOpen
-          ? { text: "Client editing is closed. Open client editing before inviting your client, so they can fill planning in.", link: { label: "Open the planning page", href: planningHref } }
+          ? { text: "Client editing is closed. Open it on the planning page before inviting your client, so they can fill planning in." }
           : !primary || primary.archived
             ? { text: "Add an active primary contact to invite.", link: { label: "Contacts", href: "#contacts" } }
             : null;
   const delivery = email ? deliveryState(email, now) : null;
+  const recipient = i ? <span data-testid="planning-invitation-recipient">{i.email}</span> : null;
   // Contract access alone (a Flux booking) isn't an invitation: the first one is still "Send planning invitation".
   const again = Boolean(i);
+  // The latest invitation's status, else whether the client can open planning without one (a Flux booking's contract access).
+  const headline: InvitationStatus = i ? status : access.clientHasAccess ? { label: "Has access", tone: "good" } : status;
 
   return (
-    <Card id="client-access" className="scroll-mt-20" data-testid="client-access">
-      <CardHeader>
-        <CardTitle>Client access</CardTitle>
-        <CardDescription>
-          Send a planning invitation when planning is ready for your client. Nothing is sent automatically: not when the event is created
-          {external ? "" : " or booked"}, when planning is set up or when client editing opens.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-3 text-sm">
-        <p data-testid="client-access-state">
-          {access.clientHasAccess
-            ? `The client has verified access and can open planning (and edit it while client editing is open)${external ? "" : ". A planning invitation emails them a link to it"}.`
-            : i
-              ? open
-                ? `Planning invitation for ${i.email}, created ${fmt(i.createdAt)}. It works until ${fmt(i.expiresAt)}; the client hasn't accepted it yet.`
-                : `The last planning invitation (${fmt(i.createdAt)}, to ${i.email}) ${
-                    i.revoked ? "was replaced or cancelled" : i.stale ? "no longer works: the primary contact or their email changed" : "expired"
-                  }.`
-              : "Not invited to planning yet."}
-        </p>
-        {i ? (
-          <dl className="grid gap-1.5 rounded-lg border p-3" data-testid="planning-invitation">
-            <Row label="Status">
-              <span data-testid="planning-invitation-status" className={cn("inline-block rounded-full border px-2 py-0.5 text-xs font-medium", TONE[status.tone])}>
-                {status.label}
+    <section id="client-access" aria-labelledby="client-access-heading" className="grid scroll-mt-20 gap-3 border-t pt-4" data-testid="client-access">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 id="client-access-heading" className="font-medium">Client access</h3>
+        <span data-testid={i ? "planning-invitation-status" : "client-access-headline"} className={cn("inline-block rounded-full border px-2 py-0.5 text-xs font-medium", TONE[headline.tone])}>
+          {headline.label}
+        </span>
+      </div>
+      <p data-testid="client-access-state" className="[overflow-wrap:anywhere]">
+        {access.clientHasAccess ? (
+          <>
+            The client has verified access and can open planning (and edit it while client editing is open).
+            {i ? <> Invited at {recipient}.</> : null}
+          </>
+        ) : i ? (
+          open ? (
+            <>Planning invitation for {recipient}, created {fmt(i.createdAt)}. It works until {fmt(i.expiresAt)}; the client hasn&apos;t accepted it yet.</>
+          ) : (
+            <>
+              The last planning invitation ({fmt(i.createdAt)}, to {recipient}){" "}
+              {i.revoked ? "was replaced or cancelled" : i.stale ? "no longer works: the primary contact or their email changed" : "expired"}.
+            </>
+          )
+        ) : (
+          "Not invited to planning yet."
+        )}
+      </p>
+      {i ? (
+        <div className="grid gap-2" data-testid="planning-invitation">
+          {delivery?.attention && !i.accepted && !i.revoked ? (
+            <p className="flex gap-1.5 text-amber-800 dark:text-amber-300">
+              <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0" />
+              <span>
+                {delivery.explanation} <a className="font-medium underline underline-offset-4" href="#communications">Emails</a>
               </span>
-            </Row>
-            <Row label="Recipient"><span className="[overflow-wrap:anywhere]" data-testid="planning-invitation-recipient">{i.email}</span></Row>
-            <Row label="Created">{fmt(i.createdAt)}</Row>
-            {email?.sent_at ? <Row label="Sent">{fmt(email.sent_at)}</Row> : null}
-            {i.acceptedAt ? <Row label="Accepted">{fmt(i.acceptedAt)}</Row> : null}
-            {delivery && !i.accepted && !i.revoked ? (
-              <p className={cn("text-xs", delivery.attention ? "flex gap-1.5 text-amber-800 dark:text-amber-300" : "text-muted-foreground")}>
-                {delivery.attention ? <AlertTriangle aria-hidden className="mt-px size-3.5 shrink-0" /> : null}
-                <span>
-                  {delivery.explanation}{" "}
-                  <a className="font-medium underline underline-offset-4" href="#communications">Emails</a>
-                </span>
+            </p>
+          ) : null}
+          <Disclosure id="invitation-details" summary="Invitation details">
+            <dl className="grid gap-1.5">
+              <Row label="Created">{fmt(i.createdAt)}</Row>
+              {email?.sent_at ? <Row label="Sent">{fmt(email.sent_at)}</Row> : null}
+              {i.acceptedAt ? <Row label="Accepted">{fmt(i.acceptedAt)}</Row> : null}
+              <Row label="Works until">{fmt(i.expiresAt)}</Row>
+            </dl>
+            {delivery && !delivery.attention && !i.accepted && !i.revoked ? (
+              <p className="mt-2 text-xs text-muted-foreground">
+                {delivery.explanation} <a className="font-medium underline underline-offset-4" href="#communications">Emails</a>
               </p>
             ) : null}
-          </dl>
-        ) : null}
-        {blocker ? (
-          <p className="text-muted-foreground" data-testid="client-access-blocker">
-            {blocker.text}
-            {blocker.link ? (
-              <>
-                {" "}
-                <Link className="font-medium text-foreground underline" href={blocker.link.href}>{blocker.link.label}</Link>
-              </>
-            ) : null}
+          </Disclosure>
+        </div>
+      ) : null}
+      {blocker ? (
+        <p className="text-muted-foreground" data-testid="client-access-blocker">
+          {blocker.text}
+          {blocker.link ? (
+            <>
+              {" "}
+              <Link className="font-medium text-foreground underline" href={blocker.link.href}>{blocker.link.label}</Link>
+            </>
+          ) : null}
+        </p>
+      ) : (
+        // Remounted for each new invitation, so the next send gets a new request id.
+        <ActionForm
+          key={i?.id ?? "none"}
+          action={sendPlanningInvitation.bind(null, slug, eventId)}
+          submitLabel={again ? "Send a new planning invitation" : "Send planning invitation"}
+          pendingLabel="Sending…"
+          variant={again ? "outline" : "default"}
+          confirm={open ? "Send a new planning invitation? The link in the earlier email will stop working." : undefined}
+        >
+          <RequestIdField />
+          <p className="text-muted-foreground [overflow-wrap:anywhere]">
+            Emails {primary!.name} at <strong className="font-medium text-foreground">{primary!.email}</strong> a link to planning
+            {access.clientHasAccess ? "" : ", after confirming their email address"}. Nothing is sent until you do{external ? "" : ", not even when the event is booked"}.{" "}
+            Wrong address? <Link className="underline" href={`/staff/${slug}/clients/${primary!.id}#details`}>Edit {primary!.name}</Link>.
           </p>
-        ) : (
-          // Remounted for each new invitation, so the next send gets a new request id.
-          <ActionForm
-            key={i?.id ?? "none"}
-            action={sendPlanningInvitation.bind(null, slug, eventId)}
-            submitLabel={again ? "Send a new planning invitation" : "Send planning invitation"}
-            pendingLabel="Sending…"
-            variant={again ? "outline" : "default"}
-            confirm={open ? "Send a new planning invitation? The link in the earlier email will stop working." : undefined}
-          >
-            <RequestIdField />
-            <p className="text-muted-foreground [overflow-wrap:anywhere]">
-              Emails {primary!.name} at <strong className="font-medium text-foreground">{primary!.email}</strong> a link to open planning
-              {access.clientHasAccess ? "" : ", after confirming their email address"}. Review the planning first: they see what you set up.{" "}
-              Wrong address? <Link className="underline" href={`/staff/${slug}/clients/${primary!.id}#details`}>Edit {primary!.name}</Link>.
-            </p>
-          </ActionForm>
-        )}
-      </CardContent>
-    </Card>
+        </ActionForm>
+      )}
+    </section>
   );
 }
 

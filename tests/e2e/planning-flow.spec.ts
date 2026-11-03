@@ -91,8 +91,8 @@ test.describe.serial("planning", () => {
   test("staff chose Event basics only before the booking: the plan is ready, and a template can still be applied", async () => {
     await staff.goto(`/staff/${tenant.slug}/events/${eventId}`);
     const card = staff.locator("[data-slot=card]").filter({ has: staff.getByText("Planning", { exact: true }) });
-    await expect(card).toContainText("No template: this event's sections were chosen on the event.");
-    await card.getByRole("link", { name: "Edit planning" }).click();
+    await expect(card).toContainText("Sections chosen on this event");
+    await card.getByRole("link", { name: "Open planning" }).click();
     await staff.waitForURL(`**${staffPlanningUrl}`);
     await expect(staff.getByText("Created with Event basics only, because no template was chosen. Set up by staff.")).toBeVisible();
     await expect(staff.getByText("To add a template's stages and moments, apply one in")).toBeVisible();
