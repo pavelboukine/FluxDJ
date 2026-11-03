@@ -150,6 +150,14 @@ test.describe.serial("event workspace", () => {
     // Booked, with the client's planning deadline passed.
     await stage("passed", "Deadline passed wedding", "booked", { venue: "Château Example", planned: true });
     placePlanningDeadline(ev.passed.id, -24);
+    // Long content for the phone header and the collapsed Event details line.
+    await stage("long", "Alexandrine-Joséphine Bouchard-Villeneuve & Maximilien-Théodore Lachapelle-Desrosiers Wedding Celebration", "new", { venue: "Le Windsor" });
+    await must(admin.from("events").update({
+      venue_address: "1170 rue Peel, Salle de bal principale, deuxième étage, entrée par la cour intérieure, Montréal, QC H3B 4P2, Canada",
+      internal_notes: "Load in through the loading dock after 14:00.",
+    }).eq("id", ev.long.id));
+    await stage("addressed", "Addressed party", "new", { venue: "Le Windsor" });
+    await must(admin.from("events").update({ venue_address: "1170 rue Peel, Montréal" }).eq("id", ev.addressed.id));
   });
 
   test.afterAll(async () => {
@@ -581,6 +589,61 @@ test.describe.serial("event workspace", () => {
       }
       await context.close();
     }
+  });
+
+  test("header: the status beside the title, Edit details quiet on phones; collapsed lines never overlap their label", async () => {
+    const overlap = (a: { x: number; y: number; width: number; height: number }, b: { x: number; y: number; width: number; height: number }) =>
+      a.x < b.x + b.width - 1 && b.x < a.x + a.width - 1 && a.y < b.y + b.height - 1 && b.y < a.y + a.height - 1;
+    for (const width of [320, 390, 430, 1440]) {
+      const phone = width < 640;
+      const context = await browser.newContext(phone ? { ...PHONE, viewport: { width, height: 844 } } : { viewport: { width, height: 1000 } });
+      const page = await context.newPage();
+      await signInStaff(page, tenant.ownerEmail);
+      for (const key of ["booked", "long", "new", "addressed"]) {
+        const at = `${key} at ${width}`;
+        await page.goto(`/staff/${tenant.slug}/events/${ev[key].id}`);
+        const title = (await page.locator("main h1").boundingBox())!;
+        const badge = (await page.getByTestId("event-header-status").boundingBox())!;
+        const meta = (await page.getByTestId("event-meta").boundingBox())!;
+        const edit = page.getByTestId("edit-details-link");
+        const editBox = (await edit.boundingBox())!;
+        expect(await sideways(page), at).toBeLessThanOrEqual(0);
+        expect(badge.x + badge.width, at).toBeLessThanOrEqual(width);
+        expect(badge.y, at).toBeLessThan(meta.y); // the status belongs to the title, above the date and venue
+        if (key === "booked") {
+          // A short title: the badge sits on the title's line, to its right.
+          expect(badge.y, at).toBeLessThan(title.y + title.height);
+          expect(badge.x, at).toBeGreaterThan(title.x + title.width - 1);
+        }
+        if (phone) {
+          // Below the date and venue, a 44px tap target, without a visible border.
+          expect(editBox.y, at).toBeGreaterThanOrEqual(meta.y + meta.height - 1);
+          expect(editBox.height, at).toBeGreaterThanOrEqual(44);
+          expect(await edit.evaluate((e) => getComputedStyle(e).borderTopColor), at).toMatch(/rgba\(\d+, \d+, \d+, 0\)|transparent/);
+        } else {
+          // Desktop as before: the outlined button at the right of the title's line, the date and venue below.
+          expect(editBox.y, at).toBeLessThan(meta.y);
+          expect(editBox.x, at).toBeGreaterThan(badge.x + badge.width - 1);
+          expect(await edit.evaluate((e) => getComputedStyle(e).borderTopColor), at).not.toMatch(/rgba\(\d+, \d+, \d+, 0\)|transparent/);
+        }
+        // Event details, collapsed or not: a short line that never runs into its label.
+        const summary = page.locator("#details > summary");
+        await expect(summary, at).toContainText(key === "long" ? "Address saved · Notes" : key === "addressed" ? "Address saved" : "No address");
+        await expect(summary, at).not.toContainText(/rue Peel|Load in/);
+        const [label, hint] = await summary.locator(":scope > span").all();
+        expect(overlap((await label.boundingBox())!, (await hint.boundingBox())!), at).toBe(false);
+      }
+      await context.close();
+    }
+    // The full address and notes are inside, and the header link still opens the edit form.
+    const page = await (await browser.newContext(PHONE)).newPage();
+    await signInStaff(page, tenant.ownerEmail);
+    await page.goto(`/staff/${tenant.slug}/events/${ev.long.id}`);
+    await page.getByTestId("edit-details-link").click();
+    await expect(page.locator("#edit-details")).toHaveAttribute("open", "");
+    await expect(page.getByTestId("event-details")).toContainText("1170 rue Peel, Salle de bal principale");
+    await expect(page.getByTestId("event-details")).toContainText("Load in through the loading dock after 14:00.");
+    await page.context().close();
   });
 
   test("on a phone: compact header, stacked sections, nothing scrolls sideways", async ({}, info) => {

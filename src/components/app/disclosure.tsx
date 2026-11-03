@@ -76,12 +76,20 @@ function DisclosureInner({ id, summary, hint, defaultOpen, targets, className, c
         }
         setOpen(details.open);
       }}
-      className={cn("group/disclosure scroll-mt-20 rounded-lg border", className)}
+      className={cn("group/disclosure min-w-0 scroll-mt-20 rounded-lg border", className)}
     >
       <summary className="flex min-h-11 scroll-mt-20 cursor-pointer list-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium outline-none select-none hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
         <ChevronRight aria-hidden className={cn("size-4 shrink-0 text-muted-foreground transition-transform", (open || unsaved) && "rotate-90")} />
-        <span className="min-w-0 flex-1">{summary}</span>
-        {unsaved ? <span className="text-xs font-normal text-amber-700 dark:text-amber-400">Unsaved changes</span> : hint ? <span className="text-right text-xs font-normal text-muted-foreground">{hint}</span> : null}
+        {/*
+          The label never shrinks below its own words (it wraps at most); the hint gives way first and is cut short.
+          The disclosure itself may shrink (min-w-0), so a long one-line hint never widens a grid or flex parent.
+        */}
+        <span className="grow break-words">{summary}</span>
+        {unsaved ? (
+          <span className="shrink-0 text-xs font-normal text-amber-700 dark:text-amber-400">Unsaved changes</span>
+        ) : hint ? (
+          <span className="min-w-0 shrink-[100] truncate text-right text-xs font-normal text-muted-foreground">{hint}</span>
+        ) : null}
       </summary>
       <div className="border-t px-3 pt-3 pb-3">{children}</div>
     </details>
