@@ -1,253 +1,380 @@
-# Flux DJ: V1 data model and implementation specification
+# Flux DJ: Current Product and Engineering Reference
 
-Status: proposed implementation baseline, October 2, 2026.
+**Last updated:** November 5, 2026  
+**Product state:** Live, actively used, and under ongoing refinement  
+**Repository:** `pavelboukine/FluxDJ`  
+**Production:** https://fluxdj.com  
+**First tenant:** BOUPROD
 
-This document is intended for an AI coding tool and a human reviewer. Product requirements supplied by Pavel are authoritative. Provider pricing, API restrictions, legal compliance and current library APIs have not been independently verified here. This is a product and architecture specification, not a legal assessment or a working migration.
+> **How to use this document**
+>
+> This replaces the October 2, 2026 proposed V1 implementation baseline. It describes the product as last reported in the development conversations, plus the constraints that must continue to hold. It is a living engineering reference, not an instruction to rebuild existing functionality.
+>
+> **Source-of-truth rule:** Current repository code, committed database migrations, deployed configuration, and passing tests take precedence over illustrative names or historical assumptions in this document. This update was prepared from the supplied earlier specification and reported development progress, **not from a fresh code or production audit**. Where verification is missing, the text says so.
 
-## 1. Product scope and fixed decisions
+## 1. Product and direction
 
-Flux DJ is a branded proposal, contract and event planning portal for independent DJs. BOUPROD is the first tenant; other DJs have separate accounts and branding. Client-facing routes use `fluxdj.com/{tenantSlug}/...`. Branding belongs to the DJ, with optional small Flux attribution.
+Flux DJ is a multi-tenant DJ business platform for proposals, contracts, client planning, and event execution. Each DJ business has its own clients, events, packages, equipment, branding, staff, and settings. BOUPROD is the first production tenant, but the system must remain reusable across independent DJ businesses.
 
-Build in this order:
+The working product flow is:
 
-1. Proposal builder, gear media, packages, logistics requirements and DJ approval.
-2. Frozen contracts, e-signature, signed PDFs and first client login.
-3. Planning sections, progress, locking and mobile run sheet.
+1. A DJ creates a client and event, then assembles a branded proposal from their catalog, packages, add-ons, and logistics questions.
+2. A client opens a scoped proposal link, chooses a package and add-ons, answers applicable questions, and submits their selection for DJ review.
+3. Staff approve the exact submitted terms or prepare a revised offer. Approved terms are used to generate a contract from a published, versioned template.
+4. The intended client verifies their identity through passwordless email authentication, reviews the contract, and signs. A signed PDF is generated and delivered.
+5. Booking and payment status follow the configured policy. **Signing a contract does not itself record a deposit or payment.** Wave or another outside payment workflow remains external.
+6. The client completes planning in their authenticated portal. Staff review responses, coordinate the event, control client editing, and use the run sheet.
 
-Stack: Next.js App Router, TypeScript, Supabase Postgres/Auth/Storage, Tailwind, shadcn/ui, Resend, react-pdf, signature_pad and Vercel Pro. Use the requested Canadian database region. Region choice alone does not establish privacy compliance; email, hosting, logs, storage, backups and subprocessors require separate deployment review.
+**Current emphasis:** Improve reliability, maintainability, mobile polish, delivery confidence, and testing around this already functioning workflow. Add music search and playlist-link support after the core workflows are stable.
 
-Do not add passwords, scheduling, invoicing, payment collection, native apps, music integrations, subdomains or custom domains. TidyCal and Wave remain external. Music entries are manual in V1. PWA installation is required.
+### Product boundaries
 
-## 2. Working assumptions and decisions still to confirm
+- Support distinct business tenants and staff, rather than a single BOUPROD-specific code path.
+- Keep client booking, planning, and signing flows easy to understand on mobile.
+- Do not introduce payment processing, invoices, calendar scheduling, native mobile apps, equipment inventory allocation, or arbitrary workflow automation merely because the platform has grown.
+- TidyCal and Wave can continue as external services. Payment tracking inside Flux DJ is not the same thing as collecting payment.
+- Do not assume public self-service DJ signup exists. Invite-only onboarding is the last confirmed model.
+- Custom domains/subdomains and multiple mandatory contract signers are not confirmed as delivered features.
 
-- Currency defaults to CAD. Store money as integer cents, never floating point. Tax rates and labels are configured by each DJ; do not hardcode Quebec rates or registration status.
-- A tenant represents a DJ business, not an individual login. One owner per tenant initially; the schema permits additional staff later.
-- An event can have multiple client contacts. One primary contact receives proposal and signing emails in V1. One client signer is supported initially. Additional mandatory signers need a later workflow extension.
-- Signing opens planning and shows the signed confirmation screen. A tenant setting `booking_confirmation_policy` is `on_signature` or `on_deposit`; default `on_signature` follows the supplied client flow. If the DJ chooses `on_deposit`, show “Contract signed, deposit required to confirm booking” until payment is recorded. Never silently equate signing with payment.
-- A sent proposal has immutable offered terms, but the client can adjust the allowed choices until submission or expiry. Acceptance freezes a selection and sends it for DJ approval.
-- Public proposal links allow viewing and selection submission without an account. Signing additionally verifies the intended email through a magic link. A forwarded proposal link must never grant planning access or signing authority by itself.
-- Planning locks fourteen calendar days before the event by default (00:00 in the event's time zone on the event date minus the days), editable per tenant and event. The event timezone governs the cutoff.
-- One page is the target for the run sheet, not a reason to omit content. On phones it is one clean scrolling view; print can overflow when necessary.
+## 2. Technical baseline
 
-## 3. Database conventions
+### Confirmed stack and operating environment
 
-Use UUID primary keys, `created_at` and `updated_at` timestamps for mutable records. All tenant-owned records carry a non-null `tenant_id`. `tenants` is the root exception. Global Auth identities are not tenant records; membership and event access records are.
+| Area            | Current baseline                                                             |
+| --------------- | ---------------------------------------------------------------------------- |
+| Application     | Next.js **16** App Router, TypeScript                                        |
+| UI              | Tailwind CSS **4**, shadcn/ui, responsive React components                   |
+| Data/auth/files | Supabase Postgres, Auth, Storage, RLS, SQL migrations and database functions |
+| Email           | Resend with a durable outbox and webhook-based delivery tracking             |
+| Hosting         | Vercel; `main` is used for production deployments                            |
+| Authentication  | Passwordless email / magic-link flows; event-scoped client access            |
+| Mobile          | Installable PWA, responsive web interfaces, mobile launch experience         |
+| Document flow   | Versioned contract templates, electronic signatures, generated signed PDFs   |
 
-Each tenant-owned parent exposes `unique (tenant_id, id)`. Child references use composite foreign keys `(tenant_id, parent_id)` to prevent cross-tenant references even when application code is wrong. Add indexes for foreign keys and RLS predicates. Use check constraints for nonnegative amounts, bounded rates, quantities and statuses. Archive catalog records instead of deleting referenced history.
+Avoid declaring specific PDF, signature, testing, or observability library versions authoritative without checking `package.json` and the code. The earlier baseline listed `react-pdf`, `signature_pad`, and Vercel Pro as choices, but those precise runtime dependencies and plan details should be verified.
 
-Internal IDs are not access secrets. Authorization never relies on a URL slug, hidden button or UUID. Store event dates as dates and timezone as an IANA identifier, initially `America/Toronto`. Store absolute deadlines as `timestamptz`. Timeline entries use local date plus local time so midnight crossings are explicit.
+### Engineering conventions
 
-Use typed columns for identity, money, lifecycle and permissions. JSONB is appropriate for validated section answers, frozen snapshots and constrained rules. Do not put the entire application into generic JSON documents.
+- Preserve established project patterns and server actions instead of introducing a second framework or duplicate abstraction.
+- Keep SQL migrations, access policies, and types aligned. Do not make schema claims from this document alone.
+- Use strong typing, runtime validation at trust boundaries, and integer cents for monetary amounts.
+- Prefer straightforward, incremental changes with targeted tests. Avoid large refactors when a localized change is sufficient.
+- Do not request or generate screenshots as a routine part of coding tasks unless visual evidence is specifically needed.
+- Production deploys, merges, migrations, and client-impacting changes are explicit actions, not automatic conclusions of a successful local test run.
 
-## 4. Tables and relationships
+## 3. What is already implemented
 
-The following is the logical schema. Expand enumerations and constraints in migrations. Every row below except `tenants` includes `tenant_id`.
+The features below reflect reported completed work. Individual edge cases still require verification in current code and production.
 
-### Accounts, clients and events
+### 3.1 Tenants, onboarding, and business administration
 
-| Table                | Essential columns and constraints                                                                                                                                                                                               |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tenants`            | `id`, unique `slug`, `business_name`, `display_name`, `logo_storage_path`, validated `brand_colors`, `reply_to_email`, `timezone`, `currency`, `planning_lock_days`, `booking_confirmation_policy`, `tax_config`, `archived_at` |
-| `tenant_memberships` | `id`, `user_id` referencing Auth, `role` owner/staff, unique `(tenant_id,user_id)`; only owners manage membership                                                                                                               |
-| `clients`            | `id`, `name`, `email`, optional phone, `archived_at`; contacts belong to a business and are not globally shared between DJs                                                                                                     |
-| `events`             | `id`, `title`, `event_type`, `event_date`, `timezone`, venue name/address, `lifecycle_status`, nullable `active_proposal_id`, `booking_confirmed_at`, `planning_lock_at`, `planning_override_until`, `internal_notes`           |
-| `event_clients`      | `id`, `event_id`, `client_id`, `is_primary`, `can_sign`; unique event/client pair and at most one primary per event                                                                                                             |
-| `event_access`       | `id`, `event_id`, `client_id`, `user_id`, `revoked_at`; grants an authenticated client access to a specific event, never to the entire tenant                                                                                   |
+- Businesses, owners, staff memberships, tenant-isolated clients and events.
+- Invite-only DJ onboarding and branded staff shell/navigation.
+- Owner-managed staff invitations and membership revocation, with active membership checks.
+- Business Settings grouped into **Business Profile**, **Branding**, **Bookings & Taxes**, **Planning**, and **Legal Details**.
+- Configurable reply-to email, branding/logo, taxes, deposit percentage, and planning deadline controls.
+- Guided setup/onboarding checklist.
+- Archive-aware access behavior. Hiding an event from `/my` is only presentation: the client database functions and direct routes must reject access when the event or business is archived.
 
-Create clients and events before sending a proposal. Create event access only after verifying the contact's email. Do not create a fake Auth password or treat a lead as an authenticated client. Never expose `internal_notes` in client queries.
+### 3.2 Clients, events, and staff event workspace
 
-### Catalog and reusable templates
+- Client and event records with event-specific proposal, contract, payment, and planning access.
+- Redesigned DJ Event Workspace with lifecycle-aware ordering and clearer next steps.
+- Compact Payments and Planning/Client Access areas, with contract/documents given appropriate prominence based on event state.
+- Collapsible or secondary event details/contacts, plus a responsive desktop layout.
+- Event details editing and existing server behavior are preserved through the UI redesign.
 
-| Table                         | Essential columns and constraints                                                                                                                                 |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gear_items`                  | `id`, name, description, `unit_label`, `default_price_cents`, `tax_category`, `active`; represents a sellable item such as a ceremony speaker or four tube lights |
-| `gear_media`                  | `id`, `gear_item_id`, private storage path, `kind` image/video, alt text, sort order                                                                              |
-| `packages`                    | `id`, name, description, `base_price_cents`, sort order, `is_popular`, `active`                                                                                   |
-| `package_items`               | `id`, `package_id`, `gear_item_id`, positive quantity; unique package/item pair; describes included gear, without adding its retail price again                   |
-| `logistics_questions`         | `id`, stable key, prompt, answer type, validated options, sort order, required, active                                                                            |
-| `logistics_rules`             | `id`, `question_id`, constrained condition JSON, `gear_item_id`, positive required quantity, client-facing reason, active                                         |
-| `proposal_templates`          | `id`, name, intro, expiry duration, optional default package, active                                                                                              |
-| `proposal_template_packages`  | `id`, `template_id`, `package_id`, sort order                                                                                                                     |
-| `proposal_template_addons`    | `id`, `template_id`, `gear_item_id`, recommended quantity, max quantity, sort order                                                                               |
-| `proposal_template_questions` | `id`, `template_id`, `question_id`, sort order                                                                                                                    |
-| `contract_templates`          | `id`, name, active; points to a published template version                                                                                                        |
-| `contract_template_versions`  | `id`, `template_id`, version number, structured content, allowed placeholders, `published_at`; published versions are immutable                                   |
+**Most recent known UI release state:** The event workspace redesign was reported deployed on `main` at `b2e179b`. A follow-up mobile fix was prepared in [PR #8](https://github.com/pavelboukine/FluxDJ/pull/8), branch `fix/event-workspace-mobile-layout`, commit `496e836`. It fixes the mobile event-header badge/Edit Details arrangement and Event Details summary overflow. All three reported checks passed. **Merge and production deployment of PR #8 were not confirmed in the supplied context**, so verify them before treating the fixes as live.
 
-V1 logistics rules support only explicit equality and membership checks against answers. No executable expressions, arbitrary SQL, JavaScript or complex branching engine. Missing required answers block submission rather than being interpreted as false.
+### 3.3 Catalog, packages, and proposals
 
-### Proposals and selected pricing
+- Gear catalog and media, packages and included gear, optional add-ons, logistics questions/rules, and reusable proposal templates.
+- Staff proposal builder with client/event association, frozen offers, tax/price calculation, and delivery emails.
+- Branded client proposal pages with package selection, add-ons, requirements questions, equipment descriptions/photos, and live totals.
+- Public scoped proposal link/session exchange, expiration, first-open notification, selection submission, review, approval, and replacement/revised offer workflows.
+- Immutable submitted selections and approved commercial terms. Catalog edits must not rewrite sent offers or approvals.
+- Real-client workflows have been exercised, including expiring/resending proposal links, revised offers, and approval-to-contract handoff.
 
-| Table                      | Essential columns and constraints                                                                                                                                                                       |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `proposals`                | `id`, `event_id`, `revision`, status, `expires_at`, `sent_at`, `first_viewed_at`, nullable `supersedes_id`, frozen `offer_snapshot`, `offer_sha256`, `current_selection_version`; unique event/revision |
-| `proposal_selections`      | `id`, `proposal_id`, version, selected package key, addon quantities, logistics answers, calculated subtotal/tax/total cents, currency, `selection_snapshot`, `submitted_at`; unique proposal/version   |
-| `proposal_selection_lines` | `id`, `selection_id`, stable gear key, name/description snapshot, quantity, unit price cents, line total cents, `source` package/optional/required, required reason, tax category                       |
-| `proposal_approvals`       | `id`, `proposal_id`, `selection_id`, approved-by membership, `approved_at`, snapshot hash; unique approval for the selected submission                                                                  |
-| `access_links`             | `id`, purpose proposal/signing, parent proposal or contract reference, `token_hash`, intended client, `expires_at`, `revoked_at`, `consumed_at`; never store raw bearer tokens                          |
+**Proposal principle:** A client's submitted configuration is a request for DJ review, not permission for the DJ to silently change the final price or equipment. Changed terms require a new client-visible offer or reviewed acceptance flow.
 
-The offer snapshot copies packages, included quantities, optional gear, prices, descriptions, media references, questions, rules, tax configuration, expiry and branding shown to the client. Media referenced by sent offers must remain available; do not overwrite the original storage objects.
+### 3.4 Contract generation, signing, and PDFs
 
-Client selection is separate from the offer. Each submitted selection is immutable. During editing, an optimistic version guards against one browser tab overwriting another. The accepted selection includes a complete computed snapshot for approval and contract generation. Catalog edits do not affect it.
+- Reusable contract templates with published immutable versions.
+- Contract editor redesign with section cards and Word `.docx` import.
+- Contract generation from the exact approved selection with populated placeholders and frozen terms.
+- Passwordless signer onboarding, signing flow, stored signature evidence, signed PDF generation, and email delivery to intended recipients.
+- Signed-contract confirmation and event-page handoff to booking/planning.
+- Contract version/immutability rules: a sent contract is not edited in place; a correction to an unsigned contract uses a void/replacement path. Signed contracts remain immutable.
 
-Do not permit multiple actionable proposals for the same event. A transactional replacement revokes the old link, marks the old proposal superseded and sets the new active proposal. Preserve history.
+Signed contract and PDF delivery have been used in hosted workflows. **Signing is not proof of payment**, and generating a PDF does not by itself establish legal compliance.
 
-### Contracts, payment status and evidence
+### 3.5 Payment and booking tracking
 
-| Table                  | Essential columns and constraints                                                                                                                                                                                                      |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `contracts`            | `id`, `event_id`, `approval_id`, `template_version_id`, status, frozen rendered content and commercial snapshot, `content_sha256`, expected signer client/email, `sent_at`, `signed_at`, signed PDF path/hash, `pdf_generation_status` |
-| `contract_signatures`  | `id`, `contract_id`, typed name, verified email, signature image path, signed timestamp, trusted-source IP when available, user agent, consent text/version, frozen content hash, `auth_user_id`; unique contract for one-signer V1    |
-| `event_payment_status` | `id`, unique `event_id`, invoice URL, agreed total cents, deposit due cents/date, deposit received cents/date, balance due cents/date, balance received cents/date, updated-by membership; no banking/card information                 |
-| `audit_events`         | `id`, entity type/id, action, actor identity/type, minimal metadata, occurred-at; append-only and staff-readable only                                                                                                                  |
-| `email_outbox`         | `id`, event type, recipient, entity reference, unique deduplication key, status, attempts, next attempt time, provider message ID, sent-at                                                                                             |
+- Staff-visible payment/deposit status, associated agreement totals, and booking-state handoff.
+- Configurable deposit percentage; the originally agreed default was **50% of the total including taxes**.
+- Manual payment tracking remains distinct from external invoicing/payment collection.
+- Client-facing confirmation and payment wording should accurately reflect actual booking policy and the recorded deposit state.
 
-Deposit defaults to 50% of the final agreed total including taxes, rounded to integer cents. The remaining amount is total minus deposit. Partial payments are supported through amounts; display status is derived. Only staff edits payment status. Validate invoice URLs as HTTPS and restrict to configured Wave hosts before showing them as trusted invoice links.
+Verify the precise enum names and whether each booking policy is enabled from code and tenant settings before changing status logic. Do not conflate `signed`, `booked`, and `paid`.
 
-Contracts cannot be edited after sending. To correct an unsigned contract, void it, revoke its links and create a replacement. Signed contracts remain immutable; later commercial changes require a separate reviewed amendment process, outside V1.
+### 3.6 Client planning, staff planning, and run sheets
 
-### Planning
+- Reusable planning templates, including Wedding and Simple Party styles, and planning data initialized from booking/proposal context.
+- Client planning redesign with a progress-oriented overview, deadline awareness, **Continue / Review / View** actions, **Still to sort out** and **Already provided** groupings, section navigation, and mobile layouts.
+- Music/section entry, event moments, timeline, announcements, vendors, and related planning information as supported by existing templates and editors.
+- DJ planning redesign, including **Needs attention**, client list, booking access, and review/edit workflows.
+- Mobile and wide run-sheet presentations.
+- Planning access, deadline enforcement, and an immediate staff-controlled open/close switch for client editing.
+- Planning templates administration with list/search/archive/default, preview, and version checks.
+- Client `/my` and event-hub handoff from contract/booking into planning.
 
-| Table               | Essential columns and constraints                                                                                                                                             |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `planning_sections` | `id`, `event_id`, section key, schema version, validated answers JSON, `revision`, `completed_at`; unique event/section                                                       |
-| `timeline_items`    | `id`, `event_id`, local date/time, optional end date/time, title, location, notes, sort order, optional `key_moment_key`                                                      |
-| `songs`             | `id`, `event_id`, title, artist, optional HTTPS reference URL, version/edit notes, `usage` key_moment/must_play/do_not_play, optional timeline item, `moment_key`, sort order |
-| `announcements`     | `id`, `event_id`, name, phonetic pronunciation, role, announcement text, sort order                                                                                           |
-| `vendors`           | `id`, `event_id`, role, business/contact name, email, phone, notes                                                                                                            |
+Planning is no longer an unbuilt Phase 3. **Do not rebuild planning from the old six-table conceptual specification.** Check the present template, stages/moments, section data, server actions, and database functions before changing it.
 
-Section keys: basics, timeline, key_moments, music, announcements, vendors. Typed timeline/song/vendor records are the authoritative source for their sections. Do not maintain a duplicate timeline in section JSON. JSON contains only section-specific answers that lack a dedicated table.
+### 3.7 Sign-in, PWA, and mobile performance
 
-Seed planning from approved proposal answers once, after signing. Persist stable mappings, for example ceremony location to basics.ceremony_location. Do not overwrite later client edits when a job retries. Planning progress is derived from section validation requirements, not just whether a section has been opened. Allow explicit “not applicable” for optional moments.
+- Redesigned homepage and role-specific entry points: `/login?role=dj` and `/login?role=client`.
+- Branded confirmation/sign-in pages, safer return-to handling, and cross-browser email confirmation fixes.
+- Installable PWA. iPhone installation and persistent authenticated access were previously verified.
+- Mobile startup/performance changes deployed in two batches. The user reported an iPhone cold launch below two seconds, a white Flux startup image, and working dark mode on November 2. This is an observed device result, not a universal performance guarantee.
 
-## 5. Pricing algorithm
+Do not cache private contract data, bearer tokens, or sensitive authenticated documents in an offline service worker. Offline run-sheet availability is a separate feature, not automatically provided by PWA installation.
 
-All pricing runs on the server against the frozen offer. The browser may display a preview, but submitted monetary values are ignored.
+### 3.8 Email, notifications, and delivery visibility
 
-1. Validate the selected package is one of the offered packages.
-2. Validate addon IDs and quantity bounds against the offer.
-3. Validate answers and evaluate frozen logistics rules.
-4. Aggregate required quantities by gear item. Separate-space requirements add quantities when their rules demand independent setups.
-5. Account for included package quantities: `requiredExtra = max(0, requiredQuantity - includedQuantity)`.
-6. For gear also selected as an optional addon, `chargeableQuantity = max(optionalQuantity, requiredExtra)`. Optional quantity means total extra quantity beyond package inclusion. Show an unremovable required minimum and allow more above it.
-7. Add the selected package base price and chargeable addon line totals. Included package gear is displayed as included and is not charged twice.
-8. Compute taxes using frozen configured rates and a single documented line-rounding policy. Sum rounded tax amounts. Store the breakdown, subtotal and total.
+- Branded email system with approximately **13 redesigned templates**, plain-text versions, business logo/header, and editable reply-to behavior.
+- Durable outbox, retry/delivery history, and staff-facing email status visibility.
+- Resend webhook handling for delivered, delayed, bounced, complained, failed, and suppressed states.
+- Dashboard warnings summarizing recent delivery issues (30-day view).
+- Email coverage across proposal, first view, review submission, contract, signing/PDF, booking confirmation, and staff invitation flows.
 
-Example: separate ceremony and cocktail locations each need one speaker. Package includes one eligible additional speaker. Rules require two additional-location speakers; charge one extra. If the client already selected one extra of that same gear item, charge it once. The main reception speaker must be a separate catalog key or excluded from additional-location eligibility so it is not incorrectly counted.
+**Open operational concern:** Delivery and inbox placement must continue to be monitored. Prior real-world testing found sign-in emails in inboxes while other messages were often classified as spam. DMARC was reported as `p=none` with relaxed alignment. Never assume branded templating or a delivered webhook proves inbox placement. The older security/reliability audit also flagged a potential outbox claim-query error path that could skip some notification types; verify whether that issue remains before presenting it as an open defect.
 
-Rules represent quantities of sellable catalog units. A four-uplight pack is one unit with clear naming. Any physical gear availability, venue restrictions and simultaneous-use conflicts remain subject to manual DJ review in V1.
+## 4. Data and authorization invariants
 
-## 6. Lifecycle and transactions
+These are ongoing design requirements. Exact table/column names must be checked against migrations.
 
-Proposal: `draft -> sent -> submitted -> approved`; alternate terminal states `expired`, `superseded`, `declined`. Store view events separately, since opening is not a commercial state transition.
+### Tenant and identity model
 
-Contract: `draft -> sent -> signed`; alternate `void`. PDF generation and email delivery are independent states, never reasons to lose a completed signature.
+- A tenant is a **business**, not a user account.
+- Every tenant-owned record is scoped to its business; global Supabase Auth identities are separate from business membership.
+- Staff authorization requires a currently active membership in the requested tenant. Owner-only actions include membership administration and contract template publication where that is the implemented rule.
+- Client authorization is **event-specific** and tied to verified authentication, not merely a matching email address, visible UI, tenant slug, or UUID.
+- Archived tenants/events must be blocked in both the UI and all direct database/client action paths. Staff-only internal event data must not appear in client projections.
+- Cross-tenant foreign keys, RLS policies, carefully scoped privileged SQL functions, and tests are complementary defenses. Privileged server credentials do not replace authorization checks.
 
-Event: `lead -> pending_approval -> awaiting_signature -> booked -> completed`, plus `cancelled`. With deposit-required policy, use `awaiting_deposit` between signing and booked. Planning access depends on a signed contract, not merely the event enum. Planning locked/unlocked is calculated separately.
+### Commercial snapshots
 
-Required transactional operations:
+- Proposed pricing, package inclusions, catalog media, tax settings, and requirements are captured in a **frozen offered snapshot**.
+- Submitted client selections are validated and frozen independently of the mutable offer/editor state.
+- Approval references one exact submitted selection.
+- Contracts derive from approved, frozen terms and a published contract-template version. Retries must never regenerate legal terms from mutable live catalog or client records.
+- Signed PDF artifacts and audit/evidence records must remain associated with the signed content; status changes must not mutate a completed signature.
+- Financial amounts use integer cents and frozen configured tax rules. Display and server totals must agree.
 
-- Sending: validate complete offer, freeze it, activate proposal, issue link, enqueue email.
-- Submitting: lock proposal row, check active/sent/unexpired, compute selection, freeze submission, update event and enqueue notification. Duplicate submissions return the existing result for the same idempotency key.
-- Approving: approve the exact immutable submitted selection and transition event. If adjustments change client terms, issue a new proposal revision for client acceptance. Do not silently approve different gear/prices.
-- Signing: verify session and signer, lock contract, check sent/not void, verify displayed hash, capture evidence, mark signed, seed planning/event access and enqueue PDF work atomically. Enforce one signature row and idempotency.
-- PDF job: render solely from frozen contract and signature, calculate SHA-256 over final PDF bytes, save private object, record path/hash, enqueue emails to client and DJ. Retries reuse the completed artifact.
-- Payment update: update amounts and booking policy effects atomically; record staff audit event.
+### Links, passwords, and downloads
 
-Row locks or equivalent database concurrency controls are required for acceptance/signing. UI button disabling is insufficient. Recheck expiry at server time, including submissions from an already-open page.
+- Public proposal tokens must be high entropy, expiring, scoped, revocable, and hashed at rest. Exchange bearer tokens for narrow authenticated or proposal sessions where the app's implemented pattern requires it.
+- Email scanner GETs must never submit a proposal or execute a signature.
+- A forwarded proposal link must not grant contract signing or authenticated planning access.
+- The signer must be the verified intended person for that contract. Signed documents and signature files require authorized private downloads.
+- Treat storage location, retention, subprocessors, logs, and deletion as privacy concerns independent of Canadian Supabase region selection.
 
-The “held until” date is a proposal deadline, not an availability scheduler. Do not imply automatic exclusivity unless the DJ has actually placed that hold. The dashboard should warn staff about other active leads for the same date without preventing legitimate multi-event work.
+### Planning and archiving
 
-## 7. Authorization and link handling
+- Planning is seeded from approved proposal answers **once**; retries must not overwrite later user edits.
+- Progress derives from actual valid/required information, not page visits.
+- Deadline and reopening checks are enforced in server/database mutation paths, not simply by hiding controls.
+- Staff reopening or closing client access should not inadvertently expose another event or tenant.
+- A run sheet is a view of planning records, not a second copy of the timeline that can drift out of sync.
 
-Staff access requires active membership in the row's tenant. Client access requires active event access for the exact event and verified Auth user. An email match alone does not authorize an event.
+## 5. Pricing and proposal calculation rules
 
-Anonymous users receive no direct database table access. A server route exchanges a high-entropy proposal token for a narrowly scoped, expiring proposal session in a secure HttpOnly cookie and redirects to a clean URL. Tokens are hashed at rest, rate limited and revocable; exclude token URLs from analytics/logs and use a restrictive referrer policy. Link GET requests do not accept, sign or consume one-time signing authorization.
+Preserve the existing server-authoritative calculation model when editing proposal/pricing code:
 
-The public server route returns an explicit safe DTO: offered content and permitted event basics only. It cannot expose other contacts, internal notes, audit data or planning. Server-side privileged credentials remain outside browser bundles. Every privileged handler checks tenant, token scope, event, state and input; service-role credentials do not make these checks optional.
+1. Validate package selection, optional add-on IDs/quantities, and logistics answers against the **frozen offer**.
+2. Evaluate the frozen logistics requirements for independent audio/lighting locations or other needs.
+3. Aggregate required quantities by sellable gear item and subtract eligible package inclusions.
+4. For overlap between optional choices and required gear, charge only the greater necessary extra quantity, not both independently.
+5. Add the frozen package price and chargeable optional/required add-ons.
+6. Calculate tax using frozen tenant settings, a consistent rounding policy, and integer cents; save the breakdown.
+7. Ignore or reject client-supplied monetary amounts. Server/database validation is authoritative.
 
-Signing links initiate magic-link verification for the intended contact and return to the same frozen contract. Scope redirects to approved origins/routes. After verified callback, attach the exact event access record and establish the client's first login. Repeated login remains magic-link only. Email scanners must not cause acceptance/signature or consume the signing capability.
+Conceptually:
 
-RLS limits rows, not columns. Clients must not receive broad SELECT/UPDATE access to `events` or `contracts` containing staff fields. Use separate safe projections or carefully configured read functions, and narrow mutation functions/handlers for client actions. Revoke unintended direct table writes, enforce planning locks server-side and in the database mutation path, and avoid RLS-bypassing views. Harden privileged functions with a fixed search path and restricted execution grants.
+```text
+requiredExtra = max(0, requiredQuantity - includedEligibleQuantity)
+chargeableExtra = max(optionalExtraQuantity, requiredExtra)
+total = packageBase + sum(chargeableAddons) + configuredTaxes
+```
 
-Private Storage buckets: tenant gear media, signatures and contracts. Object paths include tenant and entity IDs; path naming alone grants no access. Apply storage policies and issue short-lived signed read URLs only after authorization. Public proposal media URLs are generated from authorized frozen references. Keep signature/PDF downloads private. Validate upload type/size and do not trust filename extensions.
+Example: Two separate ceremony/cocktail areas require two eligible extra speakers. If the package already includes one eligible speaker, only one additional speaker is chargeable. If the client already selected that additional speaker, charge it **once**.
 
-## 8. Pages and interface behavior
+Catalog units must be clear. Four uplights sold as a bundle are not interchangeable with four individually priced units unless the actual catalog/rules model explicitly supports that conversion. Simultaneous-location and inventory feasibility still require DJ review.
 
-Staff pages: dashboard; clients/events; gear/media; packages; templates/questions/rules; proposal editor; submitted proposal review; event contract/payment/planning view; run sheet.
+## 6. UX requirements worth preserving
 
-Client pages: proposal; submitted/pending review; frozen contract/signing; confirmation with deposit status and Wave link; planning home and sections.
+### Staff
 
-Proposal editor must support choosing a template, event/contact basics, three packages, recommended middle package, preselected addons, requirements questions, expiry, preview and send in roughly two minutes after setup. Keep catalog management outside the send flow. Exactly one offered package is marked most popular. Do not force clients to buy the recommended package.
+- Keep dashboard/event-workspace ordering aligned to the event lifecycle; make the recommended next action obvious.
+- Preserve the familiar catalog, proposal creation, template administration, client management, and business settings areas.
+- Payment status is operationally important but should not overwhelm the workspace.
+- Maintain a responsive layout without cramped status badges, inaccessible controls, overflowing event details, or giant cards on phones.
+- Avoid reintroducing redundant summary/detail data and avoid unexpectedly changing existing deep links or section anchors.
 
-Client proposal shows DJ branding, media, concise package comparison, required gear with explanatory text, editable optional addons, live total/tax breakdown, deadline and clear “Submit for DJ review” action. Required logistics gear is not presented as a persuasive upsell. Keep accessible mobile controls and visible save/error states.
+### Client proposal and signature
 
-Gear photography is a primary part of the client proposal (requirement recorded 2026-10-07, for the client proposal redesign). Clients often don't know what gear terms mean (moving heads, uplights, tube lights); a photo shows what they are buying. For included gear, required gear and optional addons, show large, readable images from the frozen offer's gear media, in the frozen order, with each item's description and alt text, and an accessible way to enlarge and browse an item's photos and videos (keyboard and screen-reader operable, focus kept, Escape closes, swipe on phones, videos never autoplay). Staff screens keep compact thumbnails. Packages have no photos of their own: they are shown through their included gear's media. Use only the media frozen into the offer; never re-read the live catalog for a sent proposal, and never alter frozen offers or their media.
+- Show packages, included gear, add-ons, requirements, understandable prices, and large useful equipment photos.
+- A photo of moving heads, uplights, or tubes can explain the offering better than technical names alone. Media should be tied to the frozen offer and accessible on mobile.
+- Required logistics equipment must be explained, not disguised as an optional upsell.
+- Expose submission, signing, completion, expiry, retry, and pending-review states clearly.
+- Show the frozen contract terms in readable HTML/mobile UI, not solely inside a PDF.
 
-Signing shows full frozen terms, typed name, drawn signature, explicit consent and a final signing action. Blank drawings are rejected. Accessible signing alternative needs agreement with the reviewed template; do not invent legal equivalence. No PDF-only reading requirement on mobile.
+### Client planning and DJ run sheet
 
-Planning autosaves with visible status and optimistic revision checks. Expired sessions and network failures retain unsaved input and clearly offer retry/login. Staff can edit after cutoff or explicitly reopen client editing until a specified deadline, with audit records.
+- Let clients quickly see what is missing, what is already provided, and what they should work on next.
+- Keep input on the page during transient save/network issues and communicate save/retry state.
+- Respect closed planning and archived-event access, including direct URL and database access.
+- Keep run sheets readable on phones and printable without silently clipping long timelines.
+- Show operational information such as timings, key songs/versions, pronunciations, vendor contacts, and notes, without unnecessary financial/signature information.
 
-Run sheet: event/date/venue; chronological timeline; song title/artist/version; pronunciations; vendor names/phones; key logistics. Omit unnecessary client personal details, signatures and financial data. Provide tap-to-call and print layout. Use the existing records, not a separately editable duplicate.
+## 7. Quality, security, and release checks
 
-PWA V1 supports installation and responsive authenticated screens. Cache static application assets only. Do not cache private contracts or tokens in a service worker. Offline run-sheet support is a separate explicit enhancement, not an implicit promise of PWA installation.
+The project has meaningful automated coverage, including database authorization tests and browser workflows. A recent event-workspace report cited **886 unit, 189 integration, and 324 browser tests passing**, but those are a _historical reported run_, not proof about the current checkout. The exact current test inventory and CI requirements are determined from the repository.
 
-## 9. Notifications and reliability
+Keep these regression areas covered:
 
-Send proposal email, first-open notice, submitted-for-review notice, contract email, signed-contract email to both parties and booking confirmation. Treat first-open detection as best effort: email scanners can open links, and it does not prove the client read the offer. Label the notification accordingly.
+- Tenant A cannot read, create, update, delete, or cross-reference Tenant B records; inactive/revoked staff lose access.
+- Client identity and event access remain separate from email equality and public link possession.
+- Direct access to archived event/business data is rejected, not merely hidden from `/my`.
+- Expired, revoked, and superseded proposals cannot be used to mutate active events.
+- Server-side pricing rejects tampered totals, invalid add-ons, missing logistics answers, and duplicate required gear charges.
+- Concurrent accept/approval/signature attempts cannot create inconsistent records or duplicate completed signatures.
+- Contract template/catalog edits cannot alter sent or signed contract terms.
+- Signed PDF and email retries do not roll back completed business transactions or duplicate planning records.
+- Deposits, signatures, confirmation, and booking-state policy remain correctly distinguished.
+- Planning deadlines and staff reopen controls are enforced through server/database paths, including timezone and archived-event cases.
+- Resend webhooks, durable outbox retries, failure notifications, and bounced/suppressed email visibility behave correctly.
+- Mobile proposal, signing, planning, and event-workspace journeys continue to work in authenticated browser and PWA sessions.
 
-Use a durable outbox, stable deduplication keys and bounded retries. Show failed email/PDF jobs to staff with retry controls. Persist business state before delivery. Never regenerate a contract from live client/catalog records when retrying an email.
+**Release practice:** Prefer focused checks for normal changes; run the relevant wider browser/database suite before shipping high-risk auth, financial, signing, or shared navigation changes. Treat failing or skipped tests as actionable information, not something to hide by updating snapshots blindly.
 
-Each DJ receives their branding and reply-to address. V1 may use one verified Flux sender domain; arbitrary tenant From domains require separate verification. Keep credentials out of tenant settings. Payment reminders and planning reminder schedules are outside the initial scope.
+## 8. Immediate priorities and roadmap
 
-## 10. Implementation sequence for the coding tool
+### Priority 0: Finish and verify the current mobile event-workspace patch
 
-### Phase 1: proposals
+- Confirm whether PR #8 has been squash-merged and deployed. If it has, update this document with the resulting production commit; do not reimplement the fix.
+- Verify the mobile header and Event Details overflow on a real phone, without unrelated redesign scope.
 
-1. Initialize the chosen stack, typed validation, lint/typecheck, migrations and local test setup. Pin actual package versions during implementation.
-2. Implement tenants, memberships, clients/events, RLS and cross-tenant constraints before building screens.
-3. Add catalog/media, package composition, templates and constrained logistics rules.
-4. Implement a pure server-shared pricing module, offer snapshots and selection validation.
-5. Build staff proposal creation and mobile public proposal pages.
-6. Add token/session exchange, transactional send/submit/approval, outbox and first-view notices.
+### Priority 1: Reliability and technical hardening
 
-Phase 1 is complete when BOUPROD can send a proposal, a lead can adjust and submit it, and Pavel can review the exact submitted terms. Do not pretend contracts/planning work before later phases are implemented.
+- Perform a **read-only current-state audit** before deciding which older audit findings still apply.
+- Check booking-state consistency and client access guards across direct routes, RLS, database functions, and server actions.
+- Check outbox claim/retry failure handling, delivery-status observability, and real inbox placement. Improve sender authentication/DMARC only with proper DNS and provider verification.
+- Verify CI requirements, test determinism/isolation, production error reporting, performance regressions, and critical proposal-to-planning smoke coverage.
+- Keep data-retention, cleanup, backup/recovery, and privacy/legal reviews visible as release obligations. Do not claim these are solved merely because the app is live.
 
-### Phase 2: contracts
+### Priority 2: Maintainability and UX cleanup
 
-1. Publish immutable contract template versions and render placeholders from approved terms.
-2. Implement verified magic-link onboarding and event-scoped access.
-3. Implement send/void/sign transitions and captured evidence.
-4. Implement PDF job, final-byte hash, private downloads and emails.
-5. Add manual Wave status and explicit booking-policy behavior.
+- Remove proven duplicate components/queries and outdated code paths without broad architecture rewrites.
+- Keep the newly redesigned staff and client workspaces stable. Make small changes driven by actual bugs, accessibility, and user testing.
+- Retain one clear flow for contract, payment, booking, planning, and run-sheet navigation.
 
-### Phase 3: planning
+### Priority 3: Music entry and playlist support
 
-1. Seed proposal answers without duplicate client entry.
-2. Implement sections, timeline, moments/songs, announcements and vendors.
-3. Implement validated progress, revisions, cutoff and staff reopening.
-4. Build mobile/print run sheet and installable PWA shell.
+**Status: researched, not implemented.** No music API integration was confirmed built or deployed.
 
-Deliver migrations, relevant security/pricing/concurrency tests, environment-variable example without secrets, minimal seed data for two isolated tenants, and setup instructions. Do not introduce a billing platform, complex inventory system, generic automation engine or additional backend framework.
+The desired client experience is to paste a Spotify, Apple Music, or other playlist link for dancing/cocktail/dinner rather than entering every track manually, while allowing convenient lookup of individual songs for key moments such as ceremony or grand entrance.
 
-## 11. Required acceptance tests
+Recommended incremental approach:
 
-Use real database RLS integration tests, not mocked authorization alone.
+1. Add provider-neutral song/playlist references while preserving existing manual song entry and planning data.
+2. Recognize and validate user-pasted Spotify, Apple Music, YouTube, and similar URLs; display them as links without assuming API authorization.
+3. Store playlist links by planning section. For imported track lists, initially support user-provided exported files or pasted lists rather than scraping private playlists.
+4. Investigate a recording lookup backed by MusicBrainz for title/artist, with the caveat that its free-text ranking is not equivalent to consumer music-app autocomplete.
+5. Consider richer provider search/import only after confirming terms, licensing, quotas, privacy, and a viable UX.
 
-- Tenant A staff cannot read, modify or reference Tenant B clients, events, proposals, media, contracts, payment status or planning records.
-- Test SELECT, INSERT, UPDATE and DELETE; membership escalation; changing `tenant_id`; cross-tenant composite foreign keys; and Storage reads/writes.
-- A verified client can access only their linked events, including when participating in events with multiple DJs. They cannot alter price, status, tenant membership, payment state, contracts or internal fields.
-- Anonymous access has no direct table permissions; forwarded proposal links cannot read planning or sign as the client.
-- Required gear cannot be removed, included gear is accounted for, optional and required gear is not double charged, tax rounding is consistent, and catalog changes cannot affect sent terms.
-- Tampered prices, unsupported addons, invalid quantities and missing answers are rejected server-side.
-- Expired, revoked and superseded links fail; concurrent submissions/replacements and repeated clicks cannot approve stale selections or create multiple signatures.
-- Wrong-email magic-link sessions cannot sign. GET requests and email scanning cannot sign or submit.
-- A frozen contract remains unchanged when its template, client, event or catalog changes. Signing records the displayed content hash; the stored PDF hash matches downloaded bytes.
-- PDF/email failure can retry without losing a signature or duplicating planning records. Delivery retries respect idempotency keys.
-- Planning locks reject direct mutation attempts after cutoff, timezone handling covers daylight-saving transitions and midnight events, and staff reopening is scoped/audited.
-- Mobile proposal/signing/planning and run sheet remain readable. Long run sheets print all content rather than clipping it to one page.
+**Research caveats:** Earlier analysis considered Spotify's API restrictions unsuitable for the intended commercial integration, and Apple Music's exact use case subject to licensing clarification. Treat those as research conclusions to revalidate before implementation, not as permanent statements about providers. No Spotify/Apple account connection should be assumed to exist.
 
-## 12. Review gates before real clients
+### Explicitly later or unconfirmed
 
-Pavel reviews the proposal pricing examples and booking/deposit wording. The lawyer reviews contract language, signing consent/evidence and amendment approach. Deployment review covers actual provider locations and privacy handling, retention/deletion, backup/recovery and production email setup. Retention periods are intentionally unspecified until decided; do not hardcode permanent storage of IP addresses or client data.
+- Automated planning/payment reminder schedules.
+- Offline private run-sheet storage/sync.
+- Integrated invoice/payment collection or credit-card processing.
+- Multiple required client signers and post-signature contract amendments.
+- Self-service public DJ signup, custom tenant domains, native mobile apps.
+- Broad equipment inventory allocation, staff scheduling, or generalized automation engines.
 
-The application must not claim legal compliance solely because it stores a signature, hash or Canadian database. Hashes detect changed bytes; authorization, frozen source content, evidence capture and reliable delivery are separate requirements.
+Do not begin these simply because they appeared in the original V1 wish list.
+
+## 9. Architectural map for a developer or coding assistant
+
+The old October 2 file contained a **proposed** database table inventory. It should not be copied into migrations as though the current application were empty.
+
+For implementation work, inspect the existing modules/migrations corresponding to these domain groups:
+
+| Domain             | What must remain authoritative                                                                  |
+| ------------------ | ----------------------------------------------------------------------------------------------- |
+| Tenancy and roles  | Businesses, active owner/staff membership, tenant RLS, archived state                           |
+| Clients and events | Business-owned contacts, event lifecycle, client-to-event access                                |
+| Catalog            | Gear/media, packages, inclusions, optional add-ons, logistics questions/rules                   |
+| Proposals          | Versions, frozen offers, token/session access, submitted selections, approvals, revisions       |
+| Contracts          | Published templates, immutable versions, generation, signer evidence, PDF artifacts             |
+| Payments           | External invoice references, deposit/balance records, booking policy and status                 |
+| Planning           | Reusable templates, answers/moments/timeline/music, progress, deadlines, staff editing controls |
+| Notifications      | Outbox, message deduplication, provider IDs, webhook delivery/failure history                   |
+| Auditing           | Security-relevant state changes, actor and scope, immutable evidence as appropriate             |
+
+Use actual schema/table/function names from committed migrations. Avoid parallel tables or shadow copies of existing planning and payment data.
+
+### State transitions to keep separate
+
+```text
+Proposal: draft -> sent -> submitted -> approved
+                     |           |
+                     |           +-> revise/re-offer where required
+                     +-> expired / superseded / revoked
+
+Contract: generated/draft -> sent -> signed
+                              +-> void/replacement if unsigned
+
+Payment: deposit due -> recorded deposit -> balance due/paid
+         (tracked separately; no payment is collected by signing)
+
+Planning: available after the authorized booking/signing handoff
+          -> client edits until closed/deadline
+          -> staff can manage/reopen according to current policy
+```
+
+These are **conceptual flows**, not a claim that these are the exact database enum values. Check the existing implementation before altering lifecycle logic.
+
+## 10. Outstanding verification and legal/privacy gates
+
+Before expanding usage or making compliance statements, explicitly verify:
+
+- The actual hosting, Supabase, Resend, logs, backups, storage, subprocessors, and retention/deletion arrangements.
+- Published contract text, signer consent language, legal enforceability, and any amendment workflow with qualified counsel.
+- Financial/tax configuration for each tenant; never hardcode BOUPROD's registration or provincial rates for all DJs.
+- Email sender alignment and inbox placement, not only API delivery success.
+- Secure download authorization and evidence retention for signatures and signed PDFs.
+- Production parity with the latest tested commit, migrations, and environment configuration.
+
+**Do not infer legal compliance** from storing an electronic signature, PDF hash, or data in a Canadian region. Preserve the relevant evidence and access-control controls, and obtain the necessary legal and privacy review.
+
+---
+
+## Change log
+
+### November 5, 2026
+
+- Reclassified the document from _proposed V1 baseline_ to _current live-product reference_.
+- Marked proposal, contract, signed-PDF, planning, run-sheet, staff management, onboarding, settings, branded email, and PWA work as implemented based on development history.
+- Added the event workspace/mobile PR #8 last-known status and a merge/deploy verification item.
+- Preserved security, pricing, tenant isolation, contract immutability, and archive access requirements.
+- Distinguished manual payment status from payment collection and contract signing.
+- Added reliability, CI, email deliverability, and maintainability as near-term priorities.
+- Added the music search/playlist-link research roadmap without pretending integrations are already built.
+- Replaced the unverified proposed table-by-table migration plan with a current-domain architecture map and an instruction to inspect migrations first.
+
+### October 2, 2026 (historical)
+
+- Initial proposed V1 data model and three-phase delivery plan for proposals, contracts, and planning. The original document is superseded by this reference.
