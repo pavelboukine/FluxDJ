@@ -19,7 +19,7 @@ export default async function NewPackage({ params }: PageProps<"/staff/[tenant]/
   return (
     <>
       <PageHeader
-        title="Add package"
+        title="Create package"
         description={
           <Link className="inline-flex items-center gap-1 underline-offset-4 hover:underline" href={`/staff/${slug}/packages`}>
             <ArrowLeft aria-hidden className="size-3.5" />

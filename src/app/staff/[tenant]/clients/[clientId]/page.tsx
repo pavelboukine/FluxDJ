@@ -95,7 +95,7 @@ export default async function ClientPage({ params, searchParams }: PageProps<"/s
             {archived ? <Badge variant="secondary">Archived</Badge> : <Badge variant="outline">Active</Badge>}
             {archived ? null : (
               <Link className={buttonVariants({ size: "sm" })} href={`/staff/${slug}/events/new?client=${client.id}`} data-testid="new-event-for-client">
-                <Plus aria-hidden /> New event
+                <Plus aria-hidden /> Create event
               </Link>
             )}
           </div>
@@ -158,7 +158,7 @@ export default async function ClientPage({ params, searchParams }: PageProps<"/s
             <p>{totalEvents === 0 ? "No events yet. Create one for this client, or add them under an event's Contacts." : "No upcoming events."}</p>
             {archived ? null : (
               <Link className={buttonVariants({ variant: "outline", size: "sm" })} href={`/staff/${slug}/events/new?client=${client.id}`}>
-                New event for {client.name}
+                Create event for {client.name}
               </Link>
             )}
           </EmptyList>

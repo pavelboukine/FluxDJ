@@ -63,7 +63,7 @@ export default async function Dashboard({ params, searchParams }: PageProps<"/st
               Add client
             </Link>
             <Link className={buttonVariants()} href={`/staff/${slug}/events/new`}>
-              New event
+              Create event
             </Link>
           </>
         }
@@ -87,7 +87,7 @@ export default async function Dashboard({ params, searchParams }: PageProps<"/st
           {problems.complaints > 0 ? (
             <span data-testid="email-complaints">{problems.complaints === 1 ? "1 recipient marked an email as spam." : `${problems.complaints} recipients marked emails as spam.`}</span>
           ) : null}
-          <Link className="font-medium underline" href={`/staff/${slug}/emails`}>Review emails</Link>
+          <Link className="tap-target-y font-medium underline" href={`/staff/${slug}/emails`}>Review emails</Link>
         </p>
       ) : null}
 
@@ -107,7 +107,7 @@ export default async function Dashboard({ params, searchParams }: PageProps<"/st
                 <li key={item.key} data-testid={`setup-${item.key}`} data-done={item.done} className="flex items-start gap-2">
                   <Circle aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
                   <span className="grid min-w-0">
-                    <Link className="font-medium underline-offset-4 hover:underline" href={item.href}>{item.label}</Link>
+                    <Link className="tap-target-y font-medium underline-offset-4 hover:underline" href={item.href}>{item.label}</Link>
                     <span className="text-xs text-muted-foreground">
                       {item.ownerOnly && !isOwner ? "Only the owner can complete this. " : null}
                       {item.hint}
@@ -157,7 +157,7 @@ export default async function Dashboard({ params, searchParams }: PageProps<"/st
                     )}
                   >
                     <span className={cn("font-medium", t.tone === "urgent" ? "text-amber-800 dark:text-amber-300" : null)}>{t.reason}</span>
-                    <span className="truncate">{t.title} · {shortDate(t.eventDate)}</span>
+                    <span className="[overflow-wrap:anywhere] sm:truncate">{t.title} · {shortDate(t.eventDate)}</span>
                     {t.detail ? <span className="text-xs text-muted-foreground">{t.detail}</span> : null}
                     <span className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-foreground/80 group-hover:text-foreground">
                       {t.action} <ArrowRight aria-hidden className="size-3" />
@@ -168,7 +168,7 @@ export default async function Dashboard({ params, searchParams }: PageProps<"/st
             </ul>
           )}
           {tasks.length > ATTENTION_SHOWN ? (
-            <Link className="text-sm font-medium underline-offset-4 hover:underline" href={showAll ? `/staff/${slug}#attention` : `/staff/${slug}?attention=all#attention`}>
+            <Link className="tap-target-y text-sm font-medium underline-offset-4 hover:underline" href={showAll ? `/staff/${slug}#attention` : `/staff/${slug}?attention=all#attention`}>
               {showAll ? "Show fewer" : `Show all ${tasks.length}`}
             </Link>
           ) : null}
@@ -177,7 +177,7 @@ export default async function Dashboard({ params, searchParams }: PageProps<"/st
         <section aria-labelledby="upcoming-heading" className="grid gap-3">
           <div className="flex items-baseline justify-between gap-2">
             <h2 id="upcoming-heading" className="text-base font-semibold">Upcoming events</h2>
-            <Link className="text-sm font-medium underline-offset-4 hover:underline" href={`/staff/${slug}/events`}>View all events</Link>
+            <Link className="tap-target-y text-sm font-medium underline-offset-4 hover:underline" href={`/staff/${slug}/events`}>View all events</Link>
           </div>
           {upcoming.length === 0 ? (
             <p className="rounded-xl border border-dashed px-4 py-6 text-sm text-muted-foreground" data-testid="upcoming-empty">
@@ -194,8 +194,8 @@ export default async function Dashboard({ params, searchParams }: PageProps<"/st
                       {e.relative ? <span className="text-xs text-muted-foreground">{e.relative}</span> : null}
                     </span>
                     <span className="grid min-w-0">
-                      <span className="truncate font-medium">{e.title}</span>
-                      <span className="truncate text-muted-foreground">
+                      <span className="font-medium [overflow-wrap:anywhere] sm:truncate">{e.title}</span>
+                      <span className="text-muted-foreground [overflow-wrap:anywhere] sm:truncate">
                         {e.client_name ?? "No client yet"} · <span className={e.venue_name ? undefined : "italic"}>{e.venue}</span>
                       </span>
                     </span>

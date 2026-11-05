@@ -1,6 +1,6 @@
 /**
  * An event booked outside Flux DJ, end to end in a dedicated test tenant:
- *   - staff create it from the normal New event form ("Already booked
+ *   - staff create it from the normal Create event form ("Already booked
  *     elsewhere", new client); it reads "Booked externally" everywhere and
  *     its next steps follow planning, never proposal, contract or deposit;
  *   - staff set planning up from a template and invite the client (the real
@@ -49,7 +49,7 @@ test.describe.serial("event booked elsewhere", () => {
     await archiveTestTenant(tenant);
   });
 
-  test("staff create an event booked elsewhere, with a new client, from the New event form", async () => {
+  test("staff create an event booked elsewhere, with a new client, from the Create event form", async () => {
     await staff.goto(`/staff/${tenant.slug}/events/new`);
     await staff.getByLabel("New client").check();
     await staff.getByLabel("Name", { exact: true }).fill(clientName);

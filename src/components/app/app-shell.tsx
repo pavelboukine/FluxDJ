@@ -118,7 +118,7 @@ export function AppShell({
               <NavGroups label={navLabel} groups={groups} className="px-3 py-5" />
             </aside>
           </div>
-          <main className="min-w-0 flex-1 pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)] sm:p-6 lg:p-8">
+          <main data-app-main className="min-w-0 flex-1 pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)] sm:p-6 lg:p-8">
             <div className="mx-auto grid w-full max-w-6xl gap-6 bg-background px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:rounded-xl sm:border sm:p-6 lg:p-8">
               {children}
             </div>
@@ -158,7 +158,7 @@ function NavGroups({ label, groups, className, onNavigate }: { label: string; gr
                     onClick={onNavigate}
                     aria-current={active ? "page" : undefined}
                     className={cn(
-                      "flex min-h-9 items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50",
+                      "flex min-h-11 items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm outline-none transition-colors lg:min-h-9 focus-visible:ring-3 focus-visible:ring-ring/50",
                       active
                         ? "bg-background font-medium text-foreground shadow-xs ring-1 ring-border"
                         : "text-muted-foreground hover:bg-foreground/[0.045] hover:text-foreground active:bg-foreground/[0.08] active:text-foreground",
@@ -178,7 +178,7 @@ function NavGroups({ label, groups, className, onNavigate }: { label: string; gr
 }
 
 const iconButton =
-  "inline-flex size-10 shrink-0 items-center justify-center rounded-lg text-foreground outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 aria-expanded:bg-muted";
+  "inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-foreground lg:h-10 lg:w-10 outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 aria-expanded:bg-muted";
 
 /** Below lg: the same navigation in a modal drawer from the left (focus trapped, page scroll locked, Escape closes). */
 function NavDrawer({ navLabel, groups, homeHref }: { navLabel: string; groups: NavGroup[]; homeHref: string }) {
@@ -218,7 +218,7 @@ function NavDrawer({ navLabel, groups, homeHref }: { navLabel: string; groups: N
 }
 
 const menuItem =
-  "flex min-h-9 w-full cursor-default items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm outline-none select-none data-highlighted:bg-muted data-disabled:text-muted-foreground";
+  "flex min-h-11 w-full cursor-default items-center lg:min-h-9 gap-2 rounded-md px-2.5 py-1.5 text-left text-sm outline-none select-none data-highlighted:bg-muted data-disabled:text-muted-foreground";
 
 function AccountMenu({ account }: { account: ShellAccount }) {
   const switchable = account.workspaces.length > 1;
@@ -228,7 +228,7 @@ function AccountMenu({ account }: { account: ShellAccount }) {
       <Menu.Trigger
         aria-label="Account"
         data-testid="account-menu"
-        className={cn(iconButton, "w-auto gap-1 px-1.5 text-muted-foreground hover:text-foreground lg:px-2")}
+        className={cn(iconButton, "w-auto min-w-11 gap-1 px-1.5 text-muted-foreground hover:text-foreground lg:w-auto lg:px-2")}
       >
         <CircleUserRound aria-hidden className="size-6" strokeWidth={1.6} />
         <ChevronDown aria-hidden className="hidden size-4 lg:block" />

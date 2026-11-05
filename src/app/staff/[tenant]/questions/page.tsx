@@ -1,9 +1,7 @@
-import Link from "next/link";
-import { Plus } from "lucide-react";
+import Link from "@/components/app/pending-link";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
 import { PageHeader } from "@/components/app/fields";
-import { EmptyList, FilterCheckbox, ListRows, Pagination, ResultLine } from "@/components/app/list";
+import { EmptyList, FilterCheckbox, INCLUDING_ARCHIVED, ListAction, ListRow, ListRows, NoResults, Pagination, ResultLine, RowLink } from "@/components/app/list";
 import { ListFilters } from "@/components/app/list-filters";
 import { requireStaff } from "@/lib/auth/staff";
 import { answerTypeLabel, canHaveRules } from "@/lib/catalog/rules";
@@ -38,6 +36,7 @@ export default async function Questions({ params, searchParams }: PageProps<"/st
   const questions = rows.data;
   const total = rows.count ?? 0;
   const archivedExcluded = archived.count ?? 0;
+  const none = (any.count ?? 0) === 0;
 
   return (
     <>
@@ -45,16 +44,14 @@ export default async function Questions({ params, searchParams }: PageProps<"/st
       <PageHeader
         title="Questions & rules"
         description="Questions clients answer on proposals, and the rules that turn answers into required gear (a separate ceremony space needs its own speaker)."
-        actions={
-          <Link className={buttonVariants()} href={`${base}/new`}>
-            <Plus aria-hidden />
-            Add question
-          </Link>
-        }
+        hideDescriptionOnPhone={!none}
+        actions={none ? null : <ListAction href={`${base}/new`}>Add question</ListAction>}
       />
-      <ListFilters label="Filter questions" query={p.q} placeholder="Question" clearHref={base} showClear={!isDefaultPackageList(p)}>
-        <FilterCheckbox label="Include archived" name="archived" checked={p.archived} />
-      </ListFilters>
+      {none ? null : (
+        <ListFilters label="Filter questions" query={p.q} placeholder="Question" clearHref={base} showClear={!isDefaultPackageList(p)} active={p.archived ? [INCLUDING_ARCHIVED] : []}>
+          <FilterCheckbox label="Include archived" name="archived" checked={p.archived} />
+        </ListFilters>
+      )}
 
       {total > 0 ? (
         <>
@@ -74,41 +71,36 @@ export default async function Questions({ params, searchParams }: PageProps<"/st
               const archivedGear = activeRules.some((r) => r.gear_items && !r.gear_items.active);
               const templates = q.proposal_template_questions.length;
               return (
-                <li key={q.id} data-testid="question-row">
-                  <div className="grid gap-y-1 px-4 py-3 text-sm">
-                    <span className="flex min-w-0 items-center gap-2">
-                      <Link className="font-medium underline-offset-4 [overflow-wrap:anywhere] hover:underline" href={`${base}/${q.id}`}>{q.prompt}</Link>
-                      {q.active ? null : <Badge variant="secondary">Archived</Badge>}
-                    </span>
-                    <span className="text-xs text-muted-foreground" data-testid="question-summary">
-                      {answerTypeLabel(q.answer_type)} · {q.required ? "Required" : "Optional"} ·{" "}
-                      {canHaveRules(q.answer_type) ? (activeRules.length === 0 ? "no rules" : `${activeRules.length} rule${activeRules.length === 1 ? "" : "s"}`) : "can't have rules"} ·{" "}
-                      {templates === 0 ? "in no template" : `in ${templates} template${templates === 1 ? "" : "s"}`}
-                    </span>
-                    {archivedGear ? <span className="text-xs text-amber-800 dark:text-amber-300">Needs attention: a rule requires archived gear</span> : null}
-                  </div>
-                </li>
+                <ListRow key={q.id} testId="question-row" className="grid gap-y-1">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <RowLink className="[overflow-wrap:anywhere]" href={`${base}/${q.id}`}>{q.prompt}</RowLink>
+                    {q.active ? null : <Badge variant="secondary">Archived</Badge>}
+                  </span>
+                  <span className="text-xs text-muted-foreground" data-testid="question-summary">
+                    {answerTypeLabel(q.answer_type)} · {q.required ? "Required" : "Optional"} ·{" "}
+                    {canHaveRules(q.answer_type) ? (activeRules.length === 0 ? "no rules" : `${activeRules.length} rule${activeRules.length === 1 ? "" : "s"}`) : "can't have rules"} ·{" "}
+                    {templates === 0 ? "in no template" : `in ${templates} template${templates === 1 ? "" : "s"}`}
+                  </span>
+                  {archivedGear ? <span className="text-xs text-amber-800 dark:text-amber-300">Needs attention: a rule requires archived gear</span> : null}
+                </ListRow>
               );
             })}
           </ListRows>
           <Pagination page={p.page} total={total} pageSize={PAGE_SIZE} href={(n) => packageListHref(base, { ...p, page: n })} />
         </>
-      ) : (any.count ?? 0) === 0 ? (
-        <EmptyList testId="questions-empty">
-          <p>No questions yet. Ask what changes the gear you bring, like where the ceremony takes place.</p>
-          <Link className={buttonVariants({ size: "sm" })} href={`${base}/new`}>Add your first question</Link>
+      ) : none ? (
+        <EmptyList testId="questions-empty" title="No questions yet." actions={<ListAction href={`${base}/new`}>Add question</ListAction>}>
+          Ask what changes the gear you bring, like where the ceremony takes place.
         </EmptyList>
       ) : (
-        <EmptyList testId="questions-no-results">
-          <p>
-            {p.q ? "No questions match this search." : "No active questions."}
-            {archivedExcluded > 0 ? ` ${archivedExcluded} archived ${archivedExcluded === 1 ? "question matches" : "questions match"} but ${archivedExcluded === 1 ? "is" : "are"} hidden.` : null}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {archivedExcluded > 0 ? <Link className={buttonVariants({ variant: "outline", size: "sm" })} href={packageListHref(base, { ...p, archived: true, page: 1 })}>Include archived</Link> : null}
-            {!isDefaultPackageList(p) ? <Link className={buttonVariants({ variant: "ghost", size: "sm" })} href={base}>Clear filters</Link> : null}
-          </div>
-        </EmptyList>
+        <NoResults
+          testId="questions-no-results"
+          title={p.q ? "No questions match this search." : "No active questions."}
+          noun={["question", "questions"]}
+          archived={archivedExcluded}
+          includeArchivedHref={packageListHref(base, { ...p, archived: true, page: 1 })}
+          clearHref={isDefaultPackageList(p) ? null : base}
+        />
       )}
     </>
   );

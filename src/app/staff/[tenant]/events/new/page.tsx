@@ -32,7 +32,7 @@ export default async function NewEvent({ params, searchParams }: PageProps<"/sta
   return (
     <>
       <SetupReturn slug={slug} from={from} />
-      <PageHeader title="New event" description="Find or add the client and enter what you know about the event. Then start a proposal, or, for an event booked elsewhere, set up its planning." />
+      <PageHeader title="Create event" description="Find or add the client and enter what you know about the event. Then start a proposal, or, for an event booked elsewhere, set up its planning." />
       <Card>
         <CardContent>
           <ActionForm action={createEvent.bind(null, slug)} submitLabel="Create event" pendingLabel="Creating…">

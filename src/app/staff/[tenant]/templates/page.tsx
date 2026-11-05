@@ -1,9 +1,7 @@
-import Link from "next/link";
-import { Plus } from "lucide-react";
+import Link from "@/components/app/pending-link";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
 import { PageHeader } from "@/components/app/fields";
-import { EmptyList, FilterCheckbox, ListRows, Pagination, ResultLine } from "@/components/app/list";
+import { EmptyList, FilterCheckbox, INCLUDING_ARCHIVED, ListAction, ListRow, ListRows, NoResults, Pagination, ResultLine, RowLink } from "@/components/app/list";
 import { ListFilters } from "@/components/app/list-filters";
 import { requireStaff } from "@/lib/auth/staff";
 import { PAGE_SIZE, containsFilter, isDefaultPackageList, packageListHref, parsePackageListParams, rangeText } from "@/lib/lists";
@@ -42,6 +40,7 @@ export default async function Templates({ params, searchParams }: PageProps<"/st
   const templates = rows.data;
   const total = rows.count ?? 0;
   const archivedExcluded = archived.count ?? 0;
+  const none = (any.count ?? 0) === 0;
 
   return (
     <>
@@ -49,16 +48,14 @@ export default async function Templates({ params, searchParams }: PageProps<"/st
       <PageHeader
         title="Proposal templates"
         description="Starting points for proposals: three packages, a recommended one, questions and add-ons."
-        actions={
-          <Link className={buttonVariants()} href={`${base}/new`}>
-            <Plus aria-hidden />
-            Add template
-          </Link>
-        }
+        hideDescriptionOnPhone={!none}
+        actions={none ? null : <ListAction href={`${base}/new`}>Create template</ListAction>}
       />
-      <ListFilters label="Filter proposal templates" query={p.q} placeholder="Name or intro" clearHref={base} showClear={!isDefaultPackageList(p)}>
-        <FilterCheckbox label="Include archived" name="archived" checked={p.archived} />
-      </ListFilters>
+      {none ? null : (
+        <ListFilters label="Filter proposal templates" query={p.q} placeholder="Name or intro" clearHref={base} showClear={!isDefaultPackageList(p)} active={p.archived ? [INCLUDING_ARCHIVED] : []}>
+          <FilterCheckbox label="Include archived" name="archived" checked={p.archived} />
+        </ListFilters>
+      )}
 
       {total > 0 ? (
         <>
@@ -83,52 +80,47 @@ export default async function Templates({ params, searchParams }: PageProps<"/st
                 t.proposal_template_addons.some((a) => a.gear_items && !a.gear_items.active) ? "archived extra" : null,
               ].filter(Boolean);
               return (
-                <li key={t.id} data-testid="template-row">
-                  <div className="grid gap-y-1 px-4 py-3 text-sm">
-                    <span className="flex min-w-0 items-center gap-2">
-                      <Link className="truncate font-medium underline-offset-4 hover:underline" href={`${base}/${t.id}`}>{t.name}</Link>
-                      {t.active ? null : <Badge variant="secondary">Archived</Badge>}
-                    </span>
-                    {t.intro ? <span className="line-clamp-1 text-muted-foreground">{t.intro}</span> : null}
-                    <span className="text-xs text-muted-foreground [overflow-wrap:anywhere]" data-testid="template-packages-summary">
-                      {offered.length > 0
-                        ? offered.map((x, i) => (
-                            <span key={x.id}>
-                              {i > 0 ? " · " : null}
-                              {x.name}
-                              {x.id === t.default_package_id ? " (recommended)" : null}
-                            </span>
-                          ))
-                        : "No packages yet"}
-                      {" · "}
-                      {t.proposal_template_questions.length} question{t.proposal_template_questions.length === 1 ? "" : "s"}
-                    </span>
-                    {flags.length > 0 ? (
-                      <span className="text-xs text-amber-800 dark:text-amber-300" data-testid="template-flags">Needs attention: {flags.join(", ")}</span>
-                    ) : null}
-                  </div>
-                </li>
+                <ListRow key={t.id} testId="template-row" className="grid gap-y-1">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <RowLink className="truncate" href={`${base}/${t.id}`}>{t.name}</RowLink>
+                    {t.active ? null : <Badge variant="secondary">Archived</Badge>}
+                  </span>
+                  {t.intro ? <span className="line-clamp-1 text-muted-foreground">{t.intro}</span> : null}
+                  <span className="text-xs text-muted-foreground [overflow-wrap:anywhere]" data-testid="template-packages-summary">
+                    {offered.length > 0
+                      ? offered.map((x, i) => (
+                          <span key={x.id}>
+                            {i > 0 ? " · " : null}
+                            {x.name}
+                            {x.id === t.default_package_id ? " (recommended)" : null}
+                          </span>
+                        ))
+                      : "No packages yet"}
+                    {" · "}
+                    {t.proposal_template_questions.length} question{t.proposal_template_questions.length === 1 ? "" : "s"}
+                  </span>
+                  {flags.length > 0 ? (
+                    <span className="text-xs text-amber-800 dark:text-amber-300" data-testid="template-flags">Needs attention: {flags.join(", ")}</span>
+                  ) : null}
+                </ListRow>
               );
             })}
           </ListRows>
           <Pagination page={p.page} total={total} pageSize={PAGE_SIZE} href={(n) => packageListHref(base, { ...p, page: n })} />
         </>
-      ) : (any.count ?? 0) === 0 ? (
-        <EmptyList testId="templates-empty">
-          <p>No proposal templates yet. A template is the quickest way to start proposals: choose three packages once and reuse them.</p>
-          <Link className={buttonVariants({ size: "sm" })} href={`${base}/new`}>Add your first template</Link>
+      ) : none ? (
+        <EmptyList testId="templates-empty" title="No proposal templates yet." actions={<ListAction href={`${base}/new`}>Create template</ListAction>}>
+          A template is the quickest way to start proposals: choose three packages once and reuse them.
         </EmptyList>
       ) : (
-        <EmptyList testId="templates-no-results">
-          <p>
-            {p.q ? "No templates match this search." : "No active templates."}
-            {archivedExcluded > 0 ? ` ${archivedExcluded} archived ${archivedExcluded === 1 ? "template matches" : "templates match"} but ${archivedExcluded === 1 ? "is" : "are"} hidden.` : null}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {archivedExcluded > 0 ? <Link className={buttonVariants({ variant: "outline", size: "sm" })} href={packageListHref(base, { ...p, archived: true, page: 1 })}>Include archived</Link> : null}
-            {!isDefaultPackageList(p) ? <Link className={buttonVariants({ variant: "ghost", size: "sm" })} href={base}>Clear filters</Link> : null}
-          </div>
-        </EmptyList>
+        <NoResults
+          testId="templates-no-results"
+          title={p.q ? "No templates match this search." : "No active templates."}
+          noun={["template", "templates"]}
+          archived={archivedExcluded}
+          includeArchivedHref={packageListHref(base, { ...p, archived: true, page: 1 })}
+          clearHref={isDefaultPackageList(p) ? null : base}
+        />
       )}
     </>
   );

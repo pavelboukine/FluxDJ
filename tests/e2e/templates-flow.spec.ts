@@ -107,7 +107,7 @@ test.describe.serial("proposal templates", () => {
     const blank = await staffPage(empty);
     await blank.goto(`/staff/${empty.slug}/templates`);
     await expect(blank.getByTestId("templates-empty")).toContainText("No proposal templates yet.");
-    await expect(blank.getByRole("main").getByRole("link", { name: "Add template" })).toHaveAttribute("href", `/staff/${empty.slug}/templates/new`);
+    await expect(blank.getByRole("main").getByRole("link", { name: "Create template" })).toHaveAttribute("href", `/staff/${empty.slug}/templates/new`);
     await shot(blank, "templates-list-empty", false);
     await blank.context().close();
 
@@ -208,7 +208,7 @@ test.describe.serial("proposal templates", () => {
   test("add a template: contents in one form, validation, and failed or lost saves never partial or duplicated", async () => {
     const page = await staffPage(tenant);
     await page.goto(`/staff/${tenant.slug}/templates`);
-    await page.getByRole("main").getByRole("link", { name: "Add template" }).click();
+    await page.getByRole("main").getByRole("link", { name: "Create template" }).click();
     await expect(page).toHaveURL(/\/templates\/new$/);
     const name = `E2E Corporate ${run}`;
     await page.getByLabel("Name").fill(name);

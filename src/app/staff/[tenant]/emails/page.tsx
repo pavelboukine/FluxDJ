@@ -14,6 +14,9 @@ const TONE: Record<Tone, string> = {
   attention: "border-amber-600/50 bg-amber-500/10 text-amber-900 dark:text-amber-200",
 };
 
+/* One table: from md a table, below md each email is a stacked block, so nothing needs sideways scrolling. */
+const stackedCell = "max-md:block max-md:px-0 max-md:py-0 max-md:whitespace-normal";
+
 const fmt = (iso: string | null) => (iso ? new Intl.DateTimeFormat("en-CA", { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso)) : "—");
 
 /** Every email of this business, newest first, with what is actually known about its delivery (lib/email/history). */
@@ -50,41 +53,41 @@ export default async function EmailsPage({ params }: PageProps<"/staff/[tenant]/
           </ActionForm>
         </CardContent>
       </Card>
-      <Table>
-        <TableHeader>
+      <Table className="max-md:block">
+        <TableHeader className="max-md:hidden">
           <TableRow>
             <TableHead>Email</TableHead>
-            <TableHead className="hidden sm:table-cell">To</TableHead>
+            <TableHead>To</TableHead>
             <TableHead>Status</TableHead>
-            <TableHead className="hidden md:table-cell">Details</TableHead>
+            <TableHead>Details</TableHead>
           </TableRow>
         </TableHeader>
-        <TableBody>
+        <TableBody className="max-md:block">
           {rows.map(({ e, purpose, state }) => (
-            <TableRow key={e.id} data-testid="email-row" data-status={e.status}>
-              <TableCell className="align-top">
+            <TableRow key={e.id} data-testid="email-row" data-status={e.status} className="max-md:grid max-md:gap-2 max-md:py-3 max-md:hover:bg-transparent">
+              <TableCell className={cn(stackedCell, "align-top")}>
                 {purpose.label}
                 <div className="text-xs text-muted-foreground">{fmt(e.created_at)}</div>
-                <div className="text-xs text-muted-foreground [overflow-wrap:anywhere] sm:hidden">{e.recipient_email}</div>
+                <div className="text-xs text-muted-foreground [overflow-wrap:anywhere] md:hidden" data-testid="email-recipient">{e.recipient_email}</div>
               </TableCell>
-              <TableCell className="hidden align-top [overflow-wrap:anywhere] sm:table-cell">{e.recipient_email}</TableCell>
-              <TableCell className="align-top">
-                <span className={cn("inline-block rounded-full border px-2 py-0.5 text-xs font-medium", TONE[state.tone])}>{state.label}</span>
+              <TableCell className="align-top [overflow-wrap:anywhere] max-md:hidden md:whitespace-normal xl:whitespace-nowrap">{e.recipient_email}</TableCell>
+              <TableCell className={cn(stackedCell, "align-top max-md:flex max-md:min-h-8 max-md:items-center max-md:justify-between max-md:gap-2")}>
+                <span data-testid="email-status" className={cn("inline-block rounded-full border px-2 py-0.5 text-xs font-medium", TONE[state.tone])}>{state.label}</span>
                 {state.retryable ? (
-                  <div className="mt-2">
+                  <div className="md:mt-2">
                     <ActionForm action={retryEmail.bind(null, slug, e.id)} submitLabel="Retry" variant="outline" inline>
                       <span />
                     </ActionForm>
                   </div>
                 ) : null}
               </TableCell>
-              <TableCell className="hidden max-w-xs align-top text-xs whitespace-normal text-muted-foreground md:table-cell">
+              <TableCell data-testid="email-details" className={cn(stackedCell, "max-w-xs align-top text-xs whitespace-normal text-muted-foreground max-md:max-w-none")}>
                 {state.explanation}
                 {state.at ? <div>{fmt(state.at)}</div> : null}
               </TableCell>
             </TableRow>
           ))}
-          {rows.length === 0 ? <TableRow><TableCell colSpan={4} className="text-muted-foreground">No emails yet.</TableCell></TableRow> : null}
+          {rows.length === 0 ? <TableRow className="max-md:block max-md:py-3"><TableCell colSpan={4} className={cn(stackedCell, "text-muted-foreground")}>No emails yet.</TableCell></TableRow> : null}
         </TableBody>
       </Table>
     </>

@@ -14,7 +14,7 @@ type Props = {
   /** The hidden field carrying the chosen client's id. */
   name: string;
   label: string;
-  /** Preselected client (e.g. "New event" from a client's page). */
+  /** Preselected client (e.g. "Create event" from a client's page). */
   initial?: PickerClient | null;
   /** Clients that can't be chosen here (already on the event). */
   exclude?: string[];

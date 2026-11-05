@@ -19,7 +19,7 @@ export default async function NewTemplate({ params }: PageProps<"/staff/[tenant]
   return (
     <>
       <PageHeader
-        title="Add proposal template"
+        title="Create proposal template"
         description={
           <Link className="inline-flex items-center gap-1 underline-offset-4 hover:underline" href={`/staff/${slug}/templates`}>
             <ArrowLeft aria-hidden className="size-3.5" />

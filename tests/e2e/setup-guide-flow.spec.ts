@@ -140,7 +140,7 @@ test.describe.serial("setup guide and business settings", () => {
     await expect(task(page, "planning")).toHaveAttribute("data-status", "attention");
     await expect(task(page, "planning")).toContainText("2 templates, not yet the default for any event type.");
     await page.goto(`/staff/${fresh.slug}/planning-templates`);
-    await page.getByRole("link", { name: "Open Wedding", exact: true }).click();
+    await page.getByTestId("planning-template-row").getByRole("link", { name: "Wedding", exact: true }).click();
     await page.getByLabel("Default for event type").selectOption("wedding");
     await page.getByRole("button", { name: "Save details" }).click();
     await expect.poll(async () => (await admin.from("planning_templates").select("default_event_type").eq("tenant_id", fresh.id).eq("starter_key", "wedding").single()).data?.default_event_type).toBe("wedding");
@@ -166,7 +166,7 @@ test.describe.serial("setup guide and business settings", () => {
     await staff.goto(`/staff/${fresh.slug}/setup`);
     await expect(task(staff, "taxes")).toContainText("Owner only");
     await expect(task(staff, "taxes").getByRole("link")).toHaveText("View");
-    await expect(task(staff, "packages").getByRole("link")).toHaveText("Add packages");
+    await expect(task(staff, "packages").getByRole("link")).toHaveText("Create packages");
     await expect(staff.getByTestId("setup-readiness")).toContainText("can only be completed by the business owner");
     await task(staff, "taxes").getByRole("link").click();
     await expect(staff.getByText("Only the owner can change tax settings.")).toBeVisible();

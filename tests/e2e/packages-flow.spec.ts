@@ -84,7 +84,7 @@ test.describe.serial("packages", () => {
     const blank = await staffPage(empty);
     await blank.goto(`/staff/${empty.slug}/packages`);
     await expect(blank.getByTestId("packages-empty")).toContainText("No packages yet.");
-    await expect(blank.getByRole("main").getByRole("link", { name: "Add package" })).toHaveAttribute("href", `/staff/${empty.slug}/packages/new`);
+    await expect(blank.getByRole("main").getByRole("link", { name: "Create package" })).toHaveAttribute("href", `/staff/${empty.slug}/packages/new`);
     await shot(blank, info, "packages-list-empty", false);
     await blank.context().close();
 
@@ -185,7 +185,7 @@ test.describe.serial("packages", () => {
   test("add a package: details and gear in one form, exact price, errors and a failed request keep everything", async ({}, info) => {
     const page = await staffPage(tenant);
     await page.goto(`/staff/${tenant.slug}/packages`);
-    await page.getByRole("main").getByRole("link", { name: "Add package" }).click();
+    await page.getByRole("main").getByRole("link", { name: "Create package" }).click();
     await expect(page).toHaveURL(/\/packages\/new$/);
     await expect(page.getByText("All fields are required unless marked optional.")).toBeVisible();
     await expect(page.getByLabel("Tax category")).toHaveValue("standard");

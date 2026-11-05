@@ -1,8 +1,7 @@
 import Link from "@/components/app/pending-link";
-import { buttonVariants } from "@/components/ui/button";
 import { PageHeader } from "@/components/app/fields";
 import { EventRow } from "@/components/app/event-row";
-import { EmptyList, FilterCheckbox, FilterDate, FilterSelect, ListRows, MoreFilters, Pagination, ResultLine } from "@/components/app/list";
+import { EmptyList, FilterCheckbox, FilterDate, FilterSelect, INCLUDING_ARCHIVED, ListAction, ListRows, MoreFilters, NoResults, Pagination, ResultLine, activeLabels, optionLabel, outlineLink } from "@/components/app/list";
 import { ListFilters } from "@/components/app/list-filters";
 import { requireStaff } from "@/lib/auth/staff";
 import { shortDate } from "@/lib/dates";
@@ -51,31 +50,43 @@ export default async function Events({ params, searchParams }: PageProps<"/staff
   const noun = (n: number) => `${n} ${VIEW_NOUN[p.view] ? `${VIEW_NOUN[p.view]} ` : ""}${p.type ? `${TYPE_LABEL[p.type].toLowerCase()} ` : ""}event${n === 1 ? "" : "s"}`;
   const range = p.from && p.to ? ` from ${shortDate(p.from)} to ${shortDate(p.to)}` : p.from ? ` from ${shortDate(p.from)}` : p.to ? ` until ${shortDate(p.to)}` : "";
   const order = p.sort === "date" ? ORDER_NOTE[p.view] : SORT_NOTE[p.sort];
+  const none = list.tenant_events === 0;
 
   return (
     <>
-      <PageHeader title="Events" actions={<Link className={buttonVariants()} href={`${base}/new`}>New event</Link>} />
-      <ListFilters
-        label="Filter events"
-        query={p.q}
-        placeholder="Event, client or venue"
-        clearHref={base}
-        showClear={!isDefaultEventList(p)}
-        defaults={{ view: "upcoming", sort: "date" }}
-        more={
-          <MoreFilters open={hasMoreEventFilters(p)}>
-            <FilterSelect label="Type" name="type" value={p.type ?? ""} options={[["", "All types"], ...EVENT_TYPES]} />
-            <FilterDate label="From" name="from" value={p.from} />
-            <FilterDate label="To" name="to" value={p.to} />
-            <FilterSelect label="Order" name="sort" value={p.sort} options={EVENT_SORTS} />
-            <p className="basis-full text-xs text-muted-foreground">Dates apply when you press Search. The range combines with the Dates view; choose All dates to search every date.</p>
-          </MoreFilters>
-        }
-      >
-        <FilterSelect label="Dates" name="view" value={p.view} options={EVENT_VIEWS} />
-        <FilterSelect label="Status" name="status" value={p.status ?? ""} options={[["", "All statuses"], ...EVENT_STATUSES]} />
-        <FilterCheckbox label="Include archived" name="archived" checked={p.archived} />
-      </ListFilters>
+      <PageHeader title="Events" actions={none ? null : <ListAction href={`${base}/new`}>Create event</ListAction>} />
+      {none ? null : (
+        <ListFilters
+          label="Filter events"
+          query={p.q}
+          placeholder="Event, client or venue"
+          clearHref={base}
+          showClear={!isDefaultEventList(p)}
+          defaults={{ view: "upcoming", sort: "date" }}
+          active={activeLabels(
+            p.view !== "upcoming" && `Dates: ${optionLabel(EVENT_VIEWS, p.view)}`,
+            p.status && `Status: ${optionLabel(EVENT_STATUSES, p.status)}`,
+            p.type && `Type: ${TYPE_LABEL[p.type]}`,
+            p.from && `From ${shortDate(p.from)}`,
+            p.to && `To ${shortDate(p.to)}`,
+            p.sort !== "date" && `Order: ${optionLabel(EVENT_SORTS, p.sort)}`,
+            p.archived && INCLUDING_ARCHIVED,
+          )}
+          more={
+            <MoreFilters open={hasMoreEventFilters(p)}>
+              <FilterSelect label="Type" name="type" value={p.type ?? ""} options={[["", "All types"], ...EVENT_TYPES]} />
+              <FilterDate label="From" name="from" value={p.from} />
+              <FilterDate label="To" name="to" value={p.to} />
+              <FilterSelect label="Order" name="sort" value={p.sort} options={EVENT_SORTS} />
+              <p className="basis-full text-xs text-muted-foreground">Dates apply when you press Search. The range combines with the Dates view; choose All dates to search every date.</p>
+            </MoreFilters>
+          }
+        >
+          <FilterSelect label="Dates" name="view" value={p.view} options={EVENT_VIEWS} />
+          <FilterSelect label="Status" name="status" value={p.status ?? ""} options={[["", "All statuses"], ...EVENT_STATUSES]} />
+          <FilterCheckbox label="Include archived" name="archived" checked={p.archived} />
+        </ListFilters>
+      )}
 
       {list.total > 0 ? (
         <>
@@ -107,27 +118,26 @@ export default async function Events({ params, searchParams }: PageProps<"/staff
           </ListRows>
           <Pagination page={p.page} total={list.total} pageSize={PAGE_SIZE} href={(n) => eventListHref(base, { ...p, page: n })} />
         </>
-      ) : list.tenant_events === 0 ? (
-        <EmptyList testId="events-empty">
-          <p>No events yet.</p>
-          <Link className={buttonVariants({ size: "sm" })} href={`${base}/new`}>Create your first event</Link>
+      ) : none ? (
+        <EmptyList testId="events-empty" title="No events yet." actions={<ListAction href={`${base}/new`}>Create event</ListAction>}>
+          Create an event to start a proposal and keep its details in one place.
         </EmptyList>
       ) : (
-        <EmptyList testId="events-no-results">
-          <p>
-            {isDefaultEventList(p) ? "No upcoming events." : "No events match these filters."}
-            {list.archived_excluded > 0 ? ` ${list.archived_excluded} archived ${list.archived_excluded === 1 ? "event matches" : "events match"} but ${list.archived_excluded === 1 ? "is" : "are"} hidden.` : null}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {list.archived_excluded > 0 ? <Link className={buttonVariants({ variant: "outline", size: "sm" })} href={eventListHref(base, { ...p, archived: true, page: 1 })}>Include archived</Link> : null}
-            {(p.from || p.to) && p.view !== "all" ? (
-              <Link className={buttonVariants({ variant: "outline", size: "sm" })} href={eventListHref(base, { ...p, view: "all", page: 1 })}>Search all dates in this range</Link>
+        <NoResults
+          testId="events-no-results"
+          title={isDefaultEventList(p) ? "No upcoming events." : "No events match these filters."}
+          noun={["event", "events"]}
+          archived={list.archived_excluded}
+          includeArchivedHref={eventListHref(base, { ...p, archived: true, page: 1 })}
+          clearHref={isDefaultEventList(p) ? null : base}
+          actions={
+            (p.from || p.to) && p.view !== "all" ? (
+              <Link className={outlineLink} href={eventListHref(base, { ...p, view: "all", page: 1 })}>Search all dates in this range</Link>
             ) : p.view === "upcoming" ? (
-              <Link className={buttonVariants({ variant: "outline", size: "sm" })} href={eventListHref(base, { ...p, view: "past", page: 1 })}>Show past events</Link>
-            ) : null}
-            {!isDefaultEventList(p) ? <Link className={buttonVariants({ variant: "ghost", size: "sm" })} href={base}>Clear filters</Link> : null}
-          </div>
-        </EmptyList>
+              <Link className={outlineLink} href={eventListHref(base, { ...p, view: "past", page: 1 })}>Show past events</Link>
+            ) : null
+          }
+        />
       )}
     </>
   );

@@ -4,7 +4,7 @@
  * phone hint, the contract step that explains a missing phone and fixes it
  * in place, international numbers, duplicate emails, lost updates, email
  * changes that already have access, phone search and sorting, the client
- * page's events and "New event", the searchable client picker, event
+ * page's events and "Create event", the searchable client picker, event
  * filters and orders, derived statuses (a signed contract still awaiting the
  * deposit is not "Booked"), stale contract drafts, archived events, another
  * business, a removed staff member, a suspended workspace and 320px

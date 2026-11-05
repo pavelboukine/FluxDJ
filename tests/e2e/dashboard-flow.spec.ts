@@ -135,7 +135,7 @@ test.describe.serial("staff dashboard", () => {
     await expect(page).toHaveURL(new RegExp(`/staff/${empty.slug}/clients#add-client$`));
     await expect(page.locator("#add-client")).toBeInViewport();
     await page.goto(`/staff/${empty.slug}`);
-    await page.getByRole("main").getByRole("link", { name: "New event" }).click();
+    await page.getByRole("main").getByRole("link", { name: "Create event" }).click();
     await expect(page).toHaveURL(new RegExp(`/staff/${empty.slug}/events/new$`));
     await page.context().close();
 
