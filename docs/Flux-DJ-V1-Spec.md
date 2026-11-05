@@ -84,7 +84,7 @@ The features below reflect reported completed work. Individual edge cases still 
 - Collapsible or secondary event details/contacts, plus a responsive desktop layout.
 - Event details editing and existing server behavior are preserved through the UI redesign.
 
-**Most recent known UI release state:** The event workspace redesign was reported deployed on `main` at `b2e179b`. A follow-up mobile fix was prepared in [PR #8](https://github.com/pavelboukine/FluxDJ/pull/8), branch `fix/event-workspace-mobile-layout`, commit `496e836`. It fixes the mobile event-header badge/Edit Details arrangement and Event Details summary overflow. All three reported checks passed. **Merge and production deployment of PR #8 were not confirmed in the supplied context**, so verify them before treating the fixes as live.
+**Most recent known UI release state:** The event workspace redesign was reported deployed on `main` at `b2e179b`. A follow-up mobile fix, [PR #8](https://github.com/pavelboukine/FluxDJ/pull/8), was squash-merged into `main` as `a624623`. It fixes the mobile event-header badge/Edit Details arrangement and Event Details summary overflow. All three reported checks passed. **Production deployment and real-device behavior of PR #8 remain unverified**, so verify them before treating the fixes as live.
 
 ### 3.3 Catalog, packages, and proposals
 
@@ -262,7 +262,7 @@ Keep these regression areas covered:
 
 ### Priority 0: Finish and verify the current mobile event-workspace patch
 
-- Confirm whether PR #8 has been squash-merged and deployed. If it has, update this document with the resulting production commit; do not reimplement the fix.
+- PR #8 is merged into `main` as `a624623`; do not reimplement the fix. Confirm that this commit is deployed to production, then record that here.
 - Verify the mobile header and Event Details overflow on a real phone, without unrelated redesign scope.
 
 ### Priority 1: Reliability and technical hardening
@@ -368,7 +368,7 @@ Before expanding usage or making compliance statements, explicitly verify:
 
 - Reclassified the document from _proposed V1 baseline_ to _current live-product reference_.
 - Marked proposal, contract, signed-PDF, planning, run-sheet, staff management, onboarding, settings, branded email, and PWA work as implemented based on development history.
-- Added the event workspace/mobile PR #8 last-known status and a merge/deploy verification item.
+- Recorded the event workspace/mobile PR #8 merge as `a624623` and added production deployment and real-device verification items.
 - Preserved security, pricing, tenant isolation, contract immutability, and archive access requirements.
 - Distinguished manual payment status from payment collection and contract signing.
 - Added reliability, CI, email deliverability, and maintainability as near-term priorities.
