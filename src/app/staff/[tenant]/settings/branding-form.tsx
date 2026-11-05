@@ -80,7 +80,7 @@ export function BrandingForm({
         </Field>
         {fileError ? <p role="alert" className="text-sm text-destructive">{fileError}</p> : null}
         {currentLogo && !chosen ? (
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex min-h-11 items-center gap-2 text-sm md:min-h-0">
             <input type="checkbox" name="remove_logo" checked={remove} onChange={(e) => setRemove(e.target.checked)} className="accent-primary" />
             Remove the logo (show the business name instead)
           </label>

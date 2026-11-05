@@ -141,7 +141,7 @@ export function requiredSetup(s: Base, slug: string): SetupTask[] {
             ? `${plural(s.offerable_packages, "active package")}.`
             : `${s.offerable_packages} of 3 active packages.`,
       href: `${base}/packages`,
-      action: "Add packages",
+      action: "Create packages",
       ownerOnly: false,
     }),
     task({

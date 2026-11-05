@@ -113,7 +113,7 @@ export function TaxSettingsForm({ action, version, rates, categories, usage }: P
                 onChange={(e) => setRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, rate: e.target.value } : r)))}
               />
             </div>
-            <Button type="button" variant="outline" onClick={() => removeTax(row.id)} aria-label={`Remove tax ${i + 1}${row.label ? ` (${row.label})` : ""}`}>
+            <Button type="button" variant="outline" className="max-md:h-11" onClick={() => removeTax(row.id)} aria-label={`Remove tax ${i + 1}${row.label ? ` (${row.label})` : ""}`}>
               Remove
             </Button>
           </div>
@@ -150,7 +150,7 @@ export function TaxSettingsForm({ action, version, rates, categories, usage }: P
                     ["taxes", "Apply taxes"],
                   ] as const
                 ).map(([mode, label]) => (
-                  <label key={mode} className="flex items-center gap-2">
+                  <label key={mode} className="flex min-h-11 items-center gap-2 md:min-h-0">
                     <input
                       type="radio"
                       name={`category_mode:${key}`}
@@ -169,7 +169,7 @@ export function TaxSettingsForm({ action, version, rates, categories, usage }: P
                 ) : (
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
                     {rows.map((row, i) => (
-                      <label key={row.id} className="flex items-center gap-2">
+                      <label key={row.id} className="flex min-h-11 items-center gap-2 md:min-h-0">
                         <input
                           type="checkbox"
                           name={`category_tax:${key}`}

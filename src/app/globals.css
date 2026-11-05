@@ -158,6 +158,17 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* A text link's tap area below lg: 44px tall for one line of 14px text, with no change to the layout. */
+@utility tap-target-y {
+  @media (width < 64rem) {
+    position: relative;
+    z-index: 1; /* Above the text beside it, which would otherwise take the taps. */
+    display: inline-block;
+    padding-block: 0.75rem;
+    margin-block: -0.75rem;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -205,6 +216,31 @@
   overflow: hidden;
 }
 
+
+/*
+ * Staff and platform pages below lg: a button keeps its compact look but gets
+ * a 44px tap area from an invisible layer, so no layout moves. Scoped to the
+ * shell's <main>, so client pages and dialogs are untouched. Only the height
+ * grows: a wider area would overlap neighbouring icon buttons.
+ */
+@media (width < 64rem) {
+  [data-app-main] .group\/button:not(.absolute, .fixed, .sticky) {
+    position: relative;
+  }
+  [data-app-main] .group\/button::after {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    inset-block: min(0px, calc(50% - 1.375rem));
+  }
+}
+
+/* Staff forms that opt in (data-touch-fields): 44px text fields on phones. */
+@media (width < 48rem) {
+  [data-touch-fields] input[data-slot="input"]:not([type="color"], [type="file"]) {
+    height: 2.75rem;
+  }
+}
 
 /*
  * Planning fields (6C.3b). Scoped to the planning shell, so the staff app's

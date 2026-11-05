@@ -766,7 +766,7 @@ How it works:
 
 #### Events booked elsewhere
 
-1. **Events → New event**, choose **Already booked elsewhere** (for an event
+1. **Events → Create event**, choose **Already booked elsewhere** (for an event
    booked through an agency or directly), a client and the date. The choice
    can't be changed later. The event reads **Booked externally**: no
    proposal, contract, signature or deposit steps, and Flux DJ records no
@@ -1392,7 +1392,12 @@ signed-out browser:
   real invitation and verification emails, acceptance, client saves, the web
   and PDF run sheet, payment refusals with the app's message, and a Flux event
   still needing its booking.
-- `tests/e2e/external-booking-flow.spec.ts`: the New event form, setup and
+- `tests/e2e/mobile-usability.spec.ts`: staff pages on phones: the Emails page,
+  16px list fields, full client and event details, 44px tap areas.
+- `tests/e2e/list-pages-consistency.spec.ts`: the eight staff list pages: phone
+  filters, whole-row links, primary actions, empty and no-results states, tap
+  areas that don't overlap.
+- `tests/e2e/external-booking-flow.spec.ts`: the Create event form, setup and
   invitation from the event page, the emailed link, the client planning and
   home, staff review and run sheet, lists and dashboard, and a Flux event
   with an existing client still starting with a proposal.
@@ -2480,7 +2485,7 @@ appear.
   (proposals; every offer has three); a contract template version published for client use (contracts).
   A proposal template is recommended, not required: a draft can pick its
   three packages directly. Staff see which items only the owner can complete.
-- **Quick actions:** New event and Add client open the existing screens. The
+- **Quick actions:** Create event and Add client open the existing screens. The
   compact install help stays.
 
 **Deploying.** The migration only adds `public.staff_dashboard` (nothing
@@ -2784,7 +2789,7 @@ business only, searching every record server-side.
   discarding typed details.
 - **Choosing a client** (new event, an event's Add a contact) is a search,
   not a dropdown of every client: `searchClients` returns at most 8 active
-  clients of the business. A client's page has **New event**, which opens
+  clients of the business. A client's page has **Create event**, which opens
   the form with that client chosen (`/events/new?client=<id>`).
 
 **Client details.** Saving carries the record's `updated_at`; a save made

@@ -79,7 +79,7 @@ function Panel({ action, initiallyOpen, contractsNeedPhone }: Props) {
   }
 
   return (
-    <section ref={section} id="add-client" hidden={!open} aria-labelledby="add-client-heading" className="scroll-mt-20 grid gap-3 rounded-xl border bg-card p-4">
+    <section ref={section} id="add-client" data-touch-fields hidden={!open} aria-labelledby="add-client-heading" className="scroll-mt-20 grid gap-3 rounded-xl border bg-card p-4">
       <div className="flex items-center justify-between gap-2">
         <h2 id="add-client-heading" className="text-base font-semibold">Add a client</h2>
         <Button type="button" variant="ghost" size="sm" onClick={close}>Cancel</Button>

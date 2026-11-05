@@ -1,9 +1,8 @@
-import Link from "next/link";
-import { ImageOff, Plus } from "lucide-react";
+import Link from "@/components/app/pending-link";
+import { ImageOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
 import { PageHeader } from "@/components/app/fields";
-import { EmptyList, FilterCheckbox, FilterSelect, ListRows, Pagination, ResultLine } from "@/components/app/list";
+import { EmptyList, FilterCheckbox, FilterSelect, INCLUDING_ARCHIVED, ListAction, ListRow, ListRows, NoResults, Pagination, ResultLine, RowLink, activeLabels } from "@/components/app/list";
 import { ListFilters } from "@/components/app/list-filters";
 import { requireStaff } from "@/lib/auth/staff";
 import { PAGE_SIZE, containsFilter, gearListHref, isDefaultGearList, parseGearListParams, rangeText } from "@/lib/lists";
@@ -67,6 +66,8 @@ export default async function GearList({ params, searchParams }: PageProps<"/sta
   const items = rows.data;
   const total = rows.count ?? 0;
   const archivedExcluded = archived.count ?? 0;
+  const none = (any.count ?? 0) === 0;
+  const categoryName = p.category === "none" ? UNCATEGORIZED : categoryList.find((c) => c.id === p.category)?.name;
 
   // Short-lived signed thumbnails, issued to this staff user only.
   const paths = items.flatMap((g) => g.thumb.map((t) => t.storage_path));
@@ -81,24 +82,29 @@ export default async function GearList({ params, searchParams }: PageProps<"/sta
       <PageHeader
         title="Gear"
         description="Items you offer on proposals. Changes apply to new proposals; sent ones keep their own copy."
-        actions={
-          <Link className={buttonVariants()} href={`${base}/new`}>
-            <Plus aria-hidden />
-            Add gear
-          </Link>
-        }
+        hideDescriptionOnPhone={!none}
+        actions={none ? null : <ListAction href={`${base}/new`}>Add gear</ListAction>}
       />
-      <ListFilters label="Filter gear" query={p.q} placeholder="Name or description" clearHref={base} showClear={!isDefaultGearList(p)}>
-        {categoryList.length > 0 ? (
-          <FilterSelect
-            label="Category"
-            name="category"
-            value={p.category}
-            options={[["", "All categories"], ...categoryList.map((c) => [c.id, c.name] as const), ["none", UNCATEGORIZED]]}
-          />
-        ) : null}
-        <FilterCheckbox label="Include archived" name="archived" checked={p.archived} />
-      </ListFilters>
+      {none ? null : (
+        <ListFilters
+          label="Filter gear"
+          query={p.q}
+          placeholder="Name or description"
+          clearHref={base}
+          showClear={!isDefaultGearList(p)}
+          active={activeLabels(p.category && categoryName && `Category: ${categoryName}`, p.archived && INCLUDING_ARCHIVED)}
+        >
+          {categoryList.length > 0 ? (
+            <FilterSelect
+              label="Category"
+              name="category"
+              value={p.category}
+              options={[["", "All categories"], ...categoryList.map((c) => [c.id, c.name] as const), ["none", UNCATEGORIZED]]}
+            />
+          ) : null}
+          <FilterCheckbox label="Include archived" name="archived" checked={p.archived} />
+        </ListFilters>
+      )}
 
       {total > 0 ? (
         <>
@@ -117,59 +123,54 @@ export default async function GearList({ params, searchParams }: PageProps<"/sta
               const thumb = g.thumb[0] ? urlFor.get(g.thumb[0].storage_path) : undefined;
               const mediaCount = g.media[0]?.count ?? 0;
               return (
-                <li key={g.id} data-testid="gear-row">
-                  <div className="grid grid-cols-[3.5rem_minmax(0,1fr)] items-center gap-x-4 gap-y-1 px-4 py-3 text-sm sm:grid-cols-[3.5rem_minmax(0,1fr)_auto]">
-                    <span className={`row-span-2 flex size-14 items-center justify-center overflow-hidden rounded-lg sm:row-span-1 ${thumb ? "bg-white ring-1 ring-black/5 ring-inset" : "bg-muted"}`}>
-                      {thumb ? (
-                        // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL
-                        <img src={thumb} alt="" loading="lazy" decoding="async" className="size-full object-contain p-0.5" data-testid="gear-thumb" />
-                      ) : (
-                        <span data-testid="gear-no-photo">
-                          <ImageOff aria-hidden className="size-5 text-muted-foreground" />
-                          <span className="sr-only">No photo</span>
-                        </span>
-                      )}
-                    </span>
-                    <span className="grid min-w-0">
-                      <span className="flex min-w-0 items-center gap-2">
-                        <Link className="truncate font-medium underline-offset-4 hover:underline" href={`${base}/${g.id}`}>{g.name}</Link>
-                        {g.active ? null : <Badge variant="secondary">Archived</Badge>}
+                <ListRow key={g.id} testId="gear-row" className="grid grid-cols-[3.5rem_minmax(0,1fr)] items-center gap-x-4 gap-y-1 sm:grid-cols-[3.5rem_minmax(0,1fr)_auto]">
+                  <span className={`row-span-2 flex size-14 items-center justify-center overflow-hidden rounded-lg sm:row-span-1 ${thumb ? "bg-white ring-1 ring-black/5 ring-inset" : "bg-muted"}`}>
+                    {thumb ? (
+                      // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL
+                      <img src={thumb} alt="" loading="lazy" decoding="async" className="size-full object-contain p-0.5" data-testid="gear-thumb" />
+                    ) : (
+                      <span data-testid="gear-no-photo">
+                        <ImageOff aria-hidden className="size-5 text-muted-foreground" />
+                        <span className="sr-only">No photo</span>
                       </span>
-                      {categoryList.length > 0 ? (
-                        <span className="text-xs font-medium text-muted-foreground" data-testid="gear-category">{g.category?.name ?? UNCATEGORIZED}</span>
-                      ) : null}
-                      {g.description ? <span className="line-clamp-1 text-muted-foreground">{g.description}</span> : null}
-                      <span className="text-xs text-muted-foreground">
-                        {mediaCount === 0 ? "No photos or videos" : `${mediaCount} photo${mediaCount === 1 ? "" : "s"} or video${mediaCount === 1 ? "" : "s"}`}
-                      </span>
+                    )}
+                  </span>
+                  <span className="grid min-w-0">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <RowLink className="truncate" href={`${base}/${g.id}`}>{g.name}</RowLink>
+                      {g.active ? null : <Badge variant="secondary">Archived</Badge>}
                     </span>
-                    <span className="col-start-2 grid sm:col-start-3 sm:justify-items-end sm:text-right" data-testid="gear-price">
-                      <span className="font-medium">{formatCents(g.default_price_cents, tenant.currency)}</span>
-                      <span className="text-xs text-muted-foreground">unit price, {perUnitText(g)}</span>
+                    {categoryList.length > 0 ? (
+                      <span className="text-xs font-medium text-muted-foreground" data-testid="gear-category">{g.category?.name ?? UNCATEGORIZED}</span>
+                    ) : null}
+                    {g.description ? <span className="line-clamp-1 text-muted-foreground">{g.description}</span> : null}
+                    <span className="text-xs text-muted-foreground">
+                      {mediaCount === 0 ? "No photos or videos" : `${mediaCount} photo${mediaCount === 1 ? "" : "s"} or video${mediaCount === 1 ? "" : "s"}`}
                     </span>
-                  </div>
-                </li>
+                  </span>
+                  <span className="col-start-2 grid sm:col-start-3 sm:justify-items-end sm:text-right" data-testid="gear-price">
+                    <span className="font-medium">{formatCents(g.default_price_cents, tenant.currency)}</span>
+                    <span className="text-xs text-muted-foreground">unit price, {perUnitText(g)}</span>
+                  </span>
+                </ListRow>
               );
             })}
           </ListRows>
           <Pagination page={p.page} total={total} pageSize={PAGE_SIZE} href={(n) => gearListHref(base, { ...p, page: n })} />
         </>
-      ) : (any.count ?? 0) === 0 ? (
-        <EmptyList testId="gear-empty">
-          <p>No gear yet. Add the items you offer, such as speakers, microphones or lighting.</p>
-          <Link className={buttonVariants({ size: "sm" })} href={`${base}/new`}>Add your first item</Link>
+      ) : none ? (
+        <EmptyList testId="gear-empty" title="No gear yet." actions={<ListAction href={`${base}/new`}>Add gear</ListAction>}>
+          Add the items you offer, such as speakers, microphones or lighting.
         </EmptyList>
       ) : (
-        <EmptyList testId="gear-no-results">
-          <p>
-            {p.q ? "No gear matches this search." : "No active gear."}
-            {archivedExcluded > 0 ? ` ${archivedExcluded} archived ${archivedExcluded === 1 ? "item matches" : "items match"} but ${archivedExcluded === 1 ? "is" : "are"} hidden.` : null}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {archivedExcluded > 0 ? <Link className={buttonVariants({ variant: "outline", size: "sm" })} href={gearListHref(base, { ...p, archived: true, page: 1 })}>Include archived</Link> : null}
-            {!isDefaultGearList(p) ? <Link className={buttonVariants({ variant: "ghost", size: "sm" })} href={base}>Clear filters</Link> : null}
-          </div>
-        </EmptyList>
+        <NoResults
+          testId="gear-no-results"
+          title={p.q ? "No gear matches this search." : p.category ? "No gear in this category." : "No active gear."}
+          noun={["item", "items"]}
+          archived={archivedExcluded}
+          includeArchivedHref={gearListHref(base, { ...p, archived: true, page: 1 })}
+          clearHref={isDefaultGearList(p) ? null : base}
+        />
       )}
       <CategoryManager slug={slug} categories={categoryList} />
     </>

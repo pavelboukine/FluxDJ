@@ -70,14 +70,18 @@ export function CheckboxField({ label, name, defaultChecked, hint }: { label: st
   );
 }
 
-export function PageHeader({ title, description, actions }: { title: string; description?: ReactNode; actions?: ReactNode }) {
+/**
+ * A page's title, description and actions. Actions sit at the top right: beside
+ * the title on phones when they fit, otherwise under it. List pages with
+ * records pass `hideDescriptionOnPhone`, so the results come first there.
+ */
+export function PageHeader({ title, description, actions, hideDescriptionOnPhone }: { title: string; description?: ReactNode; actions?: ReactNode; hideDescriptionOnPhone?: boolean }) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3">
-      <div className="grid gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-        {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
-      </div>
-      {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
+    <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 md:grid md:grid-cols-[minmax(0,1fr)_auto] md:gap-y-1">
+      <h1 className="min-w-0 text-2xl font-semibold tracking-tight [overflow-wrap:anywhere]">{title}</h1>
+      {/* Read in this order everywhere; on phones the description shows below the actions. */}
+      {description ? <p className={cn("basis-full text-sm text-muted-foreground max-md:order-1 md:col-start-1", hideDescriptionOnPhone ? "max-md:hidden" : null)}>{description}</p> : null}
+      {actions ? <div className={cn("flex flex-wrap gap-2 md:col-start-2 md:row-start-1", description ? "md:row-span-2" : null)}>{actions}</div> : null}
     </div>
   );
 }

@@ -331,3 +331,18 @@ A documented two-step scale. Sheets and sheet-like layers use 16px. Interactive 
 - **Don't** introduce gradients, glows, heavy shadows, decorative icons or a platform blue on client pages.
 - **Don't** add wedding motifs (rings, florals, script fonts) to shared planning UI.
 - **Don't** use `transition-all`. Name the properties.
+
+## Staff Interface
+
+Working standards for staff pages (the DJ's side of the product), set by the 2026 visual audit. They apply to new work and to pages as they are touched. They are not a redesign.
+
+- **Touch targets.** Important controls get a tap area of about 44px on phones. A compact control can keep its look: the staff shell gives every button a 44px tap area, and `tap-target-y` does the same for text links. Keep desktop controls compact.
+- **Row behaviour.** Everything in a list row should do what it looks like it does. A row with one destination is one link (`ListRow` and `RowLink`, or `LinkRow`). Anything independent inside it, such as a second link or text to copy, sits above that link.
+- **Action hierarchy.** One solid primary action per page or section, at the top right of `PageHeader`. Other actions are outline or ghost.
+- **Action labels.** A specific verb and object. "Add" for an entry (client, gear, question), "Create" for something built here (event, package, template).
+- **List filters.** On phones, search stays in view and the other filters fold behind a Filters button. Filters in use are always named, with a way to clear them.
+- **Empty lists.** `EmptyList` says what is missing with one clear next step, and the header drops its own action so the two don't compete. `NoResults` covers searches, filters and hidden archived records, and offers a way back.
+- **Nesting.** Rows and groups inside a surface use spacing and hairlines. Add a border only when it separates something; a new card is not the default.
+- **Mobile fields.** Text inputs and selects use at least 16px text below `md`, so iOS doesn't zoom on focus.
+- **Important information.** Phones never need sideways scrolling to reach statuses, actions or contact details. Let names, addresses, titles and venues wrap rather than truncate. Below `md`, stack table rows that hold these.
+- **Known issue.** `buttonVariants({ variant: "outline" })` used raw on a link leaves its border transparent, because only `Button` merges the variant classes. Outline links look like plain text across staff and client pages. List pages use the merged `outlineLink`. A global fix needs its own batch and a visual check of client pages.

@@ -106,7 +106,7 @@ export default async function BusinessSettings({ params, searchParams }: PagePro
               <li key={id}>
                 <a
                   href={`#${id}`}
-                  className="block rounded-lg border px-2.5 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:border-transparent lg:px-3"
+                  className="flex min-h-11 items-center rounded-lg border px-2.5 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:block lg:min-h-0 lg:border-transparent lg:px-3"
                 >
                   {label}
                 </a>
@@ -115,7 +115,7 @@ export default async function BusinessSettings({ params, searchParams }: PagePro
           </ul>
         </nav>
 
-        <div className="grid min-w-0 gap-10">
+        <div data-touch-fields className="grid min-w-0 gap-10">
           <Section
             id="profile"
             title="Business profile"
@@ -255,7 +255,7 @@ export default async function BusinessSettings({ params, searchParams }: PagePro
             description={`When a booking is confirmed and the taxes added to your prices (in ${settings?.currency}). Each proposal and contract keeps the settings it was created with.`}
           >
             <details className="group rounded-xl border bg-card px-4 py-3 text-sm" data-testid="booking-steps">
-              <summary className="cursor-pointer font-medium marker:text-muted-foreground">From proposal to confirmed booking</summary>
+              <summary className="-my-3 cursor-pointer py-3 font-medium marker:text-muted-foreground lg:my-0 lg:py-0">From proposal to confirmed booking</summary>
               <ol className="mt-3 grid list-decimal gap-2 pl-5">
                 {BOOKING_STEPS.map(([title, text]) => (
                   <li key={title}>
@@ -286,7 +286,7 @@ export default async function BusinessSettings({ params, searchParams }: PagePro
                   <ActionForm action={saveBookingPolicy.bind(null, slug)} version={settings?.booking_policy_version ?? 0} submitLabel="Save booking policy" trackUnsaved>
                     <fieldset className="grid gap-2">
                       <legend className="mb-1 font-medium">Confirm a booking when…</legend>
-                      <label className="flex items-start gap-2">
+                      <label className="flex min-h-11 items-start gap-2 md:min-h-0">
                         <input type="radio" name="booking_policy" value="on_deposit" defaultChecked={!onSignature} className="mt-0.5 accent-primary" />
                         <span>
                           <span className="font-medium">the contract is signed and the deposit is received</span> (recommended). Checked when the
@@ -294,7 +294,7 @@ export default async function BusinessSettings({ params, searchParams }: PagePro
                           means signing is enough.
                         </span>
                       </label>
-                      <label className="flex items-start gap-2">
+                      <label className="flex min-h-11 items-start gap-2 md:min-h-0">
                         <input type="radio" name="booking_policy" value="on_signature" defaultChecked={onSignature} className="mt-0.5 accent-primary" />
                         <span>
                           <span className="font-medium">the contract is signed.</span> The deposit and balance may still be outstanding.

@@ -1,10 +1,9 @@
-import Link from "next/link";
-import { Info, Plus } from "lucide-react";
+import Link from "@/components/app/pending-link";
+import { Info } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
 import { ActionForm } from "@/components/app/action-form";
 import { PageHeader } from "@/components/app/fields";
-import { EmptyList, FilterCheckbox, ListRows, Pagination, ResultLine } from "@/components/app/list";
+import { EmptyList, FilterCheckbox, INCLUDING_ARCHIVED, ListAction, ListRow, ListRows, NoResults, Pagination, ResultLine, RowLink, outlineLink } from "@/components/app/list";
 import { ListFilters } from "@/components/app/list-filters";
 import { requireStaff } from "@/lib/auth/staff";
 import { PAGE_SIZE, containsFilter, isDefaultPackageList, packageListHref, parsePackageListParams, rangeText } from "@/lib/lists";
@@ -46,12 +45,7 @@ export default async function PlanningTemplates({ params, searchParams }: PagePr
   const installed = new Set(starters.data.map((s) => s.starter_key));
   const startersMissing = !installed.has("wedding") || !installed.has("simple_party");
   const typeLabel = new Map<string, string>(EVENT_TYPES);
-  const create = (
-    <Link className={buttonVariants()} href={`${base}/new`}>
-      <Plus aria-hidden />
-      Create template
-    </Link>
-  );
+  const none = total === 0 && !p.q && !p.archived && archivedExcluded === 0;
 
   return (
     <>
@@ -59,15 +53,16 @@ export default async function PlanningTemplates({ params, searchParams }: PagePr
       <PageHeader
         title="Planning templates"
         description="The planning structure clients fill in: general sections, then the event's stages and their moments, in order."
-        actions={create}
+        hideDescriptionOnPhone={!none}
+        actions={none ? null : <ListAction href={`${base}/new`}>Create template</ListAction>}
       />
-      <p className="flex items-start gap-2 text-sm text-muted-foreground">
+      <p className="flex items-start gap-2 text-sm text-muted-foreground max-md:order-last">
         <Info aria-hidden className="mt-0.5 size-4 shrink-0" />
         Each event gets its own copy of a template when its planning starts. Changing a template affects future events only; plans already started don&apos;t change.
       </p>
 
-      {startersMissing ? (
-        <section aria-labelledby="starters-heading" className="grid gap-2 rounded-xl border border-dashed p-4 text-sm" data-testid="starter-offer">
+      {startersMissing && !none ? (
+        <section aria-labelledby="starters-heading" className="grid gap-2 rounded-xl border border-dashed p-4 text-sm max-md:order-last" data-testid="starter-offer">
           <h2 id="starters-heading" className="font-medium">Wedding and Simple Party starters</h2>
           <p className="text-muted-foreground">
             Ready-made templates to rename, reorder and trim: Wedding (ceremony to closing) and Simple Party (event basics, must play and do not play).
@@ -79,11 +74,11 @@ export default async function PlanningTemplates({ params, searchParams }: PagePr
         </section>
       ) : null}
 
-      {total > 0 || p.q || p.archived || archivedExcluded > 0 ? (
-        <ListFilters label="Filter planning templates" query={p.q} placeholder="Name or description" clearHref={base} showClear={!isDefaultPackageList(p)}>
+      {none ? null : (
+        <ListFilters label="Filter planning templates" query={p.q} placeholder="Name or description" clearHref={base} showClear={!isDefaultPackageList(p)} active={p.archived ? [INCLUDING_ARCHIVED] : []}>
           <FilterCheckbox label="Include archived" name="archived" checked={p.archived} />
         </ListFilters>
-      ) : null}
+      )}
 
       {total > 0 ? (
         <>
@@ -102,48 +97,50 @@ export default async function PlanningTemplates({ params, searchParams }: PagePr
               const c = structureCounts(t.planning_template_items);
               const type = t.default_event_type ? (typeLabel.get(t.default_event_type) ?? t.default_event_type) : null;
               return (
-                <li key={t.id} data-testid="planning-template-row">
-                  <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 px-4 py-3 text-sm">
-                    <div className="grid min-w-0 flex-1 gap-y-1">
-                      <span className="flex min-w-0 flex-wrap items-center gap-2">
-                        <Link className="font-medium [overflow-wrap:anywhere] underline-offset-4 hover:underline" href={`${base}/${t.id}`}>{t.name}</Link>
-                        {t.archived_at ? <Badge variant="secondary">Archived</Badge> : null}
-                        {type ? <Badge variant="outline">Default for {type} events</Badge> : null}
-                      </span>
-                      {t.description ? <span className="line-clamp-2 text-muted-foreground">{t.description}</span> : null}
-                      <span className="text-xs text-muted-foreground">
-                        {plural(c.general, "general section")} · {plural(c.stages, "stage")} · {plural(c.moments, "moment")}
-                      </span>
-                    </div>
-                    <Link className={buttonVariants({ variant: "outline", size: "sm" })} href={`${base}/${t.id}`} aria-label={`Open ${t.name}`}>
-                      Open
-                    </Link>
-                  </div>
-                </li>
+                <ListRow key={t.id} testId="planning-template-row" className="grid gap-y-1">
+                  <span className="flex min-w-0 flex-wrap items-center gap-2">
+                    <RowLink className="[overflow-wrap:anywhere]" href={`${base}/${t.id}`}>{t.name}</RowLink>
+                    {t.archived_at ? <Badge variant="secondary">Archived</Badge> : null}
+                    {type ? <Badge variant="outline">Default for {type} events</Badge> : null}
+                  </span>
+                  {t.description ? <span className="line-clamp-2 text-muted-foreground">{t.description}</span> : null}
+                  <span className="text-xs text-muted-foreground">
+                    {plural(c.general, "general section")} · {plural(c.stages, "stage")} · {plural(c.moments, "moment")}
+                  </span>
+                </ListRow>
               );
             })}
           </ListRows>
           <Pagination page={p.page} total={total} pageSize={PAGE_SIZE} href={(n) => packageListHref(base, { ...p, page: n })} />
         </>
-      ) : !p.q && !p.archived && archivedExcluded === 0 ? (
-        <EmptyList testId="planning-templates-empty">
-          <p>No planning templates yet.</p>
-          <p>
-            A template is the plan your clients fill in for an event. Start from the Wedding or Simple Party outline, then make it yours.
-          </p>
-          <Link className={buttonVariants({ size: "sm" })} href={`${base}/new`}>Create your first template</Link>
+      ) : none ? (
+        <EmptyList
+          testId="planning-templates-empty"
+          title="No planning templates yet."
+          actions={
+            startersMissing ? (
+              <>
+                <ActionForm action={installStarterTemplates.bind(null, slug)} submitLabel="Add starter templates" pendingLabel="Adding…" inline>
+                  <span className="sr-only">Adds the Wedding and Simple Party starters if they are missing.</span>
+                </ActionForm>
+                <Link className={outlineLink} href={`${base}/new`}>Create template</Link>
+              </>
+            ) : (
+              <ListAction href={`${base}/new`}>Create template</ListAction>
+            )
+          }
+        >
+          A template is the plan your clients fill in for an event. Start from the ready-made Wedding and Simple Party templates, or create your own.
         </EmptyList>
       ) : (
-        <EmptyList testId="planning-templates-no-results">
-          <p>
-            {p.q ? "No templates match this search." : "No active templates."}
-            {archivedExcluded > 0 ? ` ${archivedExcluded} archived ${archivedExcluded === 1 ? "template matches" : "templates match"} but ${archivedExcluded === 1 ? "is" : "are"} hidden.` : null}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {archivedExcluded > 0 ? <Link className={buttonVariants({ variant: "outline", size: "sm" })} href={packageListHref(base, { ...p, archived: true, page: 1 })}>Include archived</Link> : null}
-            {!isDefaultPackageList(p) ? <Link className={buttonVariants({ variant: "ghost", size: "sm" })} href={base}>Clear filters</Link> : null}
-          </div>
-        </EmptyList>
+        <NoResults
+          testId="planning-templates-no-results"
+          title={p.q ? "No templates match this search." : "No active templates."}
+          noun={["template", "templates"]}
+          archived={archivedExcluded}
+          includeArchivedHref={packageListHref(base, { ...p, archived: true, page: 1 })}
+          clearHref={isDefaultPackageList(p) ? null : base}
+        />
       )}
     </>
   );

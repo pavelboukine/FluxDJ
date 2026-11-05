@@ -1,9 +1,8 @@
-import Link from "next/link";
-import { Info, Plus } from "lucide-react";
+import Link from "@/components/app/pending-link";
+import { Info } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
 import { PageHeader } from "@/components/app/fields";
-import { EmptyList, FilterCheckbox, ListRows, Pagination, ResultLine } from "@/components/app/list";
+import { EmptyList, FilterCheckbox, INCLUDING_ARCHIVED, ListAction, ListRow, ListRows, NoResults, Pagination, ResultLine, RowLink } from "@/components/app/list";
 import { ListFilters } from "@/components/app/list-filters";
 import { requireStaff } from "@/lib/auth/staff";
 import { PAGE_SIZE, containsFilter, isDefaultPackageList, packageListHref, parsePackageListParams, rangeText } from "@/lib/lists";
@@ -37,6 +36,7 @@ export default async function ContractTemplates({ params, searchParams }: PagePr
   const templates = rows.data;
   const total = rows.count ?? 0;
   const archivedExcluded = archived.count ?? 0;
+  const none = total === 0 && !p.q && !p.archived && archivedExcluded === 0;
 
   return (
     <>
@@ -44,24 +44,20 @@ export default async function ContractTemplates({ params, searchParams }: PagePr
       <PageHeader
         title="Contract templates"
         description="The agreements your clients sign. Write one, copy one or import your Word document, then publish it."
-        actions={
-          <Link className={buttonVariants()} href={`${base}/new`}>
-            <Plus aria-hidden />
-            Create template
-          </Link>
-        }
+        hideDescriptionOnPhone={!none}
+        actions={none ? null : <ListAction href={`${base}/new`}>Create template</ListAction>}
       />
-      <p className="flex items-start gap-2 text-sm text-muted-foreground">
+      <p className="flex items-start gap-2 text-sm text-muted-foreground max-md:order-last">
         <Info aria-hidden className="mt-0.5 size-4 shrink-0" />
         Contracts are generated from a template&apos;s published version. Published versions never change, and contracts already generated keep
         their text. You are responsible for your agreement; Flux DJ does not review it.
       </p>
 
-      {total > 0 || p.q || p.archived || archivedExcluded > 0 ? (
-        <ListFilters label="Filter contract templates" query={p.q} placeholder="Template name" clearHref={base} showClear={!isDefaultPackageList(p)}>
+      {none ? null : (
+        <ListFilters label="Filter contract templates" query={p.q} placeholder="Template name" clearHref={base} showClear={!isDefaultPackageList(p)} active={p.archived ? [INCLUDING_ARCHIVED] : []}>
           <FilterCheckbox label="Include archived" name="archived" checked={p.archived} />
         </ListFilters>
-      ) : null}
+      )}
 
       {total > 0 ? (
         <>
@@ -81,52 +77,41 @@ export default async function ContractTemplates({ params, searchParams }: PagePr
               const current = versions.find((v) => v.published_at);
               const draft = versions.find((v) => !v.published_at);
               return (
-                <li key={t.id} data-testid="contract-template-row">
-                  <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 px-4 py-3 text-sm">
-                    <div className="grid min-w-0 flex-1 gap-y-1">
-                      <span className="flex min-w-0 flex-wrap items-center gap-2">
-                        <Link className="font-medium [overflow-wrap:anywhere] underline-offset-4 hover:underline" href={`${base}/${t.id}`}>{t.name}</Link>
-                        {t.active ? null : <Badge variant="secondary">Archived</Badge>}
-                      </span>
-                      <span className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                        {current ? (
-                          <>
-                            <span>Version {current.version_number} published</span>
-                            <UsageBadge usage={current.usage} />
-                          </>
-                        ) : (
-                          <span>Not published yet</span>
-                        )}
-                        {draft ? <Badge variant="secondary">Draft version {draft.version_number}</Badge> : null}
-                      </span>
-                    </div>
-                    <Link className={buttonVariants({ variant: "outline", size: "sm" })} href={`${base}/${t.id}`} aria-label={`Open ${t.name}`}>
-                      Open
-                    </Link>
-                  </div>
-                </li>
+                <ListRow key={t.id} testId="contract-template-row" className="grid gap-y-1">
+                  <span className="flex min-w-0 flex-wrap items-center gap-2">
+                    <RowLink className="[overflow-wrap:anywhere]" href={`${base}/${t.id}`}>{t.name}</RowLink>
+                    {t.active ? null : <Badge variant="secondary">Archived</Badge>}
+                  </span>
+                  <span className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    {current ? (
+                      <>
+                        <span>Version {current.version_number} published</span>
+                        <UsageBadge usage={current.usage} />
+                      </>
+                    ) : (
+                      <span>Not published yet</span>
+                    )}
+                    {draft ? <Badge variant="secondary">Draft version {draft.version_number}</Badge> : null}
+                  </span>
+                </ListRow>
               );
             })}
           </ListRows>
           <Pagination page={p.page} total={total} pageSize={PAGE_SIZE} href={(n) => packageListHref(base, { ...p, page: n })} />
         </>
-      ) : !p.q && !p.archived && archivedExcluded === 0 ? (
-        <EmptyList testId="contract-templates-empty">
-          <p>No contract templates yet.</p>
-          <p>Import the agreement you already use in Word, or write one here. You can review everything before publishing it.</p>
-          <Link className={buttonVariants({ size: "sm" })} href={`${base}/new`}>Create your first template</Link>
+      ) : none ? (
+        <EmptyList testId="contract-templates-empty" title="No contract templates yet." actions={<ListAction href={`${base}/new`}>Create template</ListAction>}>
+          Import the agreement you already use in Word, or write one here. You can review everything before publishing it.
         </EmptyList>
       ) : (
-        <EmptyList testId="contract-templates-no-results">
-          <p>
-            {p.q ? "No templates match this search." : "No active templates."}
-            {archivedExcluded > 0 ? ` ${archivedExcluded} archived ${archivedExcluded === 1 ? "template matches" : "templates match"} but ${archivedExcluded === 1 ? "is" : "are"} hidden.` : null}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {archivedExcluded > 0 ? <Link className={buttonVariants({ variant: "outline", size: "sm" })} href={packageListHref(base, { ...p, archived: true, page: 1 })}>Include archived</Link> : null}
-            {!isDefaultPackageList(p) ? <Link className={buttonVariants({ variant: "ghost", size: "sm" })} href={base}>Clear filters</Link> : null}
-          </div>
-        </EmptyList>
+        <NoResults
+          testId="contract-templates-no-results"
+          title={p.q ? "No templates match this search." : "No active templates."}
+          noun={["template", "templates"]}
+          archived={archivedExcluded}
+          includeArchivedHref={packageListHref(base, { ...p, archived: true, page: 1 })}
+          clearHref={isDefaultPackageList(p) ? null : base}
+        />
       )}
     </>
   );
