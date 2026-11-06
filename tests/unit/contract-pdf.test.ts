@@ -179,7 +179,7 @@ describe("signed contract PDF", () => {
       },
     };
     const data = buildSignedContractPdfData(discounted, signature);
-    expect(data.commercial.discount).toEqual({ description: "Wedding Special (10%)", amountCents: 22000 });
+    expect(data.commercial).toMatchObject({ discount: { description: "Wedding Special (10%)", amountCents: 22000 } });
     const all = (await pdfPageTexts(await renderSignedContractPdf(data, signaturePng()))).join(" ");
     expect(all).toContain("Wedding Special (10%)");
     expect(all).toMatch(/-\$220\.00/);
@@ -189,7 +189,7 @@ describe("signed contract PDF", () => {
 
     const plain = await pdfPageTexts(await renderSignedContractPdf(buildSignedContractPdfData(contract, signature), signaturePng()));
     expect(plain.join(" ")).not.toContain("Subtotal after discount");
-    expect(buildSignedContractPdfData(contract, signature).commercial.discount).toBeNull();
+    expect(buildSignedContractPdfData(contract, signature).commercial).toMatchObject({ discount: null });
   }, 60_000);
 
   it("renders a client-use agreement with no DEMO labels, still stating that only the client signed", async () => {
@@ -228,5 +228,54 @@ describe("signed contract PDF", () => {
     expect(formatSignedAt("2026-01-15T17:00:00Z", "Not/AZone").local).toMatch(/\(UTC\)$/);
     expect(signedPdfFileName("Mariage Gagnon–Lévesque", "2027-09-18")).toBe("signed-contract-mariage-gagnon-levesque-2027-09-18.pdf");
     expect(PDF_RENDERER).toMatch(/^flux-signed-contract-pdf\//);
+  });
+});
+
+describe("signed-contract PDFs without an itemized selection", () => {
+  const direct = (money: Record<string, unknown>) => {
+    const { contract, signature } = rows({ long: false });
+    return { contract: { ...contract, ...money }, signature };
+  };
+  const none = { total_cents: null, deposit_percent: null, deposit_cents: null, balance_cents: null, balance_due_date: null, commercial_snapshot: { schema_version: 2, financial_terms: "none" } };
+  const stated = {
+    total_cents: 100000, deposit_percent: null, deposit_cents: 20000, balance_cents: 80000, balance_due_date: "2027-09-01",
+    commercial_snapshot: { schema_version: 2, financial_terms: "stated", currency: "CAD", total_cents: 100000 },
+  };
+
+  it("represents no financial terms as none, and renders with no money, keeping the rest of the document", async () => {
+    const { contract, signature } = direct(none);
+    const data = buildSignedContractPdfData(contract, signature);
+    expect(data.commercial).toEqual({ kind: "none" });
+    const all = (await pdfPageTexts(await renderSignedContractPdf(data, signaturePng()))).join(" ");
+    expect(all).not.toMatch(/Agreed price|Subtotal|Deposit|Balance|Total, including|\$|CAD|0\.00/);
+    // Nothing structural is lost.
+    for (const part of ["Parties", "Agreement", "Client signature", "Signing record", "Contract content SHA-256", "Consent ("]) expect(all).toContain(part);
+  });
+
+  it("represents stated terms as stated, with no invented lines, taxes or percentage", async () => {
+    const { contract, signature } = direct(stated);
+    const data = buildSignedContractPdfData(contract, signature);
+    expect(data.commercial).toEqual({ kind: "stated", totalCents: 100000, depositPercent: null, depositCents: 20000, balanceCents: 80000, balanceDueDate: "2027-09-01" });
+    const all = (await pdfPageTexts(await renderSignedContractPdf(data, signaturePng()))).join(" ");
+    expect(all).toContain("Agreed price and payment terms");
+    expect(all).toContain("1,000.00");
+    expect(all).toContain("Deposit due on signing");
+    expect(all).not.toMatch(/Subtotal|Taxes|Unit price|including taxes|null|\(\d+%\)/);
+  });
+
+  it("still reads a proposal-backed contract as itemized", () => {
+    const { contract, signature } = rows({ long: false });
+    expect(buildSignedContractPdfData(contract, signature).commercial).toMatchObject({ kind: "itemized", totalCents: 252945, depositPercent: 50, subtotalCents: 220000 });
+  });
+
+  it.each([
+    ["a proposal-backed snapshot with no money columns", { total_cents: null, deposit_percent: null, deposit_cents: null, balance_cents: null }],
+    ["a proposal-backed contract with no percentage", { deposit_percent: null }],
+    ["no-terms columns with a stated snapshot", { ...none, commercial_snapshot: stated.commercial_snapshot }],
+    ["stated columns with a no-terms snapshot", { ...stated, commercial_snapshot: none.commercial_snapshot }],
+    ["partial money", { ...none, total_cents: 100 }],
+  ])("refuses %s rather than guessing", (_, money) => {
+    const { contract, signature } = direct(money);
+    expect(() => buildSignedContractPdfData(contract, signature)).toThrow();
   });
 });

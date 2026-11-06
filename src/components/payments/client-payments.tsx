@@ -1,19 +1,10 @@
 import type { ReactNode } from "react";
 import { DiscountRows, InvoiceLink } from "@/components/payments/payment-summary";
+import type { ContractTerms } from "@/lib/contracts/responses";
 import { formatCents } from "@/lib/money";
-import { discountBreakdown, type ClientPaymentSummary } from "@/lib/payments";
+import { depositPercentSuffix, discountBreakdown, type ClientPaymentSummary } from "@/lib/payments";
 import { formatEventDate } from "@/lib/planning/view";
 import { cn } from "@/lib/utils";
-
-/** A contract's frozen payment terms (client_contract_view). */
-export type ContractTerms = {
-  currency: string;
-  totalCents: number;
-  depositPercent: number;
-  depositCents: number;
-  balanceCents: number;
-  balanceDueDate: string | null;
-};
 
 function Row({ label, children, strong }: { label: ReactNode; children: ReactNode; strong?: boolean }) {
   return (
@@ -46,6 +37,29 @@ export function ClientPayments({
   headingClassName?: string;
 }) {
   const money = (cents: number) => formatCents(cents, terms.currency);
+  if (terms.financialTerms === "none") {
+    // No figures to show, and none invented. Only what the DJ actually recorded, if anything; the agreement's own wording stands.
+    if (!payments?.received_cents && !payments?.invoice_url) return null;
+    return (
+      <section id="payments" aria-labelledby="payments-heading" className={cn("grid scroll-mt-4 gap-3 text-sm", className)} data-testid="payments-no-terms">
+        <h2 id="payments-heading" className={headingClassName}>
+          Payments
+        </h2>
+        {payments.received_cents ? (
+          <dl className="grid gap-1">
+            <Row label={`Recorded by ${djName}`} strong>{formatCents(payments.received_cents, payments.currency)}</Row>
+          </dl>
+        ) : null}
+        {payments.invoice_url ? (
+          <p>
+            <InvoiceLink url={payments.invoice_url} />
+            <span className="text-muted-foreground"> · opens the invoice on that site</span>
+          </p>
+        ) : null}
+        <p className="text-xs text-muted-foreground">Pay only as arranged with {djName}; Flux DJ doesn&apos;t take payments.</p>
+      </section>
+    );
+  }
   // This contract's frozen breakdown, only when its proposal had a discount.
   const discount = discountBreakdown(payments?.pricing ?? null);
   const free = terms.totalCents === 0;
@@ -59,12 +73,12 @@ export function ClientPayments({
         <p className="text-muted-foreground">{signed ? "Terms of the signed contract. They don't change." : "Terms of the contract sent to you. It isn't signed yet."}</p>
         <dl className="grid gap-1">
           {discount ? <DiscountRows b={discount} currency={terms.currency} /> : null}
-          <Row label={discount ? "Agreed total, including taxes" : "Total, including taxes"} strong>{money(terms.totalCents)}</Row>
+          <Row label={terms.direct ? "Total" : discount ? "Agreed total, including taxes" : "Total, including taxes"} strong>{money(terms.totalCents)}</Row>
           {free ? (
             <Row label="Payment">No payment due</Row>
           ) : (
             <>
-              <Row label={`Deposit on signing (${terms.depositPercent}%)`}>{terms.depositCents ? money(terms.depositCents) : "No deposit required"}</Row>
+              <Row label={`Deposit on signing${depositPercentSuffix(terms.depositPercent)}`}>{terms.depositCents ? money(terms.depositCents) : "No deposit required"}</Row>
               <Row label="Balance">{money(terms.balanceCents)}</Row>
               <Row label="Balance due">{terms.balanceDueDate ? formatEventDate(terms.balanceDueDate) : "Not specified in the contract"}</Row>
             </>

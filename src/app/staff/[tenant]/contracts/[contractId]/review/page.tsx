@@ -12,6 +12,7 @@ import { describeDbError } from "@/lib/db-errors";
 import { contractChanges } from "@/lib/events/workspace";
 import { UUID_RE } from "@/lib/forms";
 import { formatCents } from "@/lib/money";
+import { depositPercentSuffix } from "@/lib/payments";
 import { SendPanel } from "./send-panel";
 
 /**
@@ -115,12 +116,16 @@ export default async function ReviewContract({ params }: PageProps<"/staff/[tena
           <Card>
             <CardHeader><CardTitle>Payment terms</CardTitle></CardHeader>
             <CardContent>
-              <dl className="grid gap-1 text-sm">
-                <div className="flex justify-between gap-2"><dt>Total, including taxes</dt><dd className="tabular-nums">{money(review.total_cents)}</dd></div>
-                <div className="flex justify-between gap-2"><dt>Deposit on signing ({review.deposit_percent}%)</dt><dd className="tabular-nums">{money(review.deposit_cents)}</dd></div>
-                <div className="flex justify-between gap-2"><dt>Balance</dt><dd className="tabular-nums">{money(review.balance_cents)}</dd></div>
-                <div className="flex justify-between gap-2"><dt>Balance due</dt><dd>{review.balance_due_date ?? "Not specified by this template"}</dd></div>
-              </dl>
+              {review.total_cents === null ? (
+                <p className="text-sm text-muted-foreground" data-testid="contract-no-terms">No payment terms are recorded for this contract.</p>
+              ) : (
+                <dl className="grid gap-1 text-sm">
+                  <div className="flex justify-between gap-2"><dt>{review.source === "direct" ? "Total" : "Total, including taxes"}</dt><dd className="tabular-nums">{money(review.total_cents)}</dd></div>
+                  <div className="flex justify-between gap-2"><dt>Deposit on signing{depositPercentSuffix(review.deposit_percent)}</dt><dd className="tabular-nums">{money(review.deposit_cents)}</dd></div>
+                  <div className="flex justify-between gap-2"><dt>Balance</dt><dd className="tabular-nums">{money(review.balance_cents)}</dd></div>
+                  <div className="flex justify-between gap-2"><dt>Balance due</dt><dd>{review.balance_due_date ?? "Not specified by this template"}</dd></div>
+                </dl>
+              )}
             </CardContent>
           </Card>
           <Card>

@@ -12,19 +12,28 @@ export type SignedContractPdfData = {
   business: { legalName: string; displayName: string | null; address: string | null; contactEmail: string | null };
   client: { name: string; email: string; phone: string | null };
   event: { title: string; date: string; timezone: string; venueName: string | null; venueAddress: string | null };
-  commercial: {
-    lines: { name: string; description: string | null; source: string; quantity: number; unitPriceCents: number; lineTotalCents: number }[];
-    subtotalCents: number;
-    /** The approved proposal discount, when it had one ("Wedding Special (10%)"); the total is already after it. */
-    discount: { description: string; amountCents: number } | null;
-    taxes: { label: string; ratePpm: number; amountCents: number }[];
-    taxCents: number;
-    totalCents: number;
-    depositPercent: number;
-    depositCents: number;
-    balanceCents: number;
-    balanceDueDate: string | null;
-  };
+  /**
+   * What was agreed in money, as frozen: itemized from an approved selection,
+   * stated on a direct contract (no lines or taxes exist), or nothing at all.
+   * No figure is ever filled in for a contract without any.
+   */
+  commercial:
+    | {
+        kind: "itemized";
+        lines: { name: string; description: string | null; source: string; quantity: number; unitPriceCents: number; lineTotalCents: number }[];
+        subtotalCents: number;
+        /** The approved proposal discount, when it had one ("Wedding Special (10%)"); the total is already after it. */
+        discount: { description: string; amountCents: number } | null;
+        taxes: { label: string; ratePpm: number; amountCents: number }[];
+        taxCents: number;
+        totalCents: number;
+        depositPercent: number;
+        depositCents: number;
+        balanceCents: number;
+        balanceDueDate: string | null;
+      }
+    | { kind: "stated"; totalCents: number; depositPercent: number | null; depositCents: number; balanceCents: number; balanceDueDate: string | null }
+    | { kind: "none" };
   signature: {
     typedName: string;
     signerEmail: string;
@@ -42,21 +51,16 @@ const text = z.string();
 const nullableText = z.string().nullish().transform((v) => (v && v.trim() ? v : null));
 const cents = z.number().int().nonnegative();
 
-const contractRow = z.object({
-  id: z.uuid(),
-  status: z.literal("signed"),
-  // Frozen at generation. Only DEMO and client-use contracts can be signed.
-  signing_mode: z.enum(["demo", "client_use"]),
-  consent_version: text,
-  content_sha256: z.string().regex(/^[0-9a-f]{64}$/),
-  currency: z.string().regex(/^[A-Z]{3}$/),
+const percent = z.number().int().min(0).max(100);
+// The frozen money: a proposal-backed contract's itemized snapshot, or a direct contract's stated terms or none.
+const itemizedMoney = z.object({
   total_cents: cents,
-  deposit_percent: z.number().int().min(0).max(100),
+  deposit_percent: percent,
   deposit_cents: cents,
   balance_cents: cents,
   balance_due_date: z.string().nullable(),
-  rendered_content: z.object({ title: text, sections: z.array(z.object({ heading: text, body: text })) }),
   commercial_snapshot: z.object({
+    financial_terms: z.undefined().optional(),
     lines: z
       .array(
         z.object({
@@ -78,6 +82,33 @@ const contractRow = z.object({
     tax_cents: cents,
     total_cents: cents,
   }),
+});
+const statedMoney = z.object({
+  total_cents: cents,
+  deposit_percent: percent.nullable(),
+  deposit_cents: cents,
+  balance_cents: cents,
+  balance_due_date: z.string().nullable(),
+  commercial_snapshot: z.object({ financial_terms: z.literal("stated") }),
+});
+const noMoney = z.object({
+  total_cents: z.null(),
+  deposit_percent: z.null(),
+  deposit_cents: z.null(),
+  balance_cents: z.null(),
+  balance_due_date: z.null(),
+  commercial_snapshot: z.object({ financial_terms: z.literal("none") }),
+});
+
+const contractRow = z.object({
+  id: z.uuid(),
+  status: z.literal("signed"),
+  // Frozen at generation. Only DEMO and client-use contracts can be signed.
+  signing_mode: z.enum(["demo", "client_use"]),
+  consent_version: text,
+  content_sha256: z.string().regex(/^[0-9a-f]{64}$/),
+  currency: z.string().regex(/^[A-Z]{3}$/),
+  rendered_content: z.object({ title: text, sections: z.array(z.object({ heading: text, body: text })) }),
   party_snapshot: z.object({
     business: z.object({
       name: text,
@@ -97,6 +128,8 @@ const contractRow = z.object({
   }),
 });
 
+const contractWithMoney = contractRow.and(z.union([itemizedMoney, statedMoney, noMoney]));
+
 const signatureRow = z.object({
   typed_name: text,
   signer_email: text,
@@ -112,7 +145,7 @@ const signatureRow = z.object({
 
 /** Validates the frozen rows and maps them to what the PDF shows. Throws on anything unexpected. */
 export function buildSignedContractPdfData(contract: unknown, signature: unknown): SignedContractPdfData {
-  const c = contractRow.parse(contract);
+  const c = contractWithMoney.parse(contract);
   const s = signatureRow.parse(signature);
   if (s.content_sha256 !== c.content_sha256) throw new Error("The signature evidence is for different contract content.");
   if (s.consent_version !== c.consent_version) throw new Error("The signature evidence has a different consent version than the contract.");
@@ -143,27 +176,7 @@ export function buildSignedContractPdfData(contract: unknown, signature: unknown
       venueName: nullableText.parse(c.party_snapshot.event.venue_name),
       venueAddress: nullableText.parse(c.party_snapshot.event.venue_address),
     },
-    commercial: {
-      lines: (c.commercial_snapshot.lines ?? []).map((l) => ({
-        name: l.name,
-        description: l.description ?? null,
-        source: l.source,
-        quantity: l.quantity,
-        unitPriceCents: l.unit_price_cents,
-        lineTotalCents: l.line_total_cents,
-      })),
-      subtotalCents: c.commercial_snapshot.subtotal_cents,
-      discount: c.commercial_snapshot.discount
-        ? { description: discountDescription(c.commercial_snapshot.discount), amountCents: c.commercial_snapshot.discount.amount_cents }
-        : null,
-      taxes: c.commercial_snapshot.tax_breakdown.map((t) => ({ label: t.label, ratePpm: t.rate_ppm, amountCents: t.amount_cents })),
-      taxCents: c.commercial_snapshot.tax_cents,
-      totalCents: c.commercial_snapshot.total_cents,
-      depositPercent: c.deposit_percent,
-      depositCents: c.deposit_cents,
-      balanceCents: c.balance_cents,
-      balanceDueDate: c.balance_due_date,
-    },
+    commercial: commercialOf(c),
     signature: {
       typedName: s.typed_name,
       signerEmail: s.signer_email,
@@ -175,6 +188,36 @@ export function buildSignedContractPdfData(contract: unknown, signature: unknown
       clientIp: s.client_ip === null || s.client_ip === undefined ? null : String(s.client_ip),
       clientIpSource: s.client_ip_source,
     },
+  };
+}
+
+function commercialOf(c: z.infer<typeof itemizedMoney> | z.infer<typeof statedMoney> | z.infer<typeof noMoney>): SignedContractPdfData["commercial"] {
+  if (c.total_cents === null) return { kind: "none" };
+  if (c.commercial_snapshot.financial_terms === "stated") {
+    return { kind: "stated", totalCents: c.total_cents, depositPercent: c.deposit_percent, depositCents: c.deposit_cents, balanceCents: c.balance_cents, balanceDueDate: c.balance_due_date };
+  }
+  const itemized = c as z.infer<typeof itemizedMoney>;
+  return {
+    kind: "itemized",
+    lines: (itemized.commercial_snapshot.lines ?? []).map((l) => ({
+      name: l.name,
+      description: l.description ?? null,
+      source: l.source,
+      quantity: l.quantity,
+      unitPriceCents: l.unit_price_cents,
+      lineTotalCents: l.line_total_cents,
+    })),
+    subtotalCents: itemized.commercial_snapshot.subtotal_cents,
+    discount: itemized.commercial_snapshot.discount
+      ? { description: discountDescription(itemized.commercial_snapshot.discount), amountCents: itemized.commercial_snapshot.discount.amount_cents }
+      : null,
+    taxes: itemized.commercial_snapshot.tax_breakdown.map((t) => ({ label: t.label, ratePpm: t.rate_ppm, amountCents: t.amount_cents })),
+    taxCents: itemized.commercial_snapshot.tax_cents,
+    totalCents: itemized.commercial_snapshot.total_cents,
+    depositPercent: itemized.deposit_percent,
+    depositCents: itemized.deposit_cents,
+    balanceCents: itemized.balance_cents,
+    balanceDueDate: itemized.balance_due_date,
   };
 }
 

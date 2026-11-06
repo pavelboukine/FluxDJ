@@ -155,7 +155,34 @@ export function SignedContractDocument({ data, signaturePng, generatedAt }: { da
           </View>
         ))}
 
+        {commercial.kind === "stated" ? (
+          <View wrap={false}>
+            <Text style={s.h2} minPresenceAhead={80}>
+              Agreed price and payment terms
+            </Text>
+            <View style={s.totals}>
+              <View style={s.grand}>
+                <Text>Total</Text>
+                <Text>{money(commercial.totalCents)}</Text>
+              </View>
+              <View style={s.totalRow}>
+                <Text>Deposit due on signing{commercial.depositPercent === null ? "" : ` (${commercial.depositPercent}%)`}</Text>
+                <Text>{money(commercial.depositCents)}</Text>
+              </View>
+              <View style={s.totalRow}>
+                <Text>Balance</Text>
+                <Text>{money(commercial.balanceCents)}</Text>
+              </View>
+              <View style={s.totalRow}>
+                <Text>Balance due</Text>
+                <Text>{commercial.balanceDueDate ?? "Not specified in this agreement"}</Text>
+              </View>
+            </View>
+          </View>
+        ) : null}
+
         {/* Normal-length price tables stay together with their totals; very long ones may break across pages. */}
+        {commercial.kind === "itemized" ? (
         <View wrap={commercial.lines.length > 14}>
           <Text style={s.h2} minPresenceAhead={80}>
             Agreed price and payment terms
@@ -227,6 +254,7 @@ export function SignedContractDocument({ data, signaturePng, generatedAt }: { da
             </View>
           </View>
         </View>
+        ) : null}
 
         <View wrap={false}>
           <Text style={s.h2}>Client signature</Text>

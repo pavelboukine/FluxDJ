@@ -36,6 +36,8 @@ export default async function ApprovedProposal({ params }: PageProps<"/[tenant]/
   if (!auth.user) redirect(loginHref("client", `${hub}/proposal`));
 
   const [facts] = await loadClientEvents(supabase, { slug, eventId });
+  // No proposal stands behind this contract: there is nothing to show, not a "not available" one.
+  if (facts?.contract?.source === "direct") redirect(hub);
   const { data } = facts?.contract ? await supabase.rpc("client_approved_offer", { p_contract_id: facts.contract.id, p_tenant_slug: slug }) : { data: null };
   // A response that fails validation shows the error page: never prices from an unchecked offer or selection.
   const approved = data === null ? { state: "unavailable" as const } : parseDbResponse(approvedOfferSchema, data, "client_approved_offer");

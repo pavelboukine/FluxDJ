@@ -414,8 +414,9 @@ async function deliverContractEmail(
       contactEmail: str(payload.contact_email) || null,
       clientName: str(payload.client_name) || "there",
       eventTitle: str(payload.event_title) || "your event",
-      depositCents: Number(payload.deposit_cents ?? 0),
-      depositPercent: Number(payload.deposit_percent ?? 0),
+      // A contract without financial terms has neither: never shown as $0.00.
+      depositCents: typeof payload.deposit_cents === "number" ? payload.deposit_cents : null,
+      depositPercent: typeof payload.deposit_percent === "number" ? payload.deposit_percent : null,
       currency: str(payload.currency) || "CAD",
       invitationLink: `${appUrl}/${row.tenant_slug}/invite#${token}`,
       expiresAt: str(payload.invitation_expires_at) || null,
@@ -563,7 +564,8 @@ async function deliverBookingConfirmed(
     eventTitle: str(payload.event_title) || "your event",
     eventDate: str(payload.event_date),
     currency: str(payload.currency) || "CAD",
-    totalCents: cents(payload.total_cents),
+    // Null without financial terms: the email then mentions no amounts rather than saying nothing is owed.
+    totalCents: typeof payload.total_cents === "number" ? payload.total_cents : null,
     depositCents: cents(payload.deposit_cents),
     receivedCents: cents(payload.received_cents),
     remainingCents: cents(payload.remaining_cents),

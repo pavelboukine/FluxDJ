@@ -3,7 +3,7 @@
 A map of the current database for developers and coding agents: what is
 authoritative, how the parts fit, where each business rule lives, and how to
 change it safely. It describes the schema as of migration
-`20261123000100_platform_operations`. Per-feature behaviour is in the README
+`20261124000100_contract_first_compatibility`. Per-feature behaviour is in the README
 ("How tenant isolation works" onwards, and the table of pgTAP files);
 releasing a migration is in [`operations.md`](operations.md), section 2.
 
@@ -89,7 +89,7 @@ Almost every table carries `tenant_id`.
 | Catalog | `gear_categories`, `gear_items`, `gear_media`, `packages`, `package_items`, `package_media`, `logistics_questions`, `logistics_rules`, `proposal_templates`, `proposal_template_packages`, `proposal_template_addons`, `proposal_template_questions` | Live, editable, archived rather than deleted. Never read for pricing once an offer is frozen. |
 | Events | `events`, `event_clients`, `event_access`, `access_links`, `event_billing`, `event_payments` | `event_clients` links clients (one primary contact, one signer). `event_access` is a verified client's access to one event. |
 | Proposals | `proposals`, `proposal_sessions`, `proposal_views`, `proposal_selection_drafts`, `proposal_selections`, `proposal_selection_lines`, `proposal_approvals` | `proposals.offer_snapshot` is the frozen offer (`offer_sha256`). A selection is the client's priced choice, verified against it. |
-| Contracts | `contract_templates`, `contract_template_versions`, `contracts`, `contract_signatures`, `contract_documents`, `document_jobs` | A contract freezes rendered content, commercial and party snapshots, and the content hash at generation. |
+| Contracts | `contract_templates`, `contract_template_versions`, `contracts`, `contract_signatures`, `contract_documents`, `document_jobs` | A contract freezes rendered content, commercial and party snapshots, and the content hash at generation. See [Contract shapes](#contract-shapes). |
 | Planning | `planning_templates`, `planning_template_items`, `event_plans`, `event_plan_items`, `event_plan_responses`, `event_plan_imports`, `planning_invitations` | One plan per booked event, built from a template. Answers are normalized by `private.normalize_plan_*` and scored by `private.plan_progress`. |
 | Communication and audit | `email_outbox`, `audit_events` | Durable outbox (below). Audit rows are written by functions, never by the app. |
 
@@ -155,7 +155,7 @@ flag that only the owning function sets (`set_config('flux.…', id, true)`).
 | Proposal | `draft`, `sent`, `submitted`, `approved`, `expired`, `superseded`, `declined` | draft → sent → submitted → approved; sent or submitted → superseded or declined; sent → expired; approved → superseded (`private.proposals_status_transition`) | `send_proposal` freezes the offer (`private.proposals_freeze_once`). `client_submit_selection`, `approve_proposal_selection`. A sent revision supersedes the previous one. |
 | Selection | immutable once stored | — | `client_submit_selection` → `private.insert_selection_submission`. Then `private.verify_proposal_selection` (deferred trigger) recomputes lines, discount, taxes and totals against the frozen offer. |
 | Contract | `draft`, `replaced`, `superseded`, `sent`, `signed`, `void` | draft → replaced, superseded or sent; sent → void or signed (`private.contracts_status_transition`) | `generate_contract_draft` (freezes content and money), `send_contract` (flag `flux.sending_contract`), `sign_contract` (flag `flux.signing_contract`; stores the signature and evidence in the same transaction), `void_contract`. |
-| Event | `lead`, `pending_approval`, `awaiting_signature`, `awaiting_deposit`, `booked`, `completed`, `cancelled` | a booked event never goes back; `booking_confirmed_at` is set once (`private.events_booking_guard`) | `private.evaluate_booking` (flag `flux.booking_event`), run by `sign_contract`, `record_event_payment` and `check_event_booking` under the contract's frozen `booking_policy`. |
+| Event (`contract_first` is set on insert, and no role can change it yet) | `lead`, `pending_approval`, `awaiting_signature`, `awaiting_deposit`, `booked`, `completed`, `cancelled` | a booked event never goes back; `booking_confirmed_at` is set once (`private.events_booking_guard`) | `private.evaluate_booking` (flag `flux.booking_event`), run by `sign_contract`, `record_event_payment` and `check_event_booking` under the contract's frozen `booking_policy`. |
 | Payment | recorded, or invalidated with a reason | rows are never deleted | `record_event_payment` (idempotency key), `invalidate_event_payment` (flag `flux.invalidating_payment`). Totals come only from `private.event_payment_summary`. |
 
 Money is integer cents throughout. Deposits are
@@ -166,6 +166,43 @@ discounted amounts. The rounding policy is documented in
 `src/lib/pricing/tax.ts` and `discount.ts`, which price the browser preview.
 The database re-verifies every submitted selection. A contract's figures are
 frozen when it is generated and never recomputed.
+
+## Contract shapes
+
+Constraints on `contracts` allow exactly three shapes. Readers tell them apart by
+the row, never by a flag a caller supplies.
+
+| Shape | Proposal references | Money columns | Booking policy | Snapshot |
+|---|---|---|---|---|
+| Proposal-backed (every contract generated by `generate_contract_draft`) | all set | all set | the tenant's, copied by a trigger; null on legacy contracts | itemized; no `financial_terms` key |
+| Direct, with stated terms | all null | total, deposit and balance set; `deposit_percent` may be null. "No deposit" is 0 and a $0 contract is a total of 0. | `on_signature`, or `on_deposit` with a deposit above 0 | `financial_terms: "stated"` |
+| Direct, no terms | all null | all null | `on_signature` only | `financial_terms: "none"`; no amounts |
+
+- **Null means "no financial terms", never zero.** `greatest()` ignores nulls and a
+  comparison with null is null, so every reader branches first:
+  `private.event_payment_summary` returns `terms: null` and no derived figures, and
+  `private.evaluate_booking` never treats a missing deposit as met.
+- **A CHECK passes when its expression is NULL.** Constraints on these columns must
+  use `is not distinct from` or explicit `is null` tests, or they silently allow
+  what they mean to refuse.
+- **`private.contract_is_current`** is the one rule for sending, invitations,
+  reading and signing. Proposal-backed: the event's approved active proposal.
+  Direct: the event itself is a contract-first Flux booking with no active
+  proposal. Missing references never grant anything by themselves.
+- **Function results gain keys only on direct contracts** (`source`,
+  `no_financial_terms`), so a proposal-backed response is unchanged.
+- **Deposit authorization.** On a direct contract, `private.contracts_booking_policy`
+  requires an owner to go below the deposit the business requires (`on_deposit` with
+  a percentage above zero): no terms, booking on signature, or a smaller deposit.
+  The owner is the signed-in user's own membership (`auth.uid()`), never
+  `generated_by_user_id`, so the service role can't override. A genuine $0 contract
+  owes nothing and needs no override.
+- **Consent.** A client-use contract with no terms freezes `client-no-terms-v1`,
+  because `client-v1` says "including its payment terms". That version has no
+  wording in `private.contract_signing_consent` yet, so such a contract can't be sent
+  or signed until approved wording is added by a migration.
+- **No generator exists yet** and no role but the database owner or service role can
+  set `contract_first` or insert a contract directly.
 
 ## Durable work: emails and signed PDFs
 
