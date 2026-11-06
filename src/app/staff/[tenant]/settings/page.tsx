@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
 import { ActionForm } from "@/components/app/action-form";
-import { PageHeader, TextAreaField, TextField } from "@/components/app/fields";
+import { CheckboxField, PageHeader, TextAreaField, TextField } from "@/components/app/fields";
 import { SetupReturn } from "@/components/app/setup-return";
 import { requireStaff } from "@/lib/auth/staff";
 import { ppmToPercent, readTaxSettings, usageText, type CategoryUsage } from "@/lib/pricing/tax-settings";
@@ -12,7 +12,7 @@ import { BrandLogo } from "@/components/app/brand-logo";
 import { brandTheme, normalizeHex } from "@/lib/branding/colors";
 import { logoUrl } from "@/lib/branding/logo.server";
 import { EVENT_TYPES } from "../events/event-form";
-import { saveBookingPolicy, saveBranding, saveBusinessSettings, savePlanningCutoff, savePlanningDjName, saveReplyTo, saveTaxSettings } from "./actions";
+import { saveBookingPolicy, saveBranding, saveProposalDefault, saveBusinessSettings, savePlanningCutoff, savePlanningDjName, saveReplyTo, saveTaxSettings } from "./actions";
 import { BrandingForm } from "./branding-form";
 import { TaxSettingsForm } from "./tax-settings-form";
 
@@ -60,7 +60,7 @@ export default async function BusinessSettings({ params, searchParams }: PagePro
   const { supabase, tenant, membership } = await requireStaff(slug);
   const { data: settings } = await supabase
     .from("tenants")
-    .select("business_name, display_name, business_address, contact_email, deposit_percent, tax_config, tax_categories, tax_settings_version, booking_confirmation_policy, booking_policy_version, planning_lock_days, planning_settings_version, dj_name, brand_colors, logo_storage_path, branding_version, timezone, currency, reply_to_email")
+    .select("business_name, display_name, business_address, contact_email, deposit_percent, tax_config, tax_categories, tax_settings_version, booking_confirmation_policy, booking_policy_version, proposals_by_default, planning_lock_days, planning_settings_version, dj_name, brand_colors, logo_storage_path, branding_version, timezone, currency, reply_to_email")
     .eq("id", tenant.id)
     .single();
   const isOwner = membership.role === "owner";
@@ -312,6 +312,30 @@ export default async function BusinessSettings({ params, searchParams }: PagePro
                 <p className="text-xs text-muted-foreground">
                   A recorded payment correction never cancels a booking; the event page warns you if the deposit is no longer covered.
                 </p>
+              </CardContent>
+            </Card>
+
+            <Card id="proposal-default" className="scroll-mt-20" data-testid="proposal-default">
+              <CardHeader>
+                <CardTitle>New events</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-3 text-sm">
+                {isOwner ? (
+                  <ActionForm action={saveProposalDefault.bind(null, slug)} submitLabel="Save" trackUnsaved>
+                    <CheckboxField
+                      label="Send proposals by default"
+                      name="proposals_by_default"
+                      defaultChecked={settings?.proposals_by_default ?? true}
+                      hint="Start new events with the proposal step enabled. You can still change this for each event."
+                    />
+                  </ActionForm>
+                ) : (
+                  <p>
+                    <span className="text-muted-foreground">New events start </span>
+                    {settings?.proposals_by_default === false ? "without a proposal." : "with a proposal."}
+                    <span className="block text-muted-foreground">You can change this for each event. Only the owner can change the default.</span>
+                  </p>
+                )}
               </CardContent>
             </Card>
 

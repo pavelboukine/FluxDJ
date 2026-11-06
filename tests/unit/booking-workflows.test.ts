@@ -3,7 +3,7 @@ import { describeDbError } from "@/lib/db-errors";
 import { NO_PRICING_OUTLINE, STATED_PRICE_OUTLINE } from "@/lib/contracts/demo-template";
 import { PLACEHOLDER_RE, groupFields, usesPaymentFields, usesProposalFields } from "@/lib/contracts/fields";
 import { renderContractEmail } from "@/lib/email/templates";
-import { bookingWorkflowFrom, readBookingWorkflow } from "@/lib/events/booking-workflow";
+import { bookingFlowSteps, bookingWorkflowFrom, primaryContactHelp, readBookingWorkflow } from "@/lib/events/booking-workflow";
 import { eventDisplayStatus } from "@/lib/events/status";
 import { nextAction, workspaceStage, type WorkspaceFacts } from "@/lib/events/workspace";
 
@@ -43,6 +43,18 @@ describe("booking workflow selection", () => {
 
   it("rejects a proposal with no contract, which the form can't send", () => {
     expect(readBookingWorkflow(false, true)).toMatchObject({ ok: false });
+  });
+
+  it("previews each workflow's steps, never promising a deposit", () => {
+    expect(bookingFlowSteps("full")).toEqual(["Proposal", "Contract", "Confirmation", "Planning"]);
+    expect(bookingFlowSteps("contract_first")).toEqual(["Contract", "Confirmation", "Planning"]);
+    for (const w of ["full", "contract_first", "external"] as const) expect(bookingFlowSteps(w).join(" ")).not.toMatch(/deposit|payment/i);
+  });
+
+  it("says what the primary contact does on each workflow", () => {
+    expect(primaryContactHelp("full")).toBe("This person will receive the proposal and sign the contract.");
+    expect(primaryContactHelp("contract_first")).toBe("This person will receive and sign the contract.");
+    expect(primaryContactHelp("external")).toBe("This person will receive access to plan the event with you.");
   });
 });
 

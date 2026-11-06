@@ -39,9 +39,9 @@ test.describe("booking workflows", () => {
     await page.getByLabel("Name", { exact: true }).fill(opts.clientName);
     await page.getByLabel("Email", { exact: true }).fill(opts.clientEmail);
     const steps = page.getByTestId("booking-source");
-    await expect(steps.getByRole("checkbox", { name: /^Contract/ })).toBeChecked();
-    await expect(steps.getByRole("checkbox", { name: /^Proposal/ })).toBeChecked();
-    if (!opts.proposal) await steps.getByRole("checkbox", { name: /^Proposal/ }).uncheck();
+    await expect(steps.getByRole("radio", { name: /Book through Flux DJ/ })).toBeChecked();
+    await expect(steps.getByRole("checkbox", { name: /Send a proposal first/ })).toBeChecked();
+    if (!opts.proposal) await steps.getByRole("checkbox", { name: /Send a proposal first/ }).uncheck();
     await page.getByLabel("Title", { exact: true }).fill(opts.title);
     await page.getByLabel("Date", { exact: true }).fill("2027-08-28");
     await page.getByRole("button", { name: "Create event" }).click();
@@ -96,26 +96,161 @@ test.describe("booking workflows", () => {
     if (tenant) await archiveTestTenant(tenant);
   });
 
-  test("the booking steps explain themselves and keep their dependency", async () => {
+  test("the booking choice explains itself, keeps the proposal preference and works by keyboard", async () => {
     await staff.goto(`/staff/${tenant.slug}/events/new`);
     const steps = staff.getByTestId("booking-source");
-    const contract = steps.getByRole("checkbox", { name: /^Contract/ });
-    const proposal = steps.getByRole("checkbox", { name: /^Proposal/ });
-    const note = steps.getByTestId("booking-workflow-note");
-    await expect(note).toContainText("full Flux DJ workflow");
-    await proposal.uncheck();
-    await expect(note).toContainText("No proposal is needed");
-    await expect(contract).toBeChecked();
-    await contract.uncheck();
-    await expect(proposal).not.toBeChecked();
-    await expect(proposal).toBeDisabled();
-    await expect(note).toContainText("already booked elsewhere");
-    // Keyboard: Space toggles it back on, and the proposal comes back with it.
-    await contract.focus();
-    await staff.keyboard.press("Space");
-    await expect(contract).toBeChecked();
+    const flux = steps.getByRole("radio", { name: /Book through Flux DJ/ });
+    const elsewhere = steps.getByRole("radio", { name: /Already booked elsewhere/ });
+    const proposal = steps.getByRole("checkbox", { name: /Send a proposal first/ });
+    const flow = staff.getByRole("list", { name: "Booking steps for this event" });
+    const help = staff.getByTestId("primary-contact-help");
+
+    // The default is the full workflow.
+    await expect(staff.getByRole("group", { name: "How is this event being booked?" })).toBeVisible();
+    await expect(flux).toBeChecked();
     await expect(proposal).toBeChecked();
-    await expect(note).toContainText("full Flux DJ workflow");
+    await expect(flow.getByRole("listitem")).toHaveText(["1Proposal", "2Contract", "3Confirmation", "4Planning"]);
+    await expect(help).toHaveText("This person will receive the proposal and sign the contract.");
+    await expect(steps).not.toContainText(/deposit|contract_first/i);
+
+    await proposal.uncheck();
+    await expect(flow.getByRole("listitem")).toHaveText(["1Contract", "2Confirmation", "3Planning"]);
+    await expect(help).toHaveText("This person will receive and sign the contract.");
+
+    // The whole choice is clickable, and the preference survives the round trip.
+    await steps.getByText("Skip proposals and contracts. Use Flux DJ for event planning.").click();
+    await expect(elsewhere).toBeChecked();
+    await expect(proposal).toHaveCount(0);
+    await expect(flow).toHaveCount(0);
+    await expect(help).toHaveText("This person will receive access to plan the event with you.");
+    await steps.getByText("Send an agreement, confirm the booking, and plan the event.").click();
+    await expect(flux).toBeChecked();
+    await expect(proposal).not.toBeChecked();
+    await expect(flow.getByRole("listitem")).toHaveText(["1Contract", "2Confirmation", "3Planning"]);
+
+    // Keyboard: arrows move between the choices, and Space toggles the proposal.
+    await proposal.check();
+    await flux.focus();
+    await staff.keyboard.press("ArrowDown");
+    await expect(elsewhere).toBeChecked();
+    await expect(elsewhere).toBeFocused();
+    await staff.keyboard.press("ArrowUp");
+    await expect(flux).toBeChecked();
+    await expect(proposal).toBeChecked();
+    await staff.keyboard.press("Tab");
+    await expect(proposal).toBeFocused();
+    await staff.keyboard.press("Space");
+    await expect(proposal).not.toBeChecked();
+  });
+
+  for (const width of [320, 390]) {
+    test(`the booking choice fits a ${width}px phone`, async () => {
+      const context = await browser.newContext({ viewport: { width, height: 800 }, storageState: await staffContext.storageState() });
+      clientContexts.push(context);
+      const page = await context.newPage();
+      await page.goto(`/staff/${tenant.slug}/events/new`);
+      const steps = page.getByTestId("booking-source");
+      await expect(steps.getByRole("radio", { name: /Book through Flux DJ/ })).toBeChecked();
+      expect(await noHorizontalScroll(page)).toBe(true);
+      const heights = await steps.locator("label").evaluateAll((labels) => labels.map((l) => l.getBoundingClientRect().height));
+      for (const h of heights) expect(h).toBeGreaterThanOrEqual(44);
+      // Every step's label fits its own column, on one line.
+      const steps4 = await page.getByTestId("booking-flow").locator("li > span:last-child").evaluateAll((labels) => labels.map((l) => ({ fits: l.scrollWidth <= (l.parentElement as HTMLElement).clientWidth, height: l.getBoundingClientRect().height })));
+      expect(steps4).toHaveLength(4);
+      for (const step of steps4) {
+        expect(step.fits).toBe(true);
+        expect(step.height).toBeLessThan(20);
+      }
+      await steps.getByRole("radio", { name: /Already booked elsewhere/ }).check();
+      expect(await noHorizontalScroll(page)).toBe(true);
+    });
+  }
+
+  test("each business's default sets where the checkbox starts, and nothing else", async () => {
+    const proposal = (page: Page) => page.getByTestId("booking-source").getByRole("checkbox", { name: /Send a proposal first/ });
+    const eventsBefore = (await must(admin.from("events").select("id, contract_first, booking_source").eq("tenant_id", tenant.id).order("id"))).data;
+
+    // A second business keeps the default while this one changes it.
+    const other = await createTestTenant("workflows-b", { catalog: true });
+    const otherContext = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    try {
+      const otherPage = await otherContext.newPage();
+      await signInStaff(otherPage, other.ownerEmail);
+
+      // The owner turns it off in Settings, and it persists.
+      await staff.goto(`/staff/${tenant.slug}/settings`);
+      const card = staff.getByTestId("proposal-default");
+      const setting = card.getByRole("checkbox", { name: "Send proposals by default" });
+      await expect(setting).toBeChecked();
+      await expect(card).toContainText("Start new events with the proposal step enabled. You can still change this for each event.");
+      await setting.uncheck();
+      await card.getByRole("button", { name: "Save" }).click();
+      await expect(card.getByText(/Saved\./)).toBeVisible();
+      await staff.reload();
+      await expect(staff.getByTestId("proposal-default").getByRole("checkbox", { name: "Send proposals by default" })).not.toBeChecked();
+
+      // Existing events don't change.
+      expect((await must(admin.from("events").select("id, contract_first, booking_source").eq("tenant_id", tenant.id).order("id"))).data).toEqual(eventsBefore);
+
+      // The businesses start differently.
+      await otherPage.goto(`/staff/${other.slug}/events/new`);
+      await expect(proposal(otherPage)).toBeChecked();
+      await staff.goto(`/staff/${tenant.slug}/events/new`);
+      await expect(proposal(staff)).not.toBeChecked();
+      await expect(staff.getByRole("list", { name: "Booking steps for this event" }).getByRole("listitem")).toHaveText(["1Contract", "2Confirmation", "3Planning"]);
+      await expect(staff.getByTestId("primary-contact-help")).toHaveText("This person will receive and sign the contract.");
+
+      // A manual choice survives switching, and isn't overwritten by the default.
+      await proposal(staff).check();
+      await staff.getByTestId("booking-source").getByRole("radio", { name: /Already booked elsewhere/ }).check();
+      await staff.getByTestId("booking-source").getByRole("radio", { name: /Book through Flux DJ/ }).check();
+      await expect(proposal(staff)).toBeChecked();
+      await expect(staff.getByRole("list", { name: "Booking steps for this event" }).getByRole("listitem")).toHaveText(["1Proposal", "2Contract", "3Confirmation", "4Planning"]);
+
+      // Left alone, the form creates a contract-first event.
+      await staff.reload();
+      await staff.getByLabel("New client").check();
+      await staff.getByLabel("Name", { exact: true }).fill("Default Client");
+      await staff.getByLabel("Email", { exact: true }).fill(`e2e-wf-default-${run}@example.test`);
+      await staff.getByLabel("Title", { exact: true }).fill(`Default off ${run}`);
+      await staff.getByLabel("Date", { exact: true }).fill("2027-08-28");
+      await staff.getByRole("button", { name: "Create event" }).click();
+      await staff.waitForURL(/\/events\/[0-9a-f-]{36}$/);
+      const defaultId = new URL(staff.url()).pathname.split("/").pop()!;
+      expect((await must(admin.from("events").select("booking_source, contract_first").eq("id", defaultId).single())).data).toEqual({ booking_source: "flux", contract_first: true });
+
+      // Or a full-workflow one, once the proposal is switched back on.
+      await staff.goto(`/staff/${tenant.slug}/events/new`);
+      await proposal(staff).check();
+      await staff.getByLabel("New client").check();
+      await staff.getByLabel("Name", { exact: true }).fill("Manual Client");
+      await staff.getByLabel("Email", { exact: true }).fill(`e2e-wf-manual-${run}@example.test`);
+      await staff.getByLabel("Title", { exact: true }).fill(`Manual on ${run}`);
+      await staff.getByLabel("Date", { exact: true }).fill("2027-08-28");
+      await staff.getByRole("button", { name: "Create event" }).click();
+      await staff.waitForURL(/\/events\/[0-9a-f-]{36}$/);
+      const manualId = new URL(staff.url()).pathname.split("/").pop()!;
+      expect((await must(admin.from("events").select("booking_source, contract_first").eq("id", manualId).single())).data).toEqual({ booking_source: "flux", contract_first: false });
+
+      // A staff member sees it but can't change it, on the page or through the database.
+      const staffEmail = `e2e-wf-default-staff-${run}@example.test`;
+      const { data: user } = await admin.auth.admin.createUser({ email: staffEmail, email_confirm: true });
+      await must(admin.from("tenant_memberships").insert({ tenant_id: tenant.id, user_id: user.user!.id, role: "staff" }));
+      const staffOnly = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+      clientContexts.push(staffOnly);
+      const staffPage = await staffOnly.newPage();
+      await signInStaff(staffPage, staffEmail);
+      await staffPage.goto(`/staff/${tenant.slug}/settings`);
+      await expect(staffPage.getByTestId("proposal-default")).toContainText("Only the owner can change the default.");
+      await expect(staffPage.getByTestId("proposal-default").getByRole("checkbox")).toHaveCount(0);
+      const refused = await (await sessionFor(staffEmail)).rpc("update_proposal_default", { p_tenant_id: tenant.id, p_enabled: true });
+      expect(refused.error?.code).toBe("42501");
+    } finally {
+      await otherContext.close();
+      await archiveTestTenant(other);
+      // The rest of this file expects the default.
+      await must((await sessionFor(tenant.ownerEmail)).rpc("update_proposal_default", { p_tenant_id: tenant.id, p_enabled: true }));
+    }
   });
 
   test("the default stays the full workflow, and the proposal can be turned off until something starts", async () => {
@@ -291,12 +426,14 @@ test.describe("booking workflows", () => {
     await staff.getByLabel("New client").check();
     await staff.getByLabel("Name", { exact: true }).fill("Eli Client");
     await staff.getByLabel("Email", { exact: true }).fill(`e2e-wf-ext-${run}@example.test`);
-    await staff.getByTestId("booking-source").getByRole("checkbox", { name: /^Contract/ }).uncheck();
+    await staff.getByTestId("booking-source").getByRole("radio", { name: /Already booked elsewhere/ }).check();
     await staff.getByLabel("Title", { exact: true }).fill(`Elsewhere ${run}`);
     await staff.getByLabel("Date", { exact: true }).fill("2027-08-28");
     await staff.getByRole("button", { name: "Create event" }).click();
     await staff.waitForURL(/\/events\/[0-9a-f-]{36}$/);
     await expect(staff.getByTestId("event-header-status")).toHaveText("Booked externally");
+    const eventId = new URL(staff.url()).pathname.split("/").pop()!;
+    expect((await must(admin.from("events").select("booking_source, contract_first").eq("id", eventId).single())).data).toEqual({ booking_source: "external", contract_first: false });
     await expect(staff.locator("#contract")).toHaveCount(0);
     await expect(staff.getByTestId("booking-steps-switch")).toHaveCount(0);
   });

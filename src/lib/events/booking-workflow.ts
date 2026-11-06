@@ -22,3 +22,15 @@ export function readBookingWorkflow(contract: boolean, proposal: boolean):
   const workflow = bookingWorkflowFrom(contract, proposal);
   return { ok: true, values: { booking_source: workflow === "external" ? "external" : "flux", contract_first: workflow === "contract_first" } };
 }
+
+/** The steps shown for a new event. "Confirmation" follows the business's policy and the contract's terms, so it doesn't promise a deposit. */
+export function bookingFlowSteps(workflow: BookingWorkflow): string[] {
+  if (workflow === "external") return ["Planning"];
+  return workflow === "full" ? ["Proposal", "Contract", "Confirmation", "Planning"] : ["Contract", "Confirmation", "Planning"];
+}
+
+/** What the primary contact does on the event. */
+export function primaryContactHelp(workflow: BookingWorkflow): string {
+  if (workflow === "external") return "This person will receive access to plan the event with you.";
+  return workflow === "full" ? "This person will receive the proposal and sign the contract." : "This person will receive and sign the contract.";
+}

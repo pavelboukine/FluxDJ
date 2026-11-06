@@ -766,9 +766,11 @@ How it works:
 
 #### Contract-first events
 
-On **Events → Create event**, **Booking steps** has Contract and Proposal, both on by
-default (the full workflow). Turn off **Proposal** to go straight to a contract. Until
+On **Events → Create event**, choose **Book through Flux DJ** (the default) with **Send a
+proposal first** on for the full workflow. Turn it off to go straight to a contract. Until
 a proposal or contract is started, the event page can turn the proposal back on or off.
+An owner who rarely uses proposals can turn off **Send proposals by default** under
+**Settings → Bookings and taxes**. That only sets where the checkbox starts for new events.
 
 1. The next step is **Prepare the contract**. Choose a published template; the form asks
    only for what that template uses: services, then a total, deposit and balance date if
@@ -784,9 +786,9 @@ have no agreement terms: add yours, review and publish.
 
 #### Events booked elsewhere
 
-1. **Events → Create event**, turn off **Contract** (for an event booked through an
-   agency or directly), then choose a client and the date. The choice can't be
-   changed later. The event reads **Booked externally**: no
+1. **Events → Create event**, choose **Already booked elsewhere** (for an event
+   booked through an agency or directly), a client and the date. The choice can't
+   be changed later. The event reads **Booked externally**: no
    proposal, contract, signature or deposit steps, and Flux DJ records no
    payments or invoice link for it.
 2. Its next step is **Set up planning**: choose a template on the planning
@@ -1414,6 +1416,8 @@ signed-out browser:
   `tests/e2e/contract-first-readers.spec.ts`: direct contracts through the real
   signing, PDF and email code and the existing client and staff pages, with
   fixtures that insert them directly so every invalid shape can be tried.
+- `65_tenant_proposal_default` (pgTAP): the default for existing businesses, owner-only
+  changes, tenant isolation, and existing events left alone.
 - `64_configurable_booking_workflows` (pgTAP),
   `tests/integration/configurable-booking-workflows.test.ts`,
   `tests/e2e/booking-workflows.spec.ts`: choosing the booking steps, correcting them

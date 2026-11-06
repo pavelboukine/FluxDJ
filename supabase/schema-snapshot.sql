@@ -13060,6 +13060,41 @@ $_$;
 ALTER FUNCTION "public"."update_planning_template"("p_template_id" "uuid", "p_expected_version" integer, "p_name" "text", "p_description" "text", "p_default_event_type" "text") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."update_proposal_default"("p_tenant_id" "uuid", "p_enabled" boolean) RETURNS boolean
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  v_membership_id uuid;
+  v_role text;
+  t public.tenants%rowtype;
+begin
+  if p_enabled is null then
+    raise exception 'settings_invalid: choose whether new events start with a proposal' using errcode = 'invalid_parameter_value';
+  end if;
+  -- Refuses non-members, removed members and suspended workspaces.
+  v_membership_id := private.require_staff_of(p_tenant_id);
+  select m.role into v_role from public.tenant_memberships m where m.id = v_membership_id;
+  if v_role <> 'owner' then
+    raise exception 'only the owner can change this setting' using errcode = 'insufficient_privilege';
+  end if;
+  select * into t from public.tenants where id = p_tenant_id for update;
+  if t.archived_at is not null then
+    raise exception 'not found' using errcode = 'no_data_found';
+  end if;
+  if t.proposals_by_default = p_enabled then
+    return p_enabled;
+  end if;
+  update public.tenants set proposals_by_default = p_enabled where id = t.id;
+  perform private.audit(t.id, 'tenant', t.id, 'proposal_default_changed', 'staff', (select auth.uid()), jsonb_build_object('proposals_by_default', p_enabled));
+  return p_enabled;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."update_proposal_default"("p_tenant_id" "uuid", "p_enabled" boolean) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."update_proposal_draft"("p_proposal_id" "uuid", "p_expected_version" integer, "p_offer" "jsonb") RETURNS integer
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -14481,6 +14516,7 @@ CREATE TABLE IF NOT EXISTS "public"."tenants" (
     "suspension_version" integer DEFAULT 0 NOT NULL,
     "branding_version" integer DEFAULT 0 NOT NULL,
     "dj_name" "text",
+    "proposals_by_default" boolean DEFAULT true NOT NULL,
     CONSTRAINT "tenants_booking_policy_valid" CHECK (("booking_confirmation_policy" = ANY (ARRAY['on_signature'::"text", 'on_deposit'::"text"]))),
     CONSTRAINT "tenants_booking_policy_version_nonnegative" CHECK (("booking_policy_version" >= 0)),
     CONSTRAINT "tenants_brand_colors_valid" CHECK ("private"."is_valid_brand_colors"("brand_colors")),
@@ -14561,6 +14597,10 @@ COMMENT ON COLUMN "public"."tenants"."branding_version" IS 'Optimistic version f
 
 
 COMMENT ON COLUMN "public"."tenants"."dj_name" IS 'Optional name of the DJ that planning shows clients ("DJ Boukine (your DJ)"), when no event names its own. Owner only, via update_planning_dj_name.';
+
+
+
+COMMENT ON COLUMN "public"."tenants"."proposals_by_default" IS 'Whether Create event starts with "Send a proposal first" on. A starting value only; each event still chooses for itself.';
 
 
 
@@ -19420,6 +19460,12 @@ GRANT ALL ON FUNCTION "public"."update_planning_template"("p_template_id" "uuid"
 
 
 
+REVOKE ALL ON FUNCTION "public"."update_proposal_default"("p_tenant_id" "uuid", "p_enabled" boolean) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."update_proposal_default"("p_tenant_id" "uuid", "p_enabled" boolean) TO "service_role";
+GRANT ALL ON FUNCTION "public"."update_proposal_default"("p_tenant_id" "uuid", "p_enabled" boolean) TO "authenticated";
+
+
+
 REVOKE ALL ON FUNCTION "public"."update_proposal_draft"("p_proposal_id" "uuid", "p_expected_version" integer, "p_offer" "jsonb") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."update_proposal_draft"("p_proposal_id" "uuid", "p_expected_version" integer, "p_offer" "jsonb") TO "service_role";
 GRANT ALL ON FUNCTION "public"."update_proposal_draft"("p_proposal_id" "uuid", "p_expected_version" integer, "p_offer" "jsonb") TO "authenticated";
@@ -20069,6 +20115,10 @@ GRANT UPDATE("timezone") ON TABLE "public"."tenants" TO "authenticated";
 
 
 GRANT UPDATE("currency") ON TABLE "public"."tenants" TO "authenticated";
+
+
+
+GRANT SELECT("proposals_by_default") ON TABLE "public"."tenants" TO "authenticated";
 
 
 
