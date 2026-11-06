@@ -42,6 +42,16 @@ export async function saveBusinessSettings(slug: string, _state: ActionState, fo
   return ok("Settings saved. Existing contract drafts keep their details until you regenerate them.");
 }
 
+/** Whether Create event starts with a proposal. Owner only (checked again in the database). Existing events don't change. */
+export async function saveProposalDefault(slug: string, _state: ActionState, form: FormData): Promise<ActionState> {
+  const { supabase, tenant, membership } = await requireStaff(slug);
+  if (membership.role !== "owner") return fail("Only the owner can change this setting.");
+  const { error } = await supabase.rpc("update_proposal_default", { p_tenant_id: tenant.id, p_enabled: checkbox(form, "proposals_by_default") });
+  if (error) return fail(describeDbError(error));
+  revalidatePath(`/staff/${slug}`, "layout");
+  return ok("Saved. It applies to events you create from now on.");
+}
+
 /**
  * Chooses when bookings are confirmed. Owner only (checked again in the
  * database), versioned against stale tabs. Each contract freezes the policy

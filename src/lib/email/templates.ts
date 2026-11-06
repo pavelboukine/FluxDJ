@@ -182,7 +182,8 @@ export function renderContractEmail(input: ContractEmailInput): RenderedEmail {
       ["Date", input.eventDate ? formatDay(input.eventDate) : null],
       [
         "Deposit due on signing",
-        input.depositCents === null
+        // A direct contract's explicit "no deposit" isn't a deposit of $0.00 due on signing.
+        input.depositCents === null || (input.depositPercent === null && input.depositCents === 0)
           ? null
           : input.depositPercent === null
             ? formatCents(input.depositCents, input.currency)

@@ -28,7 +28,7 @@ export function describeDbError(error: { code?: string; message?: string } | nul
   if (payment) return `${payment[1].charAt(0).toUpperCase()}${payment[1].slice(1)}.`;
   const document = /contract_document_invalid: (.*)$/.exec(message);
   if (document) return `${document[1].charAt(0).toUpperCase()}${document[1].slice(1)}.`;
-  const external = /external_booking: (.*)$/.exec(message);
+  const external = /(?:external_booking|contract_first): (.*)$/.exec(message);
   if (external) return `${external[1].charAt(0).toUpperCase()}${external[1].slice(1)}.`;
   const planning = /planning_invalid: (.*)$/.exec(message);
   if (planning) return `${planning[1].charAt(0).toUpperCase()}${planning[1].slice(1)}${/[.!?]$/.test(planning[1]) ? "" : "."}`;

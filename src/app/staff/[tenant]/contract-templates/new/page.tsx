@@ -5,14 +5,21 @@ import { PageHeader, SelectField, TextField } from "@/components/app/fields";
 import { RequestIdField } from "@/components/app/request-id-field";
 import { GuardedCancel, UnsavedGuard } from "@/components/app/unsaved-guard";
 import { requireStaff } from "@/lib/auth/staff";
-import { DEMO_TEMPLATE_NAME, DEMO_TEMPLATE_SECTIONS, DEMO_TEMPLATE_TITLE } from "@/lib/contracts/demo-template";
+import { DEMO_TEMPLATE_NAME, DEMO_TEMPLATE_SECTIONS, DEMO_TEMPLATE_TITLE, NO_PRICING_OUTLINE, STATED_PRICE_OUTLINE } from "@/lib/contracts/demo-template";
 import { EXAMPLE_VALUES } from "@/lib/contracts/fields";
 import { createContractTemplate } from "../actions";
 import { SectionEditor } from "../section-editor";
 import { ImportFlow } from "./import-flow";
 
-const STARTS = ["import", "copy", "write", "demo"] as const;
+const STARTS = ["import", "copy", "write", "demo", "no-pricing", "stated-price"] as const;
 type Start = (typeof STARTS)[number];
+
+/** What the form starts with: nothing, the DEMO text, or an outline for contracts with no proposal. */
+const STARTING_TEXT: Partial<Record<Start, { name: string; title: string; sections: typeof DEMO_TEMPLATE_SECTIONS }>> = {
+  demo: { name: DEMO_TEMPLATE_NAME, title: DEMO_TEMPLATE_TITLE, sections: DEMO_TEMPLATE_SECTIONS },
+  "no-pricing": NO_PRICING_OUTLINE,
+  "stated-price": STATED_PRICE_OUTLINE,
+};
 
 /**
  * Create a contract template: import a Word document (converted and reviewed
@@ -68,6 +75,11 @@ export default async function NewContractTemplate({ params, searchParams }: Page
             );
           })}
           <p className="text-sm text-muted-foreground md:col-span-3">
+            Booking without proposals? Start from an outline{" "}
+            <Link className="underline" href={`${base}/new?start=no-pricing`}>without pricing</Link> or{" "}
+            <Link className="underline" href={`${base}/new?start=stated-price`}>with a stated price</Link>, then add your own terms.
+          </p>
+          <p className="text-sm text-muted-foreground md:col-span-3">
             Just testing? <Link className="underline" href={`${base}/new?start=demo`}>Start from the DEMO sample text</Link>: placeholder wording to try
             fields, pricing and signing. It isn&apos;t an agreement.
           </p>
@@ -99,6 +111,11 @@ export default async function NewContractTemplate({ params, searchParams }: Page
               DEMO sample text: placeholder wording for testing fields, pricing and signing. It isn&apos;t an agreement and must be replaced with your
               own wording before client use. You are responsible for your agreement; Flux DJ does not review it.
             </p>
+          ) : start === "no-pricing" || start === "stated-price" ? (
+            <p role="status" className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
+              An outline for a contract with no proposal. It contains no agreement terms: add your own, then review and publish it. You are responsible for
+              your agreement; Flux DJ does not review it.
+            </p>
           ) : null}
           <UnsavedGuard>
             <ActionForm
@@ -111,10 +128,10 @@ export default async function NewContractTemplate({ params, searchParams }: Page
             >
               <RequestIdField />
               <input type="hidden" name="start" value="write" />
-              <TextField label="Template name" name="name" required maxLength={200} defaultValue={start === "demo" ? DEMO_TEMPLATE_NAME : ""} hint="Staff see this name. Clients see the document title." className="max-w-md" />
+              <TextField label="Template name" name="name" required maxLength={200} defaultValue={STARTING_TEXT[start]?.name ?? ""} hint="Staff see this name. Clients see the document title." className="max-w-md" />
               <SectionEditor
-                initialTitle={start === "demo" ? DEMO_TEMPLATE_TITLE : ""}
-                initialSections={start === "demo" ? DEMO_TEMPLATE_SECTIONS : []}
+                initialTitle={STARTING_TEXT[start]?.title ?? ""}
+                initialSections={STARTING_TEXT[start]?.sections ?? []}
                 fields={catalog ?? []}
                 exampleValues={EXAMPLE_VALUES}
               />

@@ -18,7 +18,7 @@ import { telHref } from "@/lib/phone";
 import { cn } from "@/lib/utils";
 import { searchClients } from "../../clients/actions";
 import { ContractCard, loadContracts } from "../../contracts/contract-card";
-import { addEventContact, removeEventContact, updateEvent } from "../actions";
+import { addEventContact, removeEventContact, setEventContractFirst, updateEvent } from "../actions";
 import { EventFields } from "../event-fields";
 import { EVENT_TYPES } from "../event-form";
 import { ArchivePanel } from "./archive-panel";
@@ -49,7 +49,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
   const [{ data: event }, { data: templates }, { data: identity }, contracts, payments, planning] = await Promise.all([
     supabase
       .from("events")
-      .select("id, title, event_type, event_date, timezone, venue_name, venue_address, internal_notes, dj_name, lifecycle_status, booking_source, booking_confirmed_at, active_proposal_id, archived_at, event_clients(id, is_primary, can_sign, clients(id, name, email, phone, archived_at)), proposals!proposals_event_fk(id, revision, status, offer_frozen_at, updated_at, expires_at)")
+      .select("id, title, event_type, event_date, timezone, venue_name, venue_address, internal_notes, dj_name, lifecycle_status, booking_source, contract_first, booking_confirmed_at, active_proposal_id, archived_at, event_clients(id, is_primary, can_sign, clients(id, name, email, phone, archived_at)), proposals!proposals_event_fk(id, revision, status, offer_frozen_at, updated_at, expires_at)")
       .eq("id", eventId)
       .eq("tenant_id", tenant.id)
       .maybeSingle(),
@@ -62,6 +62,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
   if (!event) notFound();
   // Booked elsewhere: planning is the whole workflow; client access comes from a planning invitation.
   const external = event.booking_source === "external";
+  const contractFirst = event.contract_first;
   // Booked for planning, as the database decides it (private.event_booked_for_planning).
   const bookedForPlanning = external || (Boolean(event.booking_confirmed_at) && (event.lifecycle_status === "booked" || event.lifecycle_status === "completed"));
   const primaryClient = event.event_clients.find((c) => c.is_primary)?.clients ?? null;
@@ -104,6 +105,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
     archived,
     lifecycle: event.lifecycle_status,
     bookingSource: event.booking_source,
+    contractFirst,
     planningAccess: planningAccess.access,
     proposals: event.proposals,
     activeProposalId: event.active_proposal_id,
@@ -138,6 +140,8 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
     contractStatus: contractStatuses.has("signed") ? "signed" : contractStatuses.has("sent") ? "sent" : contractStatuses.has("draft") ? "draft" : null,
   });
   const when = archived ? null : daysAway(event.event_date, dateIn(event.timezone, facts.now));
+  // The proposal step can still be turned on or off: nothing has been started that could depend on it.
+  const canChangeSteps = !external && !archived && event.lifecycle_status === "lead" && event.proposals.length === 0 && contracts.contracts.length === 0;
   const frozenDocs = Boolean(active) || contracts.contracts.some((c) => ["draft", "sent", "signed"].includes(c.status));
   const fmtDate = (iso: string) => shortDate(dateIn(event.timezone, new Date(iso)));
   // Once a contract is signed and the event is waiting for its deposit or booked, the proposal and contract are
@@ -220,6 +224,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
             </p>
             {when ? <p className={cn("text-sm font-medium", when.soon ? "text-amber-800 dark:text-amber-300" : "text-foreground/80")} data-testid="event-when">{when.label}</p> : null}
             {external ? <p className="text-sm text-muted-foreground" data-testid="booking-source-note">{BOOKED_EXTERNALLY_DETAIL}</p> : null}
+            {contractFirst ? <p className="text-sm text-muted-foreground" data-testid="booking-source-note">No proposal: this event goes straight to a contract.</p> : null}
           </div>
         </div>
       </header>
@@ -237,7 +242,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
         data-stage={layout.stage}
       >
         <div className="grid min-w-0 gap-6" data-testid="workspace-main">
-          <NextStep action={action} archived={archived} external={external} />
+          <NextStep action={action} archived={archived} external={external} contractFirst={contractFirst} />
           {external ? (
             planningSection
           ) : documentsSecondary ? (
@@ -247,7 +252,13 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
             </>
           ) : (
             <>
-              <ProposalCard
+              {canChangeSteps ? (
+                <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground" data-testid="booking-steps-switch">
+                  <span>{contractFirst ? "Need the client to choose a package first?" : "Not using a proposal for this event?"}</span>
+                  <ActionForm action={setEventContractFirst.bind(null, slug, event.id, !contractFirst)} submitLabel={contractFirst ? "Add a proposal" : "Skip the proposal"} variant="outline">{null}</ActionForm>
+                </div>
+              ) : null}
+              {contractFirst ? null : <ProposalCard
                 slug={slug}
                 eventId={event.id}
                 draft={draft}
@@ -257,10 +268,11 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
                 archived={archived}
                 revising={Boolean(event.active_proposal_id)}
                 templates={templates ?? []}
-              />
+              />}
               <ContractCard
                 slug={slug}
                 approvalId={approval?.id ?? null}
+                contractFirstEventId={contractFirst ? event.id : null}
                 data={contracts}
                 signer={signerClient ? { clientId: signerClient.id, name: signerClient.name, phone: signerClient.phone } : null}
                 changes={changes}
@@ -300,7 +312,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
           >
             <div className="grid gap-3 text-sm">
               <p className="text-xs text-muted-foreground">
-                {external ? "The primary contact is the one you invite to planning." : "The primary contact receives proposals; the signer signs the contract."}
+                {external ? "The primary contact is the one you invite to planning." : contractFirst ? "The signer signs the contract." : "The primary contact receives proposals; the signer signs the contract."}
               </p>
               <ul className="grid gap-2">
                 {event.event_clients.map((ec) => (
@@ -434,7 +446,7 @@ function daysAway(eventDate: string, today: string): { label: string; soon: bool
 /** The page's own actions: touch-sized on phones, the usual size from sm. */
 const touch = "h-11 sm:h-8";
 
-function NextStep({ action, archived, external }: { action: NextAction; archived: boolean; external: boolean }) {
+function NextStep({ action, archived, external, contractFirst }: { action: NextAction; archived: boolean; external: boolean; contractFirst: boolean }) {
   return (
     <section
       aria-labelledby="next-step-heading"
@@ -455,8 +467,8 @@ function NextStep({ action, archived, external }: { action: NextAction; archived
           </p>
         ) : archived ? (
           <p role="status" className="text-sm">
-            This event is archived. It is hidden from the events list, its client links are revoked, and proposals can&apos;t be sent or
-            approved and contracts can&apos;t be generated until you unarchive it. Its history is kept.
+            This event is archived. It is hidden from the events list, its client links are revoked, and{" "}
+            {contractFirst ? "" : "proposals can't be sent or approved and "}contracts can&apos;t be generated until you unarchive it. Its history is kept.
           </p>
         ) : (
           <p className="text-sm text-muted-foreground">{action.detail}</p>

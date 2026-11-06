@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { requireStaff, type StaffContext } from "@/lib/auth/staff";
 import { findClientWithEmail } from "@/lib/clients.server";
 import { describeDbError } from "@/lib/db-errors";
+import { readBookingWorkflow } from "@/lib/events/booking-workflow";
 import { checkbox, fail, ok, text, UUID_RE, type ActionState } from "@/lib/forms";
 import { readClientForm } from "../clients/client-form";
 import { EVENT_DETAIL_COLUMNS, eventDetailsKey, readEventForm } from "./event-form";
@@ -23,9 +24,9 @@ export async function createEvent(slug: string, _state: ActionState, form: FormD
   const { supabase, tenant } = staff;
   const parsed = readEventForm(form);
   if (!parsed.ok) return fail(parsed.error);
-  // Set once, here; the database refuses any later change.
-  const source = text(form, "booking_source") || "flux";
-  if (source !== "flux" && source !== "external") return fail("Choose how this event is being booked.");
+  // Set here. The database refuses any invalid combination, and any later change except setEventContractFirst.
+  const workflow = readBookingWorkflow(checkbox(form, "uses_contract"), checkbox(form, "uses_proposal"));
+  if (!workflow.ok) return fail(workflow.error);
 
   // Primary contact: an existing client, or a new one entered on the form.
   let clientId = text(form, "client_id");
@@ -50,7 +51,7 @@ export async function createEvent(slug: string, _state: ActionState, form: FormD
     if (problem) return fail(problem);
   }
 
-  const { data: event, error } = await supabase.from("events").insert({ ...parsed.values, booking_source: source, tenant_id: tenant.id }).select("id").single();
+  const { data: event, error } = await supabase.from("events").insert({ ...parsed.values, ...workflow.values, tenant_id: tenant.id }).select("id").single();
   if (error) return fail(describeDbError(error));
   const { error: contactError } = await supabase
     .from("event_clients")
@@ -61,6 +62,19 @@ export async function createEvent(slug: string, _state: ActionState, form: FormD
     redirect(`/staff/${slug}/events/${event.id}?contact=failed`);
   }
   redirect(`/staff/${slug}/events/${event.id}`);
+}
+
+/**
+ * Turns the proposal step on or off for an event where nothing has been started
+ * yet. The database decides whether that is still allowed (set_event_contract_first).
+ */
+export async function setEventContractFirst(slug: string, eventId: string, contractFirst: boolean): Promise<ActionState> {
+  const { supabase } = await requireStaff(slug);
+  if (!UUID_RE.test(eventId)) return fail("Event not found.");
+  const { error } = await supabase.rpc("set_event_contract_first", { p_event_id: eventId, p_contract_first: contractFirst });
+  if (error) return fail(describeDbError(error));
+  revalidatePath(`/staff/${slug}/events/${eventId}`);
+  return ok(contractFirst ? "This event now skips the proposal." : "This event now starts with a proposal.");
 }
 
 /**

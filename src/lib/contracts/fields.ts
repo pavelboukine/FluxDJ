@@ -17,13 +17,24 @@ export const FIELD_GROUPS: { label: string; prefixes: string[] }[] = [
   { label: "Business", prefixes: ["business"] },
   { label: "Client", prefixes: ["client"] },
   { label: "Event and venue", prefixes: ["event", "venue"] },
+  { label: "Contract", prefixes: ["contract"] },
   { label: "Package and gear", prefixes: ["package", "gear"] },
   { label: "Pricing", prefixes: ["pricing"] },
   { label: "Payment", prefixes: ["payment"] },
 ];
 
 /** Fields that fill in several lines (a list); they read best on a line of their own. */
-export const MULTILINE_FIELDS = new Set(["package.included", "gear.extras", "pricing.taxes"]);
+export const MULTILINE_FIELDS = new Set(["package.included", "gear.extras", "pricing.taxes", "contract.services"]);
+
+/** Fields only an approved proposal can fill: a contract with no proposal can't use a template with them. */
+export function usesProposalFields(keys: readonly string[]): boolean {
+  return keys.some((k) => k.startsWith("package.") || k.startsWith("gear.") || ["pricing.subtotal_before_discount", "pricing.discount", "pricing.subtotal", "pricing.taxes", "pricing.tax_total"].includes(k));
+}
+
+/** Fields that state money: a template with them needs a total on a contract with no proposal. */
+export function usesPaymentFields(keys: readonly string[]): boolean {
+  return keys.some((k) => k.startsWith("payment.") || k === "pricing.total" || k === "pricing.currency");
+}
 
 export function groupFields<F extends CatalogField>(fields: F[]): { label: string; fields: F[] }[] {
   const groups = FIELD_GROUPS.map((g) => ({ label: g.label, fields: fields.filter((f) => g.prefixes.includes(f.key.split(".")[0])) }));
@@ -50,6 +61,7 @@ export const EXAMPLE_VALUES: Record<string, string> = {
   "event.date": "Saturday, June 12, 2027",
   "venue.name": "Example Hall",
   "venue.address": "1 Example Road, Ottawa, ON K1A 0A1",
+  "contract.services": "DJ and sound for the ceremony and reception, 6 hours.",
   "package.name": "Signature",
   "package.price": "2,000.00 CAD",
   "package.included": "- 1 × Main sound system\n- 1 × Wireless microphone",

@@ -14,18 +14,21 @@ export function PrimaryContact({
   initial,
   hasClients,
   contractsNeedPhone,
+  help,
 }: {
   search: (query: string) => Promise<PickerClient[]>;
   initial: PickerClient | null;
   hasClients: boolean;
   contractsNeedPhone: boolean;
+  /** What this person does on the event, which follows from how it's booked. */
+  help: string;
 }) {
   const [mode, setMode] = useState<"existing" | "new">(initial ? "existing" : hasClients ? "existing" : "new");
   const option = "flex min-h-11 flex-1 basis-40 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm has-checked:border-primary has-checked:bg-primary/5 has-focus-visible:ring-3 has-focus-visible:ring-ring/50";
   return (
     <div className="grid gap-4">
       <fieldset className="grid gap-2">
-        <legend className="mb-2 text-sm text-muted-foreground">Receives the proposal and signs the contract, or, for an event booked elsewhere, plans it with you.</legend>
+        <legend className="mb-2 text-sm text-muted-foreground" data-testid="primary-contact-help">{help}</legend>
         <div className="flex flex-wrap gap-2">
           <label className={option}>
             <input type="radio" name="contact_mode" value="existing" checked={mode === "existing"} onChange={() => setMode("existing")} className="size-4 accent-primary" />

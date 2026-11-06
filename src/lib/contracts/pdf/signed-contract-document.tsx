@@ -167,7 +167,7 @@ export function SignedContractDocument({ data, signaturePng, generatedAt }: { da
               </View>
               <View style={s.totalRow}>
                 <Text>Deposit due on signing{commercial.depositPercent === null ? "" : ` (${commercial.depositPercent}%)`}</Text>
-                <Text>{money(commercial.depositCents)}</Text>
+                <Text>{commercial.depositCents ? money(commercial.depositCents) : "No deposit"}</Text>
               </View>
               <View style={s.totalRow}>
                 <Text>Balance</Text>

@@ -54,7 +54,7 @@ test.describe.serial("event booked elsewhere", () => {
     await staff.getByLabel("New client").check();
     await staff.getByLabel("Name", { exact: true }).fill(clientName);
     await staff.getByLabel("Email", { exact: true }).fill(clientEmail);
-    await staff.getByTestId("booking-source").getByLabel(/Already booked elsewhere/).check();
+    await staff.getByTestId("booking-source").getByRole("radio", { name: /Already booked elsewhere/ }).check();
     await staff.getByLabel("Title", { exact: true }).fill(title);
     await staff.getByLabel("Date", { exact: true }).fill("2027-08-28");
     await staff.getByRole("button", { name: "Create event" }).click();
@@ -177,7 +177,8 @@ test.describe.serial("event booked elsewhere", () => {
     await expect(staff.getByRole("link").filter({ hasText: title })).toContainText("Booked externally");
 
     await staff.goto(`/staff/${tenant.slug}/events/new`);
-    await expect(staff.getByTestId("booking-source").getByLabel(/Through Flux DJ/)).toBeChecked();
+    await expect(staff.getByTestId("booking-source").getByRole("radio", { name: /Book through Flux DJ/ })).toBeChecked();
+    await expect(staff.getByTestId("booking-source").getByRole("checkbox", { name: /Send a proposal first/ })).toBeChecked();
     await staff.getByLabel("Existing client").check();
     await staff.getByLabel("Client", { exact: true }).fill(clientName);
     await staff.getByRole("list", { name: "Matching clients" }).getByRole("button").filter({ hasText: clientName }).click();
