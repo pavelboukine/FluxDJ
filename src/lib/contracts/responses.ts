@@ -12,7 +12,68 @@ import { selectionRecordSchema } from "@/lib/pricing/selection-record";
  */
 
 const depositPercent = z.int().min(0).max(100);
-const addsUp = (t: { total_cents: number; deposit_cents: number; balance_cents: number }) => t.deposit_cents + t.balance_cents === t.total_cents;
+
+/**
+ * A contract's money, frozen on it: stated figures (a genuine zero is 0), or
+ * none at all (every column null, only on a direct contract). Comparing
+ * total_cents with null narrows one from the other, so a figure can't be read
+ * from a contract without any.
+ */
+type StatedMoney = { total_cents: number; deposit_percent: number | null; deposit_cents: number; balance_cents: number; balance_due_date: string | null };
+type NoMoney = { total_cents: null; deposit_percent: null; deposit_cents: null; balance_cents: null; balance_due_date: null };
+// One object rather than a union, so a failure still names the field (the log carries field paths, never values).
+const contractMoney = z
+  .object({
+    total_cents: centsSchema.nullable(),
+    // A direct contract may state an amount rather than a percentage.
+    deposit_percent: depositPercent.nullable(),
+    deposit_cents: centsSchema.nullable(),
+    balance_cents: centsSchema.nullable(),
+    balance_due_date: dateSchema.nullable(),
+  })
+  .refine(
+    (t) =>
+      t.total_cents === null
+        ? t.deposit_cents === null && t.balance_cents === null && t.deposit_percent === null && t.balance_due_date === null
+        : t.deposit_cents !== null && t.balance_cents !== null && t.deposit_cents + t.balance_cents === t.total_cents,
+    "deposit and balance don't add up to the total",
+  )
+  .transform((t) => t as StatedMoney | NoMoney);
+
+/** Present only on a contract with no proposal. Anything else must have complete terms, or it is not a contract. */
+const contractSource = z.literal("direct").optional();
+const proposalBackedIsComplete = (c: { source?: "direct"; total_cents: number | null; deposit_percent: number | null }) =>
+  c.source === "direct" || (c.total_cents !== null && c.deposit_percent !== null);
+const INCOMPLETE = "a proposal-backed contract needs its complete terms";
+
+/** A contract's terms for display: never a figure for a contract without any. */
+export type ContractTerms =
+  | { financialTerms: "none"; currency: string }
+  | {
+      financialTerms: "stated";
+      currency: string;
+      /** Direct contracts state a total; only an approved selection itemizes taxes. */
+      direct: boolean;
+      totalCents: number;
+      depositPercent: number | null;
+      depositCents: number;
+      balanceCents: number;
+      balanceDueDate: string | null;
+    };
+
+export function contractTerms(c: { currency: string; source?: "direct" } & (StatedMoney | NoMoney)): ContractTerms {
+  if (c.total_cents === null) return { financialTerms: "none", currency: c.currency };
+  return {
+    financialTerms: "stated",
+    currency: c.currency,
+    direct: c.source === "direct",
+    totalCents: c.total_cents,
+    depositPercent: c.deposit_percent,
+    depositCents: c.deposit_cents,
+    balanceCents: c.balance_cents,
+    balanceDueDate: c.balance_due_date,
+  };
+}
 
 /** public.client_contract_view: the signer's contract, or unavailable (no reason given). */
 export const clientContractViewSchema = z.discriminatedUnion("state", [
@@ -33,18 +94,15 @@ export const clientContractViewSchema = z.discriminatedUnion("state", [
           // Parsed by renderedContentSchema where it is shown.
           rendered_content: z.unknown(),
           signer_name: z.string(),
+          source: contractSource,
           currency: currencySchema,
-          total_cents: centsSchema,
-          deposit_percent: depositPercent,
-          deposit_cents: centsSchema,
-          balance_cents: centsSchema,
-          balance_due_date: dateSchema.nullable(),
           signing_mode: z.enum(["demo", "client_use", "none"]),
           event_title: z.string(),
           event_date: z.string(),
           legal_name: z.string(),
         })
-        .refine(addsUp, "deposit and balance don't add up to the total"),
+        .and(contractMoney)
+        .refine(proposalBackedIsComplete, INCOMPLETE),
       signing: z.discriminatedUnion("signed", [
         z.object({ signed: z.literal(true), typed_name: z.string().min(1), signed_at: timestampSchema, pdf_ready: z.boolean(), pdf_pending: z.boolean() }),
         z.object({ signed: z.literal(false), enabled: z.boolean(), consent_version: z.string().nullable(), consent_text: z.string().nullable() }),
@@ -78,15 +136,12 @@ export const contractReviewSchema = z
       contact_email: z.string().nullish(),
       display_name: z.string().optional(),
     }),
-    deposit_percent: depositPercent,
-    deposit_cents: centsSchema,
-    balance_cents: centsSchema,
-    total_cents: centsSchema,
+    source: contractSource,
     currency: currencySchema,
-    balance_due_date: dateSchema.nullable(),
     content_sha256: sha256Schema,
   })
-  .refine(addsUp, "deposit and balance don't add up to the total")
+  .and(contractMoney)
+  .refine(proposalBackedIsComplete, INCOMPLETE)
   .refine((r) => r.eligible === (r.problems.length === 0), "eligibility doesn't match the problems");
 
 /** public.generate_contract_draft's outcomes. */

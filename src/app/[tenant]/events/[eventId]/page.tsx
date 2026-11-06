@@ -89,7 +89,7 @@ export default async function EventHub({ params }: PageProps<"/[tenant]/events/[
               {planningAside}
             </div>
             <ClientPayments
-              terms={facts.contract}
+              terms={facts.contract.terms}
               signed={facts.contract.signing.signed}
               payments={facts.payments}
               djName={dj}
@@ -198,16 +198,18 @@ function Booking({ slug, eventId, timezone, contract }: { slug: string; eventId:
     <section aria-labelledby="booking-heading" className={CLIENT_SHEET} data-testid="hub-booking">
       <h2 id="booking-heading" className="text-lg leading-snug font-semibold">Booking documents</h2>
       <ul className="grid divide-y divide-plan-hairline">
-        <li className="py-1 first:pt-0">
-          <Link href={`${eventHubPath(slug, eventId)}/proposal`} className={row}>
-            <FileText aria-hidden className="size-4 shrink-0 text-plan-ink-2" />
-            <span className="grid min-w-0 flex-1">
-              <span className="font-medium">Approved proposal</span>
-              <span className="text-plan-ink-2">The package, choices and prices you agreed</span>
-            </span>
-            <ChevronRight aria-hidden className="size-4 shrink-0 text-plan-ink-2" />
-          </Link>
-        </li>
+        {contract.source === "direct" ? null : (
+          <li className="py-1 first:pt-0">
+            <Link href={`${eventHubPath(slug, eventId)}/proposal`} className={row}>
+              <FileText aria-hidden className="size-4 shrink-0 text-plan-ink-2" />
+              <span className="grid min-w-0 flex-1">
+                <span className="font-medium">Approved proposal</span>
+                <span className="text-plan-ink-2">The package, choices and prices you agreed</span>
+              </span>
+              <ChevronRight aria-hidden className="size-4 shrink-0 text-plan-ink-2" />
+            </Link>
+          </li>
+        )}
         <li className="py-1">
           <Link href={`/${slug}/contracts/${contract.id}`} className={row}>
             <ReceiptText aria-hidden className="size-4 shrink-0 text-plan-ink-2" />

@@ -36,7 +36,7 @@ export async function loadContracts(staff: StaffContext, eventId: string) {
       .order("version_number", { ascending: false }),
     supabase
       .from("contracts")
-      .select("id, status, created_at, signed_at, signing_mode, template_version_id, balance_due_date, party_snapshot, contract_template_versions!contracts_template_version_fk(version_number, contract_templates!contract_template_versions_template_fk(name))")
+      .select("id, status, created_at, signed_at, signing_mode, template_version_id, proposal_id, balance_due_date, party_snapshot, contract_template_versions!contracts_template_version_fk(version_number, contract_templates!contract_template_versions_template_fk(name))")
       .eq("tenant_id", tenant.id)
       .eq("event_id", eventId)
       .order("created_at", { ascending: false }),
@@ -64,6 +64,7 @@ export async function loadContracts(staff: StaffContext, eventId: string) {
     id: c.id,
     status: c.status,
     signing_mode: c.signing_mode,
+    direct: c.proposal_id === null,
     created_at: c.created_at,
     signed_at: c.signed_at,
     balance_due_date: c.balance_due_date,
@@ -107,7 +108,7 @@ export function ContractCard({
     <Card id="contract" className="scroll-mt-20">
       <CardHeader>
         <CardTitle>Contract</CardTitle>
-        <CardDescription>Generated from the approved selection. Generating a draft sends nothing; signing doesn&apos;t book the event by itself.</CardDescription>
+        <CardDescription>{current?.direct ? "This contract has no proposal behind it." : <>Generated from the approved selection. Generating a draft sends nothing; signing doesn&apos;t book the event by itself.</>}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4 text-sm">
         {signed ? (

@@ -18,7 +18,7 @@ export type HubStep = { title: string; text: string | null; action: HubAction | 
 /** The facts the hub words: the event, and its contract and planning when this client may see them. */
 export type HubFacts = {
   home: HomeEvent;
-  contract: { id: string; status: "sent" | "signed"; totalCents: number; signable: boolean } | null;
+  contract: { id: string; status: "sent" | "signed"; /** Null: this contract has no financial terms. */ totalCents: number | null; signable: boolean } | null;
   plan: { editing: "open" | "reopened" | "closed" | null; complete: boolean } | null;
 };
 
@@ -37,7 +37,7 @@ export function hubNextStep(f: HubFacts): HubStep {
   // A contract waiting for this client, who is its signer.
   if (f.contract?.status === "sent") {
     return f.contract.signable
-      ? { title: "Review and sign your contract", text: `Read the agreement and payment terms from ${dj}, then sign online.`, action: { label: "Review and sign", href: contractHref! } }
+      ? { title: "Review and sign your contract", text: f.contract.totalCents === null ? `Read the agreement from ${dj}, then sign online.` : `Read the agreement and payment terms from ${dj}, then sign online.`, action: { label: "Review and sign", href: contractHref! } }
       : { title: "Read your contract", text: `This contract can't be signed online. ${dj} will send you an updated contract to sign.`, action: { label: "Read contract", href: contractHref! } };
   }
 

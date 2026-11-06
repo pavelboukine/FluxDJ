@@ -1388,6 +1388,14 @@ signed-out browser:
   invoice link for an event booked elsewhere, by any role or path, with
   nothing written and no status change; Flux payments unchanged; invitations
   stop at a primary contact or email change.
+- `63_contract_first_compatibility` (pgTAP): the three shapes of contract and
+  every invalid combination; direct contracts through sending, invitations,
+  signing, booking, payments, archiving and the email queue; the owner rule for
+  going below a required deposit; proposal-backed contracts unchanged.
+- `tests/integration/contract-first-compatibility.test.ts`,
+  `tests/e2e/contract-first-readers.spec.ts`: direct contracts through the real
+  signing, PDF and email code and the existing client and staff pages. Nothing
+  can create one yet, so the fixtures insert them directly.
 - `tests/integration/external-bookings.test.ts`: the staff insert path, the
   real invitation and verification emails, acceptance, client saves, the web
   and PDF run sheet, payment refusals with the app's message, and a Flux event

@@ -11,6 +11,7 @@ import { SIGNING_MODE_LABELS, type SigningMode } from "@/lib/contracts/usage";
 import { SIGNATURE_BUCKET } from "@/lib/contracts/signing";
 import { UUID_RE } from "@/lib/forms";
 import { formatCents } from "@/lib/money";
+import { depositPercentSuffix } from "@/lib/payments";
 import { SentControls } from "./sent-controls";
 import { SignedDocumentPanel, type Delivery, type PdfState } from "./signed-document-panel";
 
@@ -96,7 +97,7 @@ export default async function ContractPreview({ params }: PageProps<"/staff/[ten
     <>
       <PageHeader
         title={`Contract for ${contract.events?.title ?? "event"}`}
-        description={<><Link className="underline active:opacity-70" href={`/staff/${slug}/events/${contract.event_id}`}>Back to event</Link> · <Link className="underline" href={`/staff/${slug}/proposals/${contract.proposal_id}`}>Approved proposal</Link></>}
+        description={<><Link className="underline active:opacity-70" href={`/staff/${slug}/events/${contract.event_id}`}>Back to event</Link>{contract.proposal_id ? <> · <Link className="underline" href={`/staff/${slug}/proposals/${contract.proposal_id}`}>Approved proposal</Link></> : null}</>}
         actions={
           <>
             <Badge variant={isDraft ? "secondary" : "outline"}>{CONTRACT_STATUS_LABEL[contract.status] ?? contract.status}</Badge>
@@ -124,8 +125,14 @@ export default async function ContractPreview({ params }: PageProps<"/staff/[ten
             Signed {fmt(contract.signed_at!)} by {signature?.typed_name ?? contract.signer_name} ({signature?.signer_email ?? contract.signer_email}).
           </p>
           <p className="text-muted-foreground">
-            The signed agreement and its evidence can&apos;t be changed, voided or replaced, and the proposal can&apos;t be revised. The event is not
-            marked booked by signing.
+            {contract.proposal_id ? (
+              <>
+                The signed agreement and its evidence can&apos;t be changed, voided or replaced, and the proposal can&apos;t be revised. The event is not
+                marked booked by signing.
+              </>
+            ) : (
+              "The signed agreement and its evidence can't be changed, voided or replaced. Booking follows the policy recorded below."
+            )}
           </p>
         </div>
       ) : isSent ? (
@@ -213,12 +220,16 @@ export default async function ContractPreview({ params }: PageProps<"/staff/[ten
           <Card>
             <CardHeader><CardTitle>Payment terms</CardTitle></CardHeader>
             <CardContent>
-              <dl className="grid gap-1 text-sm">
-                <div className="flex justify-between gap-2"><dt>Total, including taxes</dt><dd className="tabular-nums">{money(contract.total_cents)}</dd></div>
-                <div className="flex justify-between gap-2"><dt>Deposit on signing ({contract.deposit_percent}%)</dt><dd className="tabular-nums">{money(contract.deposit_cents)}</dd></div>
-                <div className="flex justify-between gap-2"><dt>Balance</dt><dd className="tabular-nums">{money(contract.balance_cents)}</dd></div>
-                <div className="flex justify-between gap-2"><dt>Balance due</dt><dd>{contract.balance_due_date ?? "Not specified by this template"}</dd></div>
-              </dl>
+              {contract.total_cents === null || contract.deposit_cents === null || contract.balance_cents === null ? (
+                <p className="text-sm text-muted-foreground" data-testid="contract-no-terms">No payment terms are recorded for this contract.</p>
+              ) : (
+                <dl className="grid gap-1 text-sm">
+                  <div className="flex justify-between gap-2"><dt>{contract.proposal_id ? "Total, including taxes" : "Total"}</dt><dd className="tabular-nums">{money(contract.total_cents)}</dd></div>
+                  <div className="flex justify-between gap-2"><dt>Deposit on signing{depositPercentSuffix(contract.deposit_percent)}</dt><dd className="tabular-nums">{money(contract.deposit_cents)}</dd></div>
+                  <div className="flex justify-between gap-2"><dt>Balance</dt><dd className="tabular-nums">{money(contract.balance_cents)}</dd></div>
+                  <div className="flex justify-between gap-2"><dt>Balance due</dt><dd>{contract.balance_due_date ?? "Not specified by this template"}</dd></div>
+                </dl>
+              )}
             </CardContent>
           </Card>
           <Card>
@@ -235,7 +246,7 @@ export default async function ContractPreview({ params }: PageProps<"/staff/[ten
                     version {template?.version_number} (published, unchangeable)
                   </dd>
                 </div>
-                <div><dt className="text-muted-foreground">Approved selection</dt><dd>Proposal revision {contract.proposals?.revision}, approved {contract.proposal_approvals ? fmt(contract.proposal_approvals.approved_at) : ""}</dd></div>
+                {contract.proposal_id ? <div><dt className="text-muted-foreground">Approved selection</dt><dd>Proposal revision {contract.proposals?.revision}, approved {contract.proposal_approvals ? fmt(contract.proposal_approvals.approved_at) : ""}</dd></div> : null}
                 <div><dt className="text-muted-foreground">Generated</dt><dd>{fmt(contract.created_at)}</dd></div>
                 <div>
                   <dt className="text-muted-foreground">Booking</dt>

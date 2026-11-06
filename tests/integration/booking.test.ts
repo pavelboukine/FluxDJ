@@ -65,7 +65,7 @@ async function sentContract() {
       input: { typedName: "IT Signer", consentAccepted: true, consentVersion: "demo-v1", contentSha256: row!.content_sha256, signature: signaturePng() },
       request: { userAgent: "IT Browser/1.0", ip: null, ipSource: "unavailable" },
     });
-  return { eventId, contractId, clientEmail, deposit: row!.deposit_cents, total: row!.total_cents, sign };
+  return { eventId, contractId, clientEmail, deposit: row!.deposit_cents!, total: row!.total_cents!, sign };
 }
 
 describe("booking confirmation (local Supabase)", () => {

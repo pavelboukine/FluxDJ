@@ -41,7 +41,7 @@ begin
   if new.purpose = 'contract' and not exists (
     select 1 from public.contracts c
     where c.tenant_id = new.tenant_id and c.id = new.contract_id
-      and c.proposal_id = new.proposal_id and c.signer_client_id = new.intended_client_id
+      and c.proposal_id is not distinct from new.proposal_id and c.signer_client_id = new.intended_client_id
   ) then
     raise exception 'a contract invitation must match its contract''s proposal and signer' using errcode = 'check_violation';
   end if;
@@ -912,20 +912,272 @@ CREATE OR REPLACE FUNCTION "private"."contract_invitation"("p_link_id" "uuid", "
     SET "search_path" TO ''
     AS $$
   select (l.revoked_at is null and l.expires_at > now() and t.archived_at is null and t.suspended_at is null and c.status = 'sent'
-          and e.archived_at is null and p.status = 'approved' and e.active_proposal_id = c.proposal_id),
+          and e.archived_at is null and private.contract_is_current(c, e)),
          l.id, l.tenant_id, t.display_name, c.id, c.event_id, c.signer_client_id, c.signer_email, c.signer_name,
          c.party_snapshot -> 'event' ->> 'title'
   from public.access_links l
   join public.tenants t on t.id = l.tenant_id
   join public.contracts c on c.tenant_id = l.tenant_id and c.id = l.contract_id
   join public.events e on e.tenant_id = c.tenant_id and e.id = c.event_id
-  join public.proposals p on p.tenant_id = c.tenant_id and p.id = c.proposal_id
   where l.purpose = 'contract' and t.slug = p_tenant_slug
     and ((p_link_id is not null and l.id = p_link_id) or (p_token_hash is not null and l.token_hash = p_token_hash));
 $$;
 
 
 ALTER FUNCTION "private"."contract_invitation"("p_link_id" "uuid", "p_token_hash" "text", "p_tenant_slug" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."is_valid_email"("email" "text") RETURNS boolean
+    LANGUAGE "sql" IMMUTABLE STRICT
+    SET "search_path" TO ''
+    AS $_$
+  select length(email) <= 320
+     and email = lower(btrim(email))
+     and email ~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$';
+$_$;
+
+
+ALTER FUNCTION "private"."is_valid_email"("email" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."is_valid_timezone"("tz" "text") RETURNS boolean
+    LANGUAGE "sql" IMMUTABLE STRICT
+    SET "search_path" TO ''
+    AS $$
+  select exists (select 1 from pg_catalog.pg_timezone_names where name = tz);
+$$;
+
+
+ALTER FUNCTION "private"."is_valid_timezone"("tz" "text") OWNER TO "postgres";
+
+SET default_tablespace = '';
+
+SET default_table_access_method = "heap";
+
+
+CREATE TABLE IF NOT EXISTS "public"."contracts" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "tenant_id" "uuid" NOT NULL,
+    "event_id" "uuid" NOT NULL,
+    "proposal_id" "uuid",
+    "selection_id" "uuid",
+    "approval_id" "uuid",
+    "template_id" "uuid" NOT NULL,
+    "template_version_id" "uuid" NOT NULL,
+    "template_content_sha256" "text" NOT NULL,
+    "status" "text" DEFAULT 'draft'::"text" NOT NULL,
+    "status_changed_at" timestamp with time zone,
+    "replaces_id" "uuid",
+    "signer_client_id" "uuid" NOT NULL,
+    "signer_name" "text" NOT NULL,
+    "signer_email" "text" NOT NULL,
+    "currency" "text" NOT NULL,
+    "total_cents" bigint,
+    "deposit_cents" bigint,
+    "balance_cents" bigint,
+    "balance_due_date" "date",
+    "rendered_content" "jsonb" NOT NULL,
+    "commercial_snapshot" "jsonb" NOT NULL,
+    "party_snapshot" "jsonb" NOT NULL,
+    "content_sha256" "text" NOT NULL,
+    "generated_by_membership_id" "uuid",
+    "generated_by_user_id" "uuid" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "deposit_percent" integer,
+    "sent_at" timestamp with time zone,
+    "voided_at" timestamp with time zone,
+    "void_reason" "text",
+    "signed_at" timestamp with time zone,
+    "signing_mode" "text" NOT NULL,
+    "consent_version" "text",
+    "booking_policy" "text",
+    CONSTRAINT "contracts_balance_nonnegative" CHECK (("balance_cents" >= 0)),
+    CONSTRAINT "contracts_booking_policy_valid" CHECK (("booking_policy" = ANY (ARRAY['on_deposit'::"text", 'on_signature'::"text"]))),
+    CONSTRAINT "contracts_commercial_object" CHECK (("jsonb_typeof"("commercial_snapshot") = 'object'::"text")),
+    CONSTRAINT "contracts_consent_matches_mode" CHECK (
+CASE "signing_mode"
+    WHEN 'demo'::"text" THEN (NOT ("consent_version" IS DISTINCT FROM 'demo-v1'::"text"))
+    WHEN 'client_use'::"text" THEN (NOT ("consent_version" IS DISTINCT FROM
+    CASE
+        WHEN ("total_cents" IS NULL) THEN 'client-no-terms-v1'::"text"
+        ELSE 'client-v1'::"text"
+    END))
+    ELSE ("consent_version" IS NULL)
+END),
+    CONSTRAINT "contracts_content_sha256_format" CHECK (("content_sha256" ~ '^[0-9a-f]{64}$'::"text")),
+    CONSTRAINT "contracts_currency_valid" CHECK (("currency" ~ '^[A-Z]{3}$'::"text")),
+    CONSTRAINT "contracts_deposit_nonnegative" CHECK (("deposit_cents" >= 0)),
+    CONSTRAINT "contracts_deposit_percent_matches_snapshot" CHECK ((((("commercial_snapshot" -> 'payment'::"text") ->> 'deposit_basis_points'::"text"))::integer = ("deposit_percent" * 100))),
+    CONSTRAINT "contracts_deposit_percent_range" CHECK ((("deposit_percent" >= 0) AND ("deposit_percent" <= 100))),
+    CONSTRAINT "contracts_deposit_plus_balance" CHECK ((("deposit_cents" + "balance_cents") = "total_cents")),
+    CONSTRAINT "contracts_direct_booking_policy" CHECK ((("proposal_id" IS NOT NULL) OR (NOT ("booking_policy" IS DISTINCT FROM 'on_signature'::"text")) OR ((NOT ("booking_policy" IS DISTINCT FROM 'on_deposit'::"text")) AND ("deposit_cents" IS NOT NULL) AND ("deposit_cents" > 0)))),
+    CONSTRAINT "contracts_financial_terms_shape" CHECK (((("total_cents" IS NULL) AND ("deposit_cents" IS NULL) AND ("balance_cents" IS NULL) AND ("deposit_percent" IS NULL) AND ("balance_due_date" IS NULL)) OR (("total_cents" IS NOT NULL) AND ("deposit_cents" IS NOT NULL) AND ("balance_cents" IS NOT NULL)))),
+    CONSTRAINT "contracts_financial_terms_snapshot" CHECK (
+CASE
+    WHEN ("proposal_id" IS NOT NULL) THEN (NOT ("commercial_snapshot" ? 'financial_terms'::"text"))
+    WHEN ("total_cents" IS NULL) THEN ((NOT (("commercial_snapshot" ->> 'financial_terms'::"text") IS DISTINCT FROM 'none'::"text")) AND (NOT ("commercial_snapshot" ? 'total_cents'::"text")))
+    ELSE ((NOT (("commercial_snapshot" ->> 'financial_terms'::"text") IS DISTINCT FROM 'stated'::"text")) AND (NOT (("commercial_snapshot" ->> 'total_cents'::"text") IS DISTINCT FROM ("total_cents")::"text")))
+END),
+    CONSTRAINT "contracts_party_object" CHECK (("jsonb_typeof"("party_snapshot") = 'object'::"text")),
+    CONSTRAINT "contracts_proposal_backed_terms" CHECK ((("proposal_id" IS NULL) OR ("deposit_percent" IS NOT NULL))),
+    CONSTRAINT "contracts_proposal_references" CHECK (("num_nonnulls"("proposal_id", "selection_id", "approval_id") = ANY (ARRAY[0, 3]))),
+    CONSTRAINT "contracts_rendered_shape" CHECK ((("jsonb_typeof"("rendered_content") = 'object'::"text") AND ("jsonb_typeof"(("rendered_content" -> 'title'::"text")) = 'string'::"text") AND ("jsonb_typeof"(("rendered_content" -> 'sections'::"text")) = 'array'::"text"))),
+    CONSTRAINT "contracts_sent_at_matches_status" CHECK ((("status" = ANY (ARRAY['sent'::"text", 'signed'::"text", 'void'::"text"])) = ("sent_at" IS NOT NULL))),
+    CONSTRAINT "contracts_signed_matches_status" CHECK ((("status" = 'signed'::"text") = ("signed_at" IS NOT NULL))),
+    CONSTRAINT "contracts_signer_email_valid" CHECK ("private"."is_valid_email"("signer_email")),
+    CONSTRAINT "contracts_signer_name_length" CHECK ((("length"("btrim"("signer_name")) >= 1) AND ("length"("btrim"("signer_name")) <= 200))),
+    CONSTRAINT "contracts_signing_mode_valid" CHECK (("signing_mode" = ANY (ARRAY['demo'::"text", 'client_use'::"text", 'none'::"text"]))),
+    CONSTRAINT "contracts_status_valid" CHECK (("status" = ANY (ARRAY['draft'::"text", 'replaced'::"text", 'superseded'::"text", 'sent'::"text", 'signed'::"text", 'void'::"text"]))),
+    CONSTRAINT "contracts_template_sha256_format" CHECK (("template_content_sha256" ~ '^[0-9a-f]{64}$'::"text")),
+    CONSTRAINT "contracts_total_nonnegative" CHECK (("total_cents" >= 0)),
+    CONSTRAINT "contracts_void_matches_status" CHECK ((("status" = 'void'::"text") = (("voided_at" IS NOT NULL) AND ("void_reason" IS NOT NULL)))),
+    CONSTRAINT "contracts_void_reason_length" CHECK ((("length"("btrim"("void_reason")) >= 1) AND ("length"("btrim"("void_reason")) <= 500)))
+);
+
+
+ALTER TABLE "public"."contracts" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."contracts" IS 'Contracts rendered from an approved selection (or, for a contract-first event, with no proposal) and a published template version. Content, terms and hash never change after insert; only status moves. Staff-only.';
+
+
+
+COMMENT ON COLUMN "public"."contracts"."total_cents" IS 'Frozen at generation. Null only on a contract without financial terms; a genuine zero-dollar contract is 0.';
+
+
+
+COMMENT ON COLUMN "public"."contracts"."content_sha256" IS 'SHA-256 of the canonical jsonb text of private.contract_hash_document(rendered_content, commercial_snapshot, party_snapshot, template_version_id, template_content_sha256). Not a PDF hash.';
+
+
+
+COMMENT ON COLUMN "public"."contracts"."deposit_percent" IS 'Deposit percentage frozen at generation (also in commercial_snapshot.payment).';
+
+
+
+COMMENT ON COLUMN "public"."contracts"."sent_at" IS 'When the contract was first sent. Set once by the database; resends never change it.';
+
+
+
+COMMENT ON COLUMN "public"."contracts"."signed_at" IS 'When the contract was signed (database time, set once by sign_contract).';
+
+
+
+COMMENT ON COLUMN "public"."contracts"."signing_mode" IS 'demo | client_use | none, frozen from the template version at generation. none: generated from a legacy version; cannot be signed or sent.';
+
+
+
+COMMENT ON COLUMN "public"."contracts"."consent_version" IS 'The consent statement version the signer is shown, frozen at generation. Null when signing_mode is none. client-no-terms-v1 has no approved wording yet, so such a contract cannot be signed.';
+
+
+
+COMMENT ON COLUMN "public"."contracts"."booking_policy" IS 'Booking policy frozen at generation. Null for contracts generated before policies existed (checked explicitly by staff).';
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."events" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "tenant_id" "uuid" NOT NULL,
+    "title" "text" NOT NULL,
+    "event_type" "text" NOT NULL,
+    "event_date" "date" NOT NULL,
+    "timezone" "text" DEFAULT 'America/Toronto'::"text" NOT NULL,
+    "venue_name" "text",
+    "venue_address" "text",
+    "lifecycle_status" "text" DEFAULT 'lead'::"text" NOT NULL,
+    "booking_confirmed_at" timestamp with time zone,
+    "planning_lock_at" timestamp with time zone,
+    "planning_override_until" timestamp with time zone,
+    "internal_notes" "text",
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "active_proposal_id" "uuid",
+    "archived_at" timestamp with time zone,
+    "planning_client_closed_at" timestamp with time zone,
+    "booking_source" "text" DEFAULT 'flux'::"text" NOT NULL,
+    "dj_name" "text",
+    "contract_first" boolean DEFAULT false NOT NULL,
+    CONSTRAINT "events_booked_has_confirmation" CHECK ((("lifecycle_status" <> ALL (ARRAY['booked'::"text", 'completed'::"text"])) OR ("booking_confirmed_at" IS NOT NULL))),
+    CONSTRAINT "events_booking_source_valid" CHECK (("booking_source" = ANY (ARRAY['flux'::"text", 'external'::"text"]))),
+    CONSTRAINT "events_contract_first_flux_only" CHECK (((NOT "contract_first") OR ("booking_source" = 'flux'::"text"))),
+    CONSTRAINT "events_contract_first_no_active_proposal" CHECK (((NOT "contract_first") OR ("active_proposal_id" IS NULL))),
+    CONSTRAINT "events_dj_name_length" CHECK ((("dj_name" = "btrim"("dj_name")) AND (("length"("dj_name") >= 1) AND ("length"("dj_name") <= 80)))),
+    CONSTRAINT "events_event_type_valid" CHECK (("event_type" ~ '^[a-z][a-z0-9_]{0,39}$'::"text")),
+    CONSTRAINT "events_external_not_flux_booked" CHECK ((("booking_source" = 'flux'::"text") OR (("lifecycle_status" = 'lead'::"text") AND ("booking_confirmed_at" IS NULL) AND ("active_proposal_id" IS NULL)))),
+    CONSTRAINT "events_internal_notes_length" CHECK (("length"("internal_notes") <= 20000)),
+    CONSTRAINT "events_lifecycle_status_valid" CHECK (("lifecycle_status" = ANY (ARRAY['lead'::"text", 'pending_approval'::"text", 'awaiting_signature'::"text", 'awaiting_deposit'::"text", 'booked'::"text", 'completed'::"text", 'cancelled'::"text"]))),
+    CONSTRAINT "events_timezone_valid" CHECK ("private"."is_valid_timezone"("timezone")),
+    CONSTRAINT "events_title_length" CHECK ((("length"("btrim"("title")) >= 1) AND ("length"("btrim"("title")) <= 200))),
+    CONSTRAINT "events_venue_address_length" CHECK ((("length"("btrim"("venue_address")) >= 1) AND ("length"("btrim"("venue_address")) <= 500))),
+    CONSTRAINT "events_venue_name_length" CHECK ((("length"("btrim"("venue_name")) >= 1) AND ("length"("btrim"("venue_name")) <= 200)))
+);
+
+
+ALTER TABLE "public"."events" OWNER TO "postgres";
+
+
+COMMENT ON TABLE "public"."events" IS 'Staff-only table. Clients read safe columns via public.my_events(); internal_notes is never exposed to clients.';
+
+
+
+COMMENT ON COLUMN "public"."events"."timezone" IS 'IANA timezone; governs planning cutoff and local timeline times.';
+
+
+
+COMMENT ON COLUMN "public"."events"."planning_lock_at" IS 'Client planning deadline, set when the plan is set up and changed only by explicit staff actions. Clients can''t edit at or after it.';
+
+
+
+COMMENT ON COLUMN "public"."events"."planning_override_until" IS 'Temporary reopening: clients can edit after the deadline until this time. Set and cleared only by staff actions.';
+
+
+
+COMMENT ON COLUMN "public"."events"."active_proposal_id" IS 'The proposal clients can act on. Set only by send_proposal; never by staff directly.';
+
+
+
+COMMENT ON COLUMN "public"."events"."archived_at" IS 'Set by set_event_archived. Hidden from default staff lists; blocks sends, approvals, contract generation and client sessions. Not a lifecycle status.';
+
+
+
+COMMENT ON COLUMN "public"."events"."planning_client_closed_at" IS 'Client planning edits closed by staff at this time, whatever the deadline. Set and cleared only by the planning editing functions.';
+
+
+
+COMMENT ON COLUMN "public"."events"."booking_source" IS 'flux: booked through Flux DJ (proposal, contract, booking policy). external: staff affirmed at creation that it is booked elsewhere; planning only. Set on insert, never changed.';
+
+
+
+COMMENT ON COLUMN "public"."events"."dj_name" IS 'Optional name of the DJ handling this event; overrides tenants.dj_name in planning and the run sheet.';
+
+
+
+COMMENT ON COLUMN "public"."events"."contract_first" IS 'A Flux booking that skips the proposal: staff go straight to a contract. Immutable for now; no role can change it after insert.';
+
+
+
+CREATE OR REPLACE FUNCTION "private"."contract_is_current"("p_contract" "public"."contracts", "p_event" "public"."events") RETURNS boolean
+    LANGUAGE "sql" STABLE
+    SET "search_path" TO ''
+    AS $$
+  select coalesce(case
+    when p_contract.proposal_id is not null then
+      p_event.active_proposal_id = p_contract.proposal_id
+      and exists (select 1 from public.proposals p
+                  where p.tenant_id = p_contract.tenant_id and p.id = p_contract.proposal_id and p.status = 'approved')
+    else
+      p_contract.selection_id is null and p_contract.approval_id is null
+      and p_event.tenant_id = p_contract.tenant_id and p_event.id = p_contract.event_id
+      and p_event.contract_first and p_event.booking_source = 'flux' and p_event.active_proposal_id is null
+  end, false);
+$$;
+
+
+ALTER FUNCTION "private"."contract_is_current"("p_contract" "public"."contracts", "p_event" "public"."events") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "private"."contract_is_current"("p_contract" "public"."contracts", "p_event" "public"."events") IS 'Whether a sent or draft contract is still current: on the approved active proposal, or direct on a contract-first event. Status, archive and identity are checked by callers.';
+
 
 
 CREATE OR REPLACE FUNCTION "private"."contract_placeholder_pattern"() RETURNS "text"
@@ -996,7 +1248,6 @@ CREATE OR REPLACE FUNCTION "private"."contract_send_problems"("p_contract_id" "u
 declare
   c public.contracts%rowtype;
   e public.events%rowtype;
-  p public.proposals%rowtype;
   t public.tenants%rowtype;
   v_signer record;
   v_frozen jsonb;
@@ -1008,7 +1259,6 @@ begin
     return jsonb_build_array(jsonb_build_object('code', 'not_found', 'message', 'Contract not found.'));
   end if;
   select * into e from public.events where tenant_id = c.tenant_id and id = c.event_id;
-  select * into p from public.proposals where tenant_id = c.tenant_id and id = c.proposal_id;
   select * into t from public.tenants where id = c.tenant_id;
   v_frozen := c.party_snapshot -> 'business';
 
@@ -1024,14 +1274,23 @@ begin
     v_problems := v_problems || jsonb_build_object('code', 'not_current_draft',
       'message', 'This contract is ' || c.status || ' and can no longer be sent. Open the current contract.');
   end if;
-  if p.status <> 'approved' or e.active_proposal_id is distinct from c.proposal_id then
-    v_problems := v_problems || jsonb_build_object('code', 'approval_superseded',
-      'message', 'The approval this contract was built from is no longer current. Generate a contract from the current approval.');
+  if not private.contract_is_current(c, e) then
+    v_problems := v_problems || case when c.proposal_id is not null then
+      jsonb_build_object('code', 'approval_superseded',
+        'message', 'The approval this contract was built from is no longer current. Generate a contract from the current approval.')
+    else
+      jsonb_build_object('code', 'event_not_contract_first',
+        'message', 'This contract has no proposal, and its event is no longer set up for one.')
+    end;
   end if;
   if c.signing_mode = 'none' then
     v_problems := v_problems || jsonb_build_object('code', 'signing_unavailable',
       'message', 'This contract was generated from a template version published before agreements could be approved for client use, '
         || 'so it can''t be signed online. Publish a version for client use (or as DEMO) in Contract templates, then regenerate the contract.');
+  elsif private.contract_signing_consent(c.consent_version) is null then
+    -- Frozen on a contract without financial terms until its wording is approved.
+    v_problems := v_problems || jsonb_build_object('code', 'consent_unavailable',
+      'message', 'Online signing isn''t available yet for a contract without payment terms.');
   end if;
 
   select cl.id, cl.name, cl.email, cl.archived_at into v_signer
@@ -1069,7 +1328,8 @@ begin
           || '). Regenerate the contract to use the current details.');
     end if;
   end if;
-  if c.deposit_percent <> t.deposit_percent then
+  -- Only a proposal-backed contract follows the business's percentage; a direct contract states its own terms.
+  if c.proposal_id is not null and c.deposit_percent <> t.deposit_percent then
     v_problems := v_problems || jsonb_build_object('code', 'deposit_changed',
       'message', 'The deposit setting is now ' || t.deposit_percent || '%, but this contract uses ' || c.deposit_percent
         || '%. Regenerate the contract to use the current setting.');
@@ -1289,7 +1549,16 @@ begin
   ) then
     raise exception 'contracts can only be generated from a published template version' using errcode = 'check_violation';
   end if;
-  if not exists (
+  if new.proposal_id is null then
+    -- Never because references are missing: only for an event that is itself contract-first.
+    if not exists (
+      select 1 from public.events e
+      where e.tenant_id = new.tenant_id and e.id = new.event_id and e.contract_first and e.booking_source = 'flux'
+        and e.active_proposal_id is null and e.lifecycle_status in ('lead', 'awaiting_signature')
+    ) then
+      raise exception 'a contract without a proposal needs a contract-first event that is still being booked' using errcode = 'check_violation';
+    end if;
+  elsif not exists (
     select 1 from public.proposals p
     join public.events e on e.tenant_id = p.tenant_id and e.id = p.event_id
     where p.tenant_id = new.tenant_id and p.id = new.proposal_id
@@ -1312,8 +1581,27 @@ CREATE OR REPLACE FUNCTION "private"."contracts_booking_policy"() RETURNS "trigg
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
     AS $$
+declare
+  t public.tenants%rowtype;
 begin
-  new.booking_policy := (select t.booking_confirmation_policy from public.tenants t where t.id = new.tenant_id);
+  select * into t from public.tenants where id = new.tenant_id;
+  if new.proposal_id is not null then
+    new.booking_policy := t.booking_confirmation_policy;
+    return new;
+  end if;
+  if new.booking_policy is null then
+    perform private.contract_error('choose when this booking is confirmed');
+  end if;
+  if t.booking_confirmation_policy = 'on_deposit' and t.deposit_percent > 0
+     and (new.total_cents is null
+          or (new.total_cents > 0
+              and not coalesce(new.booking_policy = 'on_deposit'
+                               and new.deposit_cents >= private.contract_deposit_cents(new.total_cents, t.deposit_percent), false))) then
+    if not exists (select 1 from public.tenant_memberships m
+                   where m.tenant_id = new.tenant_id and m.user_id = (select auth.uid()) and m.role = 'owner' and m.removed_at is null) then
+      raise exception 'only the owner can go below the deposit this business requires' using errcode = 'insufficient_privilege';
+    end if;
+  end if;
   return new;
 end;
 $$;
@@ -1340,7 +1628,8 @@ begin
     new.consent_version := 'demo-v1';
   elsif v_usage = 'client_use' then
     new.signing_mode := 'client_use';
-    new.consent_version := 'client-v1';
+    -- client-v1 says "including its payment terms", so it can't go on a contract without any.
+    new.consent_version := case when new.total_cents is null then 'client-no-terms-v1' else 'client-v1' end;
   else
     perform private.contract_error('this version was published before agreements could be approved for client use. '
       || 'Open the template, start a new draft version and publish it for client use (or as DEMO for testing)');
@@ -1458,10 +1747,6 @@ $$;
 
 ALTER FUNCTION "private"."document_error_summary"("p_error" "text") OWNER TO "postgres";
 
-SET default_tablespace = '';
-
-SET default_table_access_method = "heap";
-
 
 CREATE TABLE IF NOT EXISTS "public"."document_jobs" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
@@ -1549,19 +1834,6 @@ $$;
 
 
 ALTER FUNCTION "private"."email_error_summary"("p_error" "text") OWNER TO "postgres";
-
-
-CREATE OR REPLACE FUNCTION "private"."is_valid_email"("email" "text") RETURNS boolean
-    LANGUAGE "sql" IMMUTABLE STRICT
-    SET "search_path" TO ''
-    AS $_$
-  select length(email) <= 320
-     and email = lower(btrim(email))
-     and email ~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$';
-$_$;
-
-
-ALTER FUNCTION "private"."is_valid_email"("email" "text") OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."email_outbox" (
@@ -1977,6 +2249,10 @@ begin
   if v_policy is null then
     return jsonb_build_object('status', 'needs_check');
   end if;
+  -- The table forbids this; if it ever happened, a null deposit must never count as met.
+  if v_policy = 'on_deposit' and c.deposit_cents is null then
+    return jsonb_build_object('status', 'terms_invalid');
+  end if;
   select coalesce(sum(p.amount_cents), 0) into v_received from public.event_payments p
   where p.tenant_id = e.tenant_id and p.event_id = e.id and p.invalidated_at is null and p.currency = c.currency;
 
@@ -2010,8 +2286,9 @@ begin
       'total_cents', c.total_cents,
       'deposit_cents', c.deposit_cents,
       'received_cents', v_received,
-      'remaining_cents', greatest(c.total_cents - v_received, 0),
-      'credit_cents', greatest(v_received - c.total_cents, 0),
+      -- Null without financial terms: greatest() ignores nulls and would say nothing is owed.
+      'remaining_cents', case when c.total_cents is not null then greatest(c.total_cents - v_received, 0) end,
+      'credit_cents', case when c.total_cents is not null then greatest(v_received - c.total_cents, 0) end,
       'balance_due_date', c.balance_due_date,
       'booked_on', (e.booking_confirmed_at at time zone t.timezone)::date),
     'booking_confirmed:' || e.id,
@@ -2043,91 +2320,6 @@ $$;
 
 
 ALTER FUNCTION "private"."event_access_revocation"() OWNER TO "postgres";
-
-
-CREATE OR REPLACE FUNCTION "private"."is_valid_timezone"("tz" "text") RETURNS boolean
-    LANGUAGE "sql" IMMUTABLE STRICT
-    SET "search_path" TO ''
-    AS $$
-  select exists (select 1 from pg_catalog.pg_timezone_names where name = tz);
-$$;
-
-
-ALTER FUNCTION "private"."is_valid_timezone"("tz" "text") OWNER TO "postgres";
-
-
-CREATE TABLE IF NOT EXISTS "public"."events" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "tenant_id" "uuid" NOT NULL,
-    "title" "text" NOT NULL,
-    "event_type" "text" NOT NULL,
-    "event_date" "date" NOT NULL,
-    "timezone" "text" DEFAULT 'America/Toronto'::"text" NOT NULL,
-    "venue_name" "text",
-    "venue_address" "text",
-    "lifecycle_status" "text" DEFAULT 'lead'::"text" NOT NULL,
-    "booking_confirmed_at" timestamp with time zone,
-    "planning_lock_at" timestamp with time zone,
-    "planning_override_until" timestamp with time zone,
-    "internal_notes" "text",
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "active_proposal_id" "uuid",
-    "archived_at" timestamp with time zone,
-    "planning_client_closed_at" timestamp with time zone,
-    "booking_source" "text" DEFAULT 'flux'::"text" NOT NULL,
-    "dj_name" "text",
-    CONSTRAINT "events_booked_has_confirmation" CHECK ((("lifecycle_status" <> ALL (ARRAY['booked'::"text", 'completed'::"text"])) OR ("booking_confirmed_at" IS NOT NULL))),
-    CONSTRAINT "events_booking_source_valid" CHECK (("booking_source" = ANY (ARRAY['flux'::"text", 'external'::"text"]))),
-    CONSTRAINT "events_dj_name_length" CHECK ((("dj_name" = "btrim"("dj_name")) AND (("length"("dj_name") >= 1) AND ("length"("dj_name") <= 80)))),
-    CONSTRAINT "events_event_type_valid" CHECK (("event_type" ~ '^[a-z][a-z0-9_]{0,39}$'::"text")),
-    CONSTRAINT "events_external_not_flux_booked" CHECK ((("booking_source" = 'flux'::"text") OR (("lifecycle_status" = 'lead'::"text") AND ("booking_confirmed_at" IS NULL) AND ("active_proposal_id" IS NULL)))),
-    CONSTRAINT "events_internal_notes_length" CHECK (("length"("internal_notes") <= 20000)),
-    CONSTRAINT "events_lifecycle_status_valid" CHECK (("lifecycle_status" = ANY (ARRAY['lead'::"text", 'pending_approval'::"text", 'awaiting_signature'::"text", 'awaiting_deposit'::"text", 'booked'::"text", 'completed'::"text", 'cancelled'::"text"]))),
-    CONSTRAINT "events_timezone_valid" CHECK ("private"."is_valid_timezone"("timezone")),
-    CONSTRAINT "events_title_length" CHECK ((("length"("btrim"("title")) >= 1) AND ("length"("btrim"("title")) <= 200))),
-    CONSTRAINT "events_venue_address_length" CHECK ((("length"("btrim"("venue_address")) >= 1) AND ("length"("btrim"("venue_address")) <= 500))),
-    CONSTRAINT "events_venue_name_length" CHECK ((("length"("btrim"("venue_name")) >= 1) AND ("length"("btrim"("venue_name")) <= 200)))
-);
-
-
-ALTER TABLE "public"."events" OWNER TO "postgres";
-
-
-COMMENT ON TABLE "public"."events" IS 'Staff-only table. Clients read safe columns via public.my_events(); internal_notes is never exposed to clients.';
-
-
-
-COMMENT ON COLUMN "public"."events"."timezone" IS 'IANA timezone; governs planning cutoff and local timeline times.';
-
-
-
-COMMENT ON COLUMN "public"."events"."planning_lock_at" IS 'Client planning deadline, set when the plan is set up and changed only by explicit staff actions. Clients can''t edit at or after it.';
-
-
-
-COMMENT ON COLUMN "public"."events"."planning_override_until" IS 'Temporary reopening: clients can edit after the deadline until this time. Set and cleared only by staff actions.';
-
-
-
-COMMENT ON COLUMN "public"."events"."active_proposal_id" IS 'The proposal clients can act on. Set only by send_proposal; never by staff directly.';
-
-
-
-COMMENT ON COLUMN "public"."events"."archived_at" IS 'Set by set_event_archived. Hidden from default staff lists; blocks sends, approvals, contract generation and client sessions. Not a lifecycle status.';
-
-
-
-COMMENT ON COLUMN "public"."events"."planning_client_closed_at" IS 'Client planning edits closed by staff at this time, whatever the deadline. Set and cleared only by the planning editing functions.';
-
-
-
-COMMENT ON COLUMN "public"."events"."booking_source" IS 'flux: booked through Flux DJ (proposal, contract, booking policy). external: staff affirmed at creation that it is booked elsewhere; planning only. Set on insert, never changed.';
-
-
-
-COMMENT ON COLUMN "public"."events"."dj_name" IS 'Optional name of the DJ handling this event; overrides tenants.dj_name in planning and the run sheet.';
-
 
 
 CREATE OR REPLACE FUNCTION "private"."event_booked_for_planning"("p_event" "public"."events") RETURNS boolean
@@ -2177,6 +2369,7 @@ declare
   e public.events%rowtype;
   t public.tenants%rowtype;
   c public.contracts%rowtype;
+  v_has_contract boolean;
   v_has_terms boolean;
   v_currency text;
   v_received bigint;
@@ -2191,8 +2384,10 @@ begin
   where k.tenant_id = e.tenant_id and k.event_id = e.id and k.status in ('signed', 'sent')
   order by (k.status = 'signed') desc, k.sent_at desc
   limit 1;
-  v_has_terms := found;
-  v_currency := case when v_has_terms then c.currency else t.currency end;
+  v_has_contract := found;
+  -- A contract without financial terms has a null total: no figures are derived from it.
+  v_has_terms := v_has_contract and c.total_cents is not null;
+  v_currency := case when v_has_contract then c.currency else t.currency end;
   select coalesce(sum(p.amount_cents) filter (where p.currency = v_currency), 0),
          count(*) filter (where p.currency = v_currency),
          count(*) filter (where p.currency <> v_currency)
@@ -2218,13 +2413,15 @@ begin
       'booking_confirmed_at', e.booking_confirmed_at,
       -- The signed contract's frozen policy; null for contracts generated
       -- before policies existed (staff check those explicitly).
-      'policy', case when v_has_terms and c.status = 'signed' then c.booking_policy end,
-      'legacy_signed', v_has_terms and c.status = 'signed' and c.booking_policy is null,
+      'policy', case when v_has_contract and c.status = 'signed' then c.booking_policy end,
+      'legacy_signed', v_has_contract and c.status = 'signed' and c.booking_policy is null,
       -- Booked under the deposit policy but valid payments no longer cover
       -- the deposit (a payment was invalidated). The booking stands.
       'deposit_no_longer_met', e.lifecycle_status = 'booked' and v_has_terms and c.status = 'signed'
         and coalesce(c.booking_policy, 'on_deposit') = 'on_deposit' and v_received < c.deposit_cents)
-  );
+  )
+  -- Only without financial terms, so every other summary is exactly as before.
+  || case when v_has_contract and not v_has_terms then jsonb_build_object('no_financial_terms', true) else '{}'::jsonb end;
 end;
 $$;
 
@@ -2948,108 +3145,6 @@ $_$;
 
 
 ALTER FUNCTION "private"."is_valid_tenant_slug"("slug" "text") OWNER TO "postgres";
-
-
-CREATE TABLE IF NOT EXISTS "public"."contracts" (
-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
-    "tenant_id" "uuid" NOT NULL,
-    "event_id" "uuid" NOT NULL,
-    "proposal_id" "uuid" NOT NULL,
-    "selection_id" "uuid" NOT NULL,
-    "approval_id" "uuid" NOT NULL,
-    "template_id" "uuid" NOT NULL,
-    "template_version_id" "uuid" NOT NULL,
-    "template_content_sha256" "text" NOT NULL,
-    "status" "text" DEFAULT 'draft'::"text" NOT NULL,
-    "status_changed_at" timestamp with time zone,
-    "replaces_id" "uuid",
-    "signer_client_id" "uuid" NOT NULL,
-    "signer_name" "text" NOT NULL,
-    "signer_email" "text" NOT NULL,
-    "currency" "text" NOT NULL,
-    "total_cents" bigint NOT NULL,
-    "deposit_cents" bigint NOT NULL,
-    "balance_cents" bigint NOT NULL,
-    "balance_due_date" "date",
-    "rendered_content" "jsonb" NOT NULL,
-    "commercial_snapshot" "jsonb" NOT NULL,
-    "party_snapshot" "jsonb" NOT NULL,
-    "content_sha256" "text" NOT NULL,
-    "generated_by_membership_id" "uuid",
-    "generated_by_user_id" "uuid" NOT NULL,
-    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "deposit_percent" integer NOT NULL,
-    "sent_at" timestamp with time zone,
-    "voided_at" timestamp with time zone,
-    "void_reason" "text",
-    "signed_at" timestamp with time zone,
-    "signing_mode" "text" NOT NULL,
-    "consent_version" "text",
-    "booking_policy" "text",
-    CONSTRAINT "contracts_balance_nonnegative" CHECK (("balance_cents" >= 0)),
-    CONSTRAINT "contracts_booking_policy_valid" CHECK (("booking_policy" = ANY (ARRAY['on_deposit'::"text", 'on_signature'::"text"]))),
-    CONSTRAINT "contracts_commercial_object" CHECK (("jsonb_typeof"("commercial_snapshot") = 'object'::"text")),
-    CONSTRAINT "contracts_consent_matches_mode" CHECK (
-CASE "signing_mode"
-    WHEN 'demo'::"text" THEN ("consent_version" = 'demo-v1'::"text")
-    WHEN 'client_use'::"text" THEN ("consent_version" = 'client-v1'::"text")
-    ELSE ("consent_version" IS NULL)
-END),
-    CONSTRAINT "contracts_content_sha256_format" CHECK (("content_sha256" ~ '^[0-9a-f]{64}$'::"text")),
-    CONSTRAINT "contracts_currency_valid" CHECK (("currency" ~ '^[A-Z]{3}$'::"text")),
-    CONSTRAINT "contracts_deposit_nonnegative" CHECK (("deposit_cents" >= 0)),
-    CONSTRAINT "contracts_deposit_percent_matches_snapshot" CHECK ((((("commercial_snapshot" -> 'payment'::"text") ->> 'deposit_basis_points'::"text"))::integer = ("deposit_percent" * 100))),
-    CONSTRAINT "contracts_deposit_percent_range" CHECK ((("deposit_percent" >= 0) AND ("deposit_percent" <= 100))),
-    CONSTRAINT "contracts_deposit_plus_balance" CHECK ((("deposit_cents" + "balance_cents") = "total_cents")),
-    CONSTRAINT "contracts_party_object" CHECK (("jsonb_typeof"("party_snapshot") = 'object'::"text")),
-    CONSTRAINT "contracts_rendered_shape" CHECK ((("jsonb_typeof"("rendered_content") = 'object'::"text") AND ("jsonb_typeof"(("rendered_content" -> 'title'::"text")) = 'string'::"text") AND ("jsonb_typeof"(("rendered_content" -> 'sections'::"text")) = 'array'::"text"))),
-    CONSTRAINT "contracts_sent_at_matches_status" CHECK ((("status" = ANY (ARRAY['sent'::"text", 'signed'::"text", 'void'::"text"])) = ("sent_at" IS NOT NULL))),
-    CONSTRAINT "contracts_signed_matches_status" CHECK ((("status" = 'signed'::"text") = ("signed_at" IS NOT NULL))),
-    CONSTRAINT "contracts_signer_email_valid" CHECK ("private"."is_valid_email"("signer_email")),
-    CONSTRAINT "contracts_signer_name_length" CHECK ((("length"("btrim"("signer_name")) >= 1) AND ("length"("btrim"("signer_name")) <= 200))),
-    CONSTRAINT "contracts_signing_mode_valid" CHECK (("signing_mode" = ANY (ARRAY['demo'::"text", 'client_use'::"text", 'none'::"text"]))),
-    CONSTRAINT "contracts_status_valid" CHECK (("status" = ANY (ARRAY['draft'::"text", 'replaced'::"text", 'superseded'::"text", 'sent'::"text", 'signed'::"text", 'void'::"text"]))),
-    CONSTRAINT "contracts_template_sha256_format" CHECK (("template_content_sha256" ~ '^[0-9a-f]{64}$'::"text")),
-    CONSTRAINT "contracts_total_nonnegative" CHECK (("total_cents" >= 0)),
-    CONSTRAINT "contracts_void_matches_status" CHECK ((("status" = 'void'::"text") = (("voided_at" IS NOT NULL) AND ("void_reason" IS NOT NULL)))),
-    CONSTRAINT "contracts_void_reason_length" CHECK ((("length"("btrim"("void_reason")) >= 1) AND ("length"("btrim"("void_reason")) <= 500)))
-);
-
-
-ALTER TABLE "public"."contracts" OWNER TO "postgres";
-
-
-COMMENT ON TABLE "public"."contracts" IS 'Contracts rendered from an approved selection and a published template version. Content, terms and hash never change after insert; only status moves. Staff-only.';
-
-
-
-COMMENT ON COLUMN "public"."contracts"."content_sha256" IS 'SHA-256 of the canonical jsonb text of private.contract_hash_document(rendered_content, commercial_snapshot, party_snapshot, template_version_id, template_content_sha256). Not a PDF hash.';
-
-
-
-COMMENT ON COLUMN "public"."contracts"."deposit_percent" IS 'Deposit percentage frozen at generation (also in commercial_snapshot.payment).';
-
-
-
-COMMENT ON COLUMN "public"."contracts"."sent_at" IS 'When the contract was first sent. Set once by the database; resends never change it.';
-
-
-
-COMMENT ON COLUMN "public"."contracts"."signed_at" IS 'When the contract was signed (database time, set once by sign_contract).';
-
-
-
-COMMENT ON COLUMN "public"."contracts"."signing_mode" IS 'demo | client_use | none, frozen from the template version at generation. none: generated from a legacy version; cannot be signed or sent.';
-
-
-
-COMMENT ON COLUMN "public"."contracts"."consent_version" IS 'The consent statement version the signer is shown, frozen at generation. Null when signing_mode is none.';
-
-
-
-COMMENT ON COLUMN "public"."contracts"."booking_policy" IS 'Booking policy frozen at generation. Null for contracts generated before policies existed (checked explicitly by staff).';
-
 
 
 CREATE OR REPLACE FUNCTION "private"."issue_contract_invitation"("c" "public"."contracts", "p_link_id" "uuid", "p_token_hash" "text") RETURNS timestamp with time zone
@@ -5797,6 +5892,10 @@ begin
     raise exception 'external_booking: this event was booked outside Flux DJ, so it has no proposal or contract. Plan it from its planning page'
       using errcode = 'invalid_parameter_value';
   end if;
+  if exists (select 1 from public.events e where e.tenant_id = new.tenant_id and e.id = new.event_id and e.contract_first) then
+    raise exception 'contract_first: this event goes straight to a contract, so it has no proposal'
+      using errcode = 'invalid_parameter_value';
+  end if;
   return new;
 end;
 $$;
@@ -6453,7 +6552,10 @@ begin
 
     update public.events set archived_at = now() where id = v_event.id;
     update public.access_links set revoked_at = now()
-      where tenant_id = v_event.tenant_id and proposal_id = any (v_proposals) and revoked_at is null;
+      where tenant_id = v_event.tenant_id and revoked_at is null
+        and (proposal_id = any (v_proposals)
+             -- A contract without a proposal: its invitation has no proposal to find it by.
+             or contract_id in (select k.id from public.contracts k where k.tenant_id = v_event.tenant_id and k.event_id = v_event.id));
     get diagnostics v_links = row_count;
     update public.proposal_sessions set revoked_at = now()
       where tenant_id = v_event.tenant_id and proposal_id = any (v_proposals) and revoked_at is null;
@@ -6542,14 +6644,13 @@ CREATE OR REPLACE FUNCTION "private"."signer_can_access_contract"("p_contract_id
     from public.contracts c
     join public.events e on e.tenant_id = c.tenant_id and e.id = c.event_id
     join public.tenants t on t.id = c.tenant_id
-    join public.proposals p on p.tenant_id = c.tenant_id and p.id = c.proposal_id
     join public.event_access ea on ea.tenant_id = c.tenant_id and ea.event_id = c.event_id
       and ea.user_id = p_user_id and ea.client_id = c.signer_client_id and ea.revoked_at is null
     join auth.users u on u.id = p_user_id and u.email_confirmed_at is not null
     where c.id = p_contract_id and e.archived_at is null and t.archived_at is null and t.suspended_at is null
       and lower(c.signer_email) = lower(u.email)
       and (c.status = 'signed'
-           or (c.status = 'sent' and p.status = 'approved' and e.active_proposal_id = c.proposal_id))
+           or (c.status = 'sent' and private.contract_is_current(c, e)))
   );
 $$;
 
@@ -7631,7 +7732,7 @@ begin
                   else c.entity_type = 'contract' and l.purpose = 'contract' and l.contract_id = c.entity_id
                   and l.revoked_at is null and l.expires_at > now()
                   and k.status = 'sent' and ke.archived_at is null
-                  and kp.status = 'approved' and ke.active_proposal_id = k.proposal_id end, false),
+                  and private.contract_is_current(k, ke) end, false),
          k.id
   from claimed c
   join public.tenants t on t.id = c.tenant_id
@@ -7639,8 +7740,7 @@ begin
   left join public.proposals p on p.tenant_id = c.tenant_id and p.id = c.entity_id
   left join public.events e on e.tenant_id = p.tenant_id and e.id = p.event_id
   left join public.contracts k on c.entity_type = 'contract' and k.tenant_id = c.tenant_id and k.id = c.entity_id
-  left join public.events ke on ke.tenant_id = k.tenant_id and ke.id = k.event_id
-  left join public.proposals kp on kp.tenant_id = k.tenant_id and kp.id = k.proposal_id;
+  left join public.events ke on ke.tenant_id = k.tenant_id and ke.id = k.event_id;
 end;
 $$;
 
@@ -7857,13 +7957,16 @@ begin
       'deposit_percent', c.deposit_percent, 'deposit_cents', c.deposit_cents, 'balance_cents', c.balance_cents,
       'balance_due_date', c.balance_due_date, 'signing_mode', c.signing_mode,
       'event_title', c.party_snapshot -> 'event' ->> 'title', 'event_date', c.party_snapshot -> 'event' ->> 'date',
-      'legal_name', coalesce(c.party_snapshot -> 'business' ->> 'legal_name', c.party_snapshot -> 'business' ->> 'name')),
+      'legal_name', coalesce(c.party_snapshot -> 'business' ->> 'legal_name', c.party_snapshot -> 'business' ->> 'name'))
+      -- Only on a direct contract, so every other view is exactly as before.
+      || case when c.proposal_id is null then jsonb_build_object('source', 'direct') else '{}'::jsonb end,
     'signing', case when c.status = 'signed' then
         jsonb_build_object('signed', true, 'typed_name', s.typed_name, 'signed_at', s.signed_at,
           'pdf_ready', exists (select 1 from public.contract_documents d where d.contract_id = c.id and d.kind = 'signed_contract'),
           'pdf_pending', exists (select 1 from public.document_jobs j where j.contract_id = c.id and j.status in ('pending', 'running')))
       else
-        jsonb_build_object('signed', false, 'enabled', c.signing_mode <> 'none',
+        jsonb_build_object('signed', false,
+          'enabled', c.signing_mode <> 'none' and private.contract_signing_consent(c.consent_version) is not null,
           'consent_version', c.consent_version,
           'consent_text', private.contract_signing_consent(c.consent_version))
       end
@@ -7948,7 +8051,8 @@ begin
        'tax_breakdown', (select coalesce(jsonb_agg(jsonb_build_object('label', t ->> 'label', 'rate_ppm', t -> 'rate_ppm', 'amount_cents', t -> 'amount_cents') order by ord), '[]'::jsonb)
                          from jsonb_array_elements(c.commercial_snapshot -> 'tax_breakdown') with ordinality as x(t, ord)),
        'total_cents', c.commercial_snapshot -> 'total_cents'))
-     else '{}'::jsonb end;
+     else '{}'::jsonb end
+  || case when s ? 'no_financial_terms' then jsonb_build_object('no_financial_terms', true) else '{}'::jsonb end;
 end;
 $$;
 
@@ -11014,7 +11118,8 @@ begin
     'currency', c.currency,
     'balance_due_date', c.balance_due_date,
     'content_sha256', c.content_sha256
-  );
+  )
+  || case when c.proposal_id is null then jsonb_build_object('source', 'direct') else '{}'::jsonb end;
 end;
 $$;
 
@@ -11713,7 +11818,6 @@ CREATE OR REPLACE FUNCTION "public"."sign_contract"("p_contract_id" "uuid", "p_t
 declare
   c public.contracts%rowtype;
   e public.events%rowtype;
-  p public.proposals%rowtype;
   s public.contract_signatures%rowtype;
   v_email text;
   v_name text := btrim(coalesce(p_typed_name, ''));
@@ -11730,7 +11834,7 @@ begin
 
   -- Lock order everywhere: event, proposal, contract.
   select * into e from public.events where tenant_id = c.tenant_id and id = c.event_id for update;
-  select * into p from public.proposals where tenant_id = c.tenant_id and id = c.proposal_id for update;
+  perform 1 from public.proposals where tenant_id = c.tenant_id and id = c.proposal_id for update;
   select * into c from public.contracts where id = c.id for update;
 
   -- Identity and access: verified email matching the frozen signer, live
@@ -11752,10 +11856,11 @@ begin
   end if;
 
   -- Contract still sent, current, on the current approval.
-  if c.status <> 'sent' or p.status <> 'approved' or e.active_proposal_id is distinct from c.proposal_id
+  if c.status <> 'sent' or not private.contract_is_current(c, e)
      or e.lifecycle_status <> 'awaiting_signature'
-     or not exists (select 1 from public.proposal_approvals a where a.tenant_id = c.tenant_id and a.id = c.approval_id
-                    and a.proposal_id = c.proposal_id and a.selection_id = c.selection_id) then
+     or (c.proposal_id is not null
+         and not exists (select 1 from public.proposal_approvals a where a.tenant_id = c.tenant_id and a.id = c.approval_id
+                         and a.proposal_id = c.proposal_id and a.selection_id = c.selection_id)) then
     return jsonb_build_object('status', 'rejected', 'code', 'unavailable', 'message', 'This contract isn''t available.');
   end if;
   -- The frozen signing mode decides; "none" was generated from a legacy version.
@@ -13014,7 +13119,7 @@ CREATE TABLE IF NOT EXISTS "public"."access_links" (
     "id" "uuid" NOT NULL,
     "tenant_id" "uuid" NOT NULL,
     "purpose" "text" NOT NULL,
-    "proposal_id" "uuid" NOT NULL,
+    "proposal_id" "uuid",
     "intended_client_id" "uuid" NOT NULL,
     "token_hash" "text" NOT NULL,
     "expires_at" timestamp with time zone NOT NULL,
@@ -13024,6 +13129,7 @@ CREATE TABLE IF NOT EXISTS "public"."access_links" (
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "contract_id" "uuid",
     CONSTRAINT "access_links_contract_scope" CHECK ((("purpose" = 'contract'::"text") = ("contract_id" IS NOT NULL))),
+    CONSTRAINT "access_links_proposal_scope" CHECK ((("purpose" <> 'proposal'::"text") OR ("proposal_id" IS NOT NULL))),
     CONSTRAINT "access_links_purpose_valid" CHECK (("purpose" = ANY (ARRAY['proposal'::"text", 'contract'::"text"]))),
     CONSTRAINT "access_links_token_hash_format" CHECK (("token_hash" ~ '^[0-9a-f]{64}$'::"text"))
 );
@@ -15522,7 +15628,7 @@ CREATE OR REPLACE TRIGGER "events_booking_guard" BEFORE UPDATE OF "lifecycle_sta
 
 
 
-CREATE OR REPLACE TRIGGER "events_immutable" BEFORE UPDATE ON "public"."events" FOR EACH ROW EXECUTE FUNCTION "private"."forbid_column_changes"('id', 'tenant_id', 'created_at', 'booking_source');
+CREATE OR REPLACE TRIGGER "events_immutable" BEFORE UPDATE ON "public"."events" FOR EACH ROW EXECUTE FUNCTION "private"."forbid_column_changes"('id', 'tenant_id', 'created_at', 'booking_source', 'contract_first');
 
 
 
@@ -17156,6 +17262,72 @@ REVOKE ALL ON FUNCTION "private"."contract_invitation"("p_link_id" "uuid", "p_to
 
 
 
+REVOKE ALL ON FUNCTION "private"."is_valid_email"("email" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "private"."is_valid_email"("email" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "private"."is_valid_email"("email" "text") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "private"."is_valid_timezone"("tz" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "private"."is_valid_timezone"("tz" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "private"."is_valid_timezone"("tz" "text") TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."contracts" TO "service_role";
+GRANT SELECT ON TABLE "public"."contracts" TO "authenticated";
+
+
+
+GRANT ALL ON TABLE "public"."events" TO "service_role";
+GRANT SELECT ON TABLE "public"."events" TO "authenticated";
+
+
+
+GRANT INSERT("tenant_id") ON TABLE "public"."events" TO "authenticated";
+
+
+
+GRANT INSERT("title"),UPDATE("title") ON TABLE "public"."events" TO "authenticated";
+
+
+
+GRANT INSERT("event_type"),UPDATE("event_type") ON TABLE "public"."events" TO "authenticated";
+
+
+
+GRANT INSERT("event_date"),UPDATE("event_date") ON TABLE "public"."events" TO "authenticated";
+
+
+
+GRANT INSERT("timezone"),UPDATE("timezone") ON TABLE "public"."events" TO "authenticated";
+
+
+
+GRANT INSERT("venue_name"),UPDATE("venue_name") ON TABLE "public"."events" TO "authenticated";
+
+
+
+GRANT INSERT("venue_address"),UPDATE("venue_address") ON TABLE "public"."events" TO "authenticated";
+
+
+
+GRANT INSERT("internal_notes"),UPDATE("internal_notes") ON TABLE "public"."events" TO "authenticated";
+
+
+
+GRANT INSERT("booking_source") ON TABLE "public"."events" TO "authenticated";
+
+
+
+GRANT INSERT("dj_name"),UPDATE("dj_name") ON TABLE "public"."events" TO "authenticated";
+
+
+
+REVOKE ALL ON FUNCTION "private"."contract_is_current"("p_contract" "public"."contracts", "p_event" "public"."events") FROM PUBLIC;
+
+
+
 REVOKE ALL ON FUNCTION "private"."contract_placeholder_pattern"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "private"."contract_placeholder_pattern"() TO "authenticated";
 GRANT ALL ON FUNCTION "private"."contract_placeholder_pattern"() TO "service_role";
@@ -17255,12 +17427,6 @@ REVOKE ALL ON FUNCTION "private"."email_error_summary"("p_error" "text") FROM PU
 
 
 
-REVOKE ALL ON FUNCTION "private"."is_valid_email"("email" "text") FROM PUBLIC;
-GRANT ALL ON FUNCTION "private"."is_valid_email"("email" "text") TO "authenticated";
-GRANT ALL ON FUNCTION "private"."is_valid_email"("email" "text") TO "service_role";
-
-
-
 GRANT ALL ON TABLE "public"."email_outbox" TO "service_role";
 GRANT SELECT ON TABLE "public"."email_outbox" TO "authenticated";
 
@@ -17327,57 +17493,6 @@ REVOKE ALL ON FUNCTION "private"."evaluate_booking"("p_event_id" "uuid", "p_acto
 
 
 REVOKE ALL ON FUNCTION "private"."event_access_revocation"() FROM PUBLIC;
-
-
-
-REVOKE ALL ON FUNCTION "private"."is_valid_timezone"("tz" "text") FROM PUBLIC;
-GRANT ALL ON FUNCTION "private"."is_valid_timezone"("tz" "text") TO "authenticated";
-GRANT ALL ON FUNCTION "private"."is_valid_timezone"("tz" "text") TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."events" TO "service_role";
-GRANT SELECT ON TABLE "public"."events" TO "authenticated";
-
-
-
-GRANT INSERT("tenant_id") ON TABLE "public"."events" TO "authenticated";
-
-
-
-GRANT INSERT("title"),UPDATE("title") ON TABLE "public"."events" TO "authenticated";
-
-
-
-GRANT INSERT("event_type"),UPDATE("event_type") ON TABLE "public"."events" TO "authenticated";
-
-
-
-GRANT INSERT("event_date"),UPDATE("event_date") ON TABLE "public"."events" TO "authenticated";
-
-
-
-GRANT INSERT("timezone"),UPDATE("timezone") ON TABLE "public"."events" TO "authenticated";
-
-
-
-GRANT INSERT("venue_name"),UPDATE("venue_name") ON TABLE "public"."events" TO "authenticated";
-
-
-
-GRANT INSERT("venue_address"),UPDATE("venue_address") ON TABLE "public"."events" TO "authenticated";
-
-
-
-GRANT INSERT("internal_notes"),UPDATE("internal_notes") ON TABLE "public"."events" TO "authenticated";
-
-
-
-GRANT INSERT("booking_source") ON TABLE "public"."events" TO "authenticated";
-
-
-
-GRANT INSERT("dj_name"),UPDATE("dj_name") ON TABLE "public"."events" TO "authenticated";
 
 
 
@@ -17580,11 +17695,6 @@ GRANT ALL ON FUNCTION "private"."is_valid_tax_config"("config" "jsonb") TO "serv
 REVOKE ALL ON FUNCTION "private"."is_valid_tenant_slug"("slug" "text") FROM PUBLIC;
 GRANT ALL ON FUNCTION "private"."is_valid_tenant_slug"("slug" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "private"."is_valid_tenant_slug"("slug" "text") TO "service_role";
-
-
-
-GRANT ALL ON TABLE "public"."contracts" TO "service_role";
-GRANT SELECT ON TABLE "public"."contracts" TO "authenticated";
 
 
 

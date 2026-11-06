@@ -38,8 +38,8 @@ export type ContractInvitationOpen = { brand: PublicBrand | null; signedIn: stri
  * What the contract invitation page may show once the token in its link is known: the business's branding,
  * and, for a visitor already signed in as the contract's signer, the invitation to continue to without a second
  * verification email. Branding only for a token of a usable invitation of this URL's business, by the same rule
- * as private.contract_invitation (link not revoked or expired; contract sent on the event's current approved
- * proposal; event and business active), so a guessed, stale or foreign link shows nothing of any business.
+ * as private.contract_invitation (link not revoked or expired; contract sent and current, on the event's approved
+ * proposal or on a contract-first event; event and business active), so a guessed, stale or foreign link shows nothing of any business.
  * It grants nothing and reveals nothing about the event, contract or client: the invitation page rechecks
  * everything after sign-in, and accepting is a separate POST.
  */
@@ -65,10 +65,15 @@ export async function openContractInvitation(slug: string, token: string): Promi
     .maybeSingle();
   if (!contract || contract.status !== "sent") return none;
   const [{ data: event }, { data: proposal }] = await Promise.all([
-    admin.from("events").select("archived_at, active_proposal_id").eq("tenant_id", link.tenant_id).eq("id", contract.event_id).maybeSingle(),
-    admin.from("proposals").select("status").eq("tenant_id", link.tenant_id).eq("id", contract.proposal_id).maybeSingle(),
+    admin.from("events").select("archived_at, active_proposal_id, contract_first, booking_source").eq("tenant_id", link.tenant_id).eq("id", contract.event_id).maybeSingle(),
+    contract.proposal_id ? admin.from("proposals").select("status").eq("tenant_id", link.tenant_id).eq("id", contract.proposal_id).maybeSingle() : Promise.resolve({ data: null }),
   ]);
-  if (!event || event.archived_at || event.active_proposal_id !== contract.proposal_id || proposal?.status !== "approved") return none;
+  if (!event || event.archived_at) return none;
+  // The same rule as private.contract_is_current: a missing proposal only counts on an event that is itself contract-first.
+  const current = contract.proposal_id
+    ? event.active_proposal_id === contract.proposal_id && proposal?.status === "approved"
+    : event.contract_first && event.booking_source === "flux" && event.active_proposal_id === null;
+  if (!current) return none;
   // Null for an archived or suspended business.
   const live = await liveBrand(slug);
   if (!live) return none;

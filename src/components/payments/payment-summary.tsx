@@ -1,7 +1,7 @@
 import { shortDate } from "@/lib/dates";
 import { formatCents } from "@/lib/money";
 import { taxRateLabel } from "@/components/proposal/price-summary";
-import type { DiscountBreakdown } from "@/lib/payments";
+import { depositPercentSuffix, type DiscountBreakdown } from "@/lib/payments";
 import { linkHost } from "@/lib/urls";
 
 /** The figures both staff and clients see; computed in the database. */
@@ -55,7 +55,7 @@ export function PaymentFigures({ s, audience }: { s: SummaryFigures; audience: "
           <>
             {s.discount ? <DiscountRows b={s.discount} currency={s.currency} /> : null}
             <Row label={s.discount ? "Agreed total, including taxes" : "Total, including taxes"}>{money(s.totalCents!)}</Row>
-            <Row label={s.depositCents ? `Deposit required (${s.depositPercent}%)` : "Deposit required"}>
+            <Row label={s.depositCents ? `Deposit required${depositPercentSuffix(s.depositPercent)}` : "Deposit required"}>
               {s.depositCents ? money(s.depositCents) : "No deposit required"}
             </Row>
           </>

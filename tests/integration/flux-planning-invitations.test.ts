@@ -107,7 +107,7 @@ describe("planning invitations for a Flux booking (local Supabase)", () => {
     await must(client.db.rpc("accept_contract_invitation", { p_link_id: linkId, p_tenant_slug: catalog.slug }));
     const { data: row } = await must(admin.from("contracts").select("content_sha256, deposit_cents").eq("id", contractId).single());
     await must(staff.rpc("record_event_payment", {
-      p_event_id: eventId, p_amount_cents: row!.deposit_cents, p_paid_on: new Date(Date.now() - 86_400_000).toISOString().slice(0, 10),
+      p_event_id: eventId, p_amount_cents: row!.deposit_cents!, p_paid_on: new Date(Date.now() - 86_400_000).toISOString().slice(0, 10),
       p_reference: "", p_note: "", p_idempotency_key: randomUUID(), p_confirm_duplicate: true,
     }));
     expect(await signContractAs({

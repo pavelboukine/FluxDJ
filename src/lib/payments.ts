@@ -19,13 +19,16 @@ export const paymentSummarySchema = z.object({
       status: termsStatus,
       contract_id: idSchema,
       total_cents: centsSchema,
-      deposit_percent: z.int().min(0).max(100),
+      // Null when a direct contract states an amount rather than a percentage.
+      deposit_percent: z.int().min(0).max(100).nullable(),
       deposit_cents: centsSchema,
       balance_cents: centsSchema,
       balance_due_date: dateSchema.nullable(),
     })
     .refine((t) => t.deposit_cents + t.balance_cents === t.total_cents, "deposit and balance don't add up to the total")
     .nullable(),
+  /** Only when the authoritative contract has no financial terms: terms and every figure derived from them are null, never zero. */
+  no_financial_terms: z.literal(true).optional(),
   received_cents: centsSchema,
   valid_payments: z.int().nonnegative(),
   other_currency_payments: z.int().nonnegative(),
@@ -73,6 +76,7 @@ const frozenPricingSchema = z
 export const clientPaymentSummarySchema = z.object({
   currency: currencySchema,
   terms_status: termsStatus.nullable(),
+  no_financial_terms: z.literal(true).optional(),
   total_cents: centsSchema.nullable(),
   deposit_percent: z.int().min(0).max(100).nullable(),
   deposit_cents: centsSchema.nullable(),
@@ -87,6 +91,9 @@ export const clientPaymentSummarySchema = z.object({
   pricing: frozenPricingSchema.optional(),
 });
 export type ClientPaymentSummary = z.infer<typeof clientPaymentSummarySchema>;
+
+/** " (50%)" after a deposit's label, or nothing when the contract states an amount rather than a percentage. */
+export const depositPercentSuffix = (percent: number | null): string => (percent === null ? "" : ` (${percent}%)`);
 
 /**
  * A payment summary (staff or client), or null when there is none (the

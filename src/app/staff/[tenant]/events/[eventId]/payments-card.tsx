@@ -107,6 +107,11 @@ export function PaymentsCard({
               </dl>
               {overview.next ? <p className="font-medium" data-testid="payment-next">{overview.next}</p> : null}
             </>
+          ) : s.no_financial_terms ? (
+            <p className="text-muted-foreground" data-testid="payments-no-terms">
+              No payment terms are recorded for this contract, so there is no total or deposit to compare.
+              {s.received_cents ? ` ${formatCents(s.received_cents, s.currency)} received so far.` : ""}
+            </p>
           ) : (
             <p className="text-muted-foreground">
               No contract has been sent yet, so there is no total or deposit to compare.
@@ -133,7 +138,9 @@ export function PaymentsCard({
                   ? ""
                   : s.booking.lifecycle_status === "awaiting_deposit"
                     ? " The one that reaches the deposit also emails the client their booking confirmation."
-                    : " Once the contract is signed, the payment that reaches the required deposit confirms the booking and emails the client."}
+                    : s.no_financial_terms
+                      ? ""
+                      : " Once the contract is signed, the payment that reaches the required deposit confirms the booking and emails the client."}
               </p>
               <RecordPaymentForm action={recordPayment.bind(null, slug, eventId)} today={todayIn(tenant.timezone)} currency={tenant.currency} />
             </section>
@@ -177,7 +184,7 @@ export function PaymentsCard({
             </section>
           </Disclosure>
           {s.terms ? (
-            <Disclosure id="payment-terms" summary="Payment terms" hint={s.terms.deposit_cents ? `Deposit ${s.terms.deposit_percent}%` : "No deposit"} className={flush}>
+            <Disclosure id="payment-terms" summary="Payment terms" hint={s.terms.deposit_cents ? (s.terms.deposit_percent === null ? "Deposit" : `Deposit ${s.terms.deposit_percent}%`) : "No deposit"} className={flush}>
               <section aria-label="Payment summary">
                 <PaymentFigures
                   audience="staff"
@@ -268,7 +275,7 @@ function BookingState({ slug, eventId, s, archived, fmt }: { slug: string; event
   return (
     <section aria-label="Booking" className="text-sm text-muted-foreground">
       {/* Before any contract terms, the overview below already says there is nothing to compare yet. */}
-      {s.terms ? "Not booked. Once the contract is signed, the booking is confirmed automatically by the booking policy it was generated with." : "Not booked yet."}
+      {s.terms || s.no_financial_terms ? "Not booked. Once the contract is signed, the booking is confirmed automatically by the booking policy it was generated with." : "Not booked yet."}
     </section>
   );
 }

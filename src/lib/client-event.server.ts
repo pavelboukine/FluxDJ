@@ -3,7 +3,7 @@ import type { HubFacts } from "@/lib/client-event";
 import type { HomeEvent } from "@/lib/client-home";
 import { clientEditingSchema, type ClientEditing } from "@/lib/planning/cutoff";
 import { progressPercent, progressSchema, type PlanProgress } from "@/lib/planning/view";
-import { clientContractViewSchema } from "@/lib/contracts/responses";
+import { clientContractViewSchema, contractTerms, type ContractTerms } from "@/lib/contracts/responses";
 import { checkDbResponse } from "@/lib/db-response";
 import { readPaymentSummary, type ClientPaymentSummary } from "@/lib/payments";
 import type { Database } from "@/lib/supabase/database.types";
@@ -23,12 +23,9 @@ import type { Database } from "@/lib/supabase/database.types";
 export type ClientContractFacts = {
   id: string;
   status: "sent" | "signed";
-  currency: string;
-  totalCents: number;
-  depositPercent: number;
-  depositCents: number;
-  balanceCents: number;
-  balanceDueDate: string | null;
+  /** "direct": no proposal stands behind this contract, so there is no approved proposal to show. */
+  source: "proposal" | "direct";
+  terms: ContractTerms;
   signing:
     | { signed: true; signedAt: string; pdfReady: boolean; pdfPending: boolean }
     | { signed: false; enabled: boolean };
@@ -73,12 +70,8 @@ export async function loadClientEvents(supabase: Db, only?: { slug: string; even
         const facts: ClientContractFacts = {
           id: k.id,
           status: k.status,
-          currency: k.currency,
-          totalCents: k.total_cents,
-          depositPercent: k.deposit_percent,
-          depositCents: k.deposit_cents,
-          balanceCents: k.balance_cents,
-          balanceDueDate: k.balance_due_date,
+          source: k.source ?? "proposal",
+          terms: contractTerms(k),
           signing: v.signing.signed
             ? { signed: true, signedAt: v.signing.signed_at, pdfReady: v.signing.pdf_ready, pdfPending: v.signing.pdf_pending }
             : { signed: false, enabled: v.signing.enabled },
@@ -140,7 +133,7 @@ export function hubFacts(f: ClientEventFacts): HubFacts {
   return {
     home: f.home,
     contract: f.contract
-      ? { id: f.contract.id, status: f.contract.status, totalCents: f.contract.totalCents, signable: f.contract.signing.signed || f.contract.signing.enabled }
+      ? { id: f.contract.id, status: f.contract.status, totalCents: f.contract.terms.financialTerms === "stated" ? f.contract.terms.totalCents : null, signable: f.contract.signing.signed || f.contract.signing.enabled }
       : null,
     plan: f.plan ? { editing: f.plan.editing?.state ?? null, complete: f.plan.progress ? progressPercent(f.plan.progress) === 100 : false } : null,
   };

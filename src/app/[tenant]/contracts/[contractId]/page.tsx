@@ -12,7 +12,7 @@ import { ClientPayments } from "@/components/payments/client-payments";
 import { BRAND_BUTTON } from "@/components/app/tenant-public-shell";
 import { signOut } from "@/app/auth/confirm/actions";
 import { renderedContentSchema } from "@/lib/contracts/content";
-import { clientContractViewSchema } from "@/lib/contracts/responses";
+import { clientContractViewSchema, contractTerms } from "@/lib/contracts/responses";
 import { SIGNATURE_BUCKET } from "@/lib/contracts/signing";
 import { brandStyle } from "@/lib/branding/colors";
 import { liveBrand } from "@/lib/branding/logo.server";
@@ -145,7 +145,7 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
 
   const paymentsCard = (
     <ClientPayments
-      terms={{ currency: c.currency, totalCents: c.total_cents, depositPercent: c.deposit_percent, depositCents: c.deposit_cents, balanceCents: c.balance_cents, balanceDueDate: c.balance_due_date }}
+      terms={contractTerms(c)}
       signed={signing.signed}
       payments={payments}
       djName={dj}
@@ -195,7 +195,7 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
               signing.enabled ? (
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-muted/60 p-3 text-sm">
                   <p>
-                    <span className="font-medium">Next:</span> read the agreement and payment terms, then sign at the end of this page.
+                    <span className="font-medium">Next:</span> {c.total_cents === null ? "read the agreement" : "read the agreement and payment terms"}, then sign at the end of this page.
                   </p>
                   {canSign ? (
                     <a href="#sign" className="inline-flex min-h-11 items-center gap-1.5 rounded-[10px] bg-brand-ink px-4 font-semibold text-white outline-none hover:bg-[color-mix(in_oklab,var(--brand-ink),black_14%)] focus-visible:ring-2 focus-visible:ring-brand-ink focus-visible:ring-offset-2 max-sm:w-full max-sm:justify-center">

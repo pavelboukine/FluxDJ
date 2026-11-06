@@ -156,8 +156,10 @@ export type ContractEmailInput = Branding & {
   clientName: string;
   eventTitle: string;
   eventDate?: string | null;
-  depositCents: number;
-  depositPercent: number;
+  /** Null: the contract has no deposit to state (no financial terms), so nothing is said about one. */
+  depositCents: number | null;
+  /** Null: the deposit is a stated amount, not a percentage of the total. */
+  depositPercent: number | null;
   currency: string;
   invitationLink: string;
   expiresAt?: string | null;
@@ -178,7 +180,14 @@ export function renderContractEmail(input: ContractEmailInput): RenderedEmail {
     details: [
       ["Event", input.eventTitle],
       ["Date", input.eventDate ? formatDay(input.eventDate) : null],
-      ["Deposit due on signing", `${formatCents(input.depositCents, input.currency)} (${input.depositPercent}% of the total)`],
+      [
+        "Deposit due on signing",
+        input.depositCents === null
+          ? null
+          : input.depositPercent === null
+            ? formatCents(input.depositCents, input.currency)
+            : `${formatCents(input.depositCents, input.currency)} (${input.depositPercent}% of the total)`,
+      ],
     ],
     action: { label: "Read your contract", href: input.invitationLink },
     notes: [
@@ -300,7 +309,8 @@ export function renderBookingConfirmedEmail(
     eventTitle: string;
     eventDate: string;
     currency: string;
-    totalCents: number;
+    /** Null: the contract has no financial terms. Then no amount, balance or payment is mentioned at all. */
+    totalCents: number | null;
     depositCents: number;
     receivedCents: number;
     remainingCents: number;
@@ -314,6 +324,7 @@ export function renderBookingConfirmedEmail(
   const dj = input.tenantDisplayName;
   const money = (cents: number) => formatCents(cents, input.currency);
   const depositMissing = input.receivedCents < input.depositCents;
+  const priced = input.totalCents !== null;
   return render(`Your booking with ${dj} is confirmed: ${input.eventTitle}`, {
     brand: brandOf(input, dj),
     preheader: `${dj} confirmed your booking for ${input.eventTitle}.`,
@@ -321,25 +332,27 @@ export function renderBookingConfirmedEmail(
     greeting: `Hi ${input.clientName},`,
     paragraphs: [
       `${dj} has confirmed your booking for ${input.eventTitle} (${formatDay(input.eventDate)}).`,
-      input.remainingCents > 0
+      ...(!priced
+        ? []
+        : [input.remainingCents > 0
         ? `Still to pay: ${money(input.remainingCents)}${input.balanceDueDate ? `, due by ${formatDay(input.balanceDueDate)}` : ""}.` +
           (depositMissing ? ` This includes the deposit of ${money(input.depositCents)}, which hasn't been received yet.` : "")
         : input.creditCents > 0
           ? `Nothing remains to be paid. You have paid ${money(input.creditCents)} more than the total; ${dj} will contact you about it.`
-          : "Nothing remains to be paid.",
+          : "Nothing remains to be paid."]),
       input.eventLink
-        ? `Your event page has your booking, contract and payments in one place. ${dj} will be in touch about the next steps.`
+        ? `Your event page has your booking, contract${priced ? " and payments" : ""} in one place. ${dj} will be in touch about the next steps.`
         : `${dj} will be in touch about the next steps.`,
     ],
     ...(input.eventLink ? { action: { label: "View your event", href: input.eventLink } } : {}),
     details: [
       ["Event", input.eventTitle],
       ["Date", formatDay(input.eventDate)],
-      ["Total", money(input.totalCents)],
-      [`Received as of ${formatDay(input.bookedOn)}`, money(input.receivedCents)],
+      ["Total", input.totalCents !== null ? money(input.totalCents) : null],
+      [`Received as of ${formatDay(input.bookedOn)}`, priced ? money(input.receivedCents) : null],
     ],
     notes: [
-      `Payments are recorded by hand by ${dj}, so a very recent payment may not be included. Pay only as arranged with ${dj}.`,
+      priced ? `Payments are recorded by hand by ${dj}, so a very recent payment may not be included. Pay only as arranged with ${dj}.` : "",
       questions(input.legalName, input.contactEmail, input.canReply) ?? "",
     ].filter(Boolean),
     footer: clientFooter(dj, input.canReply),

@@ -112,6 +112,14 @@ migration, so the older build has to work against the newer schema. That is
 why migrations go first and stay backward compatible. To undo a schema
 change, write a new forward migration and follow section 2.
 
+**Compatibility boundary: contract-first contracts.** Migration
+`20261124000100_contract_first_compatibility` and the app released with it
+(Release A) understand contracts with no proposal or no financial terms, but
+nothing creates them. Once a later release starts creating them, an app older
+than Release A can't read them: it fails closed, showing no figures, but it also
+can't show them for signing or render their signed PDF. From that point, roll the
+app back no further than Release A.
+
 ### Failed emails
 
 Every email is a row in `email_outbox`, with status `pending`, `sending`,

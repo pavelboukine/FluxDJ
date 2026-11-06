@@ -74,7 +74,7 @@ async function signedEvent(biz: Business, existing?: Client): Promise<{ eventId:
   // No PDF is needed here; retire the job so other suites' workers never wait behind it.
   const { data: jobs } = await must(admin.rpc("claim_document_jobs", { p_limit: 5, p_lease_seconds: 30, p_contract_id: contractId }));
   for (const j of jobs ?? []) await admin.rpc("fail_document_job", { p_job_id: j.job_id, p_lease_token: j.lease_token, p_error: "planning test: PDF not needed", p_permanent: true });
-  return { eventId, contractId, deposit: row!.deposit_cents, client };
+  return { eventId, contractId, deposit: row!.deposit_cents!, client };
 }
 
 const plans = async (eventId: string) => (await must(admin.from("event_plans").select("id, origin, initialized_via").eq("event_id", eventId))).data!;
