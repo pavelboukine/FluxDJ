@@ -47,3 +47,35 @@ export const DEMO_TEMPLATE_SECTIONS: TemplateSection[] = [
 ];
 
 export const DEMO_TEMPLATE_TEXT = sectionsToText(DEMO_TEMPLATE_SECTIONS);
+
+/**
+ * Outlines for a contract with no proposal: neutral structure and fields only,
+ * with the business's own terms still to be written. They contain no legal
+ * terms and promise nothing; each business reviews, completes and publishes its
+ * own agreement. Never published automatically.
+ */
+const OUTLINE_YOUR_TERMS: TemplateSection = {
+  heading: "Your terms",
+  body: "Replace this text with your own agreement terms before you publish this template.",
+};
+const OUTLINE_SECTIONS: TemplateSection[] = [
+  { heading: "Parties", body: "Business: {{business.legal_name}}, {{business.address}}, {{business.email}}\nClient: {{client.name}}, {{client.email}}" },
+  { heading: "Event", body: "Event: {{event.title}}\nDate: {{event.date}}" },
+  { heading: "Services", body: "{{contract.services}}" },
+];
+
+export const NO_PRICING_OUTLINE = {
+  name: "Agreement without pricing",
+  title: "DJ services agreement for {{event.title}}",
+  sections: [...OUTLINE_SECTIONS, OUTLINE_YOUR_TERMS],
+};
+
+export const STATED_PRICE_OUTLINE = {
+  name: "Agreement with a stated price",
+  title: "DJ services agreement for {{event.title}}",
+  sections: [
+    ...OUTLINE_SECTIONS,
+    { heading: "Price and payment", body: "Total: {{pricing.total}}\nDeposit due on signing: {{payment.deposit}}\nRemaining balance: {{payment.balance}}, due {{payment.balance_due_date}}." },
+    OUTLINE_YOUR_TERMS,
+  ],
+};

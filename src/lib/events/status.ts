@@ -55,7 +55,8 @@ export function eventDisplayStatus(r: EventRecords): string {
       if (r.contractStatus === "signed") return eventStatusLabel(r.lifecycle, true);
       if (r.contractStatus === "sent") return "Contract sent";
       if (r.contractStatus === "draft") return "Contract draft";
-      return "Approved · contract to prepare";
+      // Awaiting signature with no contract: approved, or a contract-first event whose contract was voided.
+      return r.proposalStatus ? "Approved · contract to prepare" : "Contract to prepare";
     case "pending_approval":
       return "Choices submitted · review";
     case "lead":

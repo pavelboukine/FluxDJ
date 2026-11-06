@@ -114,11 +114,17 @@ change, write a new forward migration and follow section 2.
 
 **Compatibility boundary: contract-first contracts.** Migration
 `20261124000100_contract_first_compatibility` and the app released with it
-(Release A) understand contracts with no proposal or no financial terms, but
-nothing creates them. Once a later release starts creating them, an app older
-than Release A can't read them: it fails closed, showing no figures, but it also
-can't show them for signing or render their signed PDF. From that point, roll the
-app back no further than Release A.
+(Release A) understand contracts with no proposal or no financial terms, and
+migration `20261125000100_configurable_booking_workflows` and its app (Release B)
+create them. Once production has any, an app older than Release A can't read them:
+it fails closed, showing no figures, but it also can't show them for signing or
+render their signed PDF. From that point, roll the app back no further than Release A.
+An app from Release A can read them but offers no way to create more.
+
+**Held-back wording.** `20261126000100_no_terms_signing_consent` holds the signing
+statement for contracts with no financial terms, on its own so it can be reviewed.
+It must have product and legal approval before it is applied to production. Without
+it, those contracts can't be sent or signed; everything else works.
 
 ### Failed emails
 

@@ -764,11 +764,29 @@ How it works:
   and never "final": staff can still change the plan after the client
   deadline.
 
+#### Contract-first events
+
+On **Events → Create event**, **Booking steps** has Contract and Proposal, both on by
+default (the full workflow). Turn off **Proposal** to go straight to a contract. Until
+a proposal or contract is started, the event page can turn the proposal back on or off.
+
+1. The next step is **Prepare the contract**. Choose a published template; the form asks
+   only for what that template uses: services, then a total, deposit and balance date if
+   it has payment fields. A template with no payment fields means no financial terms.
+2. Under a business that requires a deposit, staff must meet it. Only the owner can go
+   below it, or go without terms or with a $0 total, by ticking the exception, which is audited.
+3. Review and send as usual. The client signs through the usual invitation. With no deposit
+   the event is booked on signature; with one, when the payments reach it.
+4. Planning then works as for any booked event.
+
+**Create contract template** offers outlines without pricing and with a stated price. They
+have no agreement terms: add yours, review and publish.
+
 #### Events booked elsewhere
 
-1. **Events → Create event**, choose **Already booked elsewhere** (for an event
-   booked through an agency or directly), a client and the date. The choice
-   can't be changed later. The event reads **Booked externally**: no
+1. **Events → Create event**, turn off **Contract** (for an event booked through an
+   agency or directly), then choose a client and the date. The choice can't be
+   changed later. The event reads **Booked externally**: no
    proposal, contract, signature or deposit steps, and Flux DJ records no
    payments or invoice link for it.
 2. Its next step is **Set up planning**: choose a template on the planning
@@ -1394,8 +1412,14 @@ signed-out browser:
   going below a required deposit; proposal-backed contracts unchanged.
 - `tests/integration/contract-first-compatibility.test.ts`,
   `tests/e2e/contract-first-readers.spec.ts`: direct contracts through the real
-  signing, PDF and email code and the existing client and staff pages. Nothing
-  can create one yet, so the fixtures insert them directly.
+  signing, PDF and email code and the existing client and staff pages, with
+  fixtures that insert them directly so every invalid shape can be tried.
+- `64_configurable_booking_workflows` (pgTAP),
+  `tests/integration/configurable-booking-workflows.test.ts`,
+  `tests/e2e/booking-workflows.spec.ts`: choosing the booking steps, correcting them
+  early, generating a contract with no proposal, the deposit rule (including a $0
+  total), template and agreement checks, and both contract-first paths through signing
+  and booking to planning.
 - `tests/integration/external-bookings.test.ts`: the staff insert path, the
   real invitation and verification emails, acceptance, client saves, the web
   and PDF run sheet, payment refusals with the app's message, and a Flux event

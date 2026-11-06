@@ -4,6 +4,7 @@ import { Disclosure } from "@/components/app/disclosure";
 import type { StaffContext } from "@/lib/auth/staff";
 import { CONTRACT_STATUS_LABEL } from "@/lib/contracts/content";
 import { dateIn, shortInstant } from "@/lib/dates";
+import { usesPaymentFields, usesProposalFields } from "@/lib/contracts/fields";
 import { SIGNING_MODE_LABELS, USAGE_LABELS, type SigningMode, type TemplateUsage } from "@/lib/contracts/usage";
 import { GenerateContractPanel } from "./generate-panel";
 
@@ -26,8 +27,8 @@ function frozenDetails(snapshot: unknown): FrozenDetails | null {
  * zone (the server's own zone is UTC in production).
  */
 export async function loadContracts(staff: StaffContext, eventId: string) {
-  const { supabase, tenant } = staff;
-  const [{ data: versions }, { data: contracts }, { data: event }] = await Promise.all([
+  const { supabase, tenant, membership } = staff;
+  const [{ data: versions }, { data: contracts }, { data: event }, { data: terms }] = await Promise.all([
     supabase
       .from("contract_template_versions")
       .select("id, version_number, placeholders, published_at, usage, contract_templates!contract_template_versions_template_fk(name, active)")
@@ -36,11 +37,12 @@ export async function loadContracts(staff: StaffContext, eventId: string) {
       .order("version_number", { ascending: false }),
     supabase
       .from("contracts")
-      .select("id, status, created_at, signed_at, signing_mode, template_version_id, proposal_id, balance_due_date, party_snapshot, contract_template_versions!contracts_template_version_fk(version_number, contract_templates!contract_template_versions_template_fk(name))")
+      .select("id, status, created_at, signed_at, signing_mode, template_version_id, proposal_id, total_cents, deposit_cents, balance_due_date, commercial_snapshot, party_snapshot, contract_template_versions!contracts_template_version_fk(version_number, contract_templates!contract_template_versions_template_fk(name))")
       .eq("tenant_id", tenant.id)
       .eq("event_id", eventId)
       .order("created_at", { ascending: false }),
     supabase.from("events").select("event_date, timezone").eq("tenant_id", tenant.id).eq("id", eventId).maybeSingle(),
+    supabase.from("tenants").select("booking_confirmation_policy, deposit_percent").eq("id", tenant.id).maybeSingle(),
   ]);
   const timeZone = event?.timezone ?? tenant.timezone;
   const fmt = (iso: string) => shortInstant(iso, timeZone);
@@ -59,6 +61,10 @@ export async function loadContracts(staff: StaffContext, eventId: string) {
       label: `${v.contract_templates!.name} · version ${v.version_number} · ${USAGE_LABELS[v.usage as TemplateUsage]}${v.id === latest?.id ? " (latest published)" : ""}`,
       needsBalanceDueDate: v.placeholders.includes("payment.balance_due_date"),
       needsClientPhone: v.placeholders.includes("client.phone"),
+      needsServices: v.placeholders.includes("contract.services"),
+      usesPayment: usesPaymentFields(v.placeholders),
+      statesDeposit: v.placeholders.includes("payment.deposit"),
+      needsProposal: usesProposalFields(v.placeholders),
     }));
   const rows = (contracts ?? []).map((c) => ({
     id: c.id,
@@ -68,11 +74,20 @@ export async function loadContracts(staff: StaffContext, eventId: string) {
     created_at: c.created_at,
     signed_at: c.signed_at,
     balance_due_date: c.balance_due_date,
+    total_cents: c.total_cents,
+    deposit_cents: c.deposit_cents,
+    services: typeof (c.commercial_snapshot as { services?: unknown } | null)?.services === "string" ? (c.commercial_snapshot as { services: string }).services : null,
     title: `${c.contract_template_versions?.contract_templates?.name ?? "Contract"} v${c.contract_template_versions?.version_number ?? "?"}`,
     label: `${c.contract_template_versions?.contract_templates?.name ?? "Contract"} v${c.contract_template_versions?.version_number ?? "?"}, generated ${fmt(c.created_at)}`,
     frozen: c.status === "draft" || c.status === "sent" ? frozenDetails(c.party_snapshot) : null,
   }));
-  return { contracts: rows, options, defaultVersionId: latest?.id ?? null, legacyHidden: activeAll.length - active.length, suggestedBalanceDueDate, fmt };
+  const directSetup = {
+    currency: tenant.currency,
+    depositPercent: terms?.deposit_percent ?? 0,
+    depositRequired: terms?.booking_confirmation_policy === "on_deposit" && (terms?.deposit_percent ?? 0) > 0,
+    isOwner: membership.role === "owner",
+  };
+  return { contracts: rows, options, defaultVersionId: latest?.id ?? null, legacyHidden: activeAll.length - active.length, suggestedBalanceDueDate, fmt, directSetup };
 }
 
 /**
@@ -84,19 +99,22 @@ export async function loadContracts(staff: StaffContext, eventId: string) {
 export function ContractCard({
   slug,
   approvalId,
+  contractFirstEventId = null,
   data,
   signer = null,
   changes = [],
 }: {
   slug: string;
   approvalId: string | null;
+  /** This event skips the proposal: contracts are generated from terms typed here. */
+  contractFirstEventId?: string | null;
   data: Awaited<ReturnType<typeof loadContracts>>;
   /** The event's active signer, for adding a missing phone number in place. */
   signer?: { clientId: string; name: string; phone: string | null } | null;
   /** Event or signer details edited since the current draft or sent contract froze them. */
   changes?: string[];
 }) {
-  const { contracts, options, defaultVersionId, legacyHidden, suggestedBalanceDueDate, fmt } = data;
+  const { contracts, options, defaultVersionId, legacyHidden, suggestedBalanceDueDate, fmt, directSetup } = data;
   const draft = contracts.find((c) => c.status === "draft");
   const sent = contracts.find((c) => c.status === "sent");
   const signed = contracts.find((c) => c.status === "signed");
@@ -108,7 +126,7 @@ export function ContractCard({
     <Card id="contract" className="scroll-mt-20">
       <CardHeader>
         <CardTitle>Contract</CardTitle>
-        <CardDescription>{current?.direct ? "This contract has no proposal behind it." : <>Generated from the approved selection. Generating a draft sends nothing; signing doesn&apos;t book the event by itself.</>}</CardDescription>
+        <CardDescription>{contractFirstEventId || current?.direct ? "This event has no proposal. Generating a draft sends nothing; the client signs it before the event is booked." : <>Generated from the approved selection. Generating a draft sends nothing; signing doesn&apos;t book the event by itself.</>}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4 text-sm">
         {signed ? (
@@ -126,13 +144,13 @@ export function ContractCard({
               </span>
             ) : null}
           </p>
-        ) : approvalId ? (
+        ) : approvalId || contractFirstEventId ? (
           <GenerateContractPanel
             slug={slug}
-            approvalId={approvalId}
+            {...(contractFirstEventId ? { direct: { eventId: contractFirstEventId, ...directSetup } } : { approvalId: approvalId! })}
             versions={options}
             defaultVersionId={defaultVersionId}
-            currentDraft={draft ? { id: draft.id, label: draft.label, signable: draft.signing_mode !== "none", balanceDueDate: draft.balance_due_date } : null}
+            currentDraft={draft ? { id: draft.id, label: draft.label, signable: draft.signing_mode !== "none", balanceDueDate: draft.balance_due_date, totalCents: draft.total_cents, depositCents: draft.deposit_cents, services: draft.services } : null}
             suggestedBalanceDueDate={suggestedBalanceDueDate}
             legacyHidden={legacyHidden}
             signer={signer}

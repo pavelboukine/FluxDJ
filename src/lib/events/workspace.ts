@@ -16,6 +16,8 @@ import type { PlanProgress } from "@/lib/planning/view";
  * An event booked elsewhere (bookingSource "external") follows the planning
  * workflow only: set up planning, invite the client, follow their answers,
  * run sheet. It never shows proposal, contract, signature or deposit steps.
+ * A contract-first event (contractFirst) never shows proposal steps: it starts
+ * by preparing the contract, then follows the same contract and deposit steps.
  */
 
 export type ProposalRecord = { id: string; revision: number; status: string; expires_at: string | null };
@@ -50,6 +52,8 @@ export type WorkspaceFacts = {
   lifecycle: string;
   /** events.booking_source: "flux" (default) or "external" (booked elsewhere; planning only). */
   bookingSource?: string;
+  /** events.contract_first: a Flux booking with no proposal, so the contract comes first. */
+  contractFirst?: boolean;
   /** Planning invitation state (events booked for planning, by Flux or elsewhere). */
   planningAccess?: PlanningAccess | null;
   proposals: ProposalRecord[];
@@ -240,8 +244,11 @@ export function nextAction(f: WorkspaceFacts): NextAction {
           }
         : { ...blank, key: "review_contract", title: "Review and send the contract", detail: "A contract draft is ready. Nothing has been sent to the client.", primary: { label: "Review contract", href: `${base}/contracts/${contractDraft.id}` } };
   }
-  if (f.approvalId) {
+  if (f.approvalId || f.contractFirst) {
     const blockers: Blocker[] = [];
+    if (f.contractFirst && (!f.primaryContact || f.primaryContact.archived)) {
+      blockers.push({ text: f.primaryContact ? "The primary contact is archived; the contract needs an active signer." : "Add a primary contact, who signs the contract.", link: { label: "Contacts", href: "#contacts" } });
+    }
     if (!f.identitySaved) blockers.push({ text: "Your legal name, address and contact email aren't saved yet.", link: { label: "Business settings", href: `${base}/settings` } });
     if (f.usableContractVersions === 0) blockers.push({ text: "No contract template version is published yet.", link: { label: "Contract templates", href: `${base}/contract-templates` } });
     if (f.signerPhoneMissing) {
@@ -254,7 +261,9 @@ export function nextAction(f: WorkspaceFacts): NextAction {
       ...blank,
       key: "prepare_contract",
       title: "Prepare the contract",
-      detail: blockers.length > 0 ? "The client's selection is approved. Resolve these first:" : "The client's selection is approved. Choose a template version and generate the draft.",
+      detail: f.contractFirst
+        ? blockers.length > 0 ? "This event has no proposal. Resolve these first:" : "This event has no proposal. Choose a template version and generate the draft."
+        : blockers.length > 0 ? "The client's selection is approved. Resolve these first:" : "The client's selection is approved. Choose a template version and generate the draft.",
       primary: blockers.length > 0 ? null : { label: "Prepare contract", href: "#contract" },
       blockers,
     };

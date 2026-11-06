@@ -5,22 +5,45 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { ActionForm } from "@/components/app/action-form";
 import { Field, TextField, selectClass } from "@/components/app/fields";
 import type { MissingItem } from "@/lib/contracts/content";
+import { centsToInputValue, formatCents, parseMoneyToCents } from "@/lib/money";
 import { PHONE_HINT, PHONE_MAX } from "@/lib/phone";
 import { addClientPhone } from "../clients/actions";
-import { generateContract } from "./actions";
+import { generateContract, generateDirectContract, type GenerateResult } from "./actions";
 
-type VersionOption = { id: string; label: string; needsBalanceDueDate: boolean; needsClientPhone?: boolean };
+type VersionOption = {
+  id: string;
+  label: string;
+  needsBalanceDueDate: boolean;
+  needsClientPhone?: boolean;
+  /** Direct contracts only: the template has a field for the services, states money, states a deposit, or needs an approved proposal. */
+  needsServices?: boolean;
+  usesPayment?: boolean;
+  statesDeposit?: boolean;
+  needsProposal?: boolean;
+};
+
+/** A contract-first event: the terms are typed here, and the business's deposit rule decides who may go below it. */
+export type DirectContractSetup = {
+  eventId: string;
+  currency: string;
+  depositPercent: number;
+  depositRequired: boolean;
+  isOwner: boolean;
+};
 
 type Props = {
   slug: string;
-  approvalId: string;
+  /** Exactly one of these: generate from the approved selection, or with no proposal. */
+  approvalId?: string;
+  direct?: DirectContractSetup;
   versions: VersionOption[];
   defaultVersionId: string | null;
   /** `balanceDueDate`: the date the current draft was generated with (kept when regenerating unless changed). */
-  currentDraft: { id: string; label: string; signable: boolean; balanceDueDate?: string | null } | null;
+  currentDraft: { id: string; label: string; signable: boolean; balanceDueDate?: string | null; totalCents?: number | null; depositCents?: number | null; services?: string | null } | null;
   /** The event date, unless it has passed: the default remaining-balance due date for a new draft. */
   suggestedBalanceDueDate?: string | null;
   /** Active versions published before usage modes, left out of the list. */
@@ -41,7 +64,7 @@ type Props = {
  * can change it, and the server validates it. The deposit is separate: it is
  * due on signing, as the business's settings say.
  */
-export function GenerateContractPanel({ slug, approvalId, versions, defaultVersionId, currentDraft, suggestedBalanceDueDate = null, legacyHidden, signer = null, changes = [] }: Props) {
+export function GenerateContractPanel({ slug, approvalId, direct, versions, defaultVersionId, currentDraft, suggestedBalanceDueDate = null, legacyHidden, signer = null, changes = [] }: Props) {
   const router = useRouter();
   const [versionId, setVersionId] = useState(defaultVersionId ?? versions[0]?.id ?? "");
   const draftDueDate = currentDraft?.balanceDueDate ?? null;
@@ -51,7 +74,22 @@ export function GenerateContractPanel({ slug, approvalId, versions, defaultVersi
   const [error, setError] = useState<string | null>(null);
   const [phoneSaved, setPhoneSaved] = useState(false);
   const [pending, start] = useTransition();
+  // Direct contracts: what the draft was generated with, so regenerating never silently changes it.
+  const [total, setTotal] = useState(currentDraft?.totalCents != null ? centsToInputValue(currentDraft.totalCents) : "");
+  const [deposit, setDeposit] = useState(currentDraft?.depositCents != null ? centsToInputValue(currentDraft.depositCents) : "");
+  const [depositEdited, setDepositEdited] = useState(currentDraft?.depositCents != null);
+  const [services, setServices] = useState(currentDraft?.services ?? "");
+  const [overrideDeposit, setOverrideDeposit] = useState(false);
   const version = versions.find((v) => v.id === versionId);
+  const totalCents = parseMoneyToCents(total);
+  // Only fields the template actually uses are asked for: its text is what the client signs.
+  const asksForMoney = Boolean(direct && version?.usesPayment);
+  const sentTotal = asksForMoney ? total : "";
+  const sentDeposit = asksForMoney && version?.statesDeposit ? deposit : "";
+  const requiredDeposit = direct && totalCents !== null ? Math.floor((totalCents * direct.depositPercent + 50) / 100) : null;
+  const belowRequirement = Boolean(
+    direct?.depositRequired && !(asksForMoney && totalCents !== null && totalCents > 0 && requiredDeposit !== null && (parseMoneyToCents(sentDeposit) ?? 0) >= requiredDeposit),
+  );
   // The chosen version prints the client's phone and the signer has none: say so before generating, with the fix here.
   const phoneNeeded = Boolean(signer && !signer.phone && (version?.needsClientPhone || missing.some((m) => m.key === "client.phone")));
 
@@ -59,12 +97,19 @@ export function GenerateContractPanel({ slug, approvalId, versions, defaultVersi
     setError(null);
     setMissing([]);
     start(async () => {
-      const result = await generateContract(slug, approvalId, {
-        templateVersionId: versionId,
-        // Only sent when the chosen version asks for it; the server rejects it otherwise.
-        balanceDueDate: version?.needsBalanceDueDate ? balanceDueDate : "",
-        replaceContractId,
-      });
+      // Only sent when the chosen version asks for it; the server rejects it otherwise.
+      const dueDate = version?.needsBalanceDueDate ? balanceDueDate : "";
+      const result: GenerateResult = direct
+        ? await generateDirectContract(slug, direct.eventId, {
+            templateVersionId: versionId,
+            total: sentTotal,
+            deposit: sentDeposit,
+            balanceDueDate: asksForMoney ? dueDate : "",
+            services: version?.needsServices ? services : "",
+            overrideDeposit: belowRequirement && overrideDeposit,
+            replaceContractId,
+          })
+        : await generateContract(slug, approvalId!, { templateVersionId: versionId, balanceDueDate: dueDate, replaceContractId });
       switch (result.status) {
         case "created":
         case "replayed":
@@ -77,6 +122,10 @@ export function GenerateContractPanel({ slug, approvalId, versions, defaultVersi
         case "incomplete":
           setConfirmReplace(null);
           setMissing(result.missing);
+          break;
+        case "override_required":
+          setConfirmReplace(null);
+          setError(`Your business requires a deposit of at least ${result.depositPercent}%. Confirm going below it to continue.`);
           break;
         case "error":
           setConfirmReplace(null);
@@ -140,7 +189,7 @@ export function GenerateContractPanel({ slug, approvalId, versions, defaultVersi
             ))}
           </select>
         </Field>
-        <Field
+        {direct && !(asksForMoney && version?.needsBalanceDueDate) ? null : <Field
           label="Remaining balance due"
           htmlFor="balance_due_date"
           hint={
@@ -161,8 +210,76 @@ export function GenerateContractPanel({ slug, approvalId, versions, defaultVersi
             onChange={(e) => setBalanceDueDate(e.target.value)}
             disabled={pending || !version?.needsBalanceDueDate}
           />
-        </Field>
+        </Field>}
       </div>
+
+      {direct && version?.needsProposal ? (
+        <p role="status" className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3" data-testid="direct-needs-proposal">
+          This template uses package or itemized pricing fields, which come from an approved proposal. Choose a template without them.
+        </p>
+      ) : null}
+
+      {direct && version?.needsServices ? (
+        <Field label="Services" htmlFor="contract_services" hint="Printed in the agreement where the template has its Services field.">
+          <Textarea id="contract_services" value={services} maxLength={5000} rows={3} onChange={(e) => setServices(e.target.value)} disabled={pending} />
+        </Field>
+      ) : null}
+
+      {direct && !version?.needsProposal ? (
+        asksForMoney ? (
+          <div className="grid gap-4 sm:grid-cols-2" data-testid="direct-money">
+            <Field label={`Total (${direct.currency})`} htmlFor="contract_total" hint="This template states payment terms. Enter 0 only for a contract that truly costs nothing.">
+              <Input
+                id="contract_total"
+                inputMode="decimal"
+                value={total}
+                disabled={pending}
+                onChange={(e) => {
+                  setTotal(e.target.value);
+                  // Suggests the business's required deposit until staff type their own.
+                  const cents = parseMoneyToCents(e.target.value);
+                  if (!depositEdited && direct.depositRequired) setDeposit(cents === null ? "" : centsToInputValue(Math.floor((cents * direct.depositPercent + 50) / 100)));
+                }}
+              />
+            </Field>
+            {version?.statesDeposit ? (
+              <Field
+                label={`Required deposit (${direct.currency})`}
+                htmlFor="contract_deposit"
+                hint={direct.depositRequired ? `Your business requires ${direct.depositPercent}% before a booking is confirmed.` : "Blank for no deposit. With a deposit, the event is booked once it's received."}
+              >
+                <Input
+                  id="contract_deposit"
+                  inputMode="decimal"
+                  value={deposit}
+                  disabled={pending}
+                  onChange={(e) => {
+                    setDeposit(e.target.value);
+                    setDepositEdited(true);
+                  }}
+                />
+              </Field>
+            ) : null}
+          </div>
+        ) : (
+          <p className="text-muted-foreground" data-testid="direct-no-terms">This template has no payment fields, so the contract records no payment terms. The event is booked when the client signs.</p>
+        )
+      ) : null}
+
+      {direct && !version?.needsProposal && belowRequirement ? (
+        direct.isOwner ? (
+          <label className="flex items-start gap-2 rounded-lg border p-3" data-testid="deposit-override">
+            <input type="checkbox" checked={overrideDeposit} onChange={(e) => setOverrideDeposit(e.target.checked)} disabled={pending} className="mt-0.5 size-4 accent-primary" />
+            <span>
+              Go without the {direct.depositPercent}% deposit your business requires{requiredDeposit !== null && requiredDeposit > 0 ? ` (${formatCents(requiredDeposit, direct.currency)})` : ""}. As the owner, you can make this exception for this contract.
+            </span>
+          </label>
+        ) : (
+          <p role="status" className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3" data-testid="deposit-owner-only">
+            Your business requires a deposit of at least {direct.depositPercent}% of the total{requiredDeposit !== null && requiredDeposit > 0 ? ` (${formatCents(requiredDeposit, direct.currency)})` : ""}. Only the owner can go below it, so choose a template that states the deposit, or ask the owner.
+          </p>
+        )
+      ) : null}
 
       {phoneNeeded && signer ? (
         <div className="grid gap-2 rounded-lg border border-amber-500/50 bg-amber-500/10 p-3" data-testid="contract-phone-needed">
@@ -202,7 +319,7 @@ export function GenerateContractPanel({ slug, approvalId, versions, defaultVersi
         <div>
           <Button
             type="button"
-            disabled={pending || !versionId}
+            disabled={pending || !versionId || Boolean(direct && (version?.needsProposal || (belowRequirement && (!direct.isOwner || !overrideDeposit))))}
             onClick={() => (currentDraft ? setConfirmReplace(currentDraft.id) : run(null))}
           >
             {pending ? "Generating…" : currentDraft ? "Regenerate draft…" : "Generate contract draft"}

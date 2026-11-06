@@ -1,9 +1,9 @@
 /**
  * Contract-first compatibility against the LOCAL stack: direct contracts (no
  * proposal; stated terms or none) through the real API, signing code, PDF
- * renderer and outbox with a recording transport. There is no generator in this
- * release, so the fixture inserts the contract with the service role, through
- * the real triggers and constraints. Dedicated test tenants.
+ * renderer and outbox with a recording transport. The fixture inserts the contract
+ * with the service role, through the real triggers and constraints (the generator
+ * is tested in configurable-booking-workflows.test.ts). Dedicated test tenants.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
@@ -22,7 +22,13 @@ import { pdfPageTexts } from "../support/pdf";
 import { adminClient, archiveTestTenants, bothSeparate, createEvent, createTenantWithCatalog, draftAndSend, must, openLink, signedInUser, submit, type Catalog, type Db } from "./support/fixtures";
 
 const SECTIONS = [{ heading: "Terms", body: "Between {{business.legal_name}} and {{client.name}}." }];
-const DIRECT_BODY = { schema_version: 1, title: "DEMO, NOT FOR CLIENT USE: Direct agreement", sections: [{ heading: "Terms", body: "We agree to the event." }] };
+const cad = (cents: number) => `${(cents / 100).toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CAD`;
+/** The agreement states the money the contract records: sending checks it. */
+const directBody = (terms: { total: number; deposit: number } | null) => ({
+  schema_version: 1,
+  title: "DEMO, NOT FOR CLIENT USE: Direct agreement",
+  sections: [{ heading: "Terms", body: `We agree to the event.${terms ? ` Total ${cad(terms.total)}. Deposit ${cad(terms.deposit)}.` : ""}` }],
+});
 
 let admin: Db;
 let staff: Db;
@@ -77,7 +83,7 @@ async function directContract(terms: Terms) {
       signer_client_id: clientId, signer_name: "IT Client", signer_email: clientEmail, currency: "CAD",
       total_cents: terms?.total ?? null, deposit_percent: terms?.percent ?? null, deposit_cents: terms?.deposit ?? null, balance_cents: terms ? terms.total - terms.deposit : null,
       booking_policy: terms?.policy ?? "on_signature",
-      rendered_content: DIRECT_BODY,
+      rendered_content: directBody(terms),
       commercial_snapshot: terms
         ? { schema_version: 2, financial_terms: "stated", currency: "CAD", total_cents: terms.total, payment: { deposit_cents: terms.deposit, balance_cents: terms.total - terms.deposit, ...(terms.percent === undefined ? {} : { deposit_basis_points: terms.percent * 100 }) } }
         : { schema_version: 2, financial_terms: "none" },
@@ -257,9 +263,10 @@ describe("contract-first compatibility (local Supabase)", () => {
     expect(strangerView).toEqual({ state: "unavailable" });
     const { data: accepted } = await must(stranger.db.rpc("accept_contract_invitation", { p_link_id: c.linkId, p_tenant_slug: catalog.slug }));
     expect(accepted).toMatchObject({ state: "wrong_account" });
-    // Nor can staff give themselves the flag.
-    const { error } = await staff.from("events").insert({ tenant_id: catalog.tenantId, title: "Nope", event_type: "party", event_date: "2027-01-01", contract_first: true });
+    // Staff set the flag only when creating an event of their own business, and can't update it directly.
+    const { error } = await otherStaff.from("events").insert({ tenant_id: catalog.tenantId, title: "Nope", event_type: "party", event_date: "2027-01-01", contract_first: true });
     expect(error?.code).toBe("42501");
+    expect((await staff.from("events").update({ contract_first: false }).eq("id", c.eventId)).error?.code).toBe("42501");
   }, 120_000);
 
   it("a proposal-backed contract's responses have no new keys and its terms read as before", async () => {

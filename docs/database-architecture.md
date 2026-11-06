@@ -3,7 +3,7 @@
 A map of the current database for developers and coding agents: what is
 authoritative, how the parts fit, where each business rule lives, and how to
 change it safely. It describes the schema as of migration
-`20261124000100_contract_first_compatibility`. Per-feature behaviour is in the README
+`20261126000100_no_terms_signing_consent`. Per-feature behaviour is in the README
 ("How tenant isolation works" onwards, and the table of pgTAP files);
 releasing a migration is in [`operations.md`](operations.md), section 2.
 
@@ -195,14 +195,29 @@ the row, never by a flag a caller supplies.
   requires an owner to go below the deposit the business requires (`on_deposit` with
   a percentage above zero): no terms, booking on signature, or a smaller deposit.
   The owner is the signed-in user's own membership (`auth.uid()`), never
-  `generated_by_user_id`, so the service role can't override. A genuine $0 contract
-  owes nothing and needs no override.
+  `generated_by_user_id`, so the service role can't override. A $0 total needs an
+  owner too, because it would otherwise avoid the requirement. An owner must also
+  ask for the override (`p_override_deposit`), and it is audited.
 - **Consent.** A client-use contract with no terms freezes `client-no-terms-v1`,
-  because `client-v1` says "including its payment terms". That version has no
-  wording in `private.contract_signing_consent` yet, so such a contract can't be sent
-  or signed until approved wording is added by a migration.
-- **No generator exists yet** and no role but the database owner or service role can
-  set `contract_first` or insert a contract directly.
+  because `client-v1` says "including its payment terms". Its wording is in its own
+  migration, `20261126000100_no_terms_signing_consent`, which needs product and legal
+  approval before it reaches production. Without it such a contract can't be sent or
+  signed.
+- **Creating and changing the workflow.** `contract_first` is set in the staff insert
+  of an event, under its RLS policy, alongside `booking_source`. Only
+  `public.set_event_contract_first` can change it, and only on a lead with no proposal
+  or contract of any status. `booking_source` never changes.
+- **Generating.** `public.generate_direct_contract_draft` mirrors
+  `generate_contract_draft` for terms staff state, and creates no proposal, selection
+  or approval. Fields only an approved proposal can fill (`package.*`, `gear.*`,
+  itemized `pricing.*`) are reported missing. `{{contract.services}}` is the reverse:
+  it only has a value on a direct contract.
+- **The agreement states the money.** A total needs `{{pricing.total}}` and a deposit
+  needs `{{payment.deposit}}` in the template, and `contract_send_problems` rechecks
+  the rendered text (`terms_not_in_agreement`) before sending.
+- **Lifecycle.** Generating moves a contract-first lead to `awaiting_signature`, as a
+  proposal's approval does. A positive deposit means `on_deposit`; otherwise
+  `on_signature`. Booking is still only `private.evaluate_booking`.
 
 ## Durable work: emails and signed PDFs
 

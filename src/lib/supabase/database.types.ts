@@ -1514,6 +1514,9 @@ isOneToOne: false
 "generate_contract_draft":
 { Args: { "p_approval_id": string,"p_balance_due_date"?: string,"p_replace_contract_id"?: string,"p_template_version_id": string }; Returns: Json
                            },
+"generate_direct_contract_draft":
+{ Args: { "p_balance_due_date"?: string,"p_deposit_cents"?: number,"p_event_id": string,"p_override_deposit"?: boolean,"p_replace_contract_id"?: string,"p_services"?: string,"p_template_version_id": string,"p_total_cents"?: number }; Returns: Json
+                           },
 "install_starter_planning_templates":
 { Args: { "p_tenant_id": string }; Returns: Json
                            },
@@ -1691,6 +1694,9 @@ isOneToOne: false
                            },
 "set_event_archived":
 { Args: { "p_archived": boolean,"p_event_id": string }; Returns: Json
+                           },
+"set_event_contract_first":
+{ Args: { "p_contract_first": boolean,"p_event_id": string }; Returns: Json
                            },
 "set_event_invoice_url":
 { Args: { "p_event_id": string,"p_expected_version": number,"p_invoice_url": string }; Returns: number

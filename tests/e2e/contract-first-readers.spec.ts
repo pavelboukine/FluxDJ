@@ -1,9 +1,8 @@
 /**
  * Existing pages reading a direct contract (no proposal, no financial terms),
- * in real browsers against local Supabase. Nothing in this release can create
- * one, so the contract is inserted with the service role, through the real
- * triggers and constraints; there is no new screen here to test. Dedicated test
- * business:
+ * in real browsers against local Supabase. The contract is inserted with the
+ * service role, through the real triggers and constraints; booking-workflows.spec.ts
+ * creates them through the screens. Dedicated test business:
  *   - the client's invitation, contract page and event hub show no proposal link and no money, and signing books;
  *   - staff see the contract, its review and the event's payments with no invented figures and no proposal link.
  */

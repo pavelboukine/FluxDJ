@@ -1152,7 +1152,7 @@ COMMENT ON COLUMN "public"."events"."dj_name" IS 'Optional name of the DJ handli
 
 
 
-COMMENT ON COLUMN "public"."events"."contract_first" IS 'A Flux booking that skips the proposal: staff go straight to a contract. Immutable for now; no role can change it after insert.';
+COMMENT ON COLUMN "public"."events"."contract_first" IS 'A Flux booking that skips the proposal: staff go straight to a contract. Set when the event is created; only set_event_contract_first can change it, before any proposal or contract exists.';
 
 
 
@@ -1208,6 +1208,7 @@ CREATE OR REPLACE FUNCTION "private"."contract_placeholders"() RETURNS TABLE("ke
     ('event.date', 'Event date', 'The event date, for example "Saturday, June 12, 2027".', 'Event date: edit the event.', 70),
     ('venue.name', 'Venue name', 'The event''s venue name.', 'Venue name: add it to the event.', 80),
     ('venue.address', 'Venue address', 'The event''s venue address.', 'Venue address: add it to the event.', 90),
+    ('contract.services', 'Services', 'The services for this event, typed when preparing a contract with no proposal.', 'Services: describe them when preparing the contract. This field isn''t available on a contract from a proposal, so choose a template without it there.', 95),
     ('package.name', 'Package', 'The approved package''s name.', 'Package: the approved selection has no package.', 100),
     ('package.price', 'Package price', 'The approved package''s base price.', 'Package price: the approved selection has no package.', 110),
     ('package.included', 'Included gear', 'A list of the gear included in the package.', 'Included gear: unavailable.', 120),
@@ -1253,6 +1254,7 @@ declare
   v_frozen jsonb;
   v_problems jsonb := '[]'::jsonb;
   v_identity_changes text[] := '{}'::text[];
+  v_agreement text;
 begin
   select * into c from public.contracts where id = p_contract_id;
   if not found then
@@ -1328,6 +1330,16 @@ begin
           || '). Regenerate the contract to use the current details.');
     end if;
   end if;
+  -- The money a direct contract records must be in the agreement the client reads, not only in its columns.
+  if c.proposal_id is null and c.total_cents is not null then
+    select string_agg(x.line, E'\n') into v_agreement
+    from private.contract_template_texts(c.rendered_content ->> 'title', c.rendered_content -> 'sections') as x(line);
+    if position(private.format_cents(c.total_cents, c.currency) in coalesce(v_agreement, '')) = 0
+       or (c.deposit_cents > 0 and position(private.format_cents(c.deposit_cents, c.currency) in coalesce(v_agreement, '')) = 0) then
+      v_problems := v_problems || jsonb_build_object('code', 'terms_not_in_agreement',
+        'message', 'The agreement doesn''t state this contract''s total and deposit. Generate it from a template with those fields.');
+    end if;
+  end if;
   -- Only a proposal-backed contract follows the business's percentage; a direct contract states its own terms.
   if c.proposal_id is not null and c.deposit_percent <> t.deposit_percent then
     v_problems := v_problems || jsonb_build_object('code', 'deposit_changed',
@@ -1373,6 +1385,11 @@ CREATE OR REPLACE FUNCTION "private"."contract_signing_consent"("p_version" "tex
       || 'drawn signature are my signature on this agreement.'
     when 'client-v1' then
       'I have read the entire agreement shown above, including its payment terms. I agree to sign it electronically. '
+      || 'I agree that my typed name and drawn signature are my signature on this agreement and that they bind me to it '
+      || 'as a handwritten signature would. I can download a copy of the signed agreement here, and a copy will be '
+      || 'emailed to me.'
+    when 'client-no-terms-v1' then
+      'I have read the entire agreement shown above. I agree to sign it electronically. '
       || 'I agree that my typed name and drawn signature are my signature on this agreement and that they bind me to it '
       || 'as a handwritten signature would. I can download a copy of the signed agreement here, and a copy will be '
       || 'emailed to me.'
@@ -1592,11 +1609,12 @@ begin
   if new.booking_policy is null then
     perform private.contract_error('choose when this booking is confirmed');
   end if;
+  -- The business requires a deposit: only a positive total with at least that
+  -- percentage, due before booking, meets it. Anything else needs an owner,
+  -- who is the signed-in user's own membership, never an ID on the row.
   if t.booking_confirmation_policy = 'on_deposit' and t.deposit_percent > 0
-     and (new.total_cents is null
-          or (new.total_cents > 0
-              and not coalesce(new.booking_policy = 'on_deposit'
-                               and new.deposit_cents >= private.contract_deposit_cents(new.total_cents, t.deposit_percent), false))) then
+     and not coalesce(new.total_cents > 0 and new.booking_policy = 'on_deposit'
+                      and new.deposit_cents >= private.contract_deposit_cents(new.total_cents, t.deposit_percent), false) then
     if not exists (select 1 from public.tenant_memberships m
                    where m.tenant_id = new.tenant_id and m.user_id = (select auth.uid()) and m.role = 'owner' and m.removed_at is null) then
       raise exception 'only the owner can go below the deposit this business requires' using errcode = 'insufficient_privilege';
@@ -2527,6 +2545,23 @@ $$;
 
 
 ALTER FUNCTION "private"."events_booking_guard"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."events_contract_first_guard"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    SET "search_path" TO ''
+    AS $$
+begin
+  if new.contract_first is distinct from old.contract_first
+     and current_setting('flux.event_workflow', true) is distinct from new.id::text then
+    raise exception 'column events.contract_first is immutable outside set_event_contract_first' using errcode = 'check_violation';
+  end if;
+  return new;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."events_contract_first_guard"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "private"."events_initialize_planning"() RETURNS "trigger"
@@ -9622,6 +9657,296 @@ $$;
 ALTER FUNCTION "public"."generate_contract_draft"("p_approval_id" "uuid", "p_template_version_id" "uuid", "p_balance_due_date" "date", "p_replace_contract_id" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."generate_direct_contract_draft"("p_event_id" "uuid", "p_template_version_id" "uuid", "p_total_cents" bigint DEFAULT NULL::bigint, "p_deposit_cents" bigint DEFAULT NULL::bigint, "p_balance_due_date" "date" DEFAULT NULL::"date", "p_services" "text" DEFAULT NULL::"text", "p_override_deposit" boolean DEFAULT false, "p_replace_contract_id" "uuid" DEFAULT NULL::"uuid") RETURNS "jsonb"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  v_event public.events%rowtype;
+  v_tenant public.tenants%rowtype;
+  v_version public.contract_template_versions%rowtype;
+  v_template_active boolean;
+  v_membership_id uuid;
+  v_role text;
+  v_signer record;
+  v_has_signer boolean;
+  v_services text := nullif(btrim(coalesce(p_services, '')), '');
+  v_deposit bigint;
+  v_balance bigint;
+  v_percent integer;
+  v_policy text;
+  v_required boolean;
+  v_required_deposit bigint;
+  v_meets_requirement boolean;
+  v_values jsonb;
+  v_missing jsonb;
+  v_rendered jsonb;
+  v_commercial jsonb;
+  v_parties jsonb;
+  v_hash text;
+  v_existing public.contracts%rowtype;
+  v_has_existing boolean;
+  v_replaced uuid;
+  v_id uuid;
+begin
+  select * into v_event from public.events where id = p_event_id;
+  if not found then
+    raise exception 'not found' using errcode = 'no_data_found';
+  end if;
+  v_membership_id := private.require_staff_of(v_event.tenant_id);
+  -- The event lock serializes generation, so concurrent clicks cannot create two drafts.
+  select * into v_event from public.events where id = p_event_id for update;
+  select * into v_tenant from public.tenants where id = v_event.tenant_id;
+  select m.role into v_role from public.tenant_memberships m where m.id = v_membership_id;
+
+  if not v_event.contract_first or v_event.booking_source <> 'flux' then
+    raise exception 'contract_not_allowed: this event doesn''t use contract-first booking' using errcode = 'invalid_parameter_value';
+  end if;
+  if v_event.archived_at is not null then
+    raise exception 'contract_not_allowed: the event is archived' using errcode = 'invalid_parameter_value';
+  end if;
+  if v_event.lifecycle_status not in ('lead', 'awaiting_signature') then
+    raise exception 'contract_not_allowed: the event is %', replace(v_event.lifecycle_status, '_', ' ') using errcode = 'invalid_parameter_value';
+  end if;
+  if v_tenant.archived_at is not null then
+    raise exception 'contract_not_allowed: the business is archived' using errcode = 'invalid_parameter_value';
+  end if;
+
+  select * into v_version from public.contract_template_versions
+  where tenant_id = v_tenant.id and id = p_template_version_id;
+  if not found then
+    perform private.contract_error('template version not found');
+  end if;
+  if v_version.published_at is null then
+    perform private.contract_error('publish this template version before generating a contract');
+  end if;
+  select t.active into v_template_active from public.contract_templates t
+  where t.tenant_id = v_tenant.id and t.id = v_version.template_id;
+  if not v_template_active then
+    perform private.contract_error('this template is archived');
+  end if;
+
+  -- The terms. A deposit needs a total; a total with no deposit is an explicit 0.
+  if p_total_cents is null then
+    if p_deposit_cents is not null then
+      raise exception 'contract_input_invalid: a deposit needs a total' using errcode = 'invalid_parameter_value';
+    end if;
+    if p_balance_due_date is not null then
+      raise exception 'contract_input_invalid: a balance due date needs a total' using errcode = 'invalid_parameter_value';
+    end if;
+  else
+    v_deposit := coalesce(p_deposit_cents, 0);
+    if p_total_cents < 0 or v_deposit < 0 then
+      raise exception 'contract_input_invalid: amounts can''t be negative' using errcode = 'invalid_parameter_value';
+    end if;
+    if v_deposit > p_total_cents then
+      raise exception 'contract_input_invalid: the deposit can''t be more than the total' using errcode = 'invalid_parameter_value';
+    end if;
+    v_balance := p_total_cents - v_deposit;
+  end if;
+  v_policy := case when v_deposit > 0 then 'on_deposit' else 'on_signature' end;
+  -- The percentage is only stated when the deposit is exactly the business's own.
+  if v_deposit > 0 and v_deposit = private.contract_deposit_cents(p_total_cents, v_tenant.deposit_percent) then
+    v_percent := v_tenant.deposit_percent;
+  end if;
+  if v_services is not null then
+    if length(v_services) > 5000 then
+      raise exception 'contract_input_invalid: the services description is too long (5,000 characters at most)' using errcode = 'invalid_parameter_value';
+    end if;
+    if not ('contract.services' = any (v_version.placeholders)) then
+      raise exception 'contract_input_invalid: this template version has no services field, so leave it blank' using errcode = 'invalid_parameter_value';
+    end if;
+  end if;
+  if p_balance_due_date is not null then
+    if not ('payment.balance_due_date' = any (v_version.placeholders)) then
+      raise exception 'contract_input_invalid: this template version has no balance due date, so leave it blank' using errcode = 'invalid_parameter_value';
+    end if;
+    if p_balance_due_date < (now() at time zone v_event.timezone)::date then
+      raise exception 'contract_input_invalid: the balance due date is in the past' using errcode = 'invalid_parameter_value';
+    end if;
+  end if;
+
+  -- The business's required deposit. Staff are stopped here with a clear message
+  -- (contracts_booking_policy is what enforces it); an owner must ask explicitly.
+  v_required := v_tenant.booking_confirmation_policy = 'on_deposit' and v_tenant.deposit_percent > 0;
+  if p_total_cents is not null then
+    v_required_deposit := private.contract_deposit_cents(p_total_cents, v_tenant.deposit_percent);
+  end if;
+  v_meets_requirement := not v_required
+    or coalesce(p_total_cents > 0 and v_deposit >= v_required_deposit, false);
+  if not v_meets_requirement then
+    if v_role <> 'owner' then
+      raise exception 'contract_input_invalid: this business requires a deposit of at least % of the total. Only the owner can go below it', v_tenant.deposit_percent::text || '%'
+        using errcode = 'insufficient_privilege';
+    end if;
+    if p_override_deposit is not true then
+      return jsonb_build_object('status', 'override_required', 'deposit_percent', v_tenant.deposit_percent,
+                                'required_deposit_cents', v_required_deposit);
+    end if;
+  end if;
+
+  select c.id, c.name, c.email, c.phone, c.archived_at into v_signer
+  from public.event_clients ec
+  join public.clients c on c.tenant_id = ec.tenant_id and c.id = ec.client_id
+  where ec.tenant_id = v_event.tenant_id and ec.event_id = v_event.id and ec.can_sign;
+  v_has_signer := found;
+
+  v_values := jsonb_build_object(
+    'business.name', nullif(btrim(v_tenant.business_name), ''),
+    'business.legal_name', nullif(btrim(v_tenant.business_name), ''),
+    'business.address', nullif(btrim(v_tenant.business_address), ''),
+    'business.email', nullif(btrim(v_tenant.contact_email), ''),
+    'business.display_name', nullif(btrim(v_tenant.display_name), ''),
+    'client.name', case when v_has_signer then nullif(btrim(v_signer.name), '') end,
+    'client.email', case when v_has_signer then nullif(btrim(v_signer.email), '') end,
+    'client.phone', case when v_has_signer then nullif(btrim(v_signer.phone), '') end,
+    'event.title', nullif(btrim(v_event.title), ''),
+    'event.date', to_char(v_event.event_date, 'FMDay, FMMonth FMDD, YYYY'),
+    'venue.name', nullif(btrim(v_event.venue_name), ''),
+    'venue.address', nullif(btrim(v_event.venue_address), ''),
+    'contract.services', v_services,
+    'pricing.total', case when p_total_cents is not null then private.format_cents(p_total_cents, v_tenant.currency) end,
+    'pricing.currency', case when p_total_cents is not null then v_tenant.currency end,
+    'payment.deposit_percent', case when v_percent is not null then v_percent::text || '%' end,
+    'payment.deposit', case when p_total_cents is not null then private.format_cents(v_deposit, v_tenant.currency) end,
+    'payment.balance', case when p_total_cents is not null then private.format_cents(v_balance, v_tenant.currency) end,
+    'payment.balance_due_date', to_char(p_balance_due_date, 'FMMonth FMDD, YYYY')
+  );
+
+  -- Every field the template uses needs a real value. Package, gear and itemized
+  -- pricing come from an approved proposal, so they have none here.
+  select coalesce(jsonb_agg(jsonb_build_object('key', p.key, 'label', p.label, 'hint',
+      case
+        when p.key like 'package.%' or p.key like 'gear.%'
+             or p.key in ('pricing.subtotal_before_discount', 'pricing.discount', 'pricing.subtotal', 'pricing.taxes', 'pricing.tax_total') then
+          p.label || ': this comes from an approved proposal. Choose a template without it.'
+        when p.key in ('pricing.total', 'pricing.currency', 'payment.deposit', 'payment.balance') and p_total_cents is null then
+          p.label || ': enter a total, or choose a template without payment fields.'
+        when p.key = 'payment.deposit_percent' then
+          p.label || ': only available when the deposit is your business''s percentage of the total. Enter that deposit, or choose a template without it.'
+        when p.key = 'payment.balance_due_date' and p_total_cents is null then
+          p.label || ': enter a total and this date, or choose a template without payment fields.'
+        else p.missing_hint
+      end) order by p.sort_order), '[]')
+    into v_missing
+  from private.contract_placeholders() p
+  where p.key = any (v_version.placeholders) and v_values ->> p.key is null;
+  -- The agreement must state the money this contract records.
+  if p_total_cents is not null and not ('pricing.total' = any (v_version.placeholders)) then
+    v_missing := v_missing || jsonb_build_object('key', 'terms.total', 'label', 'Total',
+      'hint', 'Total: this template doesn''t state the total. Add {{pricing.total}} to the template, or leave the total blank.');
+  end if;
+  if v_deposit > 0 and not ('payment.deposit' = any (v_version.placeholders)) then
+    v_missing := v_missing || jsonb_build_object('key', 'terms.deposit', 'label', 'Deposit',
+      'hint', 'Deposit: this template doesn''t state the deposit. Add {{payment.deposit}} to the template.');
+  end if;
+  if not v_has_signer then
+    v_missing := jsonb_build_array(jsonb_build_object('key', 'signer', 'label', 'Signer',
+      'hint', 'Signer: mark one of the event''s contacts as the signer.')) || v_missing;
+  elsif v_signer.archived_at is not null then
+    v_missing := jsonb_build_array(jsonb_build_object('key', 'signer', 'label', 'Signer',
+      'hint', 'Signer: the signer''s client record is archived. Restore it or choose another signer.')) || v_missing;
+  end if;
+  if jsonb_array_length(v_missing) > 0 then
+    return jsonb_build_object('status', 'incomplete', 'missing', v_missing);
+  end if;
+
+  v_rendered := jsonb_build_object(
+    'schema_version', 1,
+    'title', private.render_contract_text(v_version.title, v_values),
+    'sections', (
+      select jsonb_agg(jsonb_build_object(
+        'heading', private.render_contract_text(s ->> 'heading', v_values),
+        'body', private.render_contract_text(s ->> 'body', v_values)) order by ord)
+      from jsonb_array_elements(v_version.sections) with ordinality as x(s, ord)
+    )
+  );
+  v_commercial := case when p_total_cents is null then
+      jsonb_build_object('schema_version', 2, 'financial_terms', 'none')
+    else
+      jsonb_build_object('schema_version', 2, 'financial_terms', 'stated', 'currency', v_tenant.currency, 'total_cents', p_total_cents,
+        'payment', jsonb_build_object('deposit_cents', v_deposit, 'balance_cents', v_balance, 'balance_due_date', p_balance_due_date)
+          || case when v_deposit > 0 then jsonb_build_object('deposit_due', 'on_signing') else '{}'::jsonb end
+          || case when v_percent is not null then jsonb_build_object('deposit_percent', v_percent, 'deposit_basis_points', v_percent * 100, 'deposit_rounding', 'half_up_to_cent') else '{}'::jsonb end)
+    end
+    || case when v_services is not null then jsonb_build_object('services', v_services) else '{}'::jsonb end;
+  v_parties := jsonb_build_object(
+    'business', jsonb_build_object(
+      'name', v_tenant.business_name, 'display_name', v_tenant.display_name, 'legal_name', v_tenant.business_name,
+      'address', v_tenant.business_address, 'contact_email', v_tenant.contact_email),
+    'client', jsonb_build_object('client_id', v_signer.id, 'name', v_signer.name, 'email', v_signer.email, 'phone', v_signer.phone),
+    'event', jsonb_build_object(
+      'event_id', v_event.id, 'title', v_event.title, 'event_type', v_event.event_type, 'date', v_event.event_date,
+      'timezone', v_event.timezone, 'venue_name', v_event.venue_name, 'venue_address', v_event.venue_address)
+  );
+  v_hash := private.contract_content_sha256(v_rendered, v_commercial, v_parties, v_version.id, v_version.content_sha256);
+
+  -- One draft per event: repeat or replace explicitly.
+  select * into v_existing from public.contracts
+  where tenant_id = v_event.tenant_id and event_id = v_event.id and status = 'draft'
+  for update;
+  v_has_existing := found;
+  if v_has_existing then
+    if v_existing.content_sha256 = v_hash
+       and (p_replace_contract_id is null or p_replace_contract_id in (v_existing.id, v_existing.replaces_id)) then
+      return jsonb_build_object('status', 'replayed', 'contract_id', v_existing.id);
+    end if;
+    if p_replace_contract_id is null then
+      return jsonb_build_object('status', 'draft_exists', 'contract_id', v_existing.id);
+    end if;
+    if p_replace_contract_id <> v_existing.id then
+      return jsonb_build_object('status', 'conflict', 'contract_id', v_existing.id);
+    end if;
+    update public.contracts set status = 'replaced' where id = v_existing.id;
+    v_replaced := v_existing.id;
+  elsif p_replace_contract_id is not null then
+    return jsonb_build_object('status', 'conflict', 'contract_id', null);
+  end if;
+
+  insert into public.contracts (
+    tenant_id, event_id, template_id, template_version_id, template_content_sha256, replaces_id,
+    signer_client_id, signer_name, signer_email, currency,
+    total_cents, deposit_percent, deposit_cents, balance_cents, balance_due_date, booking_policy,
+    rendered_content, commercial_snapshot, party_snapshot, content_sha256, generated_by_membership_id, generated_by_user_id
+  ) values (
+    v_tenant.id, v_event.id, v_version.template_id, v_version.id, v_version.content_sha256, v_replaced,
+    v_signer.id, v_signer.name, v_signer.email, v_tenant.currency,
+    p_total_cents, v_percent, v_deposit, v_balance, p_balance_due_date, v_policy,
+    v_rendered, v_commercial, v_parties, v_hash, v_membership_id, (select auth.uid())
+  )
+  returning id, content_sha256 into v_id, v_hash;
+
+  -- A proposal's approval does this on the full workflow.
+  if v_event.lifecycle_status = 'lead' then
+    update public.events set lifecycle_status = 'awaiting_signature' where id = v_event.id;
+  end if;
+
+  perform private.audit(v_tenant.id, 'contract', v_id, case when v_replaced is null then 'draft_generated' else 'draft_regenerated' end,
+    'staff', (select auth.uid()),
+    jsonb_build_object('event_id', v_event.id, 'template_version_id', v_version.id, 'content_sha256', v_hash, 'replaces_id', v_replaced,
+                       'financial_terms', case when p_total_cents is null then 'none' else 'stated' end));
+  if not v_meets_requirement then
+    perform private.audit(v_tenant.id, 'contract', v_id, 'deposit_requirement_overridden', 'staff', (select auth.uid()),
+      jsonb_build_object('deposit_percent', v_tenant.deposit_percent, 'required_deposit_cents', v_required_deposit,
+                         'total_cents', p_total_cents, 'deposit_cents', v_deposit));
+  end if;
+  if v_replaced is not null then
+    perform private.audit(v_tenant.id, 'contract', v_replaced, 'draft_replaced', 'staff', (select auth.uid()),
+      jsonb_build_object('replaced_by', v_id));
+  end if;
+
+  return jsonb_build_object('status', 'created', 'contract_id', v_id, 'content_sha256', v_hash, 'replaced_id', v_replaced);
+end;
+$$;
+
+
+ALTER FUNCTION "public"."generate_direct_contract_draft"("p_event_id" "uuid", "p_template_version_id" "uuid", "p_total_cents" bigint, "p_deposit_cents" bigint, "p_balance_due_date" "date", "p_services" "text", "p_override_deposit" boolean, "p_replace_contract_id" "uuid") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."generate_direct_contract_draft"("p_event_id" "uuid", "p_template_version_id" "uuid", "p_total_cents" bigint, "p_deposit_cents" bigint, "p_balance_due_date" "date", "p_services" "text", "p_override_deposit" boolean, "p_replace_contract_id" "uuid") IS 'Generates a contract with no proposal on a contract-first event, from terms staff state. Never creates a proposal, selection or approval. Null total: no financial terms.';
+
+
+
 CREATE OR REPLACE FUNCTION "public"."install_starter_planning_templates"("p_tenant_id" "uuid") RETURNS "jsonb"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -11489,6 +11814,46 @@ $$;
 
 
 ALTER FUNCTION "public"."set_event_archived"("p_event_id" "uuid", "p_archived" boolean) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."set_event_contract_first"("p_event_id" "uuid", "p_contract_first" boolean) RETURNS "jsonb"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  e public.events%rowtype;
+begin
+  select * into e from public.events where id = p_event_id;
+  if not found or p_contract_first is null then
+    raise exception 'not found' using errcode = 'no_data_found';
+  end if;
+  perform private.require_staff_of(e.tenant_id);
+  select * into e from public.events where id = p_event_id for update;
+  if e.contract_first = p_contract_first then
+    return jsonb_build_object('status', 'unchanged', 'contract_first', e.contract_first);
+  end if;
+  if e.booking_source <> 'flux' then
+    raise exception 'contract_not_allowed: this event was booked elsewhere, so it has no booking steps to change' using errcode = 'invalid_parameter_value';
+  end if;
+  if e.archived_at is not null then
+    raise exception 'contract_not_allowed: the event is archived' using errcode = 'invalid_parameter_value';
+  end if;
+  if e.lifecycle_status <> 'lead'
+     or exists (select 1 from public.proposals p where p.tenant_id = e.tenant_id and p.event_id = e.id)
+     or exists (select 1 from public.contracts c where c.tenant_id = e.tenant_id and c.event_id = e.id) then
+    raise exception 'contract_not_allowed: the booking steps can''t change once a proposal or contract has been started' using errcode = 'invalid_parameter_value';
+  end if;
+  perform set_config('flux.event_workflow', e.id::text, true);
+  update public.events set contract_first = p_contract_first where id = e.id;
+  perform set_config('flux.event_workflow', '', true);
+  perform private.audit(e.tenant_id, 'event', e.id, 'booking_steps_changed', 'staff', (select auth.uid()),
+    jsonb_build_object('contract_first', p_contract_first));
+  return jsonb_build_object('status', 'changed', 'contract_first', p_contract_first);
+end;
+$$;
+
+
+ALTER FUNCTION "public"."set_event_contract_first"("p_event_id" "uuid", "p_contract_first" boolean) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."set_event_invoice_url"("p_event_id" "uuid", "p_invoice_url" "text", "p_expected_version" integer) RETURNS integer
@@ -15628,7 +15993,11 @@ CREATE OR REPLACE TRIGGER "events_booking_guard" BEFORE UPDATE OF "lifecycle_sta
 
 
 
-CREATE OR REPLACE TRIGGER "events_immutable" BEFORE UPDATE ON "public"."events" FOR EACH ROW EXECUTE FUNCTION "private"."forbid_column_changes"('id', 'tenant_id', 'created_at', 'booking_source', 'contract_first');
+CREATE OR REPLACE TRIGGER "events_contract_first_guard" BEFORE UPDATE OF "contract_first" ON "public"."events" FOR EACH ROW EXECUTE FUNCTION "private"."events_contract_first_guard"();
+
+
+
+CREATE OR REPLACE TRIGGER "events_immutable" BEFORE UPDATE ON "public"."events" FOR EACH ROW EXECUTE FUNCTION "private"."forbid_column_changes"('id', 'tenant_id', 'created_at', 'booking_source');
 
 
 
@@ -17324,6 +17693,10 @@ GRANT INSERT("dj_name"),UPDATE("dj_name") ON TABLE "public"."events" TO "authent
 
 
 
+GRANT INSERT("contract_first") ON TABLE "public"."events" TO "authenticated";
+
+
+
 REVOKE ALL ON FUNCTION "private"."contract_is_current"("p_contract" "public"."contracts", "p_event" "public"."events") FROM PUBLIC;
 
 
@@ -17525,6 +17898,10 @@ REVOKE ALL ON FUNCTION "private"."events_audit_external_booking"() FROM PUBLIC;
 
 
 REVOKE ALL ON FUNCTION "private"."events_booking_guard"() FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."events_contract_first_guard"() FROM PUBLIC;
 
 
 
@@ -18567,6 +18944,12 @@ GRANT ALL ON FUNCTION "public"."generate_contract_draft"("p_approval_id" "uuid",
 
 
 
+REVOKE ALL ON FUNCTION "public"."generate_direct_contract_draft"("p_event_id" "uuid", "p_template_version_id" "uuid", "p_total_cents" bigint, "p_deposit_cents" bigint, "p_balance_due_date" "date", "p_services" "text", "p_override_deposit" boolean, "p_replace_contract_id" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."generate_direct_contract_draft"("p_event_id" "uuid", "p_template_version_id" "uuid", "p_total_cents" bigint, "p_deposit_cents" bigint, "p_balance_due_date" "date", "p_services" "text", "p_override_deposit" boolean, "p_replace_contract_id" "uuid") TO "service_role";
+GRANT ALL ON FUNCTION "public"."generate_direct_contract_draft"("p_event_id" "uuid", "p_template_version_id" "uuid", "p_total_cents" bigint, "p_deposit_cents" bigint, "p_balance_due_date" "date", "p_services" "text", "p_override_deposit" boolean, "p_replace_contract_id" "uuid") TO "authenticated";
+
+
+
 REVOKE ALL ON FUNCTION "public"."install_starter_planning_templates"("p_tenant_id" "uuid") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."install_starter_planning_templates"("p_tenant_id" "uuid") TO "service_role";
 GRANT ALL ON FUNCTION "public"."install_starter_planning_templates"("p_tenant_id" "uuid") TO "authenticated";
@@ -18874,6 +19257,12 @@ GRANT ALL ON FUNCTION "public"."set_client_archived"("p_client_id" "uuid", "p_ar
 REVOKE ALL ON FUNCTION "public"."set_event_archived"("p_event_id" "uuid", "p_archived" boolean) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."set_event_archived"("p_event_id" "uuid", "p_archived" boolean) TO "service_role";
 GRANT ALL ON FUNCTION "public"."set_event_archived"("p_event_id" "uuid", "p_archived" boolean) TO "authenticated";
+
+
+
+REVOKE ALL ON FUNCTION "public"."set_event_contract_first"("p_event_id" "uuid", "p_contract_first" boolean) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."set_event_contract_first"("p_event_id" "uuid", "p_contract_first" boolean) TO "service_role";
+GRANT ALL ON FUNCTION "public"."set_event_contract_first"("p_event_id" "uuid", "p_contract_first" boolean) TO "authenticated";
 
 
 

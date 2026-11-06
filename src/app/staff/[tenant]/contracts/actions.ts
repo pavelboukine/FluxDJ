@@ -8,15 +8,17 @@ import { processDocumentJobs } from "@/lib/contracts/documents.server";
 import { contractInviteToken, sha256Hex } from "@/lib/proposals/tokens.server";
 import { requireStaff } from "@/lib/auth/staff";
 import type { MissingItem } from "@/lib/contracts/content";
-import { generateContractResultSchema } from "@/lib/contracts/responses";
+import { generateContractResultSchema, generateDirectContractResultSchema } from "@/lib/contracts/responses";
 import { checkDbResponse } from "@/lib/db-response";
 import { describeDbError } from "@/lib/db-errors";
 import { fail, ok, UUID_RE, type ActionState } from "@/lib/forms";
+import { parseMoneyToCents } from "@/lib/money";
 
 export type GenerateResult =
   | { status: "created" | "replayed"; contractId: string }
   | { status: "incomplete"; missing: MissingItem[] }
   | { status: "draft_exists"; contractId: string }
+  | { status: "override_required"; depositPercent: number; requiredDepositCents: number | null }
   | { status: "error"; message: string };
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -57,6 +59,59 @@ export async function generateContract(
       return { status: result.status, contractId: result.contract_id };
     case "incomplete":
       return { status: "incomplete", missing: result.missing };
+    case "conflict":
+      return { status: "error", message: "The contract draft changed since this page loaded. Reload the page and try again." };
+  }
+}
+
+/**
+ * Generates (or explicitly replaces) the draft of a contract with no proposal,
+ * from the terms staff state. A blank total means no financial terms, and only
+ * a typed 0 means zero dollars. All rendering and every rule are in
+ * generate_direct_contract_draft; generating sends nothing and books nothing.
+ */
+export async function generateDirectContract(
+  slug: string,
+  eventId: string,
+  input: { templateVersionId: string; total: string; deposit: string; balanceDueDate: string; services: string; overrideDeposit: boolean; replaceContractId: string | null },
+): Promise<GenerateResult> {
+  const { supabase } = await requireStaff(slug);
+  if (!UUID_RE.test(eventId)) return { status: "error", message: "Reload the page and try again." };
+  if (!UUID_RE.test(input.templateVersionId)) return { status: "error", message: "Choose a published template version." };
+  if (input.replaceContractId !== null && !UUID_RE.test(input.replaceContractId)) return { status: "error", message: "Reload the page and try again." };
+  const totalText = input.total.trim();
+  const depositText = input.deposit.trim();
+  const total = totalText ? parseMoneyToCents(totalText) : null;
+  if (totalText && total === null) return { status: "error", message: "Enter the total as an amount, for example 1500 or 1,250.50. Leave it blank for no financial terms." };
+  const deposit = depositText ? parseMoneyToCents(depositText) : null;
+  if (depositText && deposit === null) return { status: "error", message: "Enter the deposit as an amount, for example 500 or 1,250.50. Leave it blank for no deposit." };
+  const balanceDueDate = input.balanceDueDate.trim();
+  if (balanceDueDate && !DATE_RE.test(balanceDueDate)) return { status: "error", message: "Enter the balance due date as a date." };
+
+  const { data, error } = await supabase.rpc("generate_direct_contract_draft", {
+    p_event_id: eventId,
+    p_template_version_id: input.templateVersionId,
+    ...(total !== null ? { p_total_cents: total } : {}),
+    ...(deposit !== null ? { p_deposit_cents: deposit } : {}),
+    ...(balanceDueDate ? { p_balance_due_date: balanceDueDate } : {}),
+    ...(input.services.trim() ? { p_services: input.services } : {}),
+    p_override_deposit: input.overrideDeposit,
+    ...(input.replaceContractId ? { p_replace_contract_id: input.replaceContractId } : {}),
+  });
+  if (error) return { status: "error", message: describeDbError(error) };
+  revalidatePath(`/staff/${slug}`, "layout");
+  const checked = checkDbResponse(generateDirectContractResultSchema, data, "generate_direct_contract_draft");
+  if (!checked.ok) return { status: "error", message: "Something went wrong. Reload the page to see the contract's current state." };
+  const result = checked.data;
+  switch (result.status) {
+    case "created":
+    case "replayed":
+    case "draft_exists":
+      return { status: result.status, contractId: result.contract_id };
+    case "incomplete":
+      return { status: "incomplete", missing: result.missing };
+    case "override_required":
+      return { status: "override_required", depositPercent: result.deposit_percent, requiredDepositCents: result.required_deposit_cents };
     case "conflict":
       return { status: "error", message: "The contract draft changed since this page loaded. Reload the page and try again." };
   }
@@ -112,7 +167,7 @@ export async function voidContract(slug: string, contractId: string, _state: Act
   // Deliver the queued "contract withdrawn" notice now (the worker also retries it).
   after(() => processOutboxQuietly(tenant.id));
   revalidatePath(`/staff/${slug}`, "layout");
-  return ok("Contract voided. You can now generate a replacement from the current approval.");
+  return ok("Contract voided. You can now generate a replacement.");
 }
 
 /**

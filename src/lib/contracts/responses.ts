@@ -151,6 +151,12 @@ export const generateContractResultSchema = z.discriminatedUnion("status", [
   z.object({ status: z.literal("conflict"), contract_id: idSchema.nullable() }),
 ]);
 
+/** public.generate_direct_contract_draft's outcomes: the same, or an owner must ask to go below the required deposit. */
+export const generateDirectContractResultSchema = z.union([
+  generateContractResultSchema,
+  z.object({ status: z.literal("override_required"), deposit_percent: depositPercent, required_deposit_cents: centsSchema.nullable() }),
+]);
+
 /**
  * public.client_approved_offer: the frozen offer and the stored selection the
  * contract was built from. The selection must have been priced against this

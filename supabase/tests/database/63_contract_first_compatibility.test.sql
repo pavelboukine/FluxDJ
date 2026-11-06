@@ -1,14 +1,15 @@
--- Contract-first compatibility (Release A): the schema can represent a direct
--- contract, with stated terms or none, and every access, delivery, booking and
--- archive path treats it correctly. There is no generator yet, so these
--- contracts are inserted as the database owner, through the real triggers and
--- constraints. A real proposal-backed contract runs alongside them throughout.
+-- Contract-first compatibility: the schema can represent a direct contract, with
+-- stated terms or none, and every access, delivery, booking and archive path
+-- treats it correctly. These contracts are inserted as the database owner, through
+-- the real triggers and constraints, so every invalid shape can be tried (the
+-- generator is tested in 64_configurable_booking_workflows). A real proposal-backed
+-- contract runs alongside them throughout.
 begin;
 \ir _fixtures.psql
 \ir _catalog_fixtures.psql
 \ir _offer_fixtures.psql
 \ir _contract_fixtures.psql
-select plan(127);
+select plan(128);
 
 alter function tests.id(text) rename to id_base;
 create function tests.id(name text) returns uuid language sql immutable as $$
@@ -59,7 +60,9 @@ begin
     content_sha256, generated_by_user_id)
   values (t.id, tests.id(event), v.template_id, v.id, v.content_sha256, c.id, c.name, c.email,
     'CAD', total, percent, deposit, coalesce(balance, total - deposit), due, policy,
-    '{"schema_version":1,"title":"Direct agreement","sections":[{"heading":"Terms","body":"We agree."}]}',
+    -- The agreement states the money the contract records (sending checks it).
+    jsonb_build_object('schema_version', 1, 'title', 'Direct agreement', 'sections', jsonb_build_array(jsonb_build_object('heading', 'Terms', 'body',
+      'We agree.' || case when total is null then '' else ' Total ' || private.format_cents(total, 'CAD') || '. Deposit ' || private.format_cents(coalesce(deposit, 0), 'CAD') || '.' end))),
     coalesce(commercial, tests.snapshot(total, deposit)),
     jsonb_build_object('business', jsonb_build_object('name', t.business_name, 'display_name', t.display_name, 'legal_name', t.business_name,
         'address', t.business_address, 'contact_email', t.contact_email),
@@ -146,8 +149,8 @@ select throws_ok($$ insert into public.events (tenant_id, title, event_type, eve
     values (tests.id('tenant_a'), 'Bad', 'party', '2027-01-01', 'external', true) $$,
   '23514', null, 'an event booked elsewhere cannot be contract-first');
 select tests.login_as(tests.id('owner_a'));
-select throws_ok($$ insert into public.events (tenant_id, title, event_type, event_date, contract_first)
-    values (tests.id('tenant_a'), 'Bad', 'party', '2027-01-01', true) $$, '42501', null, 'not even an owner can create one: no grant in this release');
+select lives_ok($$ insert into public.events (tenant_id, title, event_type, event_date, contract_first)
+    values (tests.id('tenant_a'), 'Direct', 'party', '2027-01-01', true) $$, 'staff create one when the event is created (Release B grants this insert)');
 select throws_ok($$ update public.events set contract_first = true where id = tests.id('event_a1') $$, '42501', null, 'nor switch an event');
 select lives_ok($$ insert into public.events (tenant_id, title, event_type, event_date) values (tests.id('tenant_a'), 'Normal', 'party', '2027-01-01') $$,
   'creating an ordinary event is unchanged');
@@ -238,7 +241,8 @@ select throws_ok($$ select tests.direct('cf_auth', author => 'owner_a', no_user 
 select throws_ok($$ select tests.direct('cf_auth', author => 'owner_b') $$, '42501', null, 'another business''s owner cannot override this one''s deposit');
 select lives_ok($$ select tests.direct('cf_auth', 200000, 100000, 'on_deposit', author => 'staff_a') $$, 'staff may meet the required deposit');
 select tests.cf_event('cf_auth2');
-select lives_ok($$ select tests.direct('cf_auth2', 0, 0, author => 'staff_a') $$, 'a genuine $0 contract owes nothing, so needs no override');
+select throws_ok($$ select tests.direct('cf_auth2', 0, 0, author => 'staff_a') $$, '42501', null, 'nor by stating a total of $0 (Release B closes this)');
+select lives_ok($$ select tests.direct('cf_auth2', 0, 0) $$, 'an owner may: a genuine $0 contract');
 select tests.cf_event('cf_auth3');
 select lives_ok($$ select tests.direct('cf_auth3') $$, 'an owner may override: no terms');
 select tests.cf_event('cf_auth4');
@@ -257,6 +261,9 @@ select set_config('request.jwt.claims', '', true);
 -- ===========================================================================
 -- Consent: the wording that mentions payment terms never goes on a contract without any
 -- ===========================================================================
+-- Until wording exists for a version (its own migration can be held back), a contract frozen with it fails closed.
+create or replace function private.contract_signing_consent(p_version text) returns text language sql immutable set search_path = '' as $$
+  select case p_version when 'client-v1' then 'Old wording.' when 'demo-v1' then 'Demo.' end $$;
 select tests.cf_event('cf_consent');
 select set_config('tests.c_consent', tests.direct('cf_consent', version => 'tests.client_v')::text, true);
 select is((select consent_version from public.contracts where id = current_setting('tests.c_consent')::uuid), 'client-no-terms-v1', 'a client-use contract with no terms freezes its own consent version');
@@ -457,9 +464,9 @@ select tests.cf_event('cf_gone');
 select set_config('tests.c_gone', tests.direct('cf_gone')::text, true);
 select set_config('tests.link_gone', tests.send_c(current_setting('tests.c_gone')::uuid)::text, true);
 set constraints all immediate;
-alter table public.events disable trigger events_immutable;
+alter table public.events disable trigger events_contract_first_guard;
 update public.events set contract_first = false where id = tests.id('cf_gone');
-alter table public.events enable trigger events_immutable;
+alter table public.events enable trigger events_contract_first_guard;
 set constraints all deferred;
 select ok(not tests.usable(current_setting('tests.link_gone')::uuid), 'the invitation stops working');
 select ok(not private.signer_can_access_contract(current_setting('tests.c_gone')::uuid, tests.id('client_y')), 'the signer loses access');
