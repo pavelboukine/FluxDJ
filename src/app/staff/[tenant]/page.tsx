@@ -1,6 +1,6 @@
 import Link from "@/components/app/pending-link";
 import { notFound } from "next/navigation";
-import { ArrowRight, CheckCircle2, Circle, MailWarning } from "lucide-react";
+import { ArrowRight, CheckCircle2, MailWarning } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/app/fields";
 import { InstallHelp } from "@/components/app/pwa";
 import { requireStaff } from "@/lib/auth/staff";
 import { ATTENTION_SHOWN, UPCOMING_SHOWN, attentionItems, dashboardSchema, deliveryFetchSince, deliveryProblems, shortDate, upcomingRows, withinDeliveryWindow } from "@/lib/dashboard";
-import { offerablePackages, requiredSetup } from "@/lib/setup";
+import { GUIDANCE_WORKFLOWS, WORKFLOW_LABEL, isSetupGuidance, offerablePackages, reminders } from "@/lib/setup";
 import { cn } from "@/lib/utils";
 
 /** What's coming up and what needs attention. Read-only: viewing it changes nothing and sends nothing. */
@@ -17,7 +17,7 @@ export default async function Dashboard({ params, searchParams }: PageProps<"/st
   const { welcome, attention } = await searchParams;
   const { supabase, tenant, membership } = await requireStaff(slug);
   // Independent reads, all as the staff member under RLS, made together.
-  const [{ data, error }, { data: problemRows }, { data: packages, error: packagesError }] = await Promise.all([
+  const [{ data, error }, { data: problemRows }, { data: packages, error: packagesError }, { data: guidanceRow, error: guidanceError }] = await Promise.all([
     supabase.rpc("staff_dashboard", { p_tenant_id: tenant.id, p_upcoming_limit: UPCOMING_SHOWN }),
     // Provider-confirmed delivery problems (webhook events) of the last 30 days, under the staff RLS policy
     // (cut off by the database's clock below; see deliveryFetchSince). Newest first, so a response row
@@ -35,6 +35,8 @@ export default async function Dashboard({ params, searchParams }: PageProps<"/st
       .select("package_items(gear_items!package_items_gear_item_fk(active))")
       .eq("tenant_id", tenant.id)
       .eq("active", true),
+    // Which workflows the owner wants setup reminders about (guidance only).
+    supabase.from("tenants").select("setup_guidance").eq("id", tenant.id).single(),
   ]);
   const parsed = dashboardSchema.safeParse(data);
   if (error || !parsed.success) {
@@ -48,9 +50,12 @@ export default async function Dashboard({ params, searchParams }: PageProps<"/st
   const tasks = attentionItems(facts, slug);
   const showAll = attention === "all";
   const shownTasks = showAll ? tasks : tasks.slice(0, ATTENTION_SHOWN);
-  if (packagesError) throw new Error("The dashboard couldn't be loaded.");
-  const setup = requiredSetup({ ...facts.setup, offerable_packages: offerablePackages(packages) }, slug);
-  const missing = setup.filter((s) => !s.done);
+  if (packagesError || guidanceError) throw new Error("The dashboard couldn't be loaded.");
+  // Only the workflows the setup guidance covers; the card disappears once they have everything required.
+  const guidance = isSetupGuidance(guidanceRow.setup_guidance) ? guidanceRow.setup_guidance : "proposals_and_contracts";
+  const setup = reminders({ ...facts.setup, offerable_packages: offerablePackages(packages) }, slug, GUIDANCE_WORKFLOWS[guidance]);
+  const welcoming = welcome === "1" && isOwner;
+  const needs = setup.map((r) => WORKFLOW_LABEL[r.workflow].toLowerCase()).join(" and ");
 
   return (
     <>
@@ -91,38 +96,48 @@ export default async function Dashboard({ params, searchParams }: PageProps<"/st
         </p>
       ) : null}
 
-      {missing.length > 0 ? (
+      {setup.length > 0 ? (
         <Card size="sm" data-testid="setup-checklist">
           <CardHeader>
-            <CardTitle>{welcome === "1" && isOwner ? `Welcome to Flux DJ, ${tenant.display_name}` : "Finish setting up"}</CardTitle>
+            <CardTitle>{welcoming ? `Welcome to Flux DJ, ${tenant.display_name}` : "Finish setting up"}</CardTitle>
             <CardDescription>
-              {welcome === "1" && isOwner
-                ? "Let's get your business ready. These steps are needed before you can send proposals and contracts; the setup guide also covers branding, gear and planning."
-                : `${setup.length - missing.length} of ${setup.length} required steps ready. Still needed before you can send proposals and contracts:`}
+              {welcoming
+                ? `Let's get your business ready. Here's what's still needed before you can send ${needs}; the setup guide also covers branding, gear and planning.`
+                : `Still needed before you can send ${needs}:`}
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
-            <ul className="grid gap-1.5 sm:grid-cols-2 sm:gap-x-6">
-              {missing.map((item) => (
-                <li key={item.key} data-testid={`setup-${item.key}`} data-done={item.done} className="flex items-start gap-2">
-                  <Circle aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                  <span className="grid min-w-0">
-                    <Link className="tap-target-y font-medium underline-offset-4 hover:underline" href={item.href}>{item.label}</Link>
-                    <span className="text-xs text-muted-foreground">
-                      {item.ownerOnly && !isOwner ? "Only the owner can complete this. " : null}
-                      {item.hint}
-                    </span>
-                  </span>
-                </li>
+            <div className="grid gap-3 sm:grid-cols-2 sm:gap-x-6">
+              {setup.map((r) => (
+                <section key={r.workflow} aria-labelledby={`setup-reminder-${r.workflow}-label`} data-testid={`setup-reminder-${r.workflow}`} className="grid content-start gap-1.5 text-sm">
+                  <p id={`setup-reminder-${r.workflow}-label`} className="text-xs font-medium text-muted-foreground">To send {WORKFLOW_LABEL[r.workflow].toLowerCase()}</p>
+                  <ul className="grid gap-1.5">
+                    {r.tasks.map((item) => (
+                      <li key={item.key} data-testid={`setup-${item.key}`} data-done={item.done} className="grid min-w-0">
+                        <Link className="tap-target-y justify-self-start font-medium underline-offset-4 hover:underline" href={item.href}>{item.label}</Link>
+                        <span className="text-xs text-muted-foreground">
+                          {item.ownerOnly && !isOwner ? "Only the owner can complete this. " : null}
+                          {item.hint}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
               ))}
-            </ul>
-            <div>
+            </div>
+            {/* Stacked below lg, clear of the button's 44px tap layer ([data-app-main]). */}
+            <div className="flex flex-col items-start gap-3 lg:flex-row lg:items-center lg:gap-4">
               <Link className={buttonVariants({ size: "sm" })} href={`/staff/${slug}/setup`}>
                 {welcome === "1" ? "Open the setup guide" : "Continue setup"}
                 <ArrowRight aria-hidden />
               </Link>
+              {isOwner ? (
+                <Link className="inline-flex min-h-11 items-center text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground lg:min-h-0" href={`/staff/${slug}/setup#guidance`} data-testid="setup-guidance-link">
+                  Not using {needs.replace(" and ", " or ")}? Choose your setup guidance
+                </Link>
+              ) : null}
             </div>
-            {welcome === "1" && isOwner ? (
+            {welcoming ? (
               <p className="text-xs text-muted-foreground">
                 Using Flux DJ from your phone&apos;s home screen? Sign in there with the code from the sign-in email: the home-screen app keeps
                 its own sign-in, separate from your browser.

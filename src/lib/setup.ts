@@ -2,8 +2,8 @@ import type { DashboardFacts } from "@/lib/dashboard";
 
 /**
  * The setup guide (/staff/{tenant}/setup) and the dashboard's setup card.
- * Everything is derived from saved data: there is no onboarding state, so a
- * task is ready exactly when the business can do what it unlocks.
+ * Every step's status is derived from saved data, so a task is ready exactly
+ * when the business can do what it unlocks.
  *
  * - required: the app refuses the workflow without it (sending a proposal:
  *   taxes for its categories and three active packages; sending a contract,
@@ -14,17 +14,48 @@ import type { DashboardFacts } from "@/lib/dashboard";
  *   booking policy defaults, proposal templates, planning defaults).
  * - optional: nothing depends on it (logo, gear, questions, first event).
  *
+ * Each step belongs to the workflow it serves (proposals or contracts), or to
+ * none. The business's setup guidance (tenants.setup_guidance, owner-chosen)
+ * says which workflows to remind about: the dashboard lists only their missing
+ * required steps, and the guide marks the other workflows' unfinished steps
+ * "Skipped". It is guidance only: a finished step is always Ready, readiness()
+ * always reports both workflows honestly, and each proposal and contract is
+ * still checked when it's sent.
+ *
  * Completing it doesn't mean terms or prices are right.
  */
 
 export type SetupLevel = "required" | "recommended" | "optional";
-export type SetupStatus = "ready" | "attention" | "not_started" | "optional";
+export type SetupStatus = "ready" | "attention" | "not_started" | "optional" | "skipped";
+export type SetupWorkflow = "proposals" | "contracts";
+
+/** tenants.setup_guidance. There is no proposals-only choice: a proposal booking always ends in a contract. */
+export type SetupGuidance = "proposals_and_contracts" | "contracts_only" | "none";
+
+/** The workflows each choice reminds about, contracts first: every booking made in Flux DJ ends in one. */
+export const GUIDANCE_WORKFLOWS: Record<SetupGuidance, readonly SetupWorkflow[]> = {
+  proposals_and_contracts: ["contracts", "proposals"],
+  contracts_only: ["contracts"],
+  none: [],
+};
+
+/** The choices, as the setup guide offers them. */
+export const GUIDANCE_OPTIONS: readonly { value: SetupGuidance; label: string; description: string }[] = [
+  { value: "proposals_and_contracts", label: "Proposals and contracts", description: "For businesses that send proposals before booking events." },
+  { value: "contracts_only", label: "Contracts only", description: "For businesses that book directly without proposals." },
+  { value: "none", label: "Planning only", description: "For businesses managing events booked elsewhere." },
+];
+
+export function isSetupGuidance(value: unknown): value is SetupGuidance {
+  return value === "proposals_and_contracts" || value === "contracts_only" || value === "none";
+}
 
 export const STATUS_LABEL: Record<SetupStatus, string> = {
   ready: "Ready",
   attention: "Needs attention",
   not_started: "Not started",
   optional: "Optional",
+  skipped: "Skipped",
 };
 
 /**
@@ -32,7 +63,7 @@ export const STATUS_LABEL: Record<SetupStatus, string> = {
  * default, so it never reads as a problem; "Needs attention" is for what blocks a workflow.
  */
 export function taskStatusLabel(task: Pick<SetupTask, "level" | "done" | "status">): string {
-  return task.level === "recommended" && !task.done ? "Recommended" : STATUS_LABEL[task.status];
+  return task.level === "recommended" && !task.done && task.status !== "skipped" ? "Recommended" : STATUS_LABEL[task.status];
 }
 
 export type SetupTask = {
@@ -41,6 +72,8 @@ export type SetupTask = {
   /** What it is and why it matters. */
   description: string;
   level: SetupLevel;
+  /** The workflow it serves, or null when it serves every workflow. */
+  workflow: SetupWorkflow | null;
   /** What it unlocks, e.g. "Needed to send contracts". */
   needed: string;
   done: boolean;
@@ -52,7 +85,8 @@ export type SetupTask = {
   ownerOnly: boolean;
 };
 
-export type SetupGroup = { key: string; title: string; tasks: SetupTask[] };
+/** skipped: the group's workflow isn't in the business's setup guidance. */
+export type SetupGroup = { key: string; title: string; description: string; skipped: boolean; tasks: SetupTask[] };
 
 /**
  * The dashboard's saved-setup facts, plus how many active packages can be
@@ -75,7 +109,7 @@ export type SetupExtras = {
   hasBrandColor: boolean;
   depositPercent: number;
   bookingPolicy: string;
-  /** update_booking_policy has been saved at least once (the version starts at 0). */
+  /** update_booking_policy has been saved at least once (the version starts at 0, and every save increments it). */
   bookingPolicyReviewed: boolean;
   activeGear: number;
   activeQuestions: number;
@@ -111,6 +145,7 @@ export function requiredSetup(s: Base, slug: string): SetupTask[] {
       label: "Business details",
       description: "Your legal business name, address and contact email. New contracts copy them when they are generated.",
       level: "required",
+      workflow: "contracts",
       needed: "Needed to send contracts",
       done: s.identity_saved,
       hint: s.identity_saved ? "Saved." : "Not saved yet: contracts can't be sent until they are.",
@@ -123,6 +158,7 @@ export function requiredSetup(s: Base, slug: string): SetupTask[] {
       label: "Taxes",
       description: 'The taxes you charge and which ones apply to each tax category. "No tax" is a valid choice.',
       level: "required",
+      workflow: "proposals",
       needed: "Needed to send proposals",
       done: configured.size > 0 && unconfigured.length === 0,
       started: configured.size > 0,
@@ -141,6 +177,7 @@ export function requiredSetup(s: Base, slug: string): SetupTask[] {
       label: "Three packages",
       description: "Every proposal offers exactly three packages to choose from. Each has one fixed price; the gear it includes isn't charged again.",
       level: "required",
+      workflow: "proposals",
       needed: "Needed to send proposals",
       done: s.offerable_packages >= 3,
       started: s.active_packages > 0,
@@ -159,6 +196,7 @@ export function requiredSetup(s: Base, slug: string): SetupTask[] {
       label: "Contract template",
       description: "Import the agreement you use in Word or write one, preview it, then publish a version for client use. DEMO versions can't be sent.",
       level: "required",
+      workflow: "contracts",
       needed: "Needed to send contracts",
       done: s.client_use_contract_templates > 0,
       hint: s.client_use_contract_templates > 0 ? "A version is published for client use." : "No version published for client use yet.",
@@ -169,8 +207,22 @@ export function requiredSetup(s: Base, slug: string): SetupTask[] {
   ];
 }
 
-/** Every step of the setup guide, in the order a new business usually takes them. */
-export function setupGuide(s: Base, x: SetupExtras, slug: string): SetupGroup[] {
+/**
+ * Every step of the setup guide, grouped in the order a new business usually takes them.
+ * A step that isn't done reads "Skipped" when its workflow isn't in the setup guidance;
+ * a done step stays Ready, whatever the guidance.
+ */
+export function setupGuide(s: Base, x: SetupExtras, slug: string, guidance: SetupGuidance): SetupGroup[] {
+  const reminded = GUIDANCE_WORKFLOWS[guidance];
+  const skipped = (w: SetupWorkflow | null) => w !== null && !reminded.includes(w);
+  return guideGroups(s, x, slug).map((g) => ({
+    ...g,
+    skipped: skipped(g.key === "proposals" ? "proposals" : g.key === "contracts" ? "contracts" : null),
+    tasks: g.tasks.map((t) => (!t.done && skipped(t.workflow) ? { ...t, status: "skipped" as const } : t)),
+  }));
+}
+
+function guideGroups(s: Base, x: SetupExtras, slug: string): Omit<SetupGroup, "skipped">[] {
   const base = `/staff/${slug}`;
   const required = new Map(requiredSetup(s, slug).map((t) => [t.key, t]));
   const policy = x.bookingPolicy === "on_signature" ? "confirmed when the contract is signed" : "confirmed when the contract is signed and the deposit is received";
@@ -179,7 +231,8 @@ export function setupGuide(s: Base, x: SetupExtras, slug: string): SetupGroup[] 
   return [
     {
       key: "business",
-      title: "Your business",
+      title: "Business",
+      description: "Who you are, on your contracts and client pages.",
       tasks: [
         required.get("identity")!,
         task({
@@ -187,6 +240,7 @@ export function setupGuide(s: Base, x: SetupExtras, slug: string): SetupGroup[] 
           label: "Customize branding",
           description: "Your logo and brand colour, shown on your client pages and in emails from your business. Without them, clients see your business name in Flux's default style.",
           level: "optional",
+          workflow: null,
           needed: "Optional: makes your client pages look like yours",
           done: x.hasLogo || x.hasBrandColor,
           hint:
@@ -201,24 +255,12 @@ export function setupGuide(s: Base, x: SetupExtras, slug: string): SetupGroup[] 
           action: "Add branding",
           ownerOnly: true,
         }),
-        task({
-          key: "booking",
-          label: "Deposit and booking confirmation",
-          description: "How much deposit is due on signing, and when Flux confirms a booking and emails the client.",
-          level: "recommended",
-          needed: "Recommended: the defaults work until you change them",
-          done: s.identity_saved && x.bookingPolicyReviewed,
-          started: s.identity_saved || x.bookingPolicyReviewed,
-          hint: `${x.depositPercent}% deposit; bookings ${policy}.${x.bookingPolicyReviewed && s.identity_saved ? "" : " Not reviewed yet."}`,
-          href: `${base}/settings/bookings`,
-          action: "Review booking settings",
-          ownerOnly: true,
-        }),
       ],
     },
     {
-      key: "offer",
-      title: "What you offer",
+      key: "proposals",
+      title: "Proposals",
+      description: "What clients choose from before they book. Only needed if you send proposals.",
       tasks: [
         required.get("taxes")!,
         task({
@@ -226,6 +268,7 @@ export function setupGuide(s: Base, x: SetupExtras, slug: string): SetupGroup[] 
           label: "Gear and services",
           description: "What you bring or offer, such as a DJ service, ceremony speaker or uplighting. Include it in packages or offer it as an extra.",
           level: "optional",
+          workflow: "proposals",
           needed: "Optional: packages can be priced without gear",
           done: x.activeGear > 0,
           hint: x.activeGear > 0 ? `${plural(x.activeGear, "active item")}.` : "No gear yet.",
@@ -239,6 +282,7 @@ export function setupGuide(s: Base, x: SetupExtras, slug: string): SetupGroup[] 
           label: "Proposal template",
           description: "Saves your three packages, extras and questions so each new proposal starts ready. You can also choose packages on each proposal.",
           level: "recommended",
+          workflow: "proposals",
           needed: "Recommended: saves time on every proposal",
           done: s.usable_proposal_templates > 0,
           hint: s.usable_proposal_templates > 0 ? `${plural(s.usable_proposal_templates, "usable template")}.` : "No template with three active packages yet.",
@@ -251,6 +295,7 @@ export function setupGuide(s: Base, x: SetupExtras, slug: string): SetupGroup[] 
           label: "Questions & rules",
           description: "Logistics questions on proposals, such as where the ceremony takes place, and the gear each answer adds.",
           level: "optional",
+          workflow: "proposals",
           needed: "Optional: only if an answer changes the gear you bring",
           done: x.activeQuestions > 0,
           hint: x.activeQuestions > 0 ? `${plural(x.activeQuestions, "active question")}.` : "No questions yet.",
@@ -262,7 +307,8 @@ export function setupGuide(s: Base, x: SetupExtras, slug: string): SetupGroup[] 
     },
     {
       key: "contracts",
-      title: "Contracts and planning",
+      title: "Contracts",
+      description: "What clients sign to book you, with or without a proposal first.",
       tasks: [
         {
           ...contractTemplate,
@@ -274,10 +320,32 @@ export function setupGuide(s: Base, x: SetupExtras, slug: string): SetupGroup[] 
               : contractTemplate.hint,
         },
         task({
+          key: "booking",
+          label: "Deposit and booking confirmation",
+          description: "How much deposit is due on signing, and when Flux confirms a booking and emails the client. Each new contract keeps the settings it was generated with.",
+          level: "recommended",
+          workflow: "contracts",
+          needed: "Recommended: the defaults work until you change them",
+          // Reviewed once the booking policy has been saved; legal details have their own step.
+          done: x.bookingPolicyReviewed,
+          hint: `${x.depositPercent}% deposit; bookings ${policy}.${x.bookingPolicyReviewed ? "" : " Not reviewed yet."}`,
+          href: `${base}/settings/bookings`,
+          action: "Review booking settings",
+          ownerOnly: true,
+        }),
+      ],
+    },
+    {
+      key: "planning",
+      title: "Planning",
+      description: "What booked clients fill in before the event, for every kind of booking.",
+      tasks: [
+        task({
           key: "planning",
           label: "Planning template",
-          description: `What booked clients fill in before the event. Each event gets its own copy when planning starts, so later template changes don't alter it. Client planning closes ${plural(x.planningLockDays, "day")} before the event.`,
+          description: `Each event gets its own copy when planning starts, so later template changes don't alter it. Client planning closes ${plural(x.planningLockDays, "day")} before the event.`,
           level: "recommended",
+          workflow: null,
           needed: "Recommended: without a default, planning starts with event basics only",
           done: x.planningDefaults.length > 0,
           started: x.activePlanningTemplates > 0,
@@ -295,13 +363,15 @@ export function setupGuide(s: Base, x: SetupExtras, slug: string): SetupGroup[] 
     },
     {
       key: "start",
-      title: "Start working",
+      title: "Getting started",
+      description: "",
       tasks: [
         task({
           key: "first-event",
           label: "Your first event",
           description: "Create an event and add its client. Nothing is sent to the client until you send them a proposal, a contract or a planning invitation.",
           level: "optional",
+          workflow: null,
           needed: "When you're ready",
           done: x.events > 0,
           hint: x.events > 0 ? `${plural(x.events, "event")}.` : "No events yet.",
@@ -314,13 +384,25 @@ export function setupGuide(s: Base, x: SetupExtras, slug: string): SetupGroup[] 
   ];
 }
 
-/** What the saved setup allows today. Contracts don't depend on proposal setup: a contract-only booking needs neither taxes nor packages. */
-export function readiness(s: Base) {
+/**
+ * What the saved setup allows today, by workflow: the required steps still missing.
+ * Contracts don't depend on proposal setup: a contract-only booking needs neither taxes nor packages.
+ * Never affected by which workflows the business wants reminders about.
+ */
+export function readiness(s: Base): Record<SetupWorkflow, string[]> {
   const tasks = requiredSetup(s, "");
-  const missing = (keys: string[]) => tasks.filter((t) => keys.includes(t.key) && !t.done).map((t) => t.label);
-  const proposals = missing(["taxes", "packages"]);
-  const contracts = missing(["identity", "contract-template"]);
-  return { proposals, contracts, readyCount: tasks.filter((t) => t.done).length, total: tasks.length };
+  const missing = (w: SetupWorkflow) => tasks.filter((t) => t.workflow === w && !t.done).map((t) => t.label);
+  return { proposals: missing("proposals"), contracts: missing("contracts") };
+}
+
+export const WORKFLOW_LABEL: Record<SetupWorkflow, string> = { proposals: "Proposals", contracts: "Contracts" };
+
+/** The dashboard card: the missing required steps of the given workflows, one entry per workflow that isn't ready. */
+export function reminders(s: Base, slug: string, workflows: readonly SetupWorkflow[]): { workflow: SetupWorkflow; tasks: SetupTask[] }[] {
+  const tasks = requiredSetup(s, slug);
+  return workflows
+    .map((workflow) => ({ workflow, tasks: tasks.filter((t) => t.workflow === workflow && !t.done) }))
+    .filter((r) => r.tasks.length > 0);
 }
 
 /** A setup guide link to a page, marked so that page offers the way back (SetupReturn). Keeps any #section. */

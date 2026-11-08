@@ -366,6 +366,7 @@ Before expanding usage or making compliance statements, explicitly verify:
 
 ### November 8, 2026
 
+- Setup guide and dashboard setup card follow the business's setup guidance (Proposals and contracts, Contracts only or Planning only; owner-only, audited, guidance only): steps grouped as Business, Proposals, Contracts, Planning and Getting started; unfinished steps of a skipped workflow read "Skipped" and drop out of dashboard reminders, while readiness and sending checks are unchanged. Status glyphs no longer look like checkboxes, the overall "x of 4" counter is gone, and the booking-confirmation step no longer depends on the legal details. Migration `20261130000100`.
 - Business Settings reorganized from one page into six focused pages; the deposit moved to Taxes & payments with its own save (`update_deposit_percent`), legal details save separately (`update_business_identity`), and owners can set a logo size (100-130%) for the staff header and client pages. Migrations `20261128000100` and `20261129000100`.
 
 ### November 5, 2026
