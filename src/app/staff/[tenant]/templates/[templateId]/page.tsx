@@ -79,7 +79,7 @@ export default async function TemplatePage({ params, searchParams }: PageProps<"
       package: (id) => `/staff/${slug}/packages/${id}`,
       question: (id) => `/staff/${slug}/questions/${id}`,
       gear: (id) => `/staff/${slug}/gear/${id}`,
-      taxes: `/staff/${slug}/settings#taxes`,
+      taxes: `/staff/${slug}/settings/taxes`,
     },
   );
 

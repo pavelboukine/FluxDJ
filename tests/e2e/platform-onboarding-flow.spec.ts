@@ -130,7 +130,7 @@ test.describe.serial("invite-only DJ onboarding", () => {
     await expect(dj.getByText("Welcome to Flux DJ, DJ Maxwell Events", { exact: true })).toBeVisible();
     // The setup checklist starts with the legal identity, which contracts need.
     await expect(dj.getByTestId("setup-identity")).toHaveAttribute("data-done", "false");
-    await expect(dj.getByRole("link", { name: "Business details" })).toHaveAttribute("href", `/staff/${slug}/settings`);
+    await expect(dj.getByRole("link", { name: "Business details" })).toHaveAttribute("href", `/staff/${slug}/settings/profile`);
     // The welcome leads to the setup guide for this new business; nothing forces it.
     await dj.getByRole("link", { name: "Open the setup guide" }).click();
     await dj.waitForURL(`**/staff/${slug}/setup`);
@@ -150,7 +150,7 @@ test.describe.serial("invite-only DJ onboarding", () => {
   });
 
   test("the new owner sees an unconfirmed legal name, only their own business, and a used invitation", async () => {
-    await dj.goto(`/staff/${slug}/settings`);
+    await dj.goto(`/staff/${slug}/settings/profile`);
     await expect(dj.getByLabel("Legal business name")).toHaveValue("");
     await expect(dj.getByText(/Not confirmed yet/)).toBeVisible();
 

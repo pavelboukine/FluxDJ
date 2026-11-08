@@ -229,7 +229,7 @@ function GearOverview({
           {taxReady ? null : (
             <span className="text-xs text-amber-800 dark:text-amber-300" data-testid="gear-tax-warning">
               {anyTaxes ? "Taxes aren't set up for this category" : "No taxes are set up yet"}, so proposals with this item can&apos;t be sent.{" "}
-              <Link className="font-medium underline" href={`/staff/${slug}/settings#taxes`}>Open tax settings</Link> (owner only).
+              <Link className="font-medium underline" href={`/staff/${slug}/settings/taxes`}>Open tax settings</Link> (owner only).
             </span>
           )}
         </dd>

@@ -3,6 +3,7 @@ import { BrandLogo } from "@/components/app/brand-logo";
 import { isPlatformAdmin } from "@/lib/auth/platform";
 import { signedLogoUrl, type BrandLogo as Logo } from "@/lib/branding/logo.server";
 import { requireStaff, type StaffContext } from "@/lib/auth/staff";
+import { STAFF_HEADER_LOGO_HEIGHT } from "@/lib/branding/logo-size";
 import { staffNavigation } from "@/lib/navigation";
 
 const ROLE_LABEL: Record<string, string> = { owner: "Owner", staff: "Staff" };
@@ -16,10 +17,10 @@ export default async function StaffTenantLayout({ children, params }: LayoutProp
     // Client access (as on /my): only what this verified identity may read as a client.
     supabase.rpc("my_plans").limit(1),
     supabase.rpc("my_contracts").limit(1),
-    activeLogo(supabase, tenant.id, tenant.logo_storage_path),
+    activeLogo(supabase, tenant.id, tenant.logo_storage_path, tenant.logo_size_percent),
   ]);
   // Bounded on every side so the logo never meets the wordmark or the account button, even at 320 px.
-  const logoBox = "max-h-8 max-w-[calc(100vw-16rem)] sm:max-w-[calc(100vw-20rem)] lg:max-h-9 lg:max-w-72";
+  const logoBox = `${STAFF_HEADER_LOGO_HEIGHT} max-w-[calc(100vw-16rem)] sm:max-w-[calc(100vw-20rem)] lg:max-w-72`;
 
   return (
     <AppShell
@@ -51,12 +52,12 @@ export default async function StaffTenantLayout({ children, params }: LayoutProp
  * comes from the tenant row requireStaff read as this member; the URL is used
  * only when the logo is registered for this business.
  */
-async function activeLogo(supabase: StaffContext["supabase"], tenantId: string, path: string | null): Promise<Logo | null> {
+async function activeLogo(supabase: StaffContext["supabase"], tenantId: string, path: string | null, sizePercent: number): Promise<Logo | null> {
   if (!path) return null;
   const [{ data: row }, url] = await Promise.all([
     supabase.from("tenant_logos").select("needs_dark_background, width, height").eq("tenant_id", tenantId).eq("storage_path", path).maybeSingle(),
     signedLogoUrl(path),
   ]);
   if (!row || !url) return null;
-  return { url, needsDarkBackground: row.needs_dark_background === true, width: row.width, height: row.height };
+  return { url, needsDarkBackground: row.needs_dark_background === true, width: row.width, height: row.height, sizePercent };
 }

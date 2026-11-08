@@ -77,7 +77,7 @@ export async function openContractInvitation(slug: string, token: string): Promi
   // Null for an archived or suspended business.
   const live = await liveBrand(slug);
   if (!live) return none;
-  const brand: PublicBrand = { displayName: live.displayName, brandColors: live.brandColors, logo: live.logo ? { url: live.logo.url, needsDarkBackground: live.logo.needsDarkBackground } : null };
+  const brand: PublicBrand = { displayName: live.displayName, brandColors: live.brandColors, logo: live.logo ? { url: live.logo.url, needsDarkBackground: live.logo.needsDarkBackground, sizePercent: live.logo.sizePercent } : null };
   // Already signed in as the contract's signer (verified): continue to the invitation, which rechecks everything.
   const { data: auth } = await (await createClient()).auth.getUser();
   const email = auth.user?.email_confirmed_at && auth.user.email ? auth.user.email.toLowerCase() : null;

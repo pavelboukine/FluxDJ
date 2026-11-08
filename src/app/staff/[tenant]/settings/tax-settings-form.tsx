@@ -81,16 +81,19 @@ export function TaxSettingsForm({ action, version, rates, categories, usage }: P
   }
 
   return (
-    <ActionForm action={action} version={version} submitLabel="Save tax settings" trackUnsaved>
+    <ActionForm action={action} version={version} submitLabel="Save changes" trackUnsaved className="gap-8">
       <span ref={sentinel} hidden />
-      <fieldset className="grid gap-3">
-        <legend className="mb-1 text-sm font-medium">Taxes</legend>
+      <fieldset className="grid min-w-0 gap-4">
+        <legend className="mb-1 text-base font-semibold">Taxes</legend>
+        <p className="text-sm text-muted-foreground">
+          Nothing is filled in for you: enter the rates from your own registration. Proposals can&apos;t be sent while a category they use has no taxes set.
+        </p>
         {rows.length === 0 ? <p className="text-sm text-muted-foreground">No taxes yet. Add the taxes you charge, with their exact rates.</p> : null}
         {rows.map((row, i) => (
-          <div key={row.id} className="grid grid-cols-[1fr_7rem_auto] items-end gap-2" data-testid="tax-row">
+          <div key={row.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_auto]" data-testid="tax-row">
             <input type="hidden" name="tax_row" value={row.id} />
             <input type="hidden" name={`tax_code:${row.id}`} value={row.code} />
-            <div className="grid gap-1.5">
+            <div className="col-span-2 grid gap-1.5 sm:col-span-1">
               <Label htmlFor={`tax_label_${row.id}`}>Tax {i + 1} name</Label>
               <Input
                 id={`tax_label_${row.id}`}
@@ -122,97 +125,101 @@ export function TaxSettingsForm({ action, version, rates, categories, usage }: P
           <Button type="button" variant="secondary" onClick={addTax} disabled={rows.length >= MAX_TAXES}>
             Add tax
           </Button>
-          <p className="text-xs text-muted-foreground">Rates are exact percentages with up to 4 decimals, for example 5 or 9.975. Up to {MAX_TAXES} taxes.</p>
+          <p className="text-xs text-muted-foreground">Exact percentages with up to 4 decimals, for example 5 or 9.975. Up to {MAX_TAXES} taxes.</p>
         </div>
       </fieldset>
 
-      <fieldset className="grid gap-4">
-        <legend className="mb-1 text-sm font-medium">Tax categories</legend>
-        <p className="text-sm text-muted-foreground">
-          Each gear item and package has a tax category. Choose which taxes apply to each one. A category that is not configured blocks
-          sending any offer that uses it; “No tax” is a deliberate choice.
-        </p>
-        {keys.map((key) => {
-          const m = mapFor(key);
-          const u = usage.find((x) => x.key === key);
-          return (
-            <div key={key} role="group" aria-label={`Category ${key}`} className="grid gap-2 rounded-lg border p-3">
-              <input type="hidden" name="category" value={key} />
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <span className="font-mono text-sm font-medium">{key}</span>
-                <span className="text-xs text-muted-foreground">{usageText(u)}</span>
-              </div>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-                {(
-                  [
-                    ["unset", "Not configured"],
-                    ["none", "No tax"],
-                    ["taxes", "Apply taxes"],
-                  ] as const
-                ).map(([mode, label]) => (
-                  <label key={mode} className="flex min-h-11 items-center gap-2 md:min-h-0">
-                    <input
-                      type="radio"
-                      name={`category_mode:${key}`}
-                      value={mode}
-                      checked={m.mode === mode}
-                      onChange={() => setMode(key, mode)}
-                      className="size-4 accent-primary"
-                    />
-                    {label}
-                  </label>
-                ))}
-              </div>
-              {m.mode === "taxes" ? (
-                rows.length === 0 ? (
-                  <p className="text-sm text-amber-700 dark:text-amber-400">Add a tax above first.</p>
-                ) : (
+      <div className="border-t pt-8">
+        <fieldset className="grid min-w-0 gap-4">
+          <legend className="mb-1 text-base font-semibold">Tax categories</legend>
+          <p className="text-sm text-muted-foreground">
+            Each gear item and package has a tax category. Choose which taxes apply to each one. &ldquo;Not configured&rdquo; blocks sending any
+            offer that uses the category; &ldquo;No tax&rdquo; is a deliberate choice.
+          </p>
+          <div className="divide-y border-y">
+            {keys.map((key) => {
+              const m = mapFor(key);
+              const u = usage.find((x) => x.key === key);
+              return (
+                <div key={key} role="group" aria-label={`Category ${key}`} className="grid gap-2 py-4" data-testid="tax-category">
+                  <input type="hidden" name="category" value={key} />
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                    <span className="text-sm font-medium [overflow-wrap:anywhere]">{key}</span>
+                    <span className="text-xs text-muted-foreground">{usageText(u)}</span>
+                  </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-                    {rows.map((row, i) => (
-                      <label key={row.id} className="flex min-h-11 items-center gap-2 md:min-h-0">
+                    {(
+                      [
+                        ["unset", "Not configured"],
+                        ["none", "No tax"],
+                        ["taxes", "Apply taxes"],
+                      ] as const
+                    ).map(([mode, label]) => (
+                      <label key={mode} className="flex min-h-11 items-center gap-2 md:min-h-0">
                         <input
-                          type="checkbox"
-                          name={`category_tax:${key}`}
-                          value={row.id}
-                          checked={m.rows.includes(row.id)}
-                          onChange={(e) => toggleTax(key, row.id, e.target.checked)}
+                          type="radio"
+                          name={`category_mode:${key}`}
+                          value={mode}
+                          checked={m.mode === mode}
+                          onChange={() => setMode(key, mode)}
                           className="size-4 accent-primary"
                         />
-                        {row.label || `Tax ${i + 1}`}
+                        {label}
                       </label>
                     ))}
                   </div>
-                )
-              ) : null}
-              {m.mode === "unset" && u && (u.gear || u.packages) ? (
-                <p className="text-sm text-amber-700 dark:text-amber-400">Offers that include these items can&apos;t be previewed or sent until this is configured.</p>
-              ) : null}
-            </div>
-          );
-        })}
-        <div className="grid gap-1.5">
-          <Label htmlFor="new_tax_category">Add a category</Label>
-          <div className="flex flex-wrap gap-2">
-            <Input
-              id="new_tax_category"
-              className="max-w-60"
-              value={newKey}
-              placeholder="exempt"
-              onChange={(e) => setNewKey(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  addCategory();
-                }
-              }}
-            />
-            <Button type="button" variant="secondary" onClick={addCategory}>
-              Add category
-            </Button>
+                  {m.mode === "taxes" ? (
+                    rows.length === 0 ? (
+                      <p className="text-sm text-amber-700 dark:text-amber-400">Add a tax above first.</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 rounded-lg bg-muted/60 px-3 py-2 text-sm">
+                        {rows.map((row, i) => (
+                          <label key={row.id} className="flex min-h-11 items-center gap-2 md:min-h-0">
+                            <input
+                              type="checkbox"
+                              name={`category_tax:${key}`}
+                              value={row.id}
+                              checked={m.rows.includes(row.id)}
+                              onChange={(e) => toggleTax(key, row.id, e.target.checked)}
+                              className="size-4 accent-primary"
+                            />
+                            {row.label || `Tax ${i + 1}`}
+                          </label>
+                        ))}
+                      </div>
+                    )
+                  ) : null}
+                  {m.mode === "unset" && u && (u.gear || u.packages) ? (
+                    <p className="text-sm text-amber-700 dark:text-amber-400">Offers that include these items can&apos;t be previewed or sent until this is configured.</p>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
-          {keyError ? <p role="alert" className="text-sm text-destructive">{keyError}</p> : null}
-        </div>
-      </fieldset>
+          <div className="grid gap-1.5">
+            <Label htmlFor="new_tax_category">Add a category</Label>
+            <div className="flex flex-wrap gap-2">
+              <Input
+                id="new_tax_category"
+                className="max-w-60"
+                value={newKey}
+                placeholder="exempt"
+                onChange={(e) => setNewKey(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addCategory();
+                  }
+                }}
+              />
+              <Button type="button" variant="secondary" onClick={addCategory}>
+                Add category
+              </Button>
+            </div>
+            {keyError ? <p role="alert" className="text-sm text-destructive">{keyError}</p> : null}
+          </div>
+        </fieldset>
+      </div>
       <p className="text-xs text-muted-foreground">
         Changes apply to offers sent from now on. Proposals and contracts already sent keep the taxes they were sent with.
       </p>

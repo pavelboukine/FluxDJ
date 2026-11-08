@@ -87,14 +87,14 @@ test.describe.serial("planning cutoff and reopening", () => {
   });
 
   test("the owner sets the business's days; the existing plan keeps its deadline", async () => {
-    await staff.goto(`/staff/${tenant.slug}/settings#planning`);
+    await staff.goto(`/staff/${tenant.slug}/settings/planning`);
     const field = staff.getByLabel("Days before the event");
     await expect(field).toHaveValue("14");
     await field.fill("400");
-    await staff.getByRole("button", { name: "Save planning deadline" }).click();
+    await staff.getByRole("region", { name: "Planning deadline" }).getByRole("button", { name: "Save changes" }).click();
     await expect(field).toHaveJSProperty("validity.valid", false);
     await field.fill("21");
-    await staff.getByRole("button", { name: "Save planning deadline" }).click();
+    await staff.getByRole("region", { name: "Planning deadline" }).getByRole("button", { name: "Save changes" }).click();
     await expect(staff.getByText("Planning deadline saved. It applies to plans set up from now on; existing plans keep their deadlines.")).toBeVisible();
     expect((await must(admin.from("tenants").select("planning_lock_days").eq("id", tenant.id).single())).data!.planning_lock_days).toBe(21);
     const { data: plan } = await must(admin.from("event_plans").select("client_cutoff_days").eq("event_id", eventId).single());

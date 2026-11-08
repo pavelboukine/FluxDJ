@@ -17,6 +17,20 @@ export async function transparentPng(width: number, height: number, rgb: [number
   return sharp(pixels, { raw: { width, height, channels: 4 } }).png().toBuffer();
 }
 
+/** A coloured disc on a canvas with a transparent margin of `margin` pixels. Its corners stay transparent however tightly it is trimmed. */
+export async function paddedDiscPng(size: number, margin: number, rgb: [number, number, number] = [225, 29, 72]): Promise<Buffer> {
+  const pixels = Buffer.alloc(size * size * 4);
+  const radius = size / 2 - margin;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      if (Math.hypot(x + 0.5 - size / 2, y + 0.5 - size / 2) > radius) continue;
+      const i = (y * size + x) * 4;
+      [pixels[i], pixels[i + 1], pixels[i + 2], pixels[i + 3]] = [...rgb, 255];
+    }
+  }
+  return sharp(pixels, { raw: { width: size, height: size, channels: 4 } }).png().toBuffer();
+}
+
 export const opaqueJpeg = (width: number, height: number) =>
   sharp({ create: { width, height, channels: 3, background: { r: 17, g: 94, b: 89 } } }).jpeg().toBuffer();
 

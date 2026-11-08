@@ -79,13 +79,17 @@ test.describe.serial("setup guide and business settings", () => {
     await expect(page.getByRole("navigation", { name: "Staff" }).getByRole("link", { name: "Settings" })).toHaveAttribute("aria-current", "page");
     await expect(page.getByTestId("setup-progress")).toHaveText("0 of 4 required steps ready");
     await expect(page.getByTestId("ready-proposals")).toContainText("Still needs: Taxes, Three packages.");
+    // A contract-only booking needs neither taxes nor packages, and planning-only events need neither step.
+    await expect(page.getByTestId("ready-contracts")).toContainText("Still needs: Business details, Contract template.");
+    await expect(page.getByTestId("ready-planning")).toHaveAttribute("data-ready", "true");
+    await expect(page.getByTestId("setup-readiness")).not.toContainText("once a proposal is approved");
 
     // Required, recommended and optional steps, each linking to its existing page.
     const expected: [string, string, string][] = [
-      ["identity", "not_started", `/staff/${fresh.slug}/settings?from=setup`],
-      ["branding", "optional", `/staff/${fresh.slug}/settings?from=setup#branding`],
-      ["booking", "not_started", `/staff/${fresh.slug}/settings?from=setup#booking`],
-      ["taxes", "not_started", `/staff/${fresh.slug}/settings?from=setup#taxes`],
+      ["identity", "not_started", `/staff/${fresh.slug}/settings/profile?from=setup`],
+      ["branding", "optional", `/staff/${fresh.slug}/settings/branding?from=setup`],
+      ["booking", "not_started", `/staff/${fresh.slug}/settings/bookings?from=setup`],
+      ["taxes", "not_started", `/staff/${fresh.slug}/settings/taxes?from=setup`],
       ["gear", "optional", `/staff/${fresh.slug}/gear?from=setup`],
       ["packages", "not_started", `/staff/${fresh.slug}/packages?from=setup`],
       ["proposal-template", "not_started", `/staff/${fresh.slug}/templates?from=setup`],
@@ -106,26 +110,25 @@ test.describe.serial("setup guide and business settings", () => {
 
     // Business details through the regrouped Settings page, then back.
     await task(page, "identity").getByRole("link").click();
-    await page.waitForURL(`**/staff/${fresh.slug}/settings?from=setup`);
-    await expect(page.getByRole("navigation", { name: "Settings sections" }).getByRole("link")).toHaveText(["Business profile", "Branding", "Bookings and taxes", "Planning", "Access"]);
+    await page.waitForURL(`**/staff/${fresh.slug}/settings/profile?from=setup`);
     await expect(page.getByLabel("Legal business name")).toHaveValue("");
     await page.getByLabel("Legal business name").fill("E2E Setup Sound Inc.");
     await page.getByLabel("Business address").fill("2 Setup Street, Montréal, QC");
     await page.getByLabel("Contact email").fill(`setup-${run}@example.test`);
-    await page.getByRole("button", { name: "Save settings" }).click();
+    await page.getByRole("region", { name: "Contract details" }).getByRole("button", { name: "Save changes" }).click();
     await expect(page.getByText("Settings saved.", { exact: false })).toBeVisible();
     await page.getByTestId("setup-return").click();
     await page.waitForURL(`**/staff/${fresh.slug}/setup`);
     await expect(task(page, "identity")).toHaveAttribute("data-status", "ready");
     await expect(page.getByTestId("setup-progress")).toHaveText("1 of 4 required steps ready");
-    // The deposit was saved with the legal details; the booking policy is still the untouched default.
+    // Saving the legal details doesn't review the booking policy, which is still the untouched default.
     await expect(task(page, "booking")).toHaveAttribute("data-status", "attention");
     await expect(task(page, "booking")).toContainText("Not reviewed yet.");
 
     await task(page, "booking").getByRole("link").click();
-    await page.waitForURL(`**/settings?from=setup#booking`);
+    await page.waitForURL(`**/settings/bookings?from=setup`);
     await expect(page.getByTestId("deposit-summary")).toContainText("50%");
-    await page.getByRole("button", { name: "Save booking policy" }).click();
+    await page.getByRole("region", { name: "Booking confirmation" }).getByRole("button", { name: "Save changes" }).click();
     await expect(page.getByText("Booking policy saved.", { exact: false })).toBeVisible();
     await page.getByTestId("setup-return").click();
     await expect(task(page, "booking")).toHaveAttribute("data-status", "ready");
@@ -147,7 +150,7 @@ test.describe.serial("setup guide and business settings", () => {
     await page.goto(`/staff/${fresh.slug}/setup`);
     await expect(task(page, "planning")).toHaveAttribute("data-status", "ready");
     await expect(task(page, "planning")).toContainText("Default for Wedding events.");
-    await page.goto(`/staff/${fresh.slug}/settings#planning-defaults`);
+    await page.goto(`/staff/${fresh.slug}/settings/planning`);
     const defaults = page.getByTestId("planning-defaults");
     await expect(defaults.getByRole("link", { name: "Wedding" })).toBeVisible();
     await expect(defaults).toContainText("No default: event basics only");
@@ -170,8 +173,10 @@ test.describe.serial("setup guide and business settings", () => {
     await expect(staff.getByTestId("setup-readiness")).toContainText("can only be completed by the business owner");
     await task(staff, "taxes").getByRole("link").click();
     await expect(staff.getByText("Only the owner can change tax settings.")).toBeVisible();
-    await expect(staff.getByRole("button", { name: "Save tax settings" })).toHaveCount(0);
-    await expect(staff.getByRole("button", { name: "Save settings" })).toHaveCount(0);
+    await expect(staff.getByRole("main").getByRole("button", { name: "Save changes" })).toHaveCount(0);
+    await staff.goto(`/staff/${fresh.slug}/settings/profile`);
+    await expect(staff.getByRole("main").getByRole("button", { name: "Save changes" })).toHaveCount(0);
+    await staff.goto(`/staff/${fresh.slug}/settings/team`);
     await expect(staff.getByTestId("access-role")).toContainText("You are a staff member");
     await expect(staff.getByTestId("access-role")).toContainText("1 owner and 1 staff member");
     await staff.context().close();
@@ -189,7 +194,12 @@ test.describe.serial("setup guide and business settings", () => {
     await expect(page.getByTestId("setup-return")).toHaveCount(0); // only when opened from the guide
     await page.getByRole("link", { name: "Setup guide" }).click();
     await page.waitForURL(`**/staff/${established.slug}/setup`);
-    await expect(page.getByRole("heading", { level: 1, name: "Your business is set up" })).toBeVisible();
+    // Ready to work, and honest about what's only recommended: nothing here reads as a problem.
+    await expect(page.getByRole("heading", { level: 1, name: "You're ready to send proposals and contracts" })).toBeVisible();
+    await expect(page.getByTestId("setup-progress")).toContainText("4 of 4 required steps ready");
+    await expect(page.getByTestId("setup-recommended")).toContainText("recommended");
+    await expect(task(page, "booking").getByTestId("setup-status")).toHaveText("Recommended");
+    await expect(page.getByRole("main")).not.toContainText("Needs attention");
     await expect(page.getByTestId("ready-proposals")).toHaveAttribute("data-ready", "true");
     await expect(page.getByTestId("ready-contracts")).toHaveAttribute("data-ready", "true");
     await expect(task(page, "packages")).toHaveAttribute("data-status", "ready");
@@ -219,10 +229,12 @@ test.describe.serial("setup guide and business settings", () => {
     // A step's link works from the keyboard.
     await task(page, "taxes").getByRole("link").focus();
     await page.keyboard.press("Enter");
-    await page.waitForURL(`**/settings?from=setup#taxes`);
+    await page.waitForURL(`**/settings/taxes?from=setup`);
     expect(await sideways(page)).toBeLessThanOrEqual(0);
-    await page.getByRole("navigation", { name: "Settings sections" }).getByRole("link", { name: "Access" }).click();
-    await expect(page).toHaveURL(/#access$/);
+    // Between settings pages on a phone: back to the directory, then on to another page.
+    await page.getByTestId("settings-back").click();
+    await page.getByTestId("settings-directory").getByRole("link", { name: /^Team & access/ }).click();
+    await page.waitForURL(`**/settings/team`);
     await expect(page.getByTestId("access-role")).toBeInViewport();
     await shot(page, info, "settings-phone");
     await page.context().close();

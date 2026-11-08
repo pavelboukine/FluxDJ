@@ -3,7 +3,7 @@
 A map of the current database for developers and coding agents: what is
 authoritative, how the parts fit, where each business rule lives, and how to
 change it safely. It describes the schema as of migration
-`20261127000100_tenant_proposal_default`. Per-feature behaviour is in the README
+`20261129000100_logo_size`. Per-feature behaviour is in the README
 ("How tenant isolation works" onwards, and the table of pgTAP files);
 releasing a migration is in [`operations.md`](operations.md), section 2.
 
@@ -130,6 +130,17 @@ Almost every table carries `tenant_id`.
   provider events and the worker record (`record_email_provider_event`,
   `record_worker_run`). The grants are in the snapshot
   (`GRANT ALL ON FUNCTION … TO "service_role"`).
+- **Business settings.** Owners change the business's own settings only
+  through functions that check membership with `private.require_staff_of`
+  (or `require_owner_of`) and then the owner role: one per setting group
+  (`update_business_identity`, `update_deposit_percent`, `update_reply_to_email`,
+  `update_booking_policy`, `update_proposal_default`, `update_tax_settings`,
+  `update_planning_cutoff_days`, `update_planning_dj_name`,
+  `update_tenant_branding`). Each writes only its own columns, so saves on
+  different settings pages never overwrite each other; the versioned ones
+  raise `PT409` for a stale tab. Column grants deny direct updates.
+  `update_business_settings` (legal identity and deposit together) remains
+  only for app versions released before `20261128000100`.
 - **Suspension and archiving.** `private.tenant_write_guard` refuses every
   write to a suspended tenant's rows (`PT423`), for every role. Suspension
   columns change only through `suspend_workspace` and `restore_workspace`

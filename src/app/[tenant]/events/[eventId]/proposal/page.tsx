@@ -1,3 +1,4 @@
+import { CLIENT_PAGE_LOGO } from "@/lib/branding/logo-size";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { BrandLogo } from "@/components/app/brand-logo";
@@ -68,7 +69,7 @@ export default async function ApprovedProposal({ params }: PageProps<"/[tenant]/
       <main style={brandStyle(live?.brandColors.primary)} className="mx-auto grid w-full max-w-3xl gap-5 px-4 pt-5 pb-[max(2.5rem,env(safe-area-inset-bottom))] sm:gap-6 sm:pt-8">
         <header className="grid gap-3">
           <span className="flex min-h-8 min-w-0 items-center text-sm">
-            <BrandLogo logo={live?.logo ?? null} name={dj} className="max-h-9 max-w-36" fallbackClassName="font-semibold [overflow-wrap:anywhere]" />
+            <BrandLogo logo={live?.logo ?? null} name={dj} className={CLIENT_PAGE_LOGO} fallbackClassName="font-semibold [overflow-wrap:anywhere]" />
           </span>
           <div className="grid gap-1.5">
             <h1 className="text-[1.375rem] leading-tight font-semibold tracking-tight text-balance sm:text-[1.75rem]">Your approved proposal</h1>

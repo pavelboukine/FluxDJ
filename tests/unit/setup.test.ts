@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DashboardFacts } from "@/lib/dashboard";
-import { fromSetup, offerablePackages, readiness, requiredSetup, setupGuide, type SetupExtras } from "@/lib/setup";
+import { fromSetup, offerablePackages, readiness, requiredSetup, setupGuide, taskStatusLabel, type SetupExtras } from "@/lib/setup";
 
 type Setup = DashboardFacts["setup"] & { offerable_packages: number };
 const configured: Setup = { identity_saved: true, tax_categories: ["standard"], used_tax_categories: ["standard"], active_packages: 3, offerable_packages: 3, usable_proposal_templates: 1, client_use_contract_templates: 1 };
@@ -29,7 +29,7 @@ describe("required setup (dashboard card)", () => {
     expect(taxes.done).toBe(false);
     expect(taxes.status).toBe("attention");
     expect(taxes.hint).toContain("alcohol");
-    expect(taxes.href).toBe("/staff/dj/settings#taxes");
+    expect(taxes.href).toBe("/staff/dj/settings/taxes");
   });
   it("needs three active packages, and marks owner-only steps", () => {
     expect(missing({ ...configured, active_packages: 2, offerable_packages: 2 })).toEqual(["packages"]);
@@ -81,6 +81,15 @@ describe("setup guide", () => {
     expect(byKey(configured, fresh).get("booking")!.status).toBe("attention");
     expect(byKey(configured, { ...fresh, bookingPolicyReviewed: true }).get("booking")!.status).toBe("ready");
   });
+  it("never calls a recommended step a problem, whatever its stored status", () => {
+    const booking = byKey(configured, fresh).get("booking")!;
+    expect(booking.done).toBe(false);
+    expect(taskStatusLabel(booking)).toBe("Recommended");
+    expect(taskStatusLabel(byKey(configured, { ...fresh, bookingPolicyReviewed: true }).get("booking")!)).toBe("Ready");
+    // A required step that's started but incomplete still does.
+    const partial = requiredSetup({ ...configured, used_tax_categories: ["exempt"] }, "dj").find((t) => t.key === "taxes")!;
+    expect(taskStatusLabel(partial)).toBe("Needs attention");
+  });
   it("describes branding by what is actually saved, and keeps it optional", () => {
     const branding = (x: Partial<SetupExtras>) => byKey(configured, { ...fresh, ...x }).get("branding")!;
     expect(branding({})).toMatchObject({ label: "Customize branding", level: "optional", status: "optional", hint: "Add your logo or choose a brand colour." });
@@ -102,7 +111,7 @@ describe("readiness", () => {
   it("says what each workflow still needs", () => {
     expect(readiness(empty)).toEqual({
       proposals: ["Taxes", "Three packages"],
-      contracts: ["Taxes", "Three packages", "Business details", "Contract template"],
+      contracts: ["Business details", "Contract template"],
       readyCount: 0,
       total: 4,
     });

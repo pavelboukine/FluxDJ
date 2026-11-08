@@ -14,7 +14,10 @@ import { LOGO_BUCKET } from "./logo.server";
  * LOGO_MAX_UPLOAD_BYTES and LOGO_MAX_INPUT_SIDE pixels a side. The content is
  * sniffed and decoded here, then re-encoded as a fresh PNG (transparency kept,
  * metadata dropped, EXIF orientation applied) that fits within
- * LOGO_OUTPUT_SIDE pixels without stretching or cropping. Only the re-encoded
+ * LOGO_OUTPUT_SIDE pixels without stretching, with its empty transparent edges
+ * trimmed: logos are sized by their height, so a margin would shrink the visible
+ * mark. Nothing visible is cropped, and an opaque background is kept as drawn,
+ * because white could be part of the design. Only the re-encoded
  * file is stored, in the private tenant-logos bucket under
  * {tenant}/logos/{uuid}.png, and only after register_tenant_logo records it
  * can it become a business's active logo. Nothing is ever fetched from a URL.
@@ -47,12 +50,13 @@ export async function processLogo(bytes: Buffer): Promise<LogoResult> {
     if (width < LOGO_MIN_SIDE || height < LOGO_MIN_SIDE) return { ok: false, message: `The logo must be at least ${LOGO_MIN_SIDE} pixels wide and tall.` };
     if (width > LOGO_MAX_INPUT_SIDE || height > LOGO_MAX_INPUT_SIDE) return { ok: false, message: `The logo must be at most ${LOGO_MAX_INPUT_SIDE} pixels a side.` };
 
-    const { data: png, info } = await sharp(bytes, options)
+    const fitted = await sharp(bytes, options)
       .rotate()
       .resize({ width: LOGO_OUTPUT_SIDE, height: LOGO_OUTPUT_SIDE, fit: "inside", withoutEnlargement: true })
       .toColourspace("srgb")
       .png({ compressionLevel: 9, adaptiveFiltering: true })
       .toBuffer({ resolveWithObject: true });
+    const { data: png, info } = await trimTransparentEdges(fitted);
     if (png.length > LOGO_MAX_OUTPUT_BYTES) return { ok: false, message: "This image is too detailed for a logo. Try a simpler or smaller version." };
 
     // Visible pixels only: an empty (fully transparent) image is refused, and
@@ -75,6 +79,34 @@ export async function processLogo(bytes: Buffer): Promise<LogoResult> {
   } catch {
     return { ok: false, message: INVALID };
   }
+}
+
+/** Below this alpha (about 3%) a pixel can't be seen; exporters often leave such haze around artwork. */
+const VISIBLE_ALPHA = 8;
+
+type EncodedLogo = { data: Buffer; info: { width: number; height: number } };
+
+/** Removes rows and columns with nothing visible. A logo with no margin, or nothing visible at all, is returned as is. */
+async function trimTransparentEdges(logo: EncodedLogo): Promise<EncodedLogo> {
+  const { width, height } = logo.info;
+  const pixels = await sharp(logo.data).ensureAlpha().raw().toBuffer();
+  let left = width;
+  let right = -1;
+  let top = height;
+  let bottom = -1;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (pixels[(y * width + x) * 4 + 3] < VISIBLE_ALPHA) continue;
+      if (x < left) left = x;
+      if (x > right) right = x;
+      if (y < top) top = y;
+      if (y > bottom) bottom = y;
+    }
+  }
+  const box = { left, top, width: right - left + 1, height: bottom - top + 1 };
+  if (right < 0 || (box.width === width && box.height === height)) return logo;
+  const data = await sharp(logo.data).extract(box).png({ compressionLevel: 9, adaptiveFiltering: true }).toBuffer();
+  return { data, info: { width: box.width, height: box.height } };
 }
 
 export type StoredLogo = { logoId: string; path: string };

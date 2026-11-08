@@ -770,7 +770,7 @@ On **Events → Create event**, choose **Book through Flux DJ** (the default) wi
 proposal first** on for the full workflow. Turn it off to go straight to a contract. Until
 a proposal or contract is started, the event page can turn the proposal back on or off.
 An owner who rarely uses proposals can turn off **Send proposals by default** under
-**Settings → Bookings and taxes**. That only sets where the checkbox starts for new events.
+**Settings → Bookings**. That only sets where the checkbox starts for new events.
 
 1. The next step is **Prepare the contract**. Choose a published template; the form asks
    only for what that template uses: services, then a total, deposit and balance date if
@@ -857,13 +857,16 @@ throwaway workspace created through an invitation, never BOUPROD):
 
 #### Branding
 
-1. As an owner, open **Settings** and choose **Branding** in the section links.
-2. Choose a PNG, JPEG or WebP logo and a primary colour. The preview beside
-   the form updates at once (nothing is saved or sent yet).
-3. Click **Save branding**. The header shows the logo instead of the
-   business name; client contract and planning pages, and proposals sent
-   from now on, use the logo and colour.
-4. Check another business (for example Other DJ) still shows its own name or
+1. As an owner, open **Settings → Branding**.
+2. Choose a PNG, JPEG or WebP logo and a primary colour. The previews update
+   at once: the logo is shown as the save will store it (empty transparent
+   edges trimmed), and nothing is saved or sent yet.
+3. Move **Logo size** to make a square logo larger in your header and on
+   client pages; the header preview shows the result.
+4. Click **Save changes**. The header shows the logo instead of the
+   business name; client pages and emails, and proposals sent from now on,
+   use the logo and colour.
+5. Check another business (for example Other DJ) still shows its own name or
    logo, and that **Remove the logo** brings the name back.
 
 #### Installing Flux DJ on a phone
@@ -1418,6 +1421,22 @@ signed-out browser:
   fixtures that insert them directly so every invalid shape can be tried.
 - `65_tenant_proposal_default` (pgTAP): the default for existing businesses, owner-only
   changes, tenant isolation, and existing events left alone.
+- `66_deposit_and_identity_updates` (pgTAP): each save writes only its own
+  columns (a new business can set its deposit before its legal details),
+  owner-only, other businesses, removed members, suspended and archived
+  businesses refused; contracts freeze the percentage, the send review still
+  flags a changed deposit, a signed contract books on its own frozen deposit,
+  and direct contracts read the new requirement.
+- `67_logo_size` (pgTAP): 100% for every business, owner-only and versioned,
+  bounded 100 to 130, the earlier four-argument call keeps the size, and
+  client pages can read it.
+- `tests/e2e/settings-navigation.spec.ts`, `settings-unsaved-flow.spec.ts`,
+  `logo-size-flow.spec.ts` and `client-logo-size.spec.ts`: the directory and
+  page navigation on desktop and phones, old links, staff read-only pages,
+  unsaved-change questions (two forms, file and logo removal, tab close),
+  separate deposit and legal saves from stale tabs, and logo sizes measured
+  in the real staff header and a client's event page at 1280, 1024, 390 and
+  320 px.
 - `64_configurable_booking_workflows` (pgTAP),
   `tests/integration/configurable-booking-workflows.test.ts`,
   `tests/e2e/booking-workflows.spec.ts`: choosing the booking steps, correcting them
@@ -1811,25 +1830,47 @@ undelivered contract emails visibly.
 
 ### Business settings and contract send review
 
-- **Layout.** `/staff/{tenant}/settings` is one page in five sections with
-  section links (a column from 1024 px, wrapped links below): Business
-  profile (display name, time zone, currency and reply-to shown read-only, as
-  no screen changes them; legal details and deposit), Branding (`#branding`),
-  Bookings and taxes (`#booking`, `#taxes`, and how a proposal becomes a
-  booking), Planning (`#planning` deadline, and the default planning template
-  per event type, set on each template), and Access (your role and the
-  number of owners and staff). Every form and action is unchanged.
-- **Access.** Your role and the number of active owners and staff; owners
-  get **Manage team** (see "Staff team and invitations").
-- **Owner-only settings.** The owner manages `/staff/{tenant}/settings`:
-  - legal business name (`tenants.business_name`)
-  - business address
-  - contact email
-  - deposit percentage, a whole number from 0 to 100, default 50
+- **Layout.** `/staff/{tenant}/settings` is a directory of six pages in two
+  groups. General: Business profile (`/settings/profile`: display name, time
+  zone and currency read-only, legal details, reply-to), Branding
+  (`/settings/branding`), Team & access (`/settings/team`). Operations:
+  Bookings (`/settings/bookings`: new-event default, confirmation policy, how
+  the three booking workflows work), Taxes & payments (`/settings/taxes`:
+  deposit, taxes and tax categories) and Client planning (`/settings/planning`:
+  deadline, DJ name, default template per event type). From 1024 px a column
+  links the pages, with **All settings** first and **Setup guide** last;
+  below that, the directory is the menu and each page starts with
+  **All settings**. Pages are sections on hairlines, without cards.
+- **Old links.** `/staff/{tenant}/settings#anchor` links from the earlier
+  single page (`#legal`, `#reply-to`, `#branding`, `#booking`, `#taxes`,
+  `#planning`, `#dj-name`, `#access` and the rest) are forwarded in the
+  browser to the page that holds them, keeping `?from=setup`
+  (`legacySettingsHref` in `src/lib/navigation.ts`; a fragment never reaches
+  the server). `/staff/{tenant}/team` redirects to `/settings/team`.
+- **Saving.** Each form saves on its own (**Save changes**), one per
+  transaction boundary, so a page can have two. Save stays enabled on an
+  unchanged form: saving the booking policy unchanged is how the setup guide
+  learns it was reviewed. Editing again clears an earlier "saved" message.
+- **Unsaved changes.** On the settings pages, a link asks before leaving
+  unsaved edits (any number of forms, one question), and closing or
+  reloading the tab asks through the browser. `ActionForm` marks a form
+  `data-unsaved`; the settings layout marks the page `data-unsaved-guard`;
+  `PendingLink`'s `onNavigate` and `beforeunload` read the page
+  (`src/components/app/unsaved-navigation.ts`). Other pages are unaffected.
+  Not covered: browser Back and Forward (Next.js has no supported way to stop
+  them), signing out, and plain `next/link` links.
+- **Owner-only settings.** The owner manages, among the rest:
+  - legal business name (`tenants.business_name`), business address and
+    contact email, through `update_business_identity`
+    (`20261128000100`), which never writes the deposit
+  - deposit percentage, a whole number from 0 to 100, default 50, through
+    `update_deposit_percent`, which writes nothing else
 
-  The display name stays the client-facing brand. Changes go only through
-  `update_business_settings`, which checks the owner role in the database.
-  Staff can see the values but not edit them.
+  The display name stays the client-facing brand. Both functions check the
+  owner role (`require_staff_of`, then the role), suspension and archiving in
+  the database, and an unchanged deposit adds no audit entry. Staff see the
+  values read-only. `update_business_settings` (both at once) is kept only
+  for the app deployed before this release and can be dropped later.
 - **DJ name (Planning, `#dj-name`).** Optional `tenants.dj_name`, set by the
   owner through `update_planning_dj_name` (`20261121000100`). An event can
   name its own DJ on its details (`events.dj_name`, any staff). Planning and
@@ -2374,9 +2415,9 @@ Settings shows the legal-name field empty with a note naming the placeholder.
 
 ### Business branding
 
-Migration `20261020000100_business_branding.sql`. Each business owner sets a
-logo and a primary colour in **Settings → Branding**; other staff see them
-read-only. The active workspace decides what is shown, never the signed-in
+Migration `20261020000100_business_branding.sql`, and `20261129000100_logo_size.sql`
+for the logo size. Each business owner sets a logo, a primary colour and a logo
+size in **Settings → Branding**; other staff see them read-only. The active workspace decides what is shown, never the signed-in
 user: someone in two businesses sees each one's own branding.
 
 **Sources of truth.** The existing columns, now written only through
@@ -2387,6 +2428,10 @@ user: someone in two businesses sees each one's own branding.
   shown). A foreign key makes it a registered logo of the same business.
 - `tenants.brand_colors.primary`: `#rrggbb`, or absent for the default dark
   grey. Other keys are kept.
+- `tenants.logo_size_percent`: 100 to 130, default 100 (every existing
+  business keeps its appearance). `update_tenant_branding` takes it as an
+  optional fifth argument; omitted or null keeps the current size, so the
+  earlier four-argument call still works.
 
 Suspended businesses can't change branding (`PT423`); archived ones follow
 their existing settings rules.
@@ -2399,9 +2444,17 @@ their existing settings rules.
   the decoder finds; the declared type and extension are never trusted.
 - The image is decoded and re-encoded server-side with `sharp`: EXIF
   orientation applied, metadata dropped, sRGB, fitted inside 1024 by 1024
-  pixels without enlarging, stretching or cropping, transparency kept, saved
-  as PNG (also usable by the PDF renderer later). Fully transparent images
-  are refused; mostly light artwork is marked to be shown on a dark backdrop.
+  pixels without enlarging or stretching, transparency kept, saved as PNG
+  (also usable by the PDF renderer later). Empty transparent edges (alpha
+  below 8 of 255) are then trimmed, because logos are sized by their height
+  and a margin would shrink the visible mark; nothing visible is cropped and
+  opaque backgrounds are kept. Logos stored earlier are never reprocessed.
+  Fully transparent images are refused; mostly light artwork is marked to be
+  shown on a dark backdrop.
+- Choosing a file asks `previewLogo` (owner only, 60 an hour per owner as
+  `logo_preview`) to run the same processing without storing anything, so
+  the preview shows the logo as it will be saved. If that is refused, the
+  preview shows the file as chosen and the save reports any problem.
 - The file reaches a Server Action (`serverActions.bodySizeLimit` is 4.5 MB,
   under Vercel's request limit), which uploads only the re-encoded PNG to the
   private `tenant-logos` bucket as `{tenant}/logos/{uuid}.png`, then
@@ -2418,11 +2471,22 @@ their existing settings rules.
 
 | Where | Branding |
 |---|---|
-| Staff workspace header | Current logo (alt text: the business name), else the name |
-| Client contract and planning pages | Current logo and colour (invitation pages show the name only) |
-| Proposals | Frozen when sent (`offer_snapshot.branding`): a sent proposal keeps its logo and colour after the owner changes them; staff previews of drafts use the current ones |
+| Staff workspace header | Current logo (alt text: the business name), else the name; logo size applies |
+| Client event, planning, proposal-choice and contract pages, invitation cards | Current logo and colour; logo size applies (invitation cards capped) |
+| Proposals | Frozen when sent (`offer_snapshot.branding`): a sent proposal keeps its logo and colour after the owner changes them; staff previews of drafts use the current ones. Standard size |
+| Emails | Logo and colour frozen at each email's first attempt; a fixed 220 by 56 box |
+| `/my` (a client's events) | Each business's logo at a standard size, side by side |
 | Run sheet (page and PDF) | Current colour (unchanged) |
-| Signed contract PDFs, emails | Unchanged; no logo (see below) |
+| Signed contract PDFs | No logo (see below) |
+
+**Logo size.** Logos are limited by height, so a square logo has far less
+area than a wide wordmark at the same height. `BrandLogo` sets
+`--logo-scale` from the size, and a surface opts in with one of the height
+limits in `src/lib/branding/logo-size.ts`: the image stays in the layout (no
+transform), keeps its aspect ratio, still stops at the surface's width limit,
+and is never enlarged past its own pixels. At 100% every limit is exactly the
+earlier one. The staff header is a fixed 56 px and a light logo's dark plate
+adds 8 px, so 130% (47 px on desktop, 42 px on phones) is the largest.
 
 Buttons and headers on a brand colour use white or black text, whichever
 contrasts more (always at least 4.5:1, `src/lib/branding/colors.ts`). Errors,
@@ -2435,7 +2499,7 @@ lists registered logos neither active nor frozen into a proposal, and stored
 objects that never became a registered logo (an upload whose registration
 failed and couldn't be removed). Clean-up stays a deliberate manual step.
 
-**Deferred.** Signed contract PDFs and emails carry no logo. Adding one needs
+**Deferred.** Signed contract PDFs carry no logo. Adding one needs
 the logo frozen into the contract's party snapshot at generation (the
 snapshot point for contracts); canonical PDFs and contract hashes must not
 change, so it is a separate task. The run-sheet PDF could use the current
@@ -2636,8 +2700,10 @@ development and reads nothing from the database.
 
 Migration `20261030000100_staff_invitations.sql`. Separate from DJ (platform)
 invitations, which create a business: a staff invitation only grants a staff
-membership in an existing one. `/staff/{tenant}/team` (linked from Settings →
-Access; it highlights **Settings**, no new menu item).
+membership in an existing one. **Settings → Team & access**
+(`/staff/{tenant}/settings/team`; the old `/staff/{tenant}/team` redirects there).
+It shows your role, the number of owners and staff, and a Permissions summary
+of what owners and staff can do, matching the database's owner checks.
 
 **Owner only.** Members (email, role, active or removed), pending and recent
 invitations, **Send invitation** (email; the role is always Staff),
@@ -2645,7 +2711,7 @@ invitations, **Send invitation** (email; the role is always Staff),
 function checks the owner role again in the database
 (`private.require_owner_of`): staff get a permission error, other businesses
 and removed members "not found", a suspended workspace `workspace_suspended`.
-Staff see their own role on Team and in Settings → Access. Owners can't be
+Staff see their own role and the permissions there. Owners can't be
 removed or invite another owner; there is no ownership transfer.
 
 **Memberships.** Removal is soft (`tenant_memberships.removed_at`,
@@ -2721,7 +2787,7 @@ Every step links to the existing screen with `?from=setup`, which shows a
 |---|---|---|
 | Business details | required (contracts) | legal identity saved |
 | Customize branding | optional | a logo or a primary colour is saved (the step says which) |
-| Deposit and booking confirmation | recommended | legal details (with the deposit) saved and `booking_policy_version > 0` (the owner saved the policy once; the default is otherwise "not reviewed") |
+| Deposit and booking confirmation | recommended | legal details saved and `booking_policy_version > 0` (the owner saved the policy once; the default is otherwise "not reviewed") |
 | Taxes | required (proposals) | as on the dashboard |
 | Gear and services | optional | an active gear item |
 | Three packages | required (proposals) | three active packages whose included gear is all active (`build_offer_snapshot` refuses archived gear) |
@@ -2731,9 +2797,14 @@ Every step links to the existing screen with `?from=setup`, which shows a
 | Planning template | recommended | an active template is the default for an event type |
 | Your first event | optional | an unarchived event |
 
-Statuses are Ready, Needs attention (required or recommended, partly done),
-Not started, and Optional. The summary counts only the four required steps and
-says what sending proposals and contracts still needs. Steps check what is
+Statuses are Ready, Needs attention (a required step partly done), Not
+started, Optional, and Recommended (a recommended step not done yet, shown
+calmly: its default works). Once the four required steps are ready the guide
+reads "You're ready to send proposals and contracts" and counts the
+recommended steps left beside the progress. Readiness is per workflow:
+proposals need taxes and three packages; contracts, with or without a
+proposal first, need business details and a published template; planning
+only (events booked elsewhere) needs neither. Steps check what is
 saved, not whether terms or prices are right; each proposal and contract is
 still validated when it is previewed and sent. Suspended workspaces get the
 existing unavailable page; other businesses get 404.

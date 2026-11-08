@@ -394,16 +394,18 @@ test.describe.serial("staff interface", () => {
     await expect(page.getByText("Draft saved. Nothing has been sent.")).toBeVisible();
     await page.unroute(proposalUrl);
 
-    // The completed save did not replace the newer input, and it is flagged as unsaved.
+    // The completed save did not replace the newer input, and it is flagged as unsaved. The exact text: the
+    // preview's own status ("Showing your unsaved changes…") also mentions unsaved changes.
     await expect(intro).toHaveValue("Typed while the save was pending");
     await expect(expiry).toHaveValue("30");
-    await expect(page.getByRole("status").filter({ hasText: "Unsaved changes" })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: /^Unsaved changes$/ })).toBeVisible();
     expect(await draftRow()).toEqual({ version: before.version + 1, expiry: 30, intro: before.intro });
 
     // Saving again stores it, using the refreshed version (no false conflict).
     await saveButton.click();
     await expect.poll(draftRow).toEqual({ version: before.version + 2, expiry: 30, intro: "Typed while the save was pending" });
-    await expect(page.getByRole("status").filter({ hasText: "Unsaved changes" })).toHaveCount(0);
+    await expect(page.getByRole("status").filter({ hasText: /^Unsaved changes$/ })).toHaveCount(0);
+    await expect(page.getByTestId("preview-status")).not.toContainText("unsaved changes");
     await expect(page.getByRole("alert").filter({ hasText: "Someone else saved" })).toHaveCount(0);
 
     // Applying a template intentionally replaces the editor's contents, including unsaved choices.

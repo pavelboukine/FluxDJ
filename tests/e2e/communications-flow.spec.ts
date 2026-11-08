@@ -60,10 +60,10 @@ test.describe.serial("event email history and branded emails", () => {
   });
 
   test("a proposal email carries the business's own logo inline and shows in the event's history as accepted, not delivered", async () => {
-    await owner.goto(`/staff/${tenant.slug}/settings#branding`);
+    await owner.goto(`/staff/${tenant.slug}/settings/branding`);
     await owner.getByLabel("Logo", { exact: true }).setInputFiles(logoFile);
     await owner.getByLabel("Primary colour", { exact: true }).fill("#7c3aed");
-    await owner.getByRole("button", { name: "Save branding" }).click();
+    await owner.getByRole("button", { name: "Save changes" }).click();
     await expect(owner.getByRole("status").filter({ hasText: "Branding saved." })).toBeVisible();
 
     const sentAt = Date.now();
@@ -133,13 +133,13 @@ test.describe.serial("event email history and branded emails", () => {
   });
 
   test("the owner edits the reply-to, and a provider-confirmed bounce raises a dashboard warning", async () => {
-    await owner.goto(`/staff/${tenant.slug}/settings#reply-to`);
+    await owner.goto(`/staff/${tenant.slug}/settings/profile#reply-to`);
     const field = owner.getByLabel("Reply-to email");
     await field.fill("not-an-email@");
-    await owner.getByRole("button", { name: "Save reply-to" }).click();
+    await owner.getByRole("region", { name: "Replies and notifications" }).getByRole("button", { name: "Save changes" }).click();
     await expect(field).toHaveJSProperty("validity.valid", false);
     await field.fill(`office-${run}@example.test`);
-    await owner.getByRole("button", { name: "Save reply-to" }).click();
+    await owner.getByRole("region", { name: "Replies and notifications" }).getByRole("button", { name: "Save changes" }).click();
     await expect(owner.getByRole("status").filter({ hasText: `now go to office-${run}@example.test` })).toBeVisible();
     expect((await admin.from("tenants").select("reply_to_email").eq("id", tenant.id).single()).data!.reply_to_email).toBe(`office-${run}@example.test`);
 

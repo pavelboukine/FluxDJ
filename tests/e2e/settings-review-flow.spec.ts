@@ -78,25 +78,32 @@ test.describe.serial("business settings, contract generation and review", () => 
     const staff = await staffContext.newPage();
     await signInStaff(staff, staffEmail);
     await expect(staff.getByRole("navigation", { name: "Staff" }).getByRole("link", { name: "Settings" })).toBeVisible();
-    await staff.goto(`/staff/${tenant.slug}/settings`);
+    await staff.goto(`/staff/${tenant.slug}/settings/profile`);
     await expect(staff.getByText("Only the owner can change business settings.")).toBeVisible();
-    await expect(staff.getByRole("button", { name: "Save settings" })).toHaveCount(0);
+    await expect(staff.getByRole("main").getByRole("button", { name: "Save changes" })).toHaveCount(0);
     await staffContext.close();
 
     await owner.getByRole("navigation", { name: "Staff" }).getByRole("link", { name: "Settings" }).click();
     await expect(owner.getByRole("heading", { name: "Business settings" })).toBeVisible();
-    await expect(owner.getByLabel("Deposit due on signing (%)")).toHaveValue("50");
+    await owner.getByTestId("settings-directory").getByRole("link", { name: /^Business profile/ }).click();
+    await expect(owner.getByRole("heading", { level: 1, name: "Business profile" })).toBeVisible();
     await owner.getByLabel("Legal business name").fill("E2E Legal Sound Inc.");
     await owner.getByLabel("Business address").fill("5 Rue E2E, Montréal, QC");
     await owner.getByLabel("Contact email").fill("Legal@E2E.example.test");
+    await owner.getByRole("region", { name: "Contract details" }).getByRole("button", { name: "Save changes" }).click();
+    await expect(owner.getByText(/Settings saved/)).toBeVisible();
+
+    await owner.goto(`/staff/${tenant.slug}/settings/taxes`);
+    const deposit = owner.getByRole("region", { name: "Deposit" });
+    await expect(owner.getByLabel("Deposit due on signing (%)")).toHaveValue("50");
     // Browsers allow typing a decimal into a number field; the server refuses it.
     await owner.getByLabel("Deposit due on signing (%)").evaluate((el: HTMLInputElement) => el.setAttribute("step", "any"));
     await owner.getByLabel("Deposit due on signing (%)").fill("30.5");
-    await owner.getByRole("button", { name: "Save settings" }).click();
+    await deposit.getByRole("button", { name: "Save changes" }).click();
     await expect(owner.getByRole("alert").filter({ hasText: "whole percentage" })).toBeVisible();
     await owner.getByLabel("Deposit due on signing (%)").fill("30");
-    await owner.getByRole("button", { name: "Save settings" }).click();
-    await expect(owner.getByText(/Settings saved/)).toBeVisible();
+    await deposit.getByRole("button", { name: "Save changes" }).click();
+    await expect(owner.getByText(/Deposit saved/)).toBeVisible();
     const { data } = await admin.from("tenants").select("business_name, business_address, contact_email, deposit_percent, display_name").eq("id", tenant.id).single();
     expect(data).toEqual({
       business_name: "E2E Legal Sound Inc.", business_address: "5 Rue E2E, Montréal, QC", contact_email: "legal@e2e.example.test",
@@ -155,10 +162,10 @@ test.describe.serial("business settings, contract generation and review", () => 
     await expect(owner.getByRole("button", { name: "Send contract…" })).toBeEnabled();
 
     // A settings change after generation makes the review stale until regenerated.
-    await owner.goto(`/staff/${tenant.slug}/settings`);
+    await owner.goto(`/staff/${tenant.slug}/settings/taxes`);
     await owner.getByLabel("Deposit due on signing (%)").fill("40");
-    await owner.getByRole("button", { name: "Save settings" }).click();
-    await expect(owner.getByText(/Settings saved/)).toBeVisible();
+    await owner.getByRole("region", { name: "Deposit" }).getByRole("button", { name: "Save changes" }).click();
+    await expect(owner.getByText(/Deposit saved/)).toBeVisible();
     await owner.goto(`/staff/${tenant.slug}/contracts/${contractId}/review`);
     await expect(owner.getByText("Not ready")).toBeVisible();
     await expect(owner.getByRole("alert").filter({ hasText: "can't be sent" })).toContainText(

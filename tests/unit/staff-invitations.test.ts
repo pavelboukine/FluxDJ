@@ -47,6 +47,6 @@ describe("team errors and navigation", () => {
   it("highlight Settings on the team page without a new menu item", () => {
     const items = staffNavigation("dj", { platformAdmin: false }).flatMap((g) => g.items);
     expect(items.some((i) => i.href.endsWith("/team"))).toBe(false);
-    expect(isActive(items.find((i) => i.label === "Settings")!, "/staff/dj/team")).toBe(true);
+    expect(isActive(items.find((i) => i.label === "Settings")!, "/staff/dj/settings/team")).toBe(true);
   });
 });

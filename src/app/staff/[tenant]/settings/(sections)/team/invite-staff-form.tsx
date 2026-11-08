@@ -34,6 +34,7 @@ export function InviteStaffForm({ action }: { action: (state: ActionState, form:
       action={action}
       submitLabel="Send invitation"
       pendingLabel="Sending…"
+      trackUnsaved
       onSuccess={(result) => result.status === "success" && setSent(result.message)}
     >
       <RequestIdField />

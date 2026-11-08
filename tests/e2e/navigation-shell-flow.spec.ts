@@ -200,7 +200,7 @@ test.describe.serial("staff navigation shell", () => {
     await shot(page, info, "desktop-long-editor", true);
     await page.goto(`/staff/${wide.slug}/events/new`);
     await expect(nav(page).locator('[aria-current="page"]')).toHaveText("Events");
-    await page.goto(`/staff/${wide.slug}/settings`);
+    await page.goto(`/staff/${wide.slug}/settings/profile`);
     await shot(page, info, "desktop-settings", true);
     await page.context().close();
   });
@@ -327,7 +327,7 @@ test.describe.serial("staff navigation shell", () => {
 
     await page.goto(`/staff/${wide.slug}`);
     await shot(page, info, "phone-dashboard", true);
-    await page.goto(`/staff/${wide.slug}/settings`);
+    await page.goto(`/staff/${wide.slug}/settings/profile`);
     expect(await sideways(page)).toBeLessThanOrEqual(0);
     await shot(page, info, "phone-settings");
     await page.context().close();

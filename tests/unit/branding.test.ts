@@ -11,7 +11,7 @@ import {
   opaqueJpeg,
   opaqueWebp,
   svgLogo,
-  transparentPng,
+  paddedDiscPng, transparentPng,
   whiteOnTransparentPng,
 } from "../support/logo-fixtures";
 
@@ -62,15 +62,43 @@ describe("brand colours", () => {
 });
 
 describe("logo uploads", () => {
+  it("trims empty transparent edges so a margin can't shrink the visible logo, and crops nothing visible", async () => {
+    const padded = await processLogo(await paddedDiscPng(1000, 250));
+    if (!padded.ok) throw new Error("padded logo refused");
+    expect(padded.logo.width).toBe(padded.logo.height);
+    expect(padded.logo.width).toBeGreaterThanOrEqual(499);
+    expect(padded.logo.width).toBeLessThanOrEqual(501);
+    const { data, info } = await sharp(padded.logo.png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const alphaAt = (x: number, y: number) => data[(y * info.width + x) * 4 + 3];
+    const edge = Math.floor(info.width / 2);
+    // The disc still reaches all four edges, and they weren't cut past it.
+    expect([alphaAt(edge, 0), alphaAt(edge, info.height - 1), alphaAt(0, edge), alphaAt(info.width - 1, edge)]).toEqual([255, 255, 255, 255]);
+  });
+
+  it("leaves a logo with no margin, and an opaque background, exactly as sized", async () => {
+    const opaque = await processLogo(await opaqueJpeg(300, 120));
+    expect(opaque.ok && [opaque.logo.width, opaque.logo.height]).toEqual([300, 120]);
+    const flush = await processLogo(await paddedDiscPng(300, 0));
+    expect(flush.ok && [flush.logo.width, flush.logo.height]).toEqual([300, 300]);
+  });
+
   it("re-encodes PNG, JPEG and WebP to PNG, keeping transparency and aspect ratio within 1024 px", async () => {
+    // The fixture draws inside 10-90% of the width and 20-80% of the height.
+    const ratio = (l: { width: number; height: number }) => l.width / l.height;
     const wide = await processLogo(await transparentPng(2400, 300));
-    expect(wide.ok && { w: wide.logo.width, h: wide.logo.height }).toEqual({ w: 1024, h: 128 });
-    const tall = await processLogo(await transparentPng(200, 1600));
-    expect(tall.ok && { w: tall.logo.width, h: tall.logo.height }).toEqual({ w: 128, h: 1024 });
     if (!wide.ok) throw new Error("wide logo refused");
-    const meta = await sharp(wide.logo.png).metadata();
+    expect(wide.logo.width).toBeLessThanOrEqual(1024);
+    expect(ratio(wide.logo)).toBeCloseTo((2400 * 0.8) / (300 * 0.6), 0);
+    const tall = await processLogo(await transparentPng(200, 1600));
+    if (!tall.ok) throw new Error("tall logo refused");
+    expect(tall.logo.height).toBeLessThanOrEqual(1024);
+    expect(ratio(tall.logo)).toBeCloseTo((200 * 0.8) / (1600 * 0.6), 1);
+    // A disc keeps transparent corners after trimming, so transparency itself is what's tested.
+    const disc = await processLogo(await paddedDiscPng(400, 100));
+    if (!disc.ok) throw new Error("disc refused");
+    const meta = await sharp(disc.logo.png).metadata();
     expect(meta).toMatchObject({ format: "png", hasAlpha: true });
-    const corner = await sharp(wide.logo.png).extract({ left: 0, top: 0, width: 1, height: 1 }).raw().toBuffer();
+    const corner = await sharp(disc.logo.png).extract({ left: 0, top: 0, width: 1, height: 1 }).raw().toBuffer();
     expect(corner[3]).toBe(0); // still transparent
 
     for (const bytes of [await opaqueJpeg(300, 120), await opaqueWebp(300, 120)]) {
@@ -78,7 +106,7 @@ describe("logo uploads", () => {
       expect(result.ok).toBe(true);
       if (result.ok) expect((await sharp(result.logo.png).metadata()).format).toBe("png");
     }
-    const small = await processLogo(await transparentPng(200, 100));
+    const small = await processLogo(await opaqueWebp(200, 100));
     expect(small.ok && [small.logo.width, small.logo.height]).toEqual([200, 100]); // never enlarged
   });
 

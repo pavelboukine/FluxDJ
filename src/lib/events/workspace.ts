@@ -249,7 +249,7 @@ export function nextAction(f: WorkspaceFacts): NextAction {
     if (f.contractFirst && (!f.primaryContact || f.primaryContact.archived)) {
       blockers.push({ text: f.primaryContact ? "The primary contact is archived; the contract needs an active signer." : "Add a primary contact, who signs the contract.", link: { label: "Contacts", href: "#contacts" } });
     }
-    if (!f.identitySaved) blockers.push({ text: "Your legal name, address and contact email aren't saved yet.", link: { label: "Business settings", href: `${base}/settings` } });
+    if (!f.identitySaved) blockers.push({ text: "Your legal name, address and contact email aren't saved yet.", link: { label: "Business settings", href: `${base}/settings/profile` } });
     if (f.usableContractVersions === 0) blockers.push({ text: "No contract template version is published yet.", link: { label: "Contract templates", href: `${base}/contract-templates` } });
     if (f.signerPhoneMissing) {
       blockers.push({

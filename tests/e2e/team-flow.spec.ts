@@ -49,9 +49,14 @@ test.describe.serial("staff and team management", () => {
   });
 
   test("the owner reaches Team from Settings, invites once, and the email is delivered", async () => {
-    await owner.goto(`/staff/${tenant.slug}/settings#access`);
-    await owner.getByRole("link", { name: "Manage team" }).click();
-    await owner.waitForURL(`**/staff/${tenant.slug}/team`);
+    await owner.goto(`/staff/${tenant.slug}/settings`);
+    await owner.getByTestId("settings-directory").getByRole("link", { name: /^Team & access/ }).click();
+    await owner.waitForURL(`**/staff/${tenant.slug}/settings/team`);
+    await expect(owner.getByTestId("access-role")).toContainText("You are an owner");
+    const permissions = owner.getByRole("region", { name: "Permissions" }).getByTestId("permissions");
+    await expect(permissions.getByRole("heading")).toHaveText(["Owner", "Staff"]);
+    await expect(permissions).toContainText("Invite and remove staff");
+    await expect(permissions).not.toContainText("Clients");
     await expect(owner.getByRole("navigation", { name: "Staff" }).getByRole("link", { name: "Settings" })).toHaveAttribute("aria-current", "page");
     const members = owner.getByTestId("team-member");
     await expect(members).toHaveCount(2);
@@ -112,11 +117,9 @@ test.describe.serial("staff and team management", () => {
     await expect(newcomer.getByTestId("workspace-brand")).toContainText(tenant.displayName);
 
     // Staff see their role and no management.
-    await newcomer.goto(`/staff/${tenant.slug}/settings#access`);
+    await newcomer.goto(`/staff/${tenant.slug}/settings/team`);
     await expect(newcomer.getByTestId("access-role")).toContainText("You are a staff member");
-    await expect(newcomer.getByRole("link", { name: "Manage team" })).toHaveCount(0);
-    await newcomer.goto(`/staff/${tenant.slug}/team`);
-    await expect(newcomer.getByTestId("team-own-role")).toContainText("staff member");
+    await expect(newcomer.getByTestId("permissions").getByRole("heading")).toHaveText(["Owner", "Staff"]);
     await expect(newcomer.getByRole("button", { name: "Send invitation" })).toHaveCount(0);
     await expect(newcomer.getByTestId("team-members")).toHaveCount(0);
     const { data: users } = await admin.auth.admin.listUsers({ perPage: 1000 });
@@ -203,7 +206,7 @@ test.describe.serial("staff and team management", () => {
   test("on a 320 px phone: no sideways scrolling, and confirmations work from the keyboard", async () => {
     const page = await (await browser.newContext({ viewport: { width: 320, height: 720 }, isMobile: true, hasTouch: true })).newPage();
     await signInStaff(page, tenant.ownerEmail);
-    await page.goto(`/staff/${tenant.slug}/team`);
+    await page.goto(`/staff/${tenant.slug}/settings/team`);
     expect(await sideways(page)).toBeLessThanOrEqual(0);
     const resend = page.getByTestId("team-invitation").first().getByRole("button", { name: "Resend" });
     await resend.focus();
