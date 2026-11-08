@@ -135,7 +135,9 @@ test.describe.serial("invite-only DJ onboarding", () => {
     await dj.getByRole("link", { name: "Open the setup guide" }).click();
     await dj.waitForURL(`**/staff/${slug}/setup`);
     await expect(dj.getByRole("heading", { level: 1, name: "Let's get your business ready" })).toBeVisible();
-    await expect(dj.getByTestId("setup-progress")).toHaveText("0 of 4 required steps ready");
+    // A new business starts with reminders for both workflows, and nothing is ready to send.
+    await expect(dj.getByTestId("setup-guidance")).toHaveAttribute("data-guidance", "proposals_and_contracts");
+    await expect(dj.getByTestId("ready-contracts")).toContainText("Still needs: Business details, Contract template.");
     await expect(dj.getByTestId("workspace-brand")).toContainText("DJ Maxwell Events");
 
     const { data: tenant } = await admin.from("tenants").select("id, display_name, business_name, business_address, contact_email").eq("slug", slug).single();

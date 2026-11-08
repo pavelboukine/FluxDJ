@@ -262,7 +262,7 @@ test.describe.serial("staff list pages", () => {
   test("no control's tap area takes taps from another control, on phones", async () => {
     const page = await open(phone(390));
     const base = `/staff/${busy.slug}`;
-    for (const path of [base, `${base}/emails`, `${base}/settings`, `${base}/settings/taxes`, `${base}/clients/${clientId}`, `${base}/events/${eventId}`, ...LISTS.map((l) => `${base}/${l.path}`)]) {
+    for (const path of [base, `${base}/setup`, `${base}/emails`, `${base}/settings`, `${base}/settings/taxes`, `${base}/clients/${clientId}`, `${base}/events/${eventId}`, ...LISTS.map((l) => `${base}/${l.path}`)]) {
       await page.goto(path);
       await page.waitForLoadState("networkidle").catch(() => null);
       const stolen = await page.evaluate(() => {

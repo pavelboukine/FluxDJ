@@ -824,7 +824,8 @@ docker exec -i supabase_db_flux-dj psql -U postgres -c \
    continue**, then **Sign in**.
 5. Enter a business name and web address and click **Create my workspace**.
    You land on the new, empty workspace with a welcome message listing the
-   required steps still missing, and **Open the setup guide** (`/staff/{slug}/setup`).
+   required proposal and contract steps still missing, and **Open the setup
+   guide** (`/staff/{slug}/setup`).
 
 Revoke the local grant with `select private.revoke_platform_admin('…');`.
 
@@ -1430,6 +1431,16 @@ signed-out browser:
 - `67_logo_size` (pgTAP): 100% for every business, owner-only and versioned,
   bounded 100 to 130, the earlier four-argument call keeps the size, and
   client pages can read it.
+- `68_setup_guidance` (pgTAP): proposals and contracts for every business,
+  only the three choices stored, owner-only changes through
+  `update_setup_guidance` (staff, other businesses, clients, removed members,
+  suspended and archived businesses refused), each change audited once with
+  what it changed from (an unchanged save adds nothing), and
+  `proposals_by_default` and events left alone.
+- `tests/unit/setup.test.ts` and `tests/e2e/setup-guide-flow.spec.ts`: every
+  step's rule, the setup guidance (Skipped steps, finished steps still Ready,
+  readiness unchanged), the dashboard card per guidance, and staff's
+  read-only view on a phone.
 - `tests/e2e/settings-navigation.spec.ts`, `settings-unsaved-flow.spec.ts`,
   `logo-size-flow.spec.ts` and `client-logo-size.spec.ts`: the directory and
   page navigation on desktop and phones, old links, staff read-only pages,
@@ -2575,9 +2586,12 @@ appear.
 - **Email failures:** a notice when this business's emails have status
   `failed` (retries used up), linking to Emails. Pending and sending emails,
   including normal retries, and platform invitation emails are not counted.
-- **Setup card** (shown until the required steps are saved; from saved data
-  only, `requiredSetup` in `src/lib/setup.ts`): lists only the required
-  steps still missing, with **Continue setup** to the setup guide. Required
+- **Setup card** (from saved data, `reminders` in `src/lib/setup.ts`): lists
+  the required steps still missing for the workflows the business's setup
+  guidance covers, one line per workflow ("To send contracts", "To send
+  proposals"), with **Continue setup** to the setup guide and, for owners, a
+  link to choose the setup guidance. It disappears once nothing relevant is
+  missing, and never shows with planning-only guidance. Required
   means the app refuses the workflow without it: the legal name, address and
   contact email (contracts); taxes (at least one tax category, and every
   category used by active gear or packages configured; an empty list is a
@@ -2778,34 +2792,55 @@ app keeps working: it never wrote memberships, its worker skips staff emails
 
 `/staff/[tenant]/setup` (linked from the dashboard's setup card and from
 Settings; it highlights **Settings** in the navigation and adds no menu item).
-Read-only: it reuses `staff_dashboard`'s setup facts and a few RLS-scoped
-counts, so there is no onboarding state, no migration and nothing to dismiss.
-Every step links to the existing screen with `?from=setup`, which shows a
-**Back to setup guide** link there (and nowhere else).
+It reuses `staff_dashboard`'s setup facts and a few RLS-scoped counts: every
+step's status comes from saved data. Every step links to the existing screen
+with `?from=setup`, which shows a **Back to setup guide** link there (and
+nowhere else).
 
-| Step | Level | Ready when |
-|---|---|---|
-| Business details | required (contracts) | legal identity saved |
-| Customize branding | optional | a logo or a primary colour is saved (the step says which) |
-| Deposit and booking confirmation | recommended | legal details saved and `booking_policy_version > 0` (the owner saved the policy once; the default is otherwise "not reviewed") |
-| Taxes | required (proposals) | as on the dashboard |
-| Gear and services | optional | an active gear item |
-| Three packages | required (proposals) | three active packages whose included gear is all active (`build_offer_snapshot` refuses archived gear) |
-| Proposal template | recommended | an active template whose three packages are active |
-| Questions & rules | optional | an active question |
-| Contract template | required (contracts) | a version published for client use |
-| Planning template | recommended | an active template is the default for an event type |
-| Your first event | optional | an unarchived event |
+**Setup guidance** (`tenants.setup_guidance`, migration
+`20261130000100_setup_guidance.sql`): which workflows setup reminders cover.
+**Proposals and contracts** (`proposals_and_contracts`, the default),
+**Contracts only** (`contracts_only`) or **Planning only** (`none`). There is
+no proposals-only choice: a proposal booking always ends in a contract. Owners
+choose it at the top of the guide (`update_setup_guidance`: owner-only,
+audited as `setup_guidance_changed`, refused for suspended and archived
+businesses); staff see it read-only. It is guidance only: nothing reads it for
+proposals, contracts, deposits, bookings or planning, it is independent of
+`proposals_by_default` (the Create event starting value), and it never marks a
+step done.
 
-Statuses are Ready, Needs attention (a required step partly done), Not
-started, Optional, and Recommended (a recommended step not done yet, shown
-calmly: its default works). Once the four required steps are ready the guide
-reads "You're ready to send proposals and contracts" and counts the
-recommended steps left beside the progress. Readiness is per workflow:
-proposals need taxes and three packages; contracts, with or without a
-proposal first, need business details and a published template; planning
-only (events booked elsewhere) needs neither. Steps check what is
-saved, not whether terms or prices are right; each proposal and contract is
+Groups, in order: **Business**, **Proposals**, **Contracts**, **Planning**,
+**Getting started**.
+
+| Step | Group | Level (workflow) | Ready when |
+|---|---|---|---|
+| Business details | Business | required (contracts) | legal identity saved |
+| Customize branding | Business | optional | a logo or a primary colour is saved (the step says which) |
+| Taxes | Proposals | required (proposals) | as on the dashboard |
+| Gear and services | Proposals | optional (proposals) | an active gear item |
+| Three packages | Proposals | required (proposals) | three active packages whose included gear is all active (`build_offer_snapshot` requires exactly three and refuses archived gear) |
+| Proposal template | Proposals | recommended (proposals) | an active template whose three packages are active |
+| Questions & rules | Proposals | optional (proposals) | an active question |
+| Contract template | Contracts | required (contracts) | a version published for client use |
+| Deposit and booking confirmation | Contracts | recommended (contracts) | `booking_policy_version > 0`: the owner saved the booking policy once (every save counts, even unchanged). The legal details have their own step |
+| Planning template | Planning | recommended | an active template is the default for an event type |
+| Your first event | Getting started | optional | an unarchived event |
+
+Statuses, each a glyph (`ProgressGlyph`, `src/components/app/status-glyph.tsx`:
+filled discs, never an outlined ring) beside its words: Ready, Needs attention
+(a required step partly done), Not started, Recommended (a recommended step
+not done yet, shown calmly: its default works), Optional, and Skipped (not
+done, and its workflow isn't in the setup guidance). A finished step is Ready
+whatever the guidance. A skipped workflow's group is marked Skipped and
+collapsed behind **Show … steps**, with a link back to the guidance for
+owners.
+
+**What you can do now** reports each workflow as it is, whatever the
+guidance: proposals need taxes and three packages; contracts, with or without
+a proposal first, need business details and a published template; planning
+only (events booked elsewhere) needs neither. A skipped workflow adds
+"Skipped" beside its name. There is no overall step counter. Steps check what
+is saved, not whether terms or prices are right; each proposal and contract is
 still validated when it is previewed and sent. Suspended workspaces get the
 existing unavailable page; other businesses get 404.
 

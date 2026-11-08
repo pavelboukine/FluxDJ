@@ -114,9 +114,12 @@ test.describe.serial("staff dashboard", () => {
     await signInStaff(page, empty.ownerEmail);
     await page.goto(`/staff/${empty.slug}`);
     const checklist = page.getByTestId("setup-checklist");
-    // Only the required steps that are missing; the setup guide has the rest.
-    await expect(checklist).toContainText("0 of 4 required steps ready");
+    // Only the required steps that are missing, by workflow; the setup guide has the rest. No overall step counter.
+    await expect(checklist).toContainText("Still needed before you can send contracts and proposals:");
+    await expect(checklist).not.toContainText("required steps ready");
     await expect(checklist.getByRole("listitem")).toHaveCount(4);
+    await expect(checklist.getByTestId("setup-reminder-contracts").getByRole("listitem")).toHaveText([/Business details/, /Contract template/]);
+    await expect(checklist.getByTestId("setup-reminder-proposals").getByRole("listitem")).toHaveText([/Taxes/, /Three packages/]);
     for (const key of ["identity", "taxes", "packages", "contract-template"]) {
       await expect(checklist.getByTestId(`setup-${key}`)).toHaveAttribute("data-done", "false");
     }

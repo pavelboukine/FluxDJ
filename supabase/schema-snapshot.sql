@@ -13252,6 +13252,42 @@ $$;
 ALTER FUNCTION "public"."update_reply_to_email"("p_tenant_id" "uuid", "p_reply_to" "text") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."update_setup_guidance"("p_tenant_id" "uuid", "p_guidance" "text") RETURNS "text"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  v_membership_id uuid;
+  v_role text;
+  t public.tenants%rowtype;
+begin
+  if p_guidance is null or p_guidance not in ('proposals_and_contracts', 'contracts_only', 'none') then
+    raise exception 'settings_invalid: choose your setup guidance' using errcode = 'invalid_parameter_value';
+  end if;
+  -- Refuses non-members, removed members and suspended workspaces.
+  v_membership_id := private.require_staff_of(p_tenant_id);
+  select m.role into v_role from public.tenant_memberships m where m.id = v_membership_id;
+  if v_role <> 'owner' then
+    raise exception 'only the owner can change this setting' using errcode = 'insufficient_privilege';
+  end if;
+  select * into t from public.tenants where id = p_tenant_id for update;
+  if t.archived_at is not null then
+    raise exception 'not found' using errcode = 'no_data_found';
+  end if;
+  if t.setup_guidance = p_guidance then
+    return p_guidance;
+  end if;
+  update public.tenants set setup_guidance = p_guidance where id = t.id;
+  perform private.audit(t.id, 'tenant', t.id, 'setup_guidance_changed', 'staff', (select auth.uid()),
+    jsonb_build_object('from', t.setup_guidance, 'to', p_guidance));
+  return p_guidance;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."update_setup_guidance"("p_tenant_id" "uuid", "p_guidance" "text") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."update_tax_settings"("p_tenant_id" "uuid", "p_expected_version" integer, "p_tax_config" "jsonb", "p_tax_categories" "jsonb") RETURNS integer
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -14599,6 +14635,7 @@ CREATE TABLE IF NOT EXISTS "public"."tenants" (
     "dj_name" "text",
     "proposals_by_default" boolean DEFAULT true NOT NULL,
     "logo_size_percent" integer DEFAULT 100 NOT NULL,
+    "setup_guidance" "text" DEFAULT 'proposals_and_contracts'::"text" NOT NULL,
     CONSTRAINT "tenants_booking_policy_valid" CHECK (("booking_confirmation_policy" = ANY (ARRAY['on_signature'::"text", 'on_deposit'::"text"]))),
     CONSTRAINT "tenants_booking_policy_version_nonnegative" CHECK (("booking_policy_version" >= 0)),
     CONSTRAINT "tenants_brand_colors_valid" CHECK ("private"."is_valid_brand_colors"("brand_colors")),
@@ -14615,6 +14652,7 @@ CREATE TABLE IF NOT EXISTS "public"."tenants" (
     CONSTRAINT "tenants_planning_lock_days_range" CHECK ((("planning_lock_days" >= 0) AND ("planning_lock_days" <= 365))),
     CONSTRAINT "tenants_planning_settings_version_nonnegative" CHECK (("planning_settings_version" >= 0)),
     CONSTRAINT "tenants_reply_to_email_valid" CHECK ("private"."is_valid_email"("reply_to_email")),
+    CONSTRAINT "tenants_setup_guidance_valid" CHECK (("setup_guidance" = ANY (ARRAY['proposals_and_contracts'::"text", 'contracts_only'::"text", 'none'::"text"]))),
     CONSTRAINT "tenants_slug_valid" CHECK ("private"."is_valid_tenant_slug"("slug")),
     CONSTRAINT "tenants_suspension_version_nonnegative" CHECK (("suspension_version" >= 0)),
     CONSTRAINT "tenants_tax_categories_valid" CHECK ("private"."is_valid_tax_categories"("tax_config", "tax_categories")),
@@ -14688,6 +14726,10 @@ COMMENT ON COLUMN "public"."tenants"."proposals_by_default" IS 'Whether Create e
 
 
 COMMENT ON COLUMN "public"."tenants"."logo_size_percent" IS 'Logo height limit in the workspace header and on live client pages, as a percentage of each surface''s default.';
+
+
+
+COMMENT ON COLUMN "public"."tenants"."setup_guidance" IS 'Which workflows setup reminders cover: proposals_and_contracts (default), contracts_only or none. Guidance only: never read for sending, booking or planning.';
 
 
 
@@ -19577,6 +19619,12 @@ GRANT ALL ON FUNCTION "public"."update_reply_to_email"("p_tenant_id" "uuid", "p_
 
 
 
+REVOKE ALL ON FUNCTION "public"."update_setup_guidance"("p_tenant_id" "uuid", "p_guidance" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."update_setup_guidance"("p_tenant_id" "uuid", "p_guidance" "text") TO "service_role";
+GRANT ALL ON FUNCTION "public"."update_setup_guidance"("p_tenant_id" "uuid", "p_guidance" "text") TO "authenticated";
+
+
+
 REVOKE ALL ON FUNCTION "public"."update_tax_settings"("p_tenant_id" "uuid", "p_expected_version" integer, "p_tax_config" "jsonb", "p_tax_categories" "jsonb") FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."update_tax_settings"("p_tenant_id" "uuid", "p_expected_version" integer, "p_tax_config" "jsonb", "p_tax_categories" "jsonb") TO "service_role";
 GRANT ALL ON FUNCTION "public"."update_tax_settings"("p_tenant_id" "uuid", "p_expected_version" integer, "p_tax_config" "jsonb", "p_tax_categories" "jsonb") TO "authenticated";
@@ -20222,6 +20270,10 @@ GRANT SELECT("proposals_by_default") ON TABLE "public"."tenants" TO "authenticat
 
 
 GRANT SELECT("logo_size_percent") ON TABLE "public"."tenants" TO "authenticated";
+
+
+
+GRANT SELECT("setup_guidance") ON TABLE "public"."tenants" TO "authenticated";
 
 
 

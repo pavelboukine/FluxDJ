@@ -297,7 +297,7 @@ A documented two-step scale. Sheets and sheet-like layers use 16px. Interactive 
 
 ### Proposed direction
 
-**Status Glyph** (implemented in 6C.2 as `StatusGlyph` / `ProgressGlyph` in `plan-navigation.tsx`; replaces the lucide circles in navigation and headers). Not started: a filled grey disc. In progress: the same disc with its right half filled in Brand Ink, always the same (a state, never a percentage; the words beside it carry the exact count). Complete: a solid green disc with a white check. Not applicable: a grey disc with a dash. No outlined ring and no centre dot, so a status never looks like a radio. Always shown next to its words.
+**Status Glyph** (implemented in 6C.2 as `StatusGlyph` / `ProgressGlyph`; replaces the lucide circles in navigation and headers. `ProgressGlyph` now lives in `src/components/app/status-glyph.tsx` and is shared with the staff setup guide and its readiness panel, where Skipped uses the dash). Not started: a filled grey disc. In progress: the same disc with its right half filled in Brand Ink, always the same (a state, never a percentage; the words beside it carry the exact count). Complete: a solid green disc with a white check. Not applicable: a grey disc with a dash. No outlined ring and no centre dot, so a status never looks like a radio. Always shown next to its words.
 
 **Question Row** (replaces `PlanMoment` card styling; same `<details>` mechanics, same `data-plan-item` and default-open reset). Shows the title, a one-line answer summary or the state ("Not started", "To discuss with your DJ", "Not happening", "DJ's choice"), a trailing status glyph and a chevron. When open, it gets a Brand Tint background and the editor below without a nested border. The title moves out of a heading-inside-`<summary>`.
 
