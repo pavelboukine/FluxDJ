@@ -94,13 +94,14 @@ async function contractFor(f: Fixture, eventId: string, signerUserId: string, st
     }
   }
   if (stage === "booked") {
-    // Staff set planning up first (Event basics only), so the client can open it once booked.
+    // Staff set planning up first (Event basics only), then open it to the client once booked.
     await must(staffDb.rpc("setup_event_plan", { p_event_id: eventId, p_template_id: null as unknown as string }));
     const { data: paid } = await must(staffDb.rpc("record_event_payment", {
       p_event_id: eventId, p_amount_cents: c!.deposit_cents, p_paid_on: new Date(Date.now() - 86_400_000).toISOString().slice(0, 10),
       p_reference: `E2E-PAYMENT-REF-SECRET-${run}`, p_note: `E2E staff payment note ${run}`, p_idempotency_key: randomUUID(), p_confirm_duplicate: false,
     }));
     expect((paid as { booking: string }).booking).toBe("booked");
+    await must(staffDb.rpc("open_client_planning", { p_event_id: eventId }));
   }
   return contractId;
 }

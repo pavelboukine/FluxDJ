@@ -15,7 +15,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { expect, test, type BrowserContext, type Page, type Response } from "@playwright/test";
-import { bookEvent, must, sessionFor } from "./booking";
+import { bookEvent, must, sessionFor, openPlanning } from "./booking";
 import { admin, openPlanSection, signInStaff, signInWithLink } from "./support";
 import { archiveTestTenant, createTestTenant, type TestTenant } from "./tenant";
 import { suspendLocally } from "../support/local-sql";
@@ -69,6 +69,7 @@ test.describe.serial("installable app shell", () => {
     const { data: wedding } = await must(admin.from("planning_templates").select("id").eq("tenant_id", tenant.id).eq("starter_key", "wedding").single());
     await must(staffDb.rpc("setup_event_plan", { p_event_id: eventId, p_template_id: wedding!.id }));
     await bookEvent(tenant, eventId, clientEmail);
+    await openPlanning(tenant, eventId);
   });
 
   test.afterAll(async () => {

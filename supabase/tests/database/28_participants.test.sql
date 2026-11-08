@@ -127,6 +127,8 @@ select public.record_event_payment(tests.id('pe_wed'), (select deposit_cents fro
 select tests.su();
 select tests.force_book(tests.id('pe_party'));
 select tests.force_book(tests.id('pe_other'));
+-- Staff open planning to the client (booking alone no longer does).
+select tests.open_planning(tests.id(n)) from (values ('pe_wed'), ('pe_party'), ('pe_other')) v(n);
 create temp table contractual as
   select (select array[content_sha256, signed_at::text, status, total_cents::text] from public.contracts where id = :'wed_contract') as contract,
          (select array[booking_confirmed_at::text, lifecycle_status] from public.events where id = tests.id('pe_wed')) as booking,

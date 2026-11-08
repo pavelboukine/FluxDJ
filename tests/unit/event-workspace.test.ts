@@ -331,6 +331,46 @@ describe("planning invitations for Flux bookings", () => {
   });
 });
 
+describe("opening planning to the client", () => {
+  const ready = { exists: true, awaitingSetup: false, progress, editing: editing("open") };
+  const signed = [contract("c1", "signed")];
+  const booked = (over: Partial<WorkspaceFacts> = {}) =>
+    facts({ lifecycle: "booked", contracts: signed, payments: summary({ booking: { lifecycle_status: "booked", booking_confirmed_at: "2026-10-05T03:53:00Z" } }), planning: ready, planningAccess: { invitation: null, clientHasAccess: true }, ...over });
+
+  it("set up but not opened: prepare it, then open it (two separate steps)", () => {
+    const a = nextAction(booked({ planning: { ...ready, opened: false } }));
+    expect(a).toMatchObject({
+      key: "open_planning", title: "Prepare planning, then open it",
+      primary: { label: "Review planning", href: "/staff/dj/events/ev/planning" }, secondary: { label: "Open planning", href: "#client-access" }, waiting: false,
+    });
+    expect(a.detail).toMatch(/^Planning is ready, but your client can't access it yet\./);
+    // Opened: the usual review; an older caller without the flag reads as opened.
+    expect(nextAction(booked({ planning: { ...ready, opened: true } })).key).toBe("review_planning");
+    expect(nextAction(booked()).key).toBe("review_planning");
+  });
+
+  it("setting up comes first, and the booking gate before either", () => {
+    expect(nextAction(booked({ planning: { ...ready, awaitingSetup: true, opened: false } })).key).toBe("set_up_planning");
+    expect(nextAction(booked({ planning: { exists: false, progress: null, editing: null, opened: false } })).key).toBe("set_up_planning");
+    const deposit = facts({ lifecycle: "awaiting_deposit", contracts: signed, payments: summary(), planning: { ...ready, opened: false } });
+    expect(nextAction(deposit).key).toBe("record_payment");
+  });
+
+  it("keeps a lost-deposit warning while planning is unopened", () => {
+    const a = nextAction(booked({ planning: { ...ready, opened: false }, payments: summary({ deposit_outstanding_cents: 10_000, booking: { lifecycle_status: "booked", deposit_no_longer_met: true } }) }));
+    expect(a.key).toBe("open_planning");
+    expect(a.warning).toMatchObject({ link: { href: "#payments" } });
+  });
+
+  it("events booked elsewhere: set up, then open, then invite and follow", () => {
+    const ext = (over: Partial<WorkspaceFacts> = {}) => facts({ bookingSource: "external", planningAccess: { invitation: null, clientHasAccess: false }, ...over });
+    expect(nextAction(ext({ planning: { ...ready, awaitingSetup: true, opened: false } })).key).toBe("set_up_planning");
+    expect(nextAction(ext({ planning: { ...ready, opened: false } })).key).toBe("open_planning");
+    expect(nextAction(ext({ planning: { ...ready, opened: true } })).key).toBe("invite_client");
+    expect(JSON.stringify(nextAction(ext({ planning: { ...ready, opened: false } })))).not.toMatch(/proposal|contract|deposit/i);
+  });
+});
+
 describe("planning invitation status", () => {
   const NOW_ = new Date("2026-10-07T16:00:00Z");
   const inv = (over: Partial<NonNullable<NonNullable<WorkspaceFacts["planningAccess"]>["invitation"]>> = {}) => ({

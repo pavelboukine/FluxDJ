@@ -61,7 +61,7 @@ export function planView(spec: {
   }));
   const editingState = spec.editing ?? "open";
   return {
-    plan: { id: id(), origin: "template", initialized_via: "booking", created_at: "2026-09-01T12:00:00Z", source_template_id: id(), source_template_name: "Wedding", structure_version: 3 },
+    plan: { id: id(), origin: "template", initialized_via: "booking", created_at: "2026-09-01T12:00:00Z", source_template_id: id(), source_template_name: "Wedding", structure_version: 3, client_opened_at: "2026-09-02T12:00:00Z", client_opened_by: "staff@example.test" },
     editing: {
       state: editingState, deadline: "2027-07-31T04:00:00+00:00", closes_at: editingState === "closed" ? null : "2027-07-31T04:00:00+00:00", closed_by_dj: false, closed_at: null, timezone: "America/Toronto",
       now: "2026-10-07T15:04:00+00:00", cutoff_days: 14, business_days: 14, expected_deadline: "2027-07-31T04:00:00+00:00", schedule_changed: false,

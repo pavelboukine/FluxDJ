@@ -797,9 +797,9 @@ begin
     return jsonb_build_object('status', 'unavailable');
   end if;
   select * into v_plan from public.event_plans where tenant_id = e.tenant_id and event_id = e.id for update;
-  -- Staff haven't set planning up yet (structure changes lock the plan, so
-  -- this sees a template applied before the save).
-  if private.plan_awaiting_setup(v_plan) then
+  -- Not opened to the client yet, or not set up (opening and structure changes
+  -- lock the plan, so this sees them).
+  if not private.plan_open_to_client(v_plan) then
     return jsonb_build_object('status', 'unavailable');
   end if;
   -- Database time after the locks: a save that waited across the deadline is refused.
@@ -2476,6 +2476,31 @@ $$;
 ALTER FUNCTION "private"."event_payments_guard"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."event_plans_opening_guard"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    SET "search_path" TO ''
+    AS $$
+begin
+  if tg_op = 'INSERT' then
+    if new.client_opened_at is not null or new.client_opened_by is not null then
+      raise exception 'planning is opened to the client only through open_client_planning' using errcode = 'check_violation';
+    end if;
+  elsif (new.client_opened_at, new.client_opened_by) is distinct from (old.client_opened_at, old.client_opened_by) then
+    if old.client_opened_at is not null then
+      raise exception 'planning stays open to the client once opened' using errcode = 'check_violation';
+    end if;
+    if current_setting('flux.opening_plan', true) is distinct from new.id::text then
+      raise exception 'planning is opened to the client only through open_client_planning' using errcode = 'check_violation';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."event_plans_opening_guard"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "private"."events_active_proposal_matches"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -3249,8 +3274,11 @@ CREATE TABLE IF NOT EXISTS "public"."event_plans" (
     "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "client_cutoff_days" integer NOT NULL,
     "client_cutoff_version" integer DEFAULT 1 NOT NULL,
+    "client_opened_at" timestamp with time zone,
+    "client_opened_by" "uuid",
     CONSTRAINT "event_plans_client_cutoff_days_range" CHECK ((("client_cutoff_days" >= 0) AND ("client_cutoff_days" <= 365))),
     CONSTRAINT "event_plans_client_cutoff_version_positive" CHECK (("client_cutoff_version" >= 1)),
+    CONSTRAINT "event_plans_client_opened_by_needs_at" CHECK ((("client_opened_by" IS NULL) OR ("client_opened_at" IS NOT NULL))),
     CONSTRAINT "event_plans_initialized_via_valid" CHECK (("initialized_via" = ANY (ARRAY['booking'::"text", 'backfill'::"text", 'staff'::"text"]))),
     CONSTRAINT "event_plans_origin_matches" CHECK ((("origin" = 'template'::"text") = ("source_template_id" IS NOT NULL))),
     CONSTRAINT "event_plans_origin_valid" CHECK (("origin" = ANY (ARRAY['template'::"text", 'fallback'::"text"]))),
@@ -3270,6 +3298,14 @@ COMMENT ON COLUMN "public"."event_plans"."client_cutoff_days" IS 'Days before th
 
 
 COMMENT ON COLUMN "public"."event_plans"."client_cutoff_version" IS 'Optimistic version of the client deadline and reopening (events.planning_lock_at, planning_override_until).';
+
+
+
+COMMENT ON COLUMN "public"."event_plans"."client_opened_at" IS 'When staff opened planning to the client (or when this migration found it already open). Set once, never cleared. Null: staff are still preparing it and the client sees "setting up".';
+
+
+
+COMMENT ON COLUMN "public"."event_plans"."client_opened_by" IS 'The staff user who opened planning to the client. Null for plans already open before explicit opening existed.';
 
 
 
@@ -4608,6 +4644,41 @@ $$;
 ALTER FUNCTION "private"."one_way_revocation"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "private"."open_plan_to_client"("p_event" "public"."events", "p_plan" "public"."event_plans", "p_actor" "uuid", "p_via" "text") RETURNS boolean
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  t public.tenants%rowtype;
+begin
+  if p_plan.client_opened_at is not null then
+    return false;
+  end if;
+  select * into t from public.tenants where id = p_event.tenant_id;
+  if p_event.archived_at is not null or t.archived_at is not null then
+    perform private.planning_error('the event is archived. Unarchive it before opening planning to the client');
+  end if;
+  if not private.event_booked_for_planning(p_event) then
+    perform private.planning_error('the event isn''t booked yet. Open planning to the client once the booking is confirmed');
+  end if;
+  if private.plan_awaiting_setup(p_plan) then
+    perform private.planning_error('set up planning before opening it to the client');
+  end if;
+  perform set_config('flux.opening_plan', p_plan.id::text, true);
+  update public.event_plans set client_opened_at = clock_timestamp(), client_opened_by = p_actor where id = p_plan.id;
+  perform set_config('flux.opening_plan', '', true);
+  perform private.audit(p_event.tenant_id, 'event', p_event.id, 'planning_opened_to_client', 'staff', p_actor,
+    jsonb_build_object('plan_id', p_plan.id, 'via', p_via,
+                       'editing', private.plan_editing_state(private.plan_deadline(p_event, p_plan), p_event.planning_override_until,
+                                                             clock_timestamp(), p_event.planning_client_closed_at)));
+  return true;
+end;
+$$;
+
+
+ALTER FUNCTION "private"."open_plan_to_client"("p_event" "public"."events", "p_plan" "public"."event_plans", "p_actor" "uuid", "p_via" "text") OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "public"."staff_invitations" (
     "id" "uuid" NOT NULL,
     "tenant_id" "uuid" NOT NULL,
@@ -5025,6 +5096,44 @@ $$;
 
 
 ALTER FUNCTION "private"."plan_music_requirements"("p_editor" "text", "p_answers" "jsonb") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "private"."plan_open_before_activation"("p_plan" "public"."event_plans") RETURNS boolean
+    LANGUAGE "sql" STABLE
+    SET "search_path" TO ''
+    AS $$
+  select exists (
+      select 1 from public.events e
+      where e.tenant_id = p_plan.tenant_id and e.id = p_plan.event_id
+        and private.event_booked_for_planning(e) and not private.plan_awaiting_setup(p_plan)
+        and exists (select 1 from public.event_access ea where ea.tenant_id = e.tenant_id and ea.event_id = e.id))
+    or exists (
+      select 1 from public.planning_invitations i
+      where i.tenant_id = p_plan.tenant_id and i.event_id = p_plan.event_id
+        and (i.accepted_at is not null or i.revoked_at is null));
+$$;
+
+
+ALTER FUNCTION "private"."plan_open_before_activation"("p_plan" "public"."event_plans") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "private"."plan_open_before_activation"("p_plan" "public"."event_plans") IS 'The 20261201000100 backfill rule: whether a client could open this plan before staff had to open it explicitly.';
+
+
+
+CREATE OR REPLACE FUNCTION "private"."plan_open_to_client"("p_plan" "public"."event_plans") RETURNS boolean
+    LANGUAGE "sql" STABLE
+    SET "search_path" TO ''
+    AS $$
+  select p_plan.client_opened_at is not null and not private.plan_awaiting_setup(p_plan);
+$$;
+
+
+ALTER FUNCTION "private"."plan_open_to_client"("p_plan" "public"."event_plans") OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "private"."plan_open_to_client"("p_plan" "public"."event_plans") IS 'Staff opened this plan to the client and it is set up. Clients see "setting up" otherwise.';
+
 
 
 CREATE OR REPLACE FUNCTION "private"."plan_people_requirements"("p_editor" "text", "p_answers" "jsonb") RETURNS "jsonb"
@@ -8149,7 +8258,7 @@ begin
   end if;
   select * into t from public.tenants where id = e.tenant_id;
   select * into v_plan from public.event_plans where tenant_id = e.tenant_id and event_id = e.id;
-  if private.plan_awaiting_setup(v_plan) then
+  if not private.plan_open_to_client(v_plan) then
     return jsonb_build_object(
       'state', 'setting_up',
       'brand', jsonb_build_object('display_name', t.display_name, 'brand_colors', t.brand_colors),
@@ -10169,6 +10278,7 @@ CREATE OR REPLACE FUNCTION "public"."my_plans"() RETURNS TABLE("tenant_slug" "te
   join public.tenants t on t.id = e.tenant_id
   cross join lateral (select private.plan_progress(p.id) as progress) x
   where e.id in (select private.client_event_ids()) and private.client_can_access_plan(e.id)
+    and private.plan_open_to_client(p)
   order by e.event_date, e.id;
 $$;
 
@@ -10189,6 +10299,38 @@ $$;
 
 
 ALTER FUNCTION "public"."my_workspaces"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."open_client_planning"("p_event_id" "uuid") RETURNS "jsonb"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  e public.events%rowtype;
+  v_plan public.event_plans%rowtype;
+  v_opened boolean;
+begin
+  select * into e from public.events where id = p_event_id;
+  if not found then
+    raise exception 'not found' using errcode = 'no_data_found';
+  end if;
+  perform private.require_staff_of(e.tenant_id);
+  -- Lock order: event, then plan (as send_planning_invitation and the client saves).
+  select * into e from public.events where id = e.id for update;
+  select * into v_plan from public.event_plans where tenant_id = e.tenant_id and event_id = e.id for update;
+  if not found then
+    perform private.planning_error('set up planning before opening it to the client');
+  end if;
+  v_opened := private.open_plan_to_client(e, v_plan, (select auth.uid()), 'staff');
+  select * into v_plan from public.event_plans where id = v_plan.id;
+  return jsonb_build_object('status', case when v_opened then 'opened' else 'already_open' end,
+    'opened_at', v_plan.client_opened_at,
+    'editing', private.plan_editing_state(private.plan_deadline(e, v_plan), e.planning_override_until, now(), e.planning_client_closed_at));
+end;
+$$;
+
+
+ALTER FUNCTION "public"."open_client_planning"("p_event_id" "uuid") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."open_contract_template_draft"("p_template_id" "uuid") RETURNS "uuid"
@@ -11567,6 +11709,7 @@ declare
   v_existing public.planning_invitations%rowtype;
   v_expires timestamptz := now() + interval '14 days';
   v_replaced integer;
+  v_opened boolean;
 begin
   select * into e from public.events where id = p_event_id;
   if not found then
@@ -11585,7 +11728,7 @@ begin
       raise exception 'invalid invitation link' using errcode = 'invalid_parameter_value';
     end if;
     return jsonb_build_object('status', 'sent', 'replayed', true, 'invitation_id', v_existing.id,
-      'recipient_email', v_existing.email, 'expires_at', v_existing.expires_at);
+      'recipient_email', v_existing.email, 'expires_at', v_existing.expires_at, 'opened', false);
   end if;
 
   if e.archived_at is not null or t.archived_at is not null then
@@ -11594,7 +11737,7 @@ begin
   if not private.event_booked_for_planning(e) then
     perform private.planning_error('the event isn''t booked yet. Invite the client to planning once the booking is confirmed');
   end if;
-  select * into v_plan from public.event_plans where tenant_id = e.tenant_id and event_id = e.id;
+  select * into v_plan from public.event_plans where tenant_id = e.tenant_id and event_id = e.id for update;
   if not found or private.plan_awaiting_setup(v_plan) then
     perform private.planning_error('set up planning before inviting the client');
   end if;
@@ -11608,6 +11751,7 @@ begin
     perform private.planning_error('add an active primary contact to invite');
   end if;
 
+  v_opened := private.open_plan_to_client(e, v_plan, (select auth.uid()), 'invitation');
   v_replaced := private.revoke_planning_invitations(e.id, 'replaced by a new invitation', (select auth.uid()));
   insert into public.planning_invitations (id, tenant_id, event_id, client_id, email, token_hash, expires_at, invited_by)
   values (p_invitation_id, e.tenant_id, e.id, v_client.id, lower(v_client.email), p_token_hash, v_expires, (select auth.uid()));
@@ -11615,9 +11759,9 @@ begin
     jsonb_build_object('client_name', v_client.name, 'event_title', e.title, 'event_date', e.event_date, 'expires_at', v_expires),
     'planning_invitation:' || p_invitation_id);
   perform private.audit(e.tenant_id, 'event', e.id, 'planning_invitation_sent', 'staff', (select auth.uid()),
-    jsonb_build_object('invitation_id', p_invitation_id, 'client_id', v_client.id, 'replaced', v_replaced));
+    jsonb_build_object('invitation_id', p_invitation_id, 'client_id', v_client.id, 'replaced', v_replaced, 'opened', v_opened));
   return jsonb_build_object('status', 'sent', 'replayed', false, 'invitation_id', p_invitation_id,
-    'recipient_email', lower(v_client.email), 'expires_at', v_expires);
+    'recipient_email', lower(v_client.email), 'expires_at', v_expires, 'opened', v_opened);
 end;
 $_$;
 
@@ -12482,6 +12626,15 @@ begin
         where c.state <> 'open' or c.deadline <= v_at + interval '7 days'
       ) x
       where (x.progress ->> 'requirements_met')::int < (x.progress ->> 'requirements_total')::int), '[]'::jsonb),
+    -- Booked (or booked elsewhere), upcoming events whose planning is set up but not opened to the client yet.
+    'planning_not_open', coalesce((
+      select jsonb_agg(jsonb_build_object('event_id', e.id, 'title', e.title, 'event_date', e.event_date) order by e.event_date, e.title, e.id)
+      from public.events e
+      join public.event_plans ep on ep.tenant_id = e.tenant_id and ep.event_id = e.id
+      where e.tenant_id = p_tenant_id and e.archived_at is null
+        and private.event_booked_for_planning(e) and e.lifecycle_status <> 'cancelled'
+        and e.event_date >= (v_at at time zone e.timezone)::date
+        and ep.client_opened_at is null and not private.plan_awaiting_setup(ep)), '[]'::jsonb),
     'failed_emails', (select count(*) from public.email_outbox o where o.tenant_id = p_tenant_id and o.status = 'failed'),
     'setup', jsonb_build_object(
       'identity_saved', t.business_address is not null and t.contact_email is not null,
@@ -12722,7 +12875,11 @@ begin
     'plan', jsonb_build_object(
       'id', v_plan.id, 'origin', v_plan.origin, 'initialized_via', v_plan.initialized_via, 'created_at', v_plan.created_at,
       'source_template_id', v_plan.source_template_id, 'source_template_name', v_plan.source_template_name,
-      'structure_version', v_plan.structure_version),
+      'structure_version', v_plan.structure_version,
+      'client_opened_at', v_plan.client_opened_at,
+      'client_opened_by', case when v_plan.client_opened_at is null then null
+                               when v_plan.client_opened_by is null then 'Flux DJ'
+                               else coalesce((select u.email from auth.users u where u.id = v_plan.client_opened_by), 'Former staff member') end),
     'editing', private.plan_staff_editing(e, v_plan),
     'structure', private.plan_structure(v_plan.id, true),
     'basics', jsonb_build_object('item_id', v_basics.id, 'answers', coalesce(v_basics.answers, '{}'::jsonb),
@@ -16138,6 +16295,10 @@ CREATE OR REPLACE TRIGGER "event_plans_no_delete" BEFORE DELETE ON "public"."eve
 
 
 
+CREATE OR REPLACE TRIGGER "event_plans_opening_guard" BEFORE INSERT OR UPDATE ON "public"."event_plans" FOR EACH ROW EXECUTE FUNCTION "private"."event_plans_opening_guard"();
+
+
+
 CREATE OR REPLACE TRIGGER "event_plans_set_updated_at" BEFORE UPDATE ON "public"."event_plans" FOR EACH ROW EXECUTE FUNCTION "private"."set_updated_at"();
 
 
@@ -18054,6 +18215,10 @@ REVOKE ALL ON FUNCTION "private"."event_payments_guard"() FROM PUBLIC;
 
 
 
+REVOKE ALL ON FUNCTION "private"."event_plans_opening_guard"() FROM PUBLIC;
+
+
+
 REVOKE ALL ON FUNCTION "private"."events_active_proposal_matches"() FROM PUBLIC;
 
 
@@ -18257,6 +18422,14 @@ GRANT SELECT ON TABLE "public"."event_plans" TO "authenticated";
 
 
 
+GRANT SELECT("client_opened_at") ON TABLE "public"."event_plans" TO "authenticated";
+
+
+
+GRANT SELECT("client_opened_by") ON TABLE "public"."event_plans" TO "authenticated";
+
+
+
 REVOKE ALL ON FUNCTION "private"."lock_plan_cutoff_for_staff"("p_event_id" "uuid") FROM PUBLIC;
 
 
@@ -18398,6 +18571,10 @@ REVOKE ALL ON FUNCTION "private"."one_way_revocation"() FROM PUBLIC;
 
 
 
+REVOKE ALL ON FUNCTION "private"."open_plan_to_client"("p_event" "public"."events", "p_plan" "public"."event_plans", "p_actor" "uuid", "p_via" "text") FROM PUBLIC;
+
+
+
 GRANT ALL ON TABLE "public"."staff_invitations" TO "service_role";
 
 
@@ -18502,6 +18679,14 @@ REVOKE ALL ON FUNCTION "private"."plan_music"("p_plan_id" "uuid") FROM PUBLIC;
 REVOKE ALL ON FUNCTION "private"."plan_music_requirements"("p_editor" "text", "p_answers" "jsonb") FROM PUBLIC;
 GRANT ALL ON FUNCTION "private"."plan_music_requirements"("p_editor" "text", "p_answers" "jsonb") TO "authenticated";
 GRANT ALL ON FUNCTION "private"."plan_music_requirements"("p_editor" "text", "p_answers" "jsonb") TO "service_role";
+
+
+
+REVOKE ALL ON FUNCTION "private"."plan_open_before_activation"("p_plan" "public"."event_plans") FROM PUBLIC;
+
+
+
+REVOKE ALL ON FUNCTION "private"."plan_open_to_client"("p_plan" "public"."event_plans") FROM PUBLIC;
 
 
 
@@ -19164,6 +19349,12 @@ GRANT ALL ON FUNCTION "public"."my_plans"() TO "authenticated";
 REVOKE ALL ON FUNCTION "public"."my_workspaces"() FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."my_workspaces"() TO "service_role";
 GRANT ALL ON FUNCTION "public"."my_workspaces"() TO "authenticated";
+
+
+
+REVOKE ALL ON FUNCTION "public"."open_client_planning"("p_event_id" "uuid") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."open_client_planning"("p_event_id" "uuid") TO "service_role";
+GRANT ALL ON FUNCTION "public"."open_client_planning"("p_event_id" "uuid") TO "authenticated";
 
 
 

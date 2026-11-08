@@ -179,6 +179,10 @@ export const staffPlanningViewSchema = z.union([
       source_template_id: z.string().nullable(),
       source_template_name: z.string().nullable(),
       structure_version: z.number().int(),
+      /** When staff opened planning to the client; null while they are still preparing it. */
+      client_opened_at: z.string().nullable().optional().default(null),
+      /** Who opened it: a staff email, "Former staff member", or "Flux DJ" for plans already open before explicit opening. */
+      client_opened_by: z.string().nullable().optional().default(null),
     }),
     editing: staffEditingSchema.nullable().optional().default(null),
     structure: structureSchema,
@@ -214,6 +218,15 @@ export function planAwaitingSetup(view: StaffPlanningView): boolean {
     general.every((g) => g.key === "basics" || g.disabled) &&
     stages.every((s) => s.disabled && s.moments.every((m) => m.disabled))
   );
+}
+
+/**
+ * Staff opened planning to the client (open_client_planning or the first planning invitation). Until then the
+ * client only sees that their DJ is getting it ready; staff prepare it freely. Opening is one-way: making an
+ * opened plan read-only is the client-editing switch.
+ */
+export function planOpenedToClient(view: StaffPlanningView): boolean {
+  return view.plan !== null && view.plan.client_opened_at !== null;
 }
 
 /** Result of saving a plan item (Event basics or stage details), from the client or staff action. */

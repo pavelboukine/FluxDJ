@@ -10,7 +10,7 @@ begin;
 \ir _catalog_fixtures.psql
 \ir _offer_fixtures.psql
 \ir _contract_fixtures.psql
-select plan(148);
+select plan(152);
 
 alter function tests.id(text) rename to id_base;
 create function tests.id(name text) returns uuid language sql immutable as $$
@@ -241,6 +241,11 @@ select is((select array_agg(key || ':' || label order by key) from public.event_
           (select array_agg(key || ':' || label order by key) from public.planning_template_items where template_id = :'tpl_wedding'),
   'a copy of the template''s items and labels');
 select is((select count(*)::int from public.audit_events where entity_id = tests.id('pl_wed') and action = 'planning_initialized'), 1, 'audited once');
+select is(tests.client_view('client_y', 'pl_wed') ->> 'state', 'setting_up', 'booking alone doesn''t open planning to the client');
+select tests.login_as(tests.id('staff_a'));
+select is(public.open_client_planning(tests.id('pl_wed')) ->> 'status', 'opened', 'staff open it');
+select tests.su();
+select is(tests.client_view('client_y', 'pl_wed') ->> 'state', 'available', 'then the client can plan');
 
 -- Template edits never reach an existing plan.
 select tests.login_as(tests.id('owner_a'));
@@ -270,7 +275,11 @@ select tests.force_book(tests.id('pl_early'));
 select is((select count(*)::int from public.event_plans where event_id = tests.id('pl_early')), 1, 'booking keeps the existing plan');
 select is((select array[p.initialized_via, i.label] from public.event_plans p join public.event_plan_items i on i.plan_id = p.id
            where p.event_id = tests.id('pl_early') and i.key = 'party'), array['staff', 'Birthday party'], 'and its edits');
-select is(tests.client_view('client_y', 'pl_early') ->> 'state', 'available', 'clients get access once booked');
+select is(tests.client_view('client_y', 'pl_early') ->> 'state', 'setting_up', 'booking a plan set up early doesn''t open it either');
+select tests.login_as(tests.id('staff_a'));
+select public.open_client_planning(tests.id('pl_early'));
+select tests.su();
+select is(tests.client_view('client_y', 'pl_early') ->> 'state', 'available', 'clients get access once booked and opened');
 
 -- Repeated initialization and events booked before planning existed.
 select is(private.ensure_event_plan(tests.id('pl_wed'), null, 'backfill'), tests.plan_of('pl_wed'), 'initializing again returns the same plan');
@@ -315,10 +324,16 @@ select is(tests.client_view('client_x', 'pl_wed') ->> 'state', 'unavailable', 'a
 select is(tests.client_view('stranger', 'pl_wed') ->> 'state', 'unavailable', 'nor does a stranger');
 select is(tests.client_view('client_y', 'pl_wed', 'test-other-dj') ->> 'state', 'unavailable', 'the wrong business slug gets nothing');
 select tests.force_book(tests.id('event_a1'));
+select tests.open_planning(tests.id('event_a1'));
 select is(tests.client_view('client_x', 'event_a1') ->> 'state', 'available', 'client X has access to A1');
 select is(tests.client_view('client_y', 'event_a1') ->> 'state', 'unavailable', 'revoked access gets nothing');
 select is(tests.client_view('client_u', 'event_a1') ->> 'state', 'unavailable', 'an unverified email gets nothing');
+-- B1's DJ sets planning up (Event basics as chosen by staff) and opens it.
+select tests.login_as(tests.id('owner_b'));
+select public.setup_event_plan(tests.id('event_b1'), null);
+select tests.su();
 select tests.force_book(tests.id('event_b1'));
+select tests.open_planning(tests.id('event_b1'));
 select tests.login_as(tests.id('client_x'));
 select is((select array_agg(tenant_slug || '/' || event_title order by tenant_slug) from public.my_plans()),
   array['test-bouprod/A1 Wedding', 'test-other-dj/B1 Party'], 'a client of two DJs sees both plans, each under its DJ');

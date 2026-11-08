@@ -4,9 +4,10 @@
  * booking code, and the real outbox worker: nothing invites the client
  * automatically (booking, booking confirmation, planning setup); an unbooked
  * event can't be invited; once booked, staff send the planning invitation as
- * a separate email; the client who signed keeps their contract access and
- * opens planning without a second access grant; a delivery failure never
- * reads as sent. Dedicated it- tenant, archived afterwards.
+ * a separate email, which also opens planning to the client (closed until
+ * then, even to the signed-in signer); the client who signed keeps their
+ * contract access and opens planning without a second access grant; a
+ * delivery failure never reads as sent and never closes planning again. Dedicated it- tenant, archived afterwards.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
@@ -123,12 +124,18 @@ describe("planning invitations for a Flux booking (local Supabase)", () => {
     expect(await planningRows()).toEqual([]);
     const { count: invitations } = await must(admin.from("planning_invitations").select("id", { count: "exact", head: true }).eq("event_id", eventId));
     expect(invitations).toBe(0);
+    // Booked, but planning stays closed to the signed-in client until staff open it.
+    const { data: view } = await must(client.db.rpc("client_planning_view", { p_event_id: eventId, p_tenant_slug: catalog.slug }));
+    expect((view as { state: string }).state).toBe("setting_up");
+    const { data: plan } = await must(admin.from("event_plans").select("client_opened_at").eq("event_id", eventId).single());
+    expect(plan!.client_opened_at).toBeNull();
   }, 120_000);
 
   it("staff send the planning invitation as its own email; the signed-in client reuses their contract access", async () => {
     const sent = await invite();
     expect(sent.error).toBeNull();
-    expect(sent.data).toMatchObject({ status: "sent", recipient_email: clientEmail });
+    // The first invitation opens planning, in the same transaction.
+    expect(sent.data).toMatchObject({ status: "sent", recipient_email: clientEmail, opened: true });
 
     const mail = new RecordingTransport();
     await deliver(mail);
@@ -183,5 +190,8 @@ describe("planning invitations for a Flux booking (local Supabase)", () => {
     // Every attempt used: failed, and shown as failed.
     await must(admin.from("email_outbox").update({ status: "failed" }).eq("id", row!.id));
     expect(invitationStatus(invitation, { ...row!, status: "failed" }, new Date())).toEqual({ label: "Failed", tone: "attention" });
+    // A failed email never closes planning again.
+    const { data: view } = await must(client.db.rpc("client_planning_view", { p_event_id: eventId, p_tenant_slug: catalog.slug }));
+    expect((view as { state: string }).state).toBe("available");
   }, 120_000);
 });

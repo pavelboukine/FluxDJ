@@ -36,6 +36,8 @@ begin
   perform set_config('flux.booking_event', tests.id(name)::text, true);
   update public.events set lifecycle_status = 'booked', booking_confirmed_at = now() where id = tests.id(name);
   perform set_config('flux.booking_event', '', true);
+  -- Staff open planning to the client (booking alone no longer does).
+  perform tests.open_planning(tests.id(name));
   return tests.id(name);
 end $$;
 create function tests.basics(event text) returns uuid language sql stable as $$

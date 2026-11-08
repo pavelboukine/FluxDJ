@@ -139,6 +139,11 @@ describe("planning (local Supabase)", () => {
   }, 60_000);
 
   it("concurrent client saves with the same revision: exactly one wins, the others get a conflict", async () => {
+    // Booking and setup leave planning closed to the client until staff open it.
+    const { data: before } = await must(booked.client.db.rpc("client_planning_view", { p_event_id: booked.eventId, p_tenant_slug: a.catalog.slug }));
+    expect((before as { state: string }).state).toBe("setting_up");
+    expect((await must(booked.client.db.rpc("my_plans"))).data).toEqual([]);
+    await must(a.staff.rpc("open_client_planning", { p_event_id: booked.eventId }));
     const saves = await Promise.all(
       [40, 50, 60, 70, 80].map((guests) =>
         booked.client.db.rpc("client_save_plan_basics", {
@@ -184,7 +189,9 @@ describe("planning (local Supabase)", () => {
 
   it("a client of two DJs sees each plan under its DJ, and only their own", async () => {
     const second = await signedEvent(b, booked.client);
+    await must(b.staff.rpc("setup_event_plan", { p_event_id: second.eventId, p_template_id: null as unknown as string }));
     await must(pay(b, second.eventId, second.deposit));
+    await must(b.staff.rpc("open_client_planning", { p_event_id: second.eventId }));
     const { data: mine } = await must(booked.client.db.rpc("my_plans"));
     expect(mine!.map((p) => [p.tenant_slug, p.event_id]).sort()).toEqual(
       [[a.catalog.slug, booked.eventId], [b.catalog.slug, second.eventId]].sort(),

@@ -546,13 +546,13 @@ isOneToOne: false
                   ]
                 },"event_plans": {
                   Row: {
-                    "client_cutoff_days": number,"client_cutoff_version": number,"created_at": string,"event_id": string,"id": string,"initialized_via": string,"origin": string,"source_template_id": string | null,"source_template_name": string | null,"source_template_version": number | null,"structure_version": number,"tenant_id": string,"updated_at": string
+                    "client_cutoff_days": number,"client_cutoff_version": number,"client_opened_at": string | null,"client_opened_by": string | null,"created_at": string,"event_id": string,"id": string,"initialized_via": string,"origin": string,"source_template_id": string | null,"source_template_name": string | null,"source_template_version": number | null,"structure_version": number,"tenant_id": string,"updated_at": string
                   }
                   Insert: {
-                    "client_cutoff_days": number,"client_cutoff_version"?: number,"created_at"?: string,"event_id": string,"id"?: string,"initialized_via": string,"origin": string,"source_template_id"?: string | null,"source_template_name"?: string | null,"source_template_version"?: number | null,"structure_version"?: number,"tenant_id": string,"updated_at"?: string
+                    "client_cutoff_days": number,"client_cutoff_version"?: number,"client_opened_at"?: string | null,"client_opened_by"?: string | null,"created_at"?: string,"event_id": string,"id"?: string,"initialized_via": string,"origin": string,"source_template_id"?: string | null,"source_template_name"?: string | null,"source_template_version"?: number | null,"structure_version"?: number,"tenant_id": string,"updated_at"?: string
                   }
                   Update: {
-                    "client_cutoff_days"?: number,"client_cutoff_version"?: number,"created_at"?: string,"event_id"?: string,"id"?: string,"initialized_via"?: string,"origin"?: string,"source_template_id"?: string | null,"source_template_name"?: string | null,"source_template_version"?: number | null,"structure_version"?: number,"tenant_id"?: string,"updated_at"?: string
+                    "client_cutoff_days"?: number,"client_cutoff_version"?: number,"client_opened_at"?: string | null,"client_opened_by"?: string | null,"created_at"?: string,"event_id"?: string,"id"?: string,"initialized_via"?: string,"origin"?: string,"source_template_id"?: string | null,"source_template_name"?: string | null,"source_template_version"?: number | null,"structure_version"?: number,"tenant_id"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -1548,6 +1548,9 @@ isOneToOne: false
 { Args: Record<PropertyKey, never>; Returns: {
               "display_name": string,"role": string,"slug": string,"suspended": boolean
             }[]
+                           },
+"open_client_planning":
+{ Args: { "p_event_id": string }; Returns: Json
                            },
 "open_contract_template_draft":
 { Args: { "p_template_id": string }; Returns: string

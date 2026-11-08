@@ -89,10 +89,12 @@ export default async function ClientPlanningPage({ params }: PageProps<"/[tenant
   const view = parsed.success ? parsed.data : { state: "unavailable" as const };
   if (view.state === "setting_up") {
     return (
-      <Notice title="Your DJ is setting up your event planning" email={email}>
+      // Booked, but the DJ hasn't opened planning yet (database state "setting_up"): a bookmark or an old link lands here.
+      <Notice title="Your DJ is getting your planning ready" email={email}>
         <p data-testid="planning-setting-up">
-          Check back soon. {view.brand.display_name} is preparing the planning for {view.event.title} ({formatEventDate(view.event.event_date)}).
-          You&apos;ll be able to fill it in once it&apos;s ready. See <Link className="underline" href="/my">your events</Link>.
+          {view.brand.display_name} is preparing the planning for {view.event.title} ({formatEventDate(view.event.event_date)}). It will open
+          soon, and they&apos;ll let you know when it&apos;s time to get started. Your booking details are on{" "}
+          <Link className="underline" href={eventHubPath(slug, eventId)}>your event page</Link>.
         </p>
       </Notice>
     );

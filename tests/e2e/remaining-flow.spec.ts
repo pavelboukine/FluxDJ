@@ -15,7 +15,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { expect, test, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
-import { bookEvent, contractualState, must, sessionFor } from "./booking";
+import { bookEvent, contractualState, must, sessionFor, openPlanning } from "./booking";
 import { admin, openPlanMoment, openPlanSection, signInStaff, signInWithLink } from "./support";
 import { archiveTestTenant, createTestTenant, type TestTenant } from "./tenant";
 
@@ -79,6 +79,7 @@ test.describe.serial("remaining planning editors", () => {
       await must(staffDb.rpc("add_event_plan_item", { p_event_id: eventId, p_expected_version: await version(), p_key: key, p_parent_key: parent }));
     }
     await bookEvent(tenant, eventId, clientEmail);
+    await openPlanning(tenant, eventId);
     const { data: plan } = await must(admin.from("event_plans").select("event_plan_items(id, key)").eq("event_id", eventId).single());
     const ceremony = plan!.event_plan_items.find((i) => i.key === "ceremony")!.id;
     await must(staffDb.rpc("staff_save_plan_item", { p_event_id: eventId, p_item_id: ceremony, p_expected_revision: 0,

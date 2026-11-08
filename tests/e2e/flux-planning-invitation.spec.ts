@@ -64,27 +64,38 @@ test.describe.serial("planning invitation for a Flux booking", () => {
     await archiveTestTenant(tenant);
   });
 
-  test("booking emails nothing about planning; the invitation is a separate, explained step", async () => {
+  test("booking opens nothing and emails nothing about planning; opening it is a separate, explained step", async () => {
     expect(await planningEmails()).toEqual([]);
     await staff.goto(eventUrl);
     await expect(staff.getByTestId("event-header-status")).toHaveText(/Booked/);
-    await expect(staff.getByTestId("next-action")).toHaveAttribute("data-key", "review_planning");
-    await expect(staff.getByTestId("next-action-secondary")).toHaveText("Send planning invitation");
+    await expect(staff.getByTestId("next-action")).toHaveAttribute("data-key", "open_planning");
+    await expect(staff.getByTestId("next-action-secondary")).toHaveText("Open planning");
+    await expect(staff.getByTestId("planning-card-not-opened")).toBeVisible();
     const access = staff.getByTestId("client-access");
+    await expect(access.getByTestId("client-access-headline")).toHaveText("Not open yet");
     await expect(access).toContainText("Nothing is sent until you do, not even when the event is booked.");
     await expect(access.getByTestId("planning-invitation")).toHaveCount(0);
     await expect(access).toContainText(clientEmail);
-    await expect(access.getByRole("button", { name: "Send planning invitation" })).toBeVisible();
+    await expect(access.getByRole("button", { name: "Open planning & send invitation" })).toBeVisible();
+    await expect(access.getByRole("button", { name: "Open without emailing" })).toBeVisible();
 
-    // Closing client editing blocks the invitation, with the way to open it; opening it sends nothing.
+    // The client who signed is signed in, but planning isn't theirs to open yet, even from a bookmark.
+    await signInWithLink(client, clientEmail);
+    await client.waitForURL("**/my");
+    await client.goto(`/${tenant.slug}/planning/${eventId}`);
+    await expect(client.getByTestId("planning-setting-up")).toBeVisible();
+    await expect(client.getByTestId("editing-chip")).toHaveCount(0);
+
+    // Closing client editing blocks the invitation email (not opening without one), with the way to open editing; nothing is sent.
     await staff.goto(`${eventUrl}/planning`);
-    await expect(staff.getByTestId("planning-invite-hint")).toContainText("hasn't been told it's ready");
+    await expect(staff.getByTestId("planning-invite-hint")).toHaveAttribute("data-state", "not_opened");
     await staff.getByRole("button", { name: "Close client editing…" }).click();
     await staff.getByRole("button", { name: "Close client editing", exact: true }).click();
     await expect(staff.getByTestId("client-editing-control")).toHaveAttribute("data-state", "closed");
     await staff.goto(eventUrl);
-    await expect(access.getByTestId("client-access-blocker")).toContainText("Client editing is closed. Open it on the planning page");
-    await expect(access.getByRole("button", { name: "Send planning invitation" })).toHaveCount(0);
+    await expect(access.getByTestId("client-access-blocker")).toContainText("Client editing is closed (by you or the deadline), so no invitation can be sent.");
+    await expect(access.getByRole("button", { name: "Open planning & send invitation" })).toHaveCount(0);
+    await expect(access.getByRole("button", { name: "Open without emailing" })).toBeVisible();
     // The way there is the Planning section's own link, just above.
     await staff.locator("#planning").getByRole("link", { name: "Open planning" }).click();
     await staff.waitForURL(`**${eventUrl}/planning`);
@@ -94,11 +105,14 @@ test.describe.serial("planning invitation for a Flux booking", () => {
     expect(await planningEmails()).toEqual([]);
   });
 
-  test("staff send the planning invitation; the status follows the real delivery", async () => {
+  test("staff open planning and send the invitation in one step; the status follows the real delivery", async () => {
     await staff.goto(eventUrl);
     const access = staff.getByTestId("client-access");
     const sentAfter = Date.now();
-    await access.getByRole("button", { name: "Send planning invitation" }).click();
+    staff.once("dialog", (d) => void d.accept());
+    await access.getByRole("button", { name: "Open planning & send invitation" }).click();
+    await expect(access).toHaveAttribute("data-opened", "true");
+    await expect(access.getByTestId("planning-opened")).toContainText(`by ${tenant.ownerEmail}`);
     await expect(access.getByTestId("planning-invitation-recipient")).toHaveText(clientEmail);
     await expect(access.getByTestId("planning-invitation-status")).toHaveText(/^(Queued|Sent|Accepted)$/);
 
@@ -113,8 +127,6 @@ test.describe.serial("planning invitation for a Flux booking", () => {
   });
 
   test("the signed-in client continues without a second verification, plans and sees the event on /my", async () => {
-    await signInWithLink(client, clientEmail);
-    await client.waitForURL("**/my");
     await client.goto(invitationLink.replace(/^https?:\/\/[^/]+/, ""));
     await expect(client.getByText("You're already signed in with the email address")).toBeVisible();
     await expect(client.getByRole("button", { name: "Email me a sign-in link" })).toHaveCount(0);

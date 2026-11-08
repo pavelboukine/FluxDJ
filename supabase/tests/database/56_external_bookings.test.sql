@@ -7,7 +7,7 @@
 -- archived events stay refused.
 begin;
 \ir _fixtures.psql
-select plan(86);
+select plan(88);
 
 -- Events staff create get their id from the database (staff can't choose one); it is recorded here by name.
 create table tests.created (name text primary key, id uuid not null);
@@ -285,7 +285,9 @@ select is(tests.view('event_a2') ->> 'state', 'unavailable', 'is still not open 
 select set_config('flux.booking_event', tests.id('event_a2')::text, true);
 update public.events set lifecycle_status = 'booked', booking_confirmed_at = now() where id = tests.id('event_a2');
 select set_config('flux.booking_event', '', true);
-select is(tests.view('event_a2') ->> 'state', 'available', 'and opens once Flux books it');
+select is(tests.view('event_a2') ->> 'state', 'setting_up', 'booking it doesn''t open planning to the client');
+select lives_ok($$ select tests.as_user('staff_a', format('select public.open_client_planning(%L)', tests.id('event_a2'))) $$, 'staff open it');
+select is(tests.view('event_a2') ->> 'state', 'available', 'and it opens once booked and opened by staff');
 
 select * from finish();
 rollback;

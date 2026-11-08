@@ -76,33 +76,47 @@ test.describe.serial("event booked elsewhere", () => {
     await expect(staff.locator("#payments")).toHaveCount(0);
     await expect(staff.locator("#documents")).toHaveCount(0);
     await expect(staff.locator("main")).not.toContainText(/Create a proposal|Prepare the contract|Record the deposit|Waiting for the client to sign/);
-    await expect(staff.getByTestId("client-access-state")).toHaveText("Not invited to planning yet.");
-    await expect(staff.getByTestId("client-access-blocker")).toContainText("Set up planning before inviting your client.");
-    await expect(staff.getByTestId("client-access").getByRole("button", { name: "Send planning invitation" })).toHaveCount(0);
+    await expect(staff.getByTestId("client-access-state")).toContainText("Planning isn't open to your client yet");
+    await expect(staff.getByTestId("client-access-headline")).toHaveText("Not open yet");
+    await expect(staff.getByTestId("client-access-blocker")).toContainText("Set up planning before opening it to your client.");
+    await expect(staff.getByTestId("client-access").getByRole("button")).toHaveCount(0);
     // The client's email is stored on the primary contact the form created.
     const { data: primary } = await must(admin.from("event_clients").select("is_primary, clients(name, email)").eq("event_id", eventId).single());
     expect(primary).toEqual({ is_primary: true, clients: { name: clientName, email: clientEmail } });
   });
 
-  test("staff set planning up from a template and invite the client; nothing is sent before", async () => {
+  test("staff set planning up from a template, then open it and invite the client in one step; nothing is sent before", async () => {
     expect((await admin.from("email_outbox").select("id").eq("recipient_email", clientEmail)).data).toEqual([]);
     await staff.getByTestId("next-action-primary").click();
     await staff.waitForURL(`**${eventUrl}/planning`);
     await expect(staff.getByText("This event was booked outside Flux DJ.")).toBeVisible();
     await staff.getByLabel("Template").selectOption({ label: "Wedding" });
     await staff.getByRole("button", { name: "Set up planning" }).click();
-    await expect(staff.getByTestId("client-access")).toContainText("Booked externally: the client opens planning after you send a planning invitation");
-    // Where staff set up and open planning, they're told nothing has been emailed yet.
-    await expect(staff.getByTestId("planning-invite-hint")).toContainText("Nothing is emailed to them until you send a planning invitation.");
+    await expect(staff.getByTestId("client-access")).toContainText("Planning isn't open to the client yet");
+    // Where staff prepare planning, they're told the client can't see it yet, and where to open it.
+    const hint = staff.getByTestId("planning-invite-hint");
+    await expect(hint).toHaveAttribute("data-state", "not_opened");
+    await expect(hint).toContainText("Planning is ready, but your client can't access it yet.");
+    await expect(hint.getByRole("link", { name: "Open from Client access" })).toHaveAttribute("href", `${eventUrl}#client-access`);
     expect((await admin.from("email_outbox").select("id").eq("recipient_email", clientEmail)).data).toEqual([]);
 
+    // Planning-only events get the same dashboard reminder.
+    await staff.goto(`/staff/${tenant.slug}`);
+    await expect(staff.getByTestId("attention-item").filter({ hasText: title })).toHaveAttribute("data-kind", "planning_not_open");
+
     await staff.goto(eventUrl);
-    await expect(staff.getByTestId("next-action")).toHaveAttribute("data-key", "invite_client");
+    // Preparing and opening are separate steps.
+    await expect(staff.getByTestId("next-action")).toHaveAttribute("data-key", "open_planning");
+    await expect(staff.getByTestId("planning-card-not-opened")).toContainText("Planning is ready, but your client can't access it yet.");
     const sentAfter = Date.now();
-    await staff.getByTestId("next-action-primary").click();
+    await staff.getByTestId("next-action-secondary").click();
     const access = staff.getByTestId("client-access");
     await expect(access).toContainText(clientEmail);
-    await access.getByRole("button", { name: "Send planning invitation" }).click();
+    await expect(access.getByTestId("open-without-emailing").getByRole("button", { name: "Open without emailing" })).toBeVisible();
+    staff.once("dialog", (d) => void d.accept());
+    await access.getByRole("button", { name: "Open planning & send invitation" }).click();
+    await expect(access).toHaveAttribute("data-opened", "true");
+    await expect(access.getByTestId("open-without-emailing")).toHaveCount(0);
     await expect(access.getByTestId("client-access-state")).toContainText(`Planning invitation for ${clientEmail}`);
     await expect(access.getByTestId("planning-invitation-recipient")).toHaveText(clientEmail);
     await expect(access.getByTestId("planning-invitation-status")).toHaveText(/^(Queued|Sent)$/);

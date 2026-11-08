@@ -7,7 +7,7 @@ import type { StaffContext } from "@/lib/auth/staff";
 import { deliveryState, type OutboxRow } from "@/lib/email/history";
 import { invitationOpen, invitationStatus, type InvitationStatus, type PlanningAccess } from "@/lib/events/workspace";
 import { cn } from "@/lib/utils";
-import { sendPlanningInvitation } from "./client-access-actions";
+import { openClientPlanning, sendPlanningInvitation } from "./client-access-actions";
 
 /**
  * The latest planning invitation, every invitation id (for the Emails card)
@@ -64,13 +64,19 @@ type Blocker = { text: string; link?: { label: string; href: string } };
 /**
  * Client access to planning, for a Flux booking and an event booked
  * elsewhere alike, as part of the Planning section (#client-access, below
- * its own planning links, so blockers name the step without repeating them): who can
- * open planning, the latest invitation's status and recipient, what's missing
- * before inviting, and the Send planning invitation form, all visible; the
- * invitation's dates and delivery details behind a disclosure. Inviting is
- * always a deliberate staff action: creating the event, booking it, setting
- * up planning or opening client editing sends nothing. The database checks
- * every prerequisite again when sending.
+ * its own planning links, so blockers name the step without repeating them).
+ *
+ * Preparing planning and opening it to the client are separate steps: until
+ * staff open it, the client only sees that their DJ is getting it ready.
+ * Opening is here only, and one-way:
+ *  - "Open planning & send invitation" (send_planning_invitation opens it and
+ *    queues the email in one transaction);
+ *  - "Open without emailing" (open_client_planning), the secondary action.
+ * Once open: who can open planning, the latest invitation's status and
+ * recipient, and Send (a new) planning invitation; the invitation's dates and
+ * delivery details behind a disclosure. Booking, setting up planning or
+ * opening client editing never opens planning or sends anything. The database
+ * checks every prerequisite again.
  */
 export function ClientAccess({
   slug,
@@ -80,6 +86,9 @@ export function ClientAccess({
   booked,
   planningReady,
   editingOpen,
+  opened,
+  openedAt,
+  openedBy,
   primary,
   archived,
   external,
@@ -96,6 +105,11 @@ export function ClientAccess({
   planningReady: boolean;
   /** Client editing is open or reopened (not closed by staff or the deadline). */
   editingOpen: boolean;
+  /** Staff opened planning to the client (event_plans.client_opened_at). */
+  opened: boolean;
+  openedAt: string | null;
+  /** A staff email, "Former staff member", or "Flux DJ" (open before explicit opening existed). */
+  openedBy: string | null;
   primary: { id: string; name: string; email: string; archived: boolean } | null;
   archived: boolean;
   external: boolean;
@@ -103,42 +117,63 @@ export function ClientAccess({
 }) {
   const now = new Date();
   const i = access.invitation;
-  const open = invitationOpen(i, now);
+  const invitationWorks = invitationOpen(i, now);
   const status = invitationStatus(i, email, now);
-  const blocker: Blocker | null = archived
-    ? { text: "Unarchive the event to invite the client." }
+  const planningHref = `/staff/${slug}/events/${eventId}/planning`;
+  // What stops planning being opened at all, then what stops an invitation email.
+  const openBlocker: Blocker | null = archived
+    ? { text: opened ? "Unarchive the event to invite the client." : "Unarchive the event to open planning to the client." }
     : !booked
-      ? { text: "The event isn't booked yet. You can send a planning invitation once the booking is confirmed." }
+      ? { text: opened ? "The event isn't booked yet. You can send a planning invitation once the booking is confirmed." : "The event isn't booked yet. You can open planning to the client once the booking is confirmed." }
       : !planningReady
-        ? { text: "Set up planning before inviting your client." }
-        : !editingOpen
-          ? { text: "Client editing is closed. Open it on the planning page before inviting your client, so they can fill planning in." }
-          : !primary || primary.archived
-            ? { text: "Add an active primary contact to invite.", link: { label: "Contacts", href: "#contacts" } }
-            : null;
+        ? { text: opened ? "Set up planning before inviting your client." : "Set up planning before opening it to your client." }
+        : null;
+  const emailBlocker: Blocker | null = openBlocker
+    ? openBlocker
+    : !editingOpen
+      ? {
+          text: opened
+            ? "Client editing is closed. Open it on the planning page before inviting your client, so they can fill planning in."
+            : "Client editing is closed (by you or the deadline), so no invitation can be sent. Reopen it on the planning page first, or open planning without emailing: your client then reads it, read-only.",
+          link: { label: "Planning page", href: planningHref },
+        }
+      : !primary || primary.archived
+        ? { text: "Add an active primary contact to invite.", link: { label: "Contacts", href: "#contacts" } }
+        : null;
   const delivery = email ? deliveryState(email, now) : null;
   const recipient = i ? <span data-testid="planning-invitation-recipient">{i.email}</span> : null;
   // Contract access alone (a Flux booking) isn't an invitation: the first one is still "Send planning invitation".
   const again = Boolean(i);
-  // The latest invitation's status, else whether the client can open planning without one (a Flux booking's contract access).
-  const headline: InvitationStatus = i ? status : access.clientHasAccess ? { label: "Has access", tone: "good" } : status;
+  // Not open yet; else the latest invitation's status, else whether the client can open planning without one (a Flux booking's contract access).
+  const headline: InvitationStatus = !opened
+    ? { label: "Not open yet", tone: "normal" }
+    : i
+      ? status
+      : access.clientHasAccess
+        ? { label: "Has access", tone: "good" }
+        : status;
 
   return (
-    <section id="client-access" aria-labelledby="client-access-heading" className="grid scroll-mt-20 gap-3 border-t pt-4" data-testid="client-access">
+    <section id="client-access" aria-labelledby="client-access-heading" className="grid scroll-mt-20 gap-3 border-t pt-4" data-testid="client-access" data-opened={opened ? "true" : "false"}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 id="client-access-heading" className="font-medium">Client access</h3>
-        <span data-testid={i ? "planning-invitation-status" : "client-access-headline"} className={cn("inline-block rounded-full border px-2 py-0.5 text-xs font-medium", TONE[headline.tone])}>
+        <span data-testid={opened && i ? "planning-invitation-status" : "client-access-headline"} className={cn("inline-block rounded-full border px-2 py-0.5 text-xs font-medium", TONE[headline.tone])}>
           {headline.label}
         </span>
       </div>
       <p data-testid="client-access-state" className="[overflow-wrap:anywhere]">
-        {access.clientHasAccess ? (
+        {!opened ? (
+          <>
+            Planning isn&apos;t open to your client yet: they see that you&apos;re getting it ready. Prepare it first, then open it when it&apos;s
+            ready.
+          </>
+        ) : access.clientHasAccess ? (
           <>
             The client has verified access and can open planning (and edit it while client editing is open).
             {i ? <> Invited at {recipient}.</> : null}
           </>
         ) : i ? (
-          open ? (
+          invitationWorks ? (
             <>Planning invitation for {recipient}, created {fmt(i.createdAt)}. It works until {fmt(i.expiresAt)}; the client hasn&apos;t accepted it yet.</>
           ) : (
             <>
@@ -147,10 +182,16 @@ export function ClientAccess({
             </>
           )
         ) : (
-          "Not invited to planning yet."
+          "Planning is open, but your client hasn't been invited yet."
         )}
       </p>
-      {i ? (
+      {opened && openedAt ? (
+        <p className="text-xs text-muted-foreground" data-testid="planning-opened">
+          Opened to the client {fmt(openedAt)}
+          {openedBy && openedBy !== "Flux DJ" ? <> by {openedBy}</> : null}.
+        </p>
+      ) : null}
+      {opened && i ? (
         <div className="grid gap-2" data-testid="planning-invitation">
           {delivery?.attention && !i.accepted && !i.revoked ? (
             <p className="flex gap-1.5 text-amber-800 dark:text-amber-300">
@@ -175,35 +216,64 @@ export function ClientAccess({
           </Disclosure>
         </div>
       ) : null}
-      {blocker ? (
-        <p className="text-muted-foreground" data-testid="client-access-blocker">
-          {blocker.text}
-          {blocker.link ? (
-            <>
-              {" "}
-              <Link className="font-medium text-foreground underline" href={blocker.link.href}>{blocker.link.label}</Link>
-            </>
-          ) : null}
-        </p>
-      ) : (
+      {emailBlocker ? <BlockerLine blocker={emailBlocker} /> : (
         // Remounted for each new invitation, so the next send gets a new request id.
         <ActionForm
           key={i?.id ?? "none"}
           action={sendPlanningInvitation.bind(null, slug, eventId)}
-          submitLabel={again ? "Send a new planning invitation" : "Send planning invitation"}
-          pendingLabel="Sending…"
-          variant={again ? "outline" : "default"}
-          confirm={open ? "Send a new planning invitation? The link in the earlier email will stop working." : undefined}
+          submitLabel={!opened ? "Open planning & send invitation" : again ? "Send a new planning invitation" : "Send planning invitation"}
+          pendingLabel={!opened ? "Opening…" : "Sending…"}
+          variant={opened && again ? "outline" : "default"}
+          confirm={
+            !opened
+              ? `Open planning to ${primary!.name} and email them an invitation? Opening can't be undone; you can still close client editing later.`
+              : invitationWorks
+                ? "Send a new planning invitation? The link in the earlier email will stop working."
+                : undefined
+          }
         >
           <RequestIdField />
           <p className="text-muted-foreground [overflow-wrap:anywhere]">
-            Emails {primary!.name} at <strong className="font-medium text-foreground">{primary!.email}</strong> a link to planning
+            {!opened ? "Opens planning to your client and emails " : "Emails "}
+            {primary!.name} at <strong className="font-medium text-foreground">{primary!.email}</strong> a link to planning
             {access.clientHasAccess ? "" : ", after confirming their email address"}. Nothing is sent until you do{external ? "" : ", not even when the event is booked"}.{" "}
             Wrong address? <Link className="underline" href={`/staff/${slug}/clients/${primary!.id}#details`}>Edit {primary!.name}</Link>.
           </p>
         </ActionForm>
       )}
+      {!opened && !openBlocker ? (
+        <div className="grid gap-2 rounded-xl border border-dashed p-3" data-testid="open-without-emailing">
+          <ActionForm
+            action={openClientPlanning.bind(null, slug, eventId)}
+            submitLabel="Open without emailing"
+            pendingLabel="Opening…"
+            variant="outline"
+            confirm="Open planning to your client without emailing them? Opening can't be undone; you can still close client editing later."
+          >
+            <p className="text-muted-foreground">
+              {access.clientHasAccess
+                ? "Your client can then open planning from their account, but isn't told it's ready. You can send the invitation later."
+                : "Nobody is emailed, and your client has no access yet: send the planning invitation later so they can sign in."}
+              {editingOpen ? "" : " Client editing is closed, so they would read it, read-only."}
+            </p>
+          </ActionForm>
+        </div>
+      ) : null}
     </section>
+  );
+}
+
+function BlockerLine({ blocker }: { blocker: Blocker }) {
+  return (
+    <p className="text-muted-foreground" data-testid="client-access-blocker">
+      {blocker.text}
+      {blocker.link ? (
+        <>
+          {" "}
+          <Link className="font-medium text-foreground underline" href={blocker.link.href}>{blocker.link.label}</Link>
+        </>
+      ) : null}
+    </p>
   );
 }
 

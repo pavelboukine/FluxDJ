@@ -13,7 +13,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { expect, test, type Browser, type Page, type TestInfo } from "@playwright/test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { admin, signInStaff } from "./support";
-import { must, sessionFor } from "./booking";
+import { must, sessionFor, openPlanning } from "./booking";
 import { archiveTestTenant, createTestTenant, publishContractTemplate, submitAsClient, type TestTenant } from "./tenant";
 import { clearBookingPolicyLocally, placePlanningDeadline } from "../support/local-sql";
 
@@ -149,6 +149,7 @@ test.describe.serial("event workspace", () => {
     await must(staffDb.rpc("send_proposal", { p_proposal_id: revision, p_expected_draft_version: revDraft!.draft_version, p_access_link_id: randomUUID(), p_token_hash: randomUUID().replaceAll("-", "").repeat(2) }));
     // Booked, with the client's planning deadline passed.
     await stage("passed", "Deadline passed wedding", "booked", { venue: "Château Example", planned: true });
+    await openPlanning(tenant, ev.passed.id);
     placePlanningDeadline(ev.passed.id, -24);
     // Long content for the phone header and the collapsed Event details line.
     await stage("long", "Alexandrine-Joséphine Bouchard-Villeneuve & Maximilien-Théodore Lachapelle-Desrosiers Wedding Celebration", "new", { venue: "Le Windsor" });
@@ -178,8 +179,8 @@ test.describe.serial("event workspace", () => {
       ["cdraft", "review_contract", `${base}/contracts/${ev.cdraft.contractId}`, null],
       ["csent", "awaiting_signature", null, `${base}/contracts/${ev.csent.contractId}`],
       ["deposit", "record_payment", "#record-payment", null],
-      // Not invited to planning yet: the separate planning invitation is offered next to reviewing planning.
-      ["booked", "review_planning", `${base}/events/${ev.booked.id}/planning`, "#client-access"],
+      // Set up but not open to the client yet: prepare it (planning), then open it (Client access).
+      ["booked", "open_planning", `${base}/events/${ev.booked.id}/planning`, "#client-access"],
       ["legacy", "check_booking", "#payments", null],
       // Booked with Event basics only (no default template): staff choose the template first.
       ["corrected", "set_up_planning", `${base}/events/${ev.corrected.id}/planning`, null],
@@ -270,12 +271,14 @@ test.describe.serial("event workspace", () => {
     await expect(editingLine).toHaveAttribute("title", /\(America\/Toronto\)$/);
     await expect(page.locator("#planning").getByRole("link", { name: "Open planning" })).toHaveAttribute("href", `${base}/events/${ev.booked.id}/planning`);
     await expect(page.locator("#planning").getByRole("link", { name: "Open run sheet" })).toHaveAttribute("href", `${base}/events/${ev.booked.id}/run-sheet`);
-    // Client access is part of Planning: the signing client already has access (from the contract), and the
-    // separate planning invitation is offered right there.
+    // Client access is part of Planning: booking didn't open planning, so opening it (with the invitation, or
+    // without emailing) is offered right there, even though the signing client has access to the event.
+    await expect(page.getByTestId("planning-card-not-opened")).toContainText("Planning is ready, but your client can't access it yet.");
     const access = page.locator("#planning").getByTestId("client-access");
-    await expect(access.getByTestId("client-access-headline")).toHaveText("Has access");
-    await expect(access.getByTestId("client-access-state")).toContainText("The client has verified access and can open planning");
-    await expect(access.getByRole("button", { name: "Send planning invitation" })).toBeVisible();
+    await expect(access.getByTestId("client-access-headline")).toHaveText("Not open yet");
+    await expect(access.getByTestId("client-access-state")).toContainText("Planning isn't open to your client yet");
+    await expect(access.getByRole("button", { name: "Open planning & send invitation" })).toBeVisible();
+    await expect(access.getByRole("button", { name: "Open without emailing" })).toBeVisible();
     // Event details no longer repeat the header (title, date, venue, type, booking); the edit form still has every field.
     await expect(page.getByTestId("event-details")).not.toContainText(/Château Example|Wedding|Through Flux DJ/);
     for (const field of ["Title", "Type", "Date", "Timezone", "Venue name", "Venue address"]) await expect(page.locator("#edit-details").getByLabel(field, { exact: true })).toHaveCount(1);

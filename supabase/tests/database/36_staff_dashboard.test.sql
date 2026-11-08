@@ -251,6 +251,7 @@ select tests.login_as(tests.id('staff_a'));
 select public.setup_event_plan(tests.id('Plan done'), null);
 select tests.su();
 select tests.book('Plan done');
+select tests.open_planning(tests.id('Plan done'));
 select private.set_plan_cutoff_columns(tests.id('Plan done'), now() + interval '2 days', null);
 update public.event_plan_items set disabled_at = now()
   where plan_id = (select id from public.event_plans where event_id = tests.id('Plan done')) and key <> 'basics';
