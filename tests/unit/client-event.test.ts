@@ -37,7 +37,9 @@ describe("event hub: next step", () => {
   it("booked: planning when it's open, a calm wait when it isn't ready, read-only when closed", () => {
     expect(step({ plan: { editing: "open", complete: false } }).action).toEqual({ label: "Open planning", href: "/dj/planning/e1" });
     expect(step({ plan: { editing: "open", complete: true } }).action?.label).toBe("Review your plan");
-    expect(step({ plan: null })).toEqual({ title: "Your DJ is getting planning ready", text: expect.stringContaining("DJ Co"), action: null });
+    // Booked but not opened by the DJ yet: a friendly pending step, with nothing to open.
+    expect(step({ plan: null })).toEqual({ title: "Your event is booked!", text: expect.stringContaining("DJ Co is getting everything ready"), action: null });
+    expect(step({ plan: null }).text).toContain("they'll let you know when it's time to get started");
     expect(step({ plan: { editing: "closed", complete: false } }).action).toEqual({ label: "View your plan", href: "/dj/planning/e1" });
   });
 

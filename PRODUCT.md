@@ -40,7 +40,7 @@ Planning is not a standalone questionnaire. It is the client-facing half of a wo
 ## Operating Context
 
 - Clients reach planning from an invitation email or their events list (`/my`), signed in with a verified email link.
-- Planning opens once the event is booked and staff have set it up; until then clients see a "setting up" notice.
+- Planning opens to the client only when staff open it, after the event is booked and planning is set up (with the invitation email, or without); until then clients see that their event is booked and their DJ is getting planning ready.
 - A planning deadline (or a DJ closing planning) makes it read-only; staff can reopen it.
 - Every answer autosaves per item with revision checks; pending, failed, conflicting and signed-out saves are surfaced and never silently dropped.
 - Planning is organised as general sections (Event basics, Contacts and vendors, DJ expectations and overall preferences) followed by the event's stages in order (for a wedding: Ceremony, Cocktail, Reception entrance, Dinner, Special dances, Party, Closing), each with moments.

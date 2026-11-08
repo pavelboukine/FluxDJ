@@ -792,8 +792,10 @@ have no agreement terms: add yours, review and publish.
    proposal, contract, signature or deposit steps, and Flux DJ records no
    payments or invoice link for it.
 2. Its next step is **Set up planning**: choose a template on the planning
-   page. Nothing is sent to the client.
-3. **Client access → Invite** emails the primary contact a link. They confirm
+   page. Nothing is sent to the client, and the client can't see planning yet.
+3. **Client access → Open planning & send invitation** opens planning and
+   emails the primary contact a link (**Open without emailing** opens it
+   without the email; send the invitation later). They confirm
    their email, then **Open my planning**. A new invitation replaces the
    previous one; archiving cancels an unaccepted one, and an invitation stops
    working if the primary contact or their email changes.
@@ -1437,6 +1439,17 @@ signed-out browser:
   suspended and archived businesses refused), each change audited once with
   what it changed from (an unchanged save adds nothing), and
   `proposals_by_default` and events left alone.
+- `69_planning_activation` (pgTAP): the backfill rule for each earlier state,
+  booking (default template, staff setup, contract-first) never opening
+  planning, `setting_up` and refused saves until opened, who may open
+  (clients, other businesses, strangers, signed out, archived, unbooked,
+  unset-up and suspended refused), one-way and idempotent opening, the
+  deadline and closed editing kept, opening with the first invitation in one
+  transaction, failed and retried emails, planning-only events, earlier
+  invitations, archiving and revoked access.
+- `tests/integration/planning-activation.test.ts`: concurrent openings, open
+  and send racing open-only, two first invitations at once, and a client
+  reading and saving while staff open planning.
 - `tests/unit/setup.test.ts` and `tests/e2e/setup-guide-flow.spec.ts`: every
   step's rule, the setup guidance (Skipped steps, finished steps still Ready,
   readiness unchanged), the dashboard card per guidance, and staff's
@@ -3227,6 +3240,41 @@ Migrations `20261115000100_external_bookings.sql` and
   `claim_planning_email_outbox`.
 - Triggers on `event_payments` and `event_billing` refuse every write for
   external events (`payment_invalid`), whatever the role or path.
+
+### Opening planning to the client
+
+Migration `20261201000100_manual_planning_activation.sql`. Booking never opens
+planning to the client, for proposal, contract-first and planning-only events
+alike: staff prepare it first (template, sections, questions), then open it.
+
+- `event_plans.client_opened_at` / `client_opened_by`: set once, never cleared
+  (trigger `event_plans_opening_guard`; only `private.open_plan_to_client` may
+  set it). Making an opened plan read-only stays the client-editing switch and
+  the deadline; opening never changes either.
+- Clients see a plan only when `private.plan_open_to_client` is true (opened,
+  and not a basics-only plan from booking). Until then `client_planning_view`
+  returns `setting_up` (brand and event details only), `my_plans` leaves it
+  out and `client_plan_write_access` refuses saves (`unavailable`), so
+  bookmarks, old links and direct RPC calls get nothing more.
+- Staff open it from **Client access** on the event page:
+  **Open planning & send invitation** (`send_planning_invitation`, which opens
+  planning, records the invitation and queues its email in one transaction;
+  its result says `opened`) or **Open without emailing**
+  (`open_client_planning`: staff of the business, booked for planning, set
+  up, not archived; idempotent, `already_open` when repeated; audited as
+  `planning_opened_to_client`). An invitation still needs open client editing;
+  opening without one works after the deadline too, read-only.
+- A failed or retried invitation email never closes planning again.
+- The dashboard's **Needs attention** lists **Planning not open** for booked
+  (or booked-elsewhere), upcoming, unarchived events whose planning is set up
+  but not opened (`staff_dashboard` → `planning_not_open`), linking to the
+  event's Planning section. It is derived on each read (nothing stored) and
+  disappears once planning is opened; such an event's "closes in" deadline
+  item is left out meanwhile. Plans still awaiting setup aren't listed.
+- The migration marks a plan opened when a client could already open it:
+  booked for planning, set up and a client with event access, or a planning
+  invitation that was accepted or not revoked
+  (`private.plan_open_before_activation`, tested in pgTAP 69).
 
 ### Client access
 

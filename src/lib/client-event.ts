@@ -49,7 +49,8 @@ export function hubNextStep(f: HubFacts): HubStep {
     if (!f.plan) {
       return e.lifecycle === "completed"
         ? { title: "Your event has taken place", text: `Thank you for celebrating with ${dj}.`, action: null }
-        : { title: "Your DJ is getting planning ready", text: `${dj} will let you know when your event planning opens.`, action: null };
+        : // Booked, but the DJ hasn't opened planning yet (or is still setting it up): nothing to open, nothing wrong.
+          { title: "Your event is booked!", text: `${dj} is getting everything ready. Your planning will open soon, and they'll let you know when it's time to get started.`, action: null };
     }
     if (f.plan.editing === "closed") {
       return { title: "Planning is closed for changes", text: `Everything you planned stays here to read. Contact ${dj} for changes.`, action: { label: "View your plan", href: planHref } };

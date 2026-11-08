@@ -28,7 +28,11 @@ export async function setUpPlanning(slug: string, eventId: string, _state: Actio
   const { data, error } = await supabase.rpc("setup_event_plan", { p_event_id: eventId, p_template_id: (templateId || null) as string });
   if (error) return fail(describeDbError(error));
   revalidate(slug, eventId);
-  return ok((data as { status: string }).status === "exists" ? "Planning was already set up." : "Planning is set up.");
+  return ok(
+    (data as { status: string }).status === "exists"
+      ? "Planning was already set up."
+      : "Planning is set up. Your client can't access it yet: review it, then open it from Client access on the event page.",
+  );
 }
 
 export async function applyPlanningTemplate(slug: string, eventId: string, _state: ActionState, form: FormData): Promise<ActionState> {

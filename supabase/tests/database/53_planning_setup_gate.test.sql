@@ -1,12 +1,12 @@
 -- Planning awaiting setup: a plan booking created with Event basics only
 -- (no default template) shows clients "setting up" with safe details only and
 -- refuses their saves, while staff keep full access. Applying a template,
--- adding a section or setting planning up as staff ends it; answers are
--- kept. Archived events, other businesses, removed staff and suspended
+-- adding a section or setting planning up as staff ends it, and staff then
+-- open planning to the client (open_client_planning); answers are kept. Archived events, other businesses, removed staff and suspended
 -- workspaces stay refused; plans from a default template are unchanged.
 begin;
 \ir _fixtures.psql
-select plan(33);
+select plan(39);
 
 alter function tests.id(text) rename to id_base;
 create function tests.id(name text) returns uuid language sql immutable as $$
@@ -122,6 +122,11 @@ select throws_ok(format('select tests.apply(%L, %L, %L)', 'gate_basics', :'tpl_w
   'another business''s staff cannot set this event''s planning up');
 select is(tests.apply('gate_basics', :'tpl_wedding') ->> 'status', 'applied', 'staff apply a template');
 select is((tests.plan('gate_basics')).origin, 'template', 'the plan comes from the template now');
+select is(tests.view('gate_basics') ->> 'state', 'setting_up', 'setting planning up doesn''t open it to the client');
+select is(tests.save('gate_basics') ->> 'status', 'unavailable', 'nor let them save');
+select tests.login_as(tests.id('staff_a'));
+select is(public.open_client_planning(tests.id('gate_basics')) ->> 'status', 'opened', 'staff open it');
+select tests.su();
 select is(tests.view('gate_basics') ->> 'state', 'available', 'the client sees the plan');
 select ok(jsonb_array_length(tests.view('gate_basics') -> 'structure' -> 'stages') > 0, 'with the template''s stages');
 select is((tests.view('gate_basics') -> 'basics' -> 'answers' ->> 'guest_count')::int, 120, 'Event basics answers are kept');
@@ -138,18 +143,26 @@ select is(tests.view('gate_basics') ->> 'state', 'available', 'a template-based 
 select tests.ev('gate_staff_basics', true); select tests.book('gate_staff_basics');
 select is(array[(tests.plan('gate_staff_basics')).origin, (tests.plan('gate_staff_basics')).initialized_via], array['fallback', 'staff'],
   'staff can choose Event basics only themselves');
-select is(tests.view('gate_staff_basics') ->> 'state', 'available', 'which the client can fill');
+select is(tests.view('gate_staff_basics') ->> 'state', 'setting_up', 'which stays closed to the client after booking');
+select tests.login_as(tests.id('staff_a'));
+select public.open_client_planning(tests.id('gate_staff_basics'));
+select tests.su();
+select is(tests.view('gate_staff_basics') ->> 'state', 'available', 'and the client can fill once opened');
 
 select tests.ev('gate_added'); select tests.book('gate_added');
 select tests.login_as(tests.id('staff_a'));
 select public.add_event_plan_item(tests.id('gate_added'), (tests.plan('gate_added')).structure_version, 'party', null);
 select tests.su();
-select is(tests.view('gate_added') ->> 'state', 'available', 'adding a stage one by one also sets planning up');
+select is(tests.view('gate_added') ->> 'state', 'setting_up', 'adding a stage sets planning up but doesn''t open it');
+select tests.login_as(tests.id('staff_a'));
+select is(public.open_client_planning(tests.id('gate_added')) ->> 'status', 'opened', 'a stage added one by one is enough to open it');
+select tests.su();
+select is(tests.view('gate_added') ->> 'state', 'available', 'then the client can plan');
 
 update public.planning_templates set default_event_type = 'wedding' where id = :'tpl_wedding';
 select tests.ev('gate_default'); select tests.book('gate_default');
 select is((tests.plan('gate_default')).origin, 'template', 'booking with a default template copies it, as before');
-select is(tests.view('gate_default') ->> 'state', 'available', 'and the client can plan at once');
+select is(tests.view('gate_default') ->> 'state', 'setting_up', 'but the client waits until staff open planning');
 update public.planning_templates set default_event_type = null where id = :'tpl_wedding';
 
 select tests.ev('gate_unbooked');

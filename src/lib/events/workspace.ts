@@ -63,8 +63,11 @@ export type WorkspaceFacts = {
   contracts: ContractRecord[];
   /** private.event_payment_summary, or null if it could not be read. */
   payments: PaymentSummary | null;
-  /** awaitingSetup: booked with Event basics only and no template chosen yet (see planAwaitingSetup). */
-  planning: { exists: boolean; awaitingSetup?: boolean; progress: PlanProgress | null; editing: StaffEditing | null };
+  /**
+   * awaitingSetup: booked with Event basics only and no template chosen yet (see planAwaitingSetup).
+   * opened: staff opened planning to the client (planOpenedToClient); absent counts as opened.
+   */
+  planning: { exists: boolean; awaitingSetup?: boolean; opened?: boolean; progress: PlanProgress | null; editing: StaffEditing | null };
   primaryContact: { name: string; archived: boolean } | null;
   /** Legal name, address and contact email saved (contracts need them). */
   identitySaved: boolean;
@@ -182,6 +185,8 @@ export function nextAction(f: WorkspaceFacts): NextAction {
           warning,
         };
       }
+      // Set up but not open to the client yet: preparing it and opening it are separate steps.
+      if (f.planning.exists && f.planning.opened === false) return openPlanningAction(planningHref, blank, warning);
       // Planning is ready but the client hasn't been told: inviting is always a separate staff step.
       const invite: Link | null = f.planningAccess && !f.planningAccess.invitation ? { label: "Send planning invitation", href: "#client-access" } : null;
       return f.planning.exists
@@ -341,6 +346,19 @@ export function invitationStatus(i: PlanningAccess["invitation"], email: OutboxR
   return { label: email.provider_status === "delivered" ? "Delivered" : "Sent", tone: state.tone === "good" ? "good" : "normal" };
 }
 
+/** Planning is set up, but the client can't see it until staff open it (Client access). */
+function openPlanningAction(planningHref: string, blank: Pick<NextAction, "secondary" | "waiting" | "blockers" | "warning">, warning: Blocker | null): NextAction {
+  return {
+    ...blank,
+    key: "open_planning",
+    title: "Prepare planning, then open it",
+    detail: "Planning is ready, but your client can't access it yet. Review it (remove what doesn't apply, check the questions), then open it from Client access.",
+    primary: { label: "Review planning", href: planningHref },
+    secondary: { label: "Open planning", href: "#client-access" },
+    warning,
+  };
+}
+
 /** The planning workflow for an event booked elsewhere (no proposal, contract or payment steps). */
 function externalNextAction(
   f: WorkspaceFacts,
@@ -357,6 +375,7 @@ function externalNextAction(
       primary: { label: "Set up planning", href: planningHref },
     };
   }
+  if (f.planning.opened === false) return openPlanningAction(planningHref, blank, null);
   const access = f.planningAccess ?? { invitation: null, clientHasAccess: false };
   const progress = f.planning.progress;
   const complete = Boolean(progress && progress.requirements_total > 0 && progress.requirements_met >= progress.requirements_total);

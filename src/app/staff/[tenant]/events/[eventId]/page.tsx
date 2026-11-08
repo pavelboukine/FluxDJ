@@ -13,7 +13,7 @@ import { dateIn, shortDate } from "@/lib/dates";
 import { BOOKED_EXTERNALLY_DETAIL, eventDisplayStatus } from "@/lib/events/status";
 import { contractChanges, currentProposals, nextAction, workspaceStage, type NextAction, type WorkspaceFacts } from "@/lib/events/workspace";
 import { UUID_RE } from "@/lib/forms";
-import { planAwaitingSetup } from "@/lib/planning/view";
+import { planAwaitingSetup, planOpenedToClient } from "@/lib/planning/view";
 import { telHref } from "@/lib/phone";
 import { cn } from "@/lib/utils";
 import { searchClients } from "../../clients/actions";
@@ -115,6 +115,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
     planning: {
       exists: Boolean(planning && planning.plan !== null),
       awaitingSetup: planning ? planAwaitingSetup(planning) : false,
+      opened: planning ? planOpenedToClient(planning) : false,
       progress: planning && planning.plan !== null ? planning.progress : null,
       editing: planning && planning.plan !== null ? (planning.editing ?? null) : null,
     },
@@ -162,6 +163,9 @@ export default async function EventPage({ params, searchParams }: PageProps<"/st
       booked={bookedForPlanning}
       planningReady={facts.planning.exists && !facts.planning.awaitingSetup}
       editingOpen={Boolean(facts.planning.editing && facts.planning.editing.state !== "closed")}
+      opened={facts.planning.opened ?? false}
+      openedAt={planning?.plan?.client_opened_at ?? null}
+      openedBy={planning?.plan?.client_opened_by ?? null}
       primary={primary?.clients ? { id: primary.clients.id, name: primary.clients.name, email: primary.clients.email, archived: Boolean(primary.clients.archived_at) } : null}
       archived={archived}
       external={external}

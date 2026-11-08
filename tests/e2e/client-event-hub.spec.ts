@@ -6,6 +6,8 @@
  *     and the approved proposal shows the frozen selection and discount, whatever the catalogue does later;
  *   - signed but awaiting the deposit: never called booked; the contract's "Go to your event" leads here;
  *   - a $0 booking says "No payment due"; planning not set up says the DJ is getting it ready;
+ *   - booked with planning prepared but not opened by the DJ yet: the same friendly pending step, nothing to
+ *     open (not even from a bookmark), while the client's other, opened event offers planning; then opened;
  *   - booked elsewhere: planning only, no proposal, contract or payments;
  *   - someone at the event who isn't the signer: status and planning, never the financial documents;
  *   - archived, another business's address or someone else's event: one neutral answer naming nothing;
@@ -15,7 +17,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import { brandTheme } from "../../src/lib/branding/colors";
 import { transparentPng } from "../support/logo-fixtures";
-import { bookEvent, must, sessionFor } from "./booking";
+import { bookEvent, must, openPlanning, sessionFor } from "./booking";
 import { admin, signInWithLink } from "./support";
 import { archiveTestTenant, createTestTenant, type TestTenant } from "./tenant";
 
@@ -59,8 +61,8 @@ async function event(tenant: TestTenant, clientId: string, title: string, opts: 
 test.describe.serial("client event hub", () => {
   let lumiere: TestTenant;
   let rose: TestTenant;
-  const ids = { booked: "", deposit: "", free: "", archived: "", external: "" };
-  const titles = { booked: `Hub Booked ${run}`, deposit: `Hub Deposit ${run}`, free: `Hub Free ${run}`, archived: `Hub Archived ${run}`, external: `Hub Elsewhere ${run}` };
+  const ids = { booked: "", deposit: "", free: "", archived: "", external: "", prepared: "" };
+  const titles = { booked: `Hub Booked ${run}`, deposit: `Hub Deposit ${run}`, free: `Hub Free ${run}`, archived: `Hub Archived ${run}`, external: `Hub Elsewhere ${run}`, prepared: `Hub Prepared ${run}` };
   let bookedContract = "";
   let depositContract = "";
 
@@ -76,6 +78,10 @@ test.describe.serial("client event hub", () => {
     await must(admin.from("clients").insert({ id: clientId, tenant_id: lumiere.id, name: "Jordan Lee", email: clientEmail }));
     ids.booked = await event(lumiere, clientId, titles.booked);
     bookedContract = await bookEvent(lumiere, ids.booked, clientEmail, { discount: { type: "percent", percent_basis_points: 1000, label: "Early booking" } });
+    await openPlanning(lumiere, ids.booked);
+    // Booked with planning set up, but not opened to the client yet.
+    ids.prepared = await event(lumiere, clientId, titles.prepared);
+    await bookEvent(lumiere, ids.prepared, clientEmail);
     ids.deposit = await event(lumiere, clientId, titles.deposit);
     depositContract = await bookEvent(lumiere, ids.deposit, clientEmail, { recordDeposit: false });
     ids.free = await event(lumiere, clientId, titles.free, { plan: false });
@@ -220,9 +226,40 @@ test.describe.serial("client event hub", () => {
     await expect(page.getByTestId("event-status")).toHaveText("Booked");
     await expect(page.locator("#payments")).toContainText("No payment due");
     await expect(page.locator("#payments")).not.toContainText("Deposit on signing");
-    await expect(page.getByTestId("hub-next-step").getByRole("heading", { level: 2 })).toHaveText("Your DJ is getting planning ready");
+    await expect(page.getByTestId("hub-next-step").getByRole("heading", { level: 2 })).toHaveText("Your event is booked!");
     await expect(page.getByTestId("hub-primary")).toHaveCount(0);
     expect(await sideways(page)).toBeLessThanOrEqual(0);
+  });
+
+  test("booked, planning prepared but not opened: a friendly pending step, even from a bookmark, until the DJ opens it", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await signInWithLink(page, clientEmail, hub(lumiere, ids.prepared));
+    await expect(page.getByTestId("event-status")).toHaveText("Booked");
+    const next = page.getByTestId("hub-next-step");
+    await expect(next.getByRole("heading", { level: 2 })).toHaveText("Your event is booked!");
+    await expect(next).toContainText(`${lumiere.displayName} is getting everything ready. Your planning will open soon`);
+    await expect(page.getByTestId("hub-primary")).toHaveCount(0);
+    expect(await sideways(page)).toBeLessThanOrEqual(0);
+
+    // On /my, this event waits while the client's opened event offers planning.
+    await page.goto("/my");
+    await expect(page.locator("li").filter({ hasText: titles.prepared }).first().getByTestId("event-next-step")).toContainText("Your event is booked!");
+    await expect(page.locator("li").filter({ hasText: titles.booked }).first().getByTestId("event-next-step")).toContainText(/Plan your event|Your plan is complete/);
+
+    // A bookmarked planning address shows the same pending state, with no planning sections, and leads back to the event.
+    await page.goto(`/${lumiere.slug}/planning/${ids.prepared}`);
+    await expect(page.getByRole("heading", { name: "Your DJ is getting your planning ready" })).toBeVisible();
+    await expect(page.getByTestId("planning-setting-up")).toBeVisible();
+    await expect(page.getByRole("textbox")).toHaveCount(0);
+    await expect(page.getByTestId("editing-chip")).toHaveCount(0);
+    await expect(page.getByTestId("planning-setting-up").getByRole("link", { name: "your event page" })).toHaveAttribute("href", hub(lumiere, ids.prepared));
+    expect(await sideways(page)).toBeLessThanOrEqual(0);
+
+    // Once the DJ opens it, the hub offers planning.
+    await openPlanning(lumiere, ids.prepared);
+    await page.goto(hub(lumiere, ids.prepared));
+    await expect(page.getByTestId("hub-next-step").getByRole("heading", { level: 2 })).toHaveText("Plan your event");
+    await expect(page.getByTestId("hub-primary")).toHaveAttribute("href", `/${lumiere.slug}/planning/${ids.prepared}`);
   });
 
   test("booked elsewhere: planning only, nothing to sign or pay", async ({ page }) => {

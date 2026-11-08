@@ -109,6 +109,15 @@ export async function signContractFor(
   return contractId;
 }
 
+/**
+ * Opens the event's planning to the client, as staff do with "Open without emailing" (booking alone no
+ * longer does). The event must be booked for planning and its planning set up.
+ */
+export async function openPlanning(tenant: TestTenant, eventId: string): Promise<void> {
+  const staffDb = await sessionFor(tenant.ownerEmail);
+  await must(staffDb.rpc("open_client_planning", { p_event_id: eventId }));
+}
+
 /** Everything planning must never change: the contract, its proposal, payments and the booking. */
 export async function contractualState(eventId: string): Promise<string> {
   const { data: event } = await admin.from("events").select("booking_confirmed_at, lifecycle_status, contracts(id, status, content_sha256, signed_at, total_cents, proposal_id)").eq("id", eventId).single();

@@ -94,6 +94,37 @@ describe("upcoming events: the shared event status", () => {
   });
 });
 
+describe("planning not open", () => {
+  const f = facts({
+    awaiting_deposit: [ev("d", "2026-11-01", { currency: "CAD", deposit_outstanding_cents: 50_000 })],
+    planning: [
+      ev("soon", "2026-10-20", { timezone: "America/Toronto", state: "open", deadline: "2026-10-10T04:00:00Z", closes_at: "2026-10-10T04:00:00Z", requirements_met: 3, requirements_total: 8 }),
+      // Not opened yet, so its deadline reminder would ask for answers the client can't give.
+      ev("prep", "2026-10-18", { timezone: "America/Toronto", state: "open", deadline: "2026-10-09T04:00:00Z", closes_at: "2026-10-09T04:00:00Z", requirements_met: 0, requirements_total: 5 }),
+    ],
+    planning_not_open: [ev("prep", "2026-10-18", {}), ev("ext", "2026-12-05", {})],
+  });
+  const items = attentionItems(f, "dj");
+
+  it("one 'Planning not open' item per event, linking to its Planning section, after deadlines and before deposits", () => {
+    expect(items.map((i) => [i.kind, i.eventId, i.reason, i.href])).toEqual([
+      ["planning_closing", "soon", "Planning closes in 3 days", "/staff/dj/events/soon/planning"],
+      ["planning_not_open", "prep", "Planning not open", "/staff/dj/events/prep#planning"],
+      ["planning_not_open", "ext", "Planning not open", "/staff/dj/events/ext#planning"],
+      ["deposit", "d", "Signed · waiting for the deposit", "/staff/dj/events/d#record-payment"],
+    ]);
+    const prep = items.find((i) => i.eventId === "prep")!;
+    expect(prep).toMatchObject({ action: "Review and open", tone: "normal" });
+    expect(prep.detail).toBe("Planning is ready, but your client can't access it yet. Review it, then open it from Client access.");
+  });
+
+  it("an older database without the list shows no such item", () => {
+    const older: Record<string, unknown> = { ...f };
+    delete older.planning_not_open;
+    expect(attentionItems(dashboardSchema.parse(older), "dj").some((i) => i.kind === "planning_not_open")).toBe(false);
+  });
+});
+
 describe("needs attention", () => {
   const busy = facts({
     submitted: [ev("p", "2026-12-01", { proposal_id: "prop-1", revision: 2, submitted_at: NOW })],

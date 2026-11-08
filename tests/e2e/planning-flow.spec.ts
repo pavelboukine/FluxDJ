@@ -19,7 +19,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { expect, test, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
-import { bookEvent, contractualState, must, sessionFor } from "./booking";
+import { bookEvent, contractualState, must, sessionFor, openPlanning } from "./booking";
 import { grantPlatformAdminLocally, revokePlatformAdminLocally } from "../support/platform-admin";
 import { admin, openPlanMoment, openPlanSection, signInStaff, signInWithLink } from "./support";
 import { archiveTestTenant, createTestTenant, type TestTenant } from "./tenant";
@@ -79,6 +79,7 @@ test.describe.serial("planning", () => {
     await signInStaff(staff, tenant.ownerEmail);
     await must((await sessionFor(tenant.ownerEmail)).rpc("setup_event_plan", { p_event_id: eventId, p_template_id: null as unknown as string }));
     contractId = await bookEvent(tenant, eventId, clientEmail);
+    await openPlanning(tenant, eventId);
     contractual = await contractualState(eventId);
     planningUrl = `/${tenant.slug}/planning/${eventId}`;
     staffPlanningUrl = `/staff/${tenant.slug}/events/${eventId}/planning`;

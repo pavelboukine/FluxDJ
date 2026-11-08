@@ -142,3 +142,15 @@ insert into public.event_access (tenant_id, event_id, client_id, user_id, revoke
   (tests.id('tenant_a'), tests.id('event_a2'), tests.id('a_client_y'), tests.id('client_y'), null),
   (tests.id('tenant_a'), tests.id('event_a1'), tests.id('a_client_y'), tests.id('client_y'), now()),
   (tests.id('tenant_a'), tests.id('event_a1'), tests.id('a_client_u'), tests.id('client_u'), null);
+
+-- Planning opened to the client, as staff open it (open_client_planning), for
+-- fixtures where a client fills planning in. Skips the opening checks on
+-- purpose: 69_planning_activation tests those. Run as the superuser.
+create function tests.open_planning(ev uuid) returns void
+language plpgsql security definer as $$
+begin
+  perform set_config('flux.opening_plan', (select id::text from public.event_plans where event_id = ev), true);
+  update public.event_plans set client_opened_at = now() where event_id = ev and client_opened_at is null;
+  perform set_config('flux.opening_plan', '', true);
+end;
+$$;

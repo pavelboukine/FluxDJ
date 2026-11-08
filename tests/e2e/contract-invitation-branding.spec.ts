@@ -14,7 +14,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import { brandTheme } from "../../src/lib/branding/colors";
 import { transparentPng } from "../support/logo-fixtures";
-import { must, sendContractFor, sessionFor, signContractFor } from "./booking";
+import { must, openPlanning, sendContractFor, sessionFor, signContractFor } from "./booking";
 import { admin, signInWithLink } from "./support";
 import { archiveTestTenant, createTestTenant, type TestTenant } from "./tenant";
 
@@ -197,14 +197,26 @@ test.describe.serial("contract invitation and after signing", () => {
     await page.goto(`/${wide.slug}/contracts/${a.contractId}`);
     await expect(outcome).toHaveAttribute("data-state", "booked");
     await expect(outcome.getByRole("heading", { level: 2 })).toHaveText("Your event is officially booked!");
-    await expect(outcome).toContainText("You can now start organizing your music, timing and special moments");
+    // Booked, but the DJ hasn't opened planning: said plainly, and the event page still opens.
+    await expect(outcome).toContainText(`${wide.displayName} is getting your planning ready.`);
+    await expect(outcome).not.toContainText("You can now start organizing");
     await outcome.getByRole("link", { name: "Go to your event" }).click();
     await page.waitForURL(`**/${wide.slug}/events/${a.eventId}`);
     await expect(page.getByTestId("event-status")).toHaveText("Booked");
+    await expect(page.getByTestId("hub-next-step").getByRole("heading", { level: 2 })).toHaveText("Your event is booked!");
+    await expect(page.getByTestId("hub-primary")).toHaveCount(0);
+
+    // Once the DJ opens planning, the same page sends the client to it.
+    await openPlanning(wide, a.eventId);
+    await page.goto(`/${wide.slug}/contracts/${a.contractId}`);
+    await expect(outcome).toContainText("You can now start organizing your music, timing and special moments");
+    await outcome.getByRole("link", { name: "Go to your event" }).click();
+    await page.waitForURL(`**/${wide.slug}/events/${a.eventId}`);
+    await expect(page.getByTestId("hub-primary")).toHaveText("Open planning");
     await context.close();
   });
 
-  test("a $0 booking is booked on signing: nothing to pay, the DJ in touch about what comes next, straight to the event", async ({ page }) => {
+  test("a $0 booking is booked on signing: nothing to pay, the DJ getting planning ready, straight to the event", async ({ page }) => {
     const free = await sent(plain, { discount: { type: "percent", percent_basis_points: 10000, label: "Complimentary" } });
     await signContractFor(plain, free.eventId, free.email, free.contractId, free.linkId, { recordDeposit: false });
     expect((await must(admin.from("events").select("lifecycle_status").eq("id", free.eventId).single())).data!.lifecycle_status).toBe("booked");
@@ -212,7 +224,7 @@ test.describe.serial("contract invitation and after signing", () => {
     await signInWithLink(page, free.email, `/${plain.slug}/contracts/${free.contractId}`);
     const outcome = page.getByTestId("signed-outcome");
     await expect(outcome).toHaveAttribute("data-state", "booked");
-    await expect(outcome).toContainText(`${plain.displayName} will be in touch about what comes next.`);
+    await expect(outcome).toContainText(`${plain.displayName} is getting your planning ready.`);
     await expect(outcome).not.toContainText(/deposit/i);
     await expect(page.locator("#payments")).toContainText("No payment due");
     await expect(page.locator("#payments")).not.toContainText(/still outstanding|Remaining balance/);

@@ -25,7 +25,7 @@ type Booked = { eventId: string; itemId: string };
 /**
  * A booked event (and so a plan) for the client; booking as evaluate_booking
  * does it. Staff set planning up first with Event basics only (a configured
- * plan the client can fill; booking keeps it).
+ * plan the client can fill; booking keeps it), then open it to the client.
  */
 async function bookedEvent(daysAhead: number): Promise<Booked> {
   const eventId = randomUUID();
@@ -38,6 +38,7 @@ async function bookedEvent(daysAhead: number): Promise<Booked> {
   await must(staff.rpc("setup_event_plan", { p_event_id: eventId, p_template_id: null as unknown as string }));
   sql(`select set_config('flux.booking_event', ${uuid(eventId)}::text, false);
        update public.events set lifecycle_status = 'booked', booking_confirmed_at = now() where id = ${uuid(eventId)};`);
+  await must(staff.rpc("open_client_planning", { p_event_id: eventId }));
   const { data: item } = await must(admin.from("event_plan_items").select("id, event_plans!inner(event_id)").eq("event_plans.event_id", eventId).eq("key", "basics").single());
   return { eventId, itemId: item!.id };
 }

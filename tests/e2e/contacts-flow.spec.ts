@@ -17,7 +17,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { expect, test, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
-import { bookEvent, contractualState, must, sessionFor } from "./booking";
+import { bookEvent, contractualState, must, sessionFor, openPlanning } from "./booking";
 import { admin, openPlanMoment, openPlanSection, signInStaff, signInWithLink } from "./support";
 import { archiveTestTenant, createTestTenant, type TestTenant } from "./tenant";
 
@@ -80,6 +80,7 @@ test.describe.serial("contacts and preferences", () => {
     const { data: wedding } = await must(admin.from("planning_templates").select("id").eq("tenant_id", tenant.id).eq("starter_key", "wedding").single());
     await must(staffDb.rpc("setup_event_plan", { p_event_id: eventId, p_template_id: wedding!.id }));
     await bookEvent(tenant, eventId, clientEmail);
+    await openPlanning(tenant, eventId);
     // The MC and officiant, entered in their own editors (covered by people-flow and planning-flow).
     const { data: plan } = await must(admin.from("event_plans").select("event_plan_items(id, key)").eq("event_id", eventId).single());
     const item = (key: string) => plan!.event_plan_items.find((i) => i.key === key)!.id;

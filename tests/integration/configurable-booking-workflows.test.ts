@@ -183,7 +183,7 @@ describe("configurable booking workflows (local Supabase)", () => {
     expect((await generate(otherOwner, other!.id, "none", { p_override_deposit: true })).error?.message).toContain("template version not found");
   });
 
-  it("no financial terms: generates, sends, signs, books at once and opens planning, with no money anywhere", async () => {
+  it("no financial terms: generates, sends, signs, books at once and creates planning (closed to the client until staff open it), with no money anywhere", async () => {
     const { eventId, clientEmail } = await contractFirstEvent();
     const generated = generateDirectContractResultSchema.parse((await must(generate(owner, eventId, "none", { p_override_deposit: true }))).data);
     if (generated.status !== "created") throw new Error(generated.status);
@@ -221,6 +221,9 @@ describe("configurable booking workflows (local Supabase)", () => {
     expect((await must(admin.from("event_plans").select("id").eq("event_id", eventId))).data).toHaveLength(1);
     const { data: access } = await must(admin.from("event_access").select("id").eq("event_id", eventId).is("revoked_at", null));
     expect(access).toHaveLength(1);
+    // A contract-first booking never opens planning to the client by itself.
+    expect((await must(admin.from("event_plans").select("client_opened_at").eq("event_id", eventId).single())).data).toEqual({ client_opened_at: null });
+    expect((await must(client.db.rpc("client_planning_view", { p_event_id: eventId, p_tenant_slug: catalog.slug }))).data).toMatchObject({ state: "setting_up" });
 
     const text = await signedPdfText(contractId);
     expect(text).toContain("for IT workflow");

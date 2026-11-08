@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { StaffContext } from "@/lib/auth/staff";
 import { editingLine } from "@/lib/events/workspace";
 import { formatInstant } from "@/lib/planning/cutoff";
-import { planAwaitingSetup, progressSummaryLine, staffPlanningViewSchema } from "@/lib/planning/view";
+import { planAwaitingSetup, planOpenedToClient, progressSummaryLine, staffPlanningViewSchema } from "@/lib/planning/view";
 import { cn } from "@/lib/utils";
 
 /** The event's planning view (read only: rendering never sets up a plan). */
@@ -67,6 +67,12 @@ export function PlanningCard({ slug, eventId, view, archived, external = false, 
               ) : planned ? (
                 <>
                   <p className="font-medium" data-testid="planning-progress">{progressSummaryLine(planned.progress)}</p>
+                  {planOpenedToClient(planned) ? null : (
+                    <p data-testid="planning-card-not-opened">
+                      <span className="font-medium">Planning is ready, but your client can&apos;t access it yet.</span>{" "}
+                      <span className="text-muted-foreground">Review it, then open it under Client access.</span>
+                    </p>
+                  )}
                   {editing ? (
                     <p data-testid="planning-card-editing" title={formatInstant(editing.state === "closed" ? (editing.closed_at ?? editing.deadline) : (editing.closes_at ?? editing.deadline), editing.timezone)}>
                       {editingLine(editing, { now: new Date(), businessTimeZone })}

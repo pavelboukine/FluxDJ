@@ -51,6 +51,8 @@ export const dashboardSchema = z.object({
       requirements_total: z.number().int(),
     }),
   ),
+  // 20261201000100: booked (or booked elsewhere), upcoming, set up but not opened to the client. Absent from an older database.
+  planning_not_open: z.array(z.object(eventRef)).optional().default([]),
   failed_emails: z.number().int(),
   setup: z.object({
     identity_saved: z.boolean(),
@@ -121,7 +123,7 @@ export function upcomingRows(facts: DashboardFacts, slug: string): UpcomingRow[]
 // Needs attention
 // ---------------------------------------------------------------------------
 
-export type AttentionKind = "proposal_submitted" | "planning_closed" | "planning_closing" | "deposit" | "booking_check";
+export type AttentionKind = "proposal_submitted" | "planning_closed" | "planning_closing" | "planning_not_open" | "deposit" | "booking_check";
 
 export type AttentionItem = {
   /** One per underlying task: an event can have several different tasks, never the same one twice. */
@@ -141,8 +143,9 @@ export type AttentionItem = {
 };
 
 // Order of the list: what someone is waiting on first, then planning past and
-// near its deadline (soonest first), then deposits and booking checks by date.
-const ORDER: Record<AttentionKind, number> = { proposal_submitted: 0, planning_closed: 1, planning_closing: 2, deposit: 3, booking_check: 4 };
+// near its deadline (soonest first), then planning not opened to the client
+// yet, then deposits and booking checks by date.
+const ORDER: Record<AttentionKind, number> = { proposal_submitted: 0, planning_closed: 1, planning_closing: 2, planning_not_open: 3, deposit: 4, booking_check: 5 };
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -202,9 +205,27 @@ export function attentionItems(facts: DashboardFacts, slug: string): AttentionIt
       sortKey: "",
     });
   }
+  // Set up but not opened to the client: one reminder per event, until staff open it (nothing is stored for it).
+  const notOpen = new Set(facts.planning_not_open.map((p) => p.event_id));
+  for (const p of facts.planning_not_open) {
+    items.push({
+      key: `planning-not-open:${p.event_id}`,
+      kind: "planning_not_open",
+      eventId: p.event_id,
+      title: p.title,
+      eventDate: p.event_date,
+      reason: "Planning not open",
+      detail: "Planning is ready, but your client can't access it yet. Review it, then open it from Client access.",
+      href: `${event(p.event_id)}#planning`,
+      action: "Review and open",
+      tone: "normal",
+      sortKey: "",
+    });
+  }
   for (const p of facts.planning) {
     const missing = p.requirements_total - p.requirements_met;
-    if (missing <= 0) continue;
+    // Not opened yet: the reminder above says what to do; a deadline for answers the client can't give yet would mislead.
+    if (missing <= 0 || notOpen.has(p.event_id)) continue;
     const answers = `${plural(missing, "required answer")} missing`;
     const closed = p.state === "closed";
     items.push({

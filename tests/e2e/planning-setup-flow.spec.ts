@@ -99,10 +99,10 @@ test.describe.serial("planning setup after booking", () => {
     client = await clientContext.newPage();
     await signInWithLink(client, clientEmail);
     await client.waitForURL("**/my");
-    await expect(client.getByTestId("event-next-step")).toContainText("Your DJ is getting planning ready");
+    await expect(client.getByTestId("event-next-step")).toContainText("Your event is booked!");
     await client.goto(planningUrl);
-    await expect(client.getByRole("heading", { name: "Your DJ is setting up your event planning" })).toBeVisible();
-    await expect(client.getByTestId("planning-setting-up")).toContainText("Check back soon.");
+    await expect(client.getByRole("heading", { name: "Your DJ is getting your planning ready" })).toBeVisible();
+    await expect(client.getByTestId("planning-setting-up")).toContainText("they'll let you know when it's time to get started");
     await expect(client.getByRole("textbox")).toHaveCount(0);
   });
 
@@ -130,9 +130,34 @@ test.describe.serial("planning setup after booking", () => {
     expect((await basicsRow(eventId))!.answers).toMatchObject({ guest_count: 140 });
     expect((await admin.from("event_plans").select("origin").eq("event_id", eventId).single()).data!.origin).toBe("template");
 
+    // Set up, but still closed to the client until staff open it.
+    const clientDb = await sessionFor(clientEmail);
+    expect((await must(clientDb.rpc("client_planning_view", { p_event_id: eventId, p_tenant_slug: tenant.slug }))).data).toMatchObject({ state: "setting_up" });
     await staff.goto(`/staff/${tenant.slug}/events/${eventId}`);
-    await expect(staff.getByTestId("next-action")).toHaveAttribute("data-key", "review_planning");
+    await expect(staff.getByTestId("next-action")).toHaveAttribute("data-key", "open_planning");
     await expect(staff.locator("#planning").getByRole("link", { name: "Open planning" })).toBeVisible();
+
+    // The dashboard reminds staff, linking to the event's Planning section (nothing is opened by it).
+    await staff.goto(`/staff/${tenant.slug}`);
+    const reminder = staff.getByTestId("attention-item").filter({ hasText: title });
+    await expect(reminder).toHaveAttribute("data-kind", "planning_not_open");
+    await expect(reminder).toContainText("Planning not open");
+    await expect(reminder).toContainText("Planning is ready, but your client can't access it yet.");
+    await reminder.click();
+    await staff.waitForURL(`**/staff/${tenant.slug}/events/${eventId}#planning`);
+
+    // Open without emailing: the signing client already has access to the event.
+    const access = staff.getByTestId("client-access");
+    staff.once("dialog", (d) => void d.accept());
+    await access.getByTestId("open-without-emailing").getByRole("button", { name: "Open without emailing" }).click();
+    await expect(access).toHaveAttribute("data-opened", "true");
+    await expect(access.getByRole("button", { name: "Send planning invitation" })).toBeVisible();
+    await expect(staff.getByTestId("next-action")).toHaveAttribute("data-key", "review_planning");
+    const { data: emails } = await must(admin.from("email_outbox").select("id").eq("tenant_id", tenant.id).like("event_type", "planning%"));
+    expect(emails).toEqual([]);
+    // Opened: the reminder is gone.
+    await staff.goto(`/staff/${tenant.slug}`);
+    await expect(staff.locator('[data-testid="attention-item"][data-kind="planning_not_open"]')).toHaveCount(0);
   });
 
   test("the client plans the configured event and staff see the answers; staff close and reopen editing", async () => {

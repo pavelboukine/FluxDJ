@@ -35,7 +35,7 @@ import { resolveDjName } from "@/lib/planning/dj";
 import { savedListsFrom } from "@/lib/planning/music";
 import { CLIENT_EDITING_SECTION, PROVIDED_SECTION, STRUCTURE_SECTION, WORKSPACE_ID, headingId, languageAskedInPreferences, planSections } from "@/lib/planning/navigation";
 import type { StageEditor } from "@/lib/planning/stages";
-import { formatEventDate, planAwaitingSetup, savedAnswersByItem, staffPlanningViewSchema } from "@/lib/planning/view";
+import { formatEventDate, planAwaitingSetup, planOpenedToClient, savedAnswersByItem, staffPlanningViewSchema } from "@/lib/planning/view";
 import { EVENT_TYPES } from "../../event-form";
 import { addPlanItem, applyPlanningTemplate, planItemAction, saveStaffItemAction, setUpPlanning } from "./actions";
 import { invitationOpen } from "@/lib/events/workspace";
@@ -170,7 +170,7 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
               ]}
             >
               {awaitingSetup ? setupCard() : view.editing ? <EditingControl slug={slug} eventId={event.id} editing={view.editing} archived={archived} booked={booked} /> : null}
-              {awaitingSetup || archived || !booked ? null : inviteHint()}
+              {awaitingSetup || archived ? null : inviteHint()}
               {workspace()}
             </PlanNavigation>
           </SaveRegistryProvider>
@@ -180,14 +180,35 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
   );
 
   /**
-   * Where client access stands, with the way to the invitation (on the event
-   * page). Opening client editing here never emails the client.
+   * Where client access stands, with the way to opening planning and the
+   * invitation (Client access, on the event page): the only place either is
+   * done. Until staff open it, everything here is private to staff. Opening
+   * client editing here never opens planning or emails the client.
    */
   function inviteHint() {
+    if (!planOpenedToClient(view)) {
+      // Set up but not opened: what staff do here is private until they open it from Client access (the only place to).
+      return (
+        <p data-testid="planning-invite-hint" data-state={booked ? "not_opened" : "not_booked"} className="flex flex-wrap items-baseline gap-x-2 gap-y-1 rounded-xl border bg-card px-4 py-3 text-sm">
+          <span className="min-w-0 [overflow-wrap:anywhere]">
+            <span className="font-medium">Planning is ready, but your client can&apos;t access it yet.</span>{" "}
+            {booked
+              ? "Review it here (remove what doesn't apply, check the questions), then open it from Client access on the event page."
+              : "Review it here. Once the event is booked, open it from Client access on the event page."}
+          </span>
+          {booked ? (
+            <Link className="font-medium underline underline-offset-4" href={`${base}#client-access`}>
+              Open from Client access
+            </Link>
+          ) : null}
+        </p>
+      );
+    }
+    if (!booked) return null;
     const i = access.invitation;
     const open = invitationOpen(i, new Date());
     return (
-      <p data-testid="planning-invite-hint" className="flex flex-wrap items-baseline gap-x-2 gap-y-1 rounded-xl border bg-card px-4 py-3 text-sm">
+      <p data-testid="planning-invite-hint" data-state="opened" className="flex flex-wrap items-baseline gap-x-2 gap-y-1 rounded-xl border bg-card px-4 py-3 text-sm">
         <span className="min-w-0 [overflow-wrap:anywhere]">
           {!i
             ? `${access.clientHasAccess ? "The client can open planning from their account, but hasn't been told it's ready." : "The client hasn't been invited to planning."} Nothing is emailed to them until you send a planning invitation.`
@@ -312,14 +333,18 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
                       {external
                         ? archived
                           ? "Booked externally, but archived: client planning is closed."
-                          : "Booked externally: the client opens planning after you send a planning invitation (Client access on the event page) and they confirm their email."
+                          : planOpenedToClient(view)
+                            ? "Booked externally: the client opens planning after you send a planning invitation (Client access on the event page) and they confirm their email."
+                            : "Booked externally. Planning isn't open to the client yet: open it from Client access on the event page when it's ready (with or without an invitation email)."
                         : booked
                         ? archived
                           ? "The event is booked, but archived: client planning is closed."
                           : awaitingSetup
-                            ? "The event is booked. Until you set planning up, the client sees that you're setting it up and can't edit it."
-                            : "The event is booked: the client (with verified access to this event) can open planning from their contract page and /my. Send a planning invitation (Client access on the event page) to tell them it's ready."
-                        : "The client can open planning once the event is booked. Until then, only staff see it."}
+                            ? "The event is booked. Until you set planning up and open it, the client sees that you're setting it up and can't edit it."
+                            : planOpenedToClient(view)
+                              ? "The event is booked: the client (with verified access to this event) can open planning from their contract page and /my. Send a planning invitation (Client access on the event page) to tell them it's ready."
+                              : "The event is booked, but planning isn't open to the client yet: they see that you're getting it ready. Open it from Client access on the event page when it's ready."
+                        : "The client can open planning once the event is booked and you open it to them. Until then, only staff see it."}
                     </p>
                     <p className="text-muted-foreground">
                       {plan.origin === "template" ? (

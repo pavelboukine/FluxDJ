@@ -51,6 +51,7 @@ beforeAll(async () => {
   await must(owner.rpc("install_starter_planning_templates", { p_tenant_id: catalog.tenantId }));
   const { data: template } = await must(owner.from("planning_templates").select("id").eq("tenant_id", catalog.tenantId).eq("starter_key", "wedding").single());
   await must(owner.rpc("setup_event_plan", { p_event_id: eventId, p_template_id: template!.id }));
+  await must(owner.rpc("open_client_planning", { p_event_id: eventId }));
   client = await signedInUser(admin, email);
   await must(admin.from("event_access").insert({ tenant_id: catalog.tenantId, event_id: eventId, client_id: c!.id, user_id: client.id }));
   stranger = await signedInUser(admin, `it-playlists-stranger-${run}@example.test`);
