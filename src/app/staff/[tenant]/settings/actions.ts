@@ -5,6 +5,7 @@ import { requireStaff } from "@/lib/auth/staff";
 import { describeDbError } from "@/lib/db-errors";
 import { checkbox, fail, int, ok, text, type ActionState } from "@/lib/forms";
 import { normalizeHex } from "@/lib/branding/colors";
+import { LOGO_SIZE } from "@/lib/branding/logo-size";
 import { processLogo, storeLogo } from "@/lib/branding/logo-upload.server";
 import { allowRequest } from "@/lib/rate-limit.server";
 import { CUTOFF_DAYS_MAX, CUTOFF_DAYS_MIN } from "@/lib/planning/cutoff";
@@ -13,9 +14,10 @@ import { parseTaxSettingsForm } from "@/lib/pricing/tax-settings";
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 /**
- * Saves the legal business identity and deposit percentage. Owner only: the
- * page hides the form from staff, and update_business_settings checks the
- * owner role again in the database. Existing contracts keep what they froze.
+ * Saves the legal business identity, and only that: the deposit has its own
+ * save. Owner only: the page hides the form from staff, and
+ * update_business_identity checks the owner role again in the database.
+ * Existing contracts keep what they froze.
  */
 export async function saveBusinessSettings(slug: string, _state: ActionState, form: FormData): Promise<ActionState> {
   const { supabase, tenant, membership } = await requireStaff(slug);
@@ -23,23 +25,36 @@ export async function saveBusinessSettings(slug: string, _state: ActionState, fo
   const legalName = text(form, "legal_name");
   const address = text(form, "business_address");
   const contactEmail = text(form, "contact_email").toLowerCase();
-  const rawPercent = text(form, "deposit_percent");
   if (legalName.length < 1 || legalName.length > 200) return fail("Enter the legal business name (up to 200 characters).");
   if (address.length < 1 || address.length > 500) return fail("Enter the business address (up to 500 characters).");
   if (!EMAIL_RE.test(contactEmail) || contactEmail.length > 320) return fail("Enter a valid contact email.");
-  // Whole numbers only: "50", not "50.5" or "50%".
-  if (!/^\d{1,3}$/.test(rawPercent) || Number(rawPercent) > 100) return fail("The deposit must be a whole percentage from 0 to 100.");
 
-  const { error } = await supabase.rpc("update_business_settings", {
+  const { error } = await supabase.rpc("update_business_identity", {
     p_tenant_id: tenant.id,
     p_legal_name: legalName,
     p_business_address: address,
     p_contact_email: contactEmail,
-    p_deposit_percent: Number(rawPercent),
   });
   if (error) return fail(describeDbError(error));
   revalidatePath(`/staff/${slug}`, "layout");
   return ok("Settings saved. Existing contract drafts keep their details until you regenerate them.");
+}
+
+/**
+ * Saves the deposit due on signing, and only that. Owner only (checked again in
+ * the database). Contracts keep the percentage they froze; a draft has to be
+ * regenerated before it can be sent with a new one.
+ */
+export async function saveDepositPercent(slug: string, _state: ActionState, form: FormData): Promise<ActionState> {
+  const { supabase, tenant, membership } = await requireStaff(slug);
+  if (membership.role !== "owner") return fail("Only the owner can change the deposit percentage.");
+  const rawPercent = text(form, "deposit_percent");
+  // Whole numbers only: "50", not "50.5" or "50%".
+  if (!/^\d{1,3}$/.test(rawPercent) || Number(rawPercent) > 100) return fail("The deposit must be a whole percentage from 0 to 100.");
+  const { error } = await supabase.rpc("update_deposit_percent", { p_tenant_id: tenant.id, p_deposit_percent: Number(rawPercent) });
+  if (error) return fail(describeDbError(error));
+  revalidatePath(`/staff/${slug}`, "layout");
+  return ok("Deposit saved. It applies to contracts generated from now on; a draft must be regenerated before it can be sent.");
 }
 
 /** Whether Create event starts with a proposal. Owner only (checked again in the database). Existing events don't change. */
@@ -147,6 +162,11 @@ export async function saveBranding(slug: string, _state: ActionState, form: Form
   const color = rawColor === "" ? null : normalizeHex(rawColor);
   if (rawColor !== "" && !color) return fail("Enter the colour as a hex value like #1a2b3c.");
 
+  // Absent from a tab opened before this setting existed: the database keeps the current size.
+  const rawSize = text(form, "logo_size_percent");
+  const logoSize = rawSize === "" ? null : int(form, "logo_size_percent", LOGO_SIZE.min, LOGO_SIZE.max);
+  if (rawSize !== "" && logoSize === null) return fail(`Choose a logo size from ${LOGO_SIZE.min}% to ${LOGO_SIZE.max}%.`);
+
   const file = form.get("logo");
   let logoId: string | null;
   if (file instanceof File && file.size > 0) {
@@ -172,10 +192,31 @@ export async function saveBranding(slug: string, _state: ActionState, form: Form
     p_expected_version: version,
     p_logo_id: logoId as string,
     p_primary_color: color as string,
+    p_logo_size_percent: logoSize as number,
   });
   if (error) return fail(`${describeDbError(error)} Your current branding is unchanged.`);
   revalidatePath(`/staff/${slug}`, "layout");
   return ok("Branding saved. Proposals already sent keep the branding they were sent with.", newVersion ?? undefined);
+}
+
+export type LogoPreview = { ok: true; url: string; width: number; height: number; needsDarkBackground: boolean } | { ok: false };
+
+/**
+ * The logo exactly as a save would store it (the same checks, re-encoding and
+ * trimming of empty transparent edges), for the branding preview. Nothing is
+ * stored or registered, and the active logo is unchanged. Owner only, with its
+ * own rate limit. Any refusal returns { ok: false }: the preview then shows the
+ * chosen file as it is, and saving reports the problem as before.
+ */
+export async function previewLogo(slug: string, form: FormData): Promise<LogoPreview> {
+  const { user, membership } = await requireStaff(slug);
+  if (membership.role !== "owner") return { ok: false };
+  const file = form.get("logo");
+  if (!(file instanceof File) || file.size === 0) return { ok: false };
+  if (!(await allowRequest("logo_preview", user.id, 60, 3600))) return { ok: false };
+  const processed = await processLogo(Buffer.from(await file.arrayBuffer()));
+  if (!processed.ok) return { ok: false };
+  return { ok: true, url: `data:image/png;base64,${processed.logo.png.toString("base64")}`, width: processed.logo.width, height: processed.logo.height, needsDarkBackground: processed.logo.needsDarkBackground };
 }
 
 /**

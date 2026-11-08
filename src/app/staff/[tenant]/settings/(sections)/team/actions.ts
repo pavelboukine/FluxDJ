@@ -37,7 +37,7 @@ export async function inviteStaff(slug: string, _state: ActionState, form: FormD
   });
   if (error) return fail(describeDbError(error));
   const result = data as { status?: string; state?: string; email?: string; expires_at?: string };
-  revalidatePath(`/staff/${slug}/team`);
+  revalidatePath(`/staff/${slug}/settings/team`);
   if (result.status === "member") return fail(`${result.email} already has access to this business.`);
   if (result.status === "exists") {
     return fail(
@@ -67,7 +67,7 @@ export async function resendStaffInvitation(slug: string, invitationId: string, 
   });
   if (error) return fail(describeDbError(error));
   const result = data as { email?: string; expires_at?: string };
-  revalidatePath(`/staff/${slug}/team`);
+  revalidatePath(`/staff/${slug}/settings/team`);
   after(() => processOutboxQuietly(tenant.id));
   return ok(`A new link was sent to ${result.email}. It works until ${formatExpiry(result.expires_at)}; the previous link no longer works.`);
 }
@@ -78,7 +78,7 @@ export async function cancelStaffInvitation(slug: string, invitationId: string):
   if (!UUID_RE.test(invitationId)) return fail("Not found.");
   const { error } = await supabase.rpc("cancel_staff_invitation", { p_tenant_id: tenant.id, p_invitation_id: invitationId });
   if (error) return fail(describeDbError(error));
-  revalidatePath(`/staff/${slug}/team`);
+  revalidatePath(`/staff/${slug}/settings/team`);
   return ok("Invitation cancelled. Its link no longer works.");
 }
 
@@ -89,6 +89,6 @@ export async function removeStaffMember(slug: string, membershipId: string): Pro
   if (!UUID_RE.test(membershipId)) return fail("Not found.");
   const { error } = await supabase.rpc("remove_staff_member", { p_tenant_id: tenant.id, p_membership_id: membershipId });
   if (error) return fail(describeDbError(error));
-  revalidatePath(`/staff/${slug}/team`);
+  revalidatePath(`/staff/${slug}/settings/team`);
   return ok("Removed. They no longer have access to this business.");
 }

@@ -10576,7 +10576,7 @@ CREATE OR REPLACE FUNCTION "public"."public_tenant_brand"("p_tenant_slug" "text"
     AS $$
   select jsonb_build_object('display_name', t.display_name, 'brand_colors', t.brand_colors,
            'logo_storage_path', l.storage_path, 'logo_needs_dark_background', l.needs_dark_background,
-           'logo_width', l.width, 'logo_height', l.height)
+           'logo_width', l.width, 'logo_height', l.height, 'logo_size_percent', t.logo_size_percent)
   from public.tenants t
   left join public.tenant_logos l on l.tenant_id = t.id and l.storage_path = t.logo_storage_path
   where t.slug = p_tenant_slug and t.archived_at is null and t.suspended_at is null;
@@ -12914,6 +12914,46 @@ $$;
 ALTER FUNCTION "public"."update_booking_policy"("p_tenant_id" "uuid", "p_policy" "text", "p_expected_version" integer) OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."update_business_identity"("p_tenant_id" "uuid", "p_legal_name" "text", "p_business_address" "text", "p_contact_email" "text") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  v_membership_id uuid;
+  v_role text;
+  t public.tenants%rowtype;
+begin
+  -- Refuses non-members, removed members and suspended workspaces.
+  v_membership_id := private.require_staff_of(p_tenant_id);
+  select m.role into v_role from public.tenant_memberships m where m.id = v_membership_id;
+  if v_role <> 'owner' then
+    raise exception 'only the owner can change business settings' using errcode = 'insufficient_privilege';
+  end if;
+  if p_legal_name is null or length(btrim(p_legal_name)) not between 1 and 200 then
+    raise exception 'settings_invalid: the legal business name must be 1 to 200 characters' using errcode = 'invalid_parameter_value';
+  end if;
+  if p_business_address is null or length(btrim(p_business_address)) not between 1 and 500 then
+    raise exception 'settings_invalid: the business address must be 1 to 500 characters' using errcode = 'invalid_parameter_value';
+  end if;
+  if p_contact_email is null or not private.is_valid_email(lower(btrim(p_contact_email))) then
+    raise exception 'settings_invalid: enter a valid contact email' using errcode = 'invalid_parameter_value';
+  end if;
+  select * into t from public.tenants where id = p_tenant_id for update;
+  if t.archived_at is not null then
+    raise exception 'not found' using errcode = 'no_data_found';
+  end if;
+  update public.tenants
+    set business_name = btrim(p_legal_name), business_address = btrim(p_business_address),
+        contact_email = lower(btrim(p_contact_email))
+    where id = t.id;
+  perform private.audit(t.id, 'tenant', t.id, 'business_settings_updated', 'staff', (select auth.uid()), '{}'::jsonb);
+end;
+$$;
+
+
+ALTER FUNCTION "public"."update_business_identity"("p_tenant_id" "uuid", "p_legal_name" "text", "p_business_address" "text", "p_contact_email" "text") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."update_business_settings"("p_tenant_id" "uuid", "p_legal_name" "text", "p_business_address" "text", "p_contact_email" "text", "p_deposit_percent" integer) RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
@@ -12952,6 +12992,42 @@ $$;
 
 
 ALTER FUNCTION "public"."update_business_settings"("p_tenant_id" "uuid", "p_legal_name" "text", "p_business_address" "text", "p_contact_email" "text", "p_deposit_percent" integer) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."update_deposit_percent"("p_tenant_id" "uuid", "p_deposit_percent" integer) RETURNS integer
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO ''
+    AS $$
+declare
+  v_membership_id uuid;
+  v_role text;
+  t public.tenants%rowtype;
+begin
+  -- Refuses non-members, removed members and suspended workspaces.
+  v_membership_id := private.require_staff_of(p_tenant_id);
+  select m.role into v_role from public.tenant_memberships m where m.id = v_membership_id;
+  if v_role <> 'owner' then
+    raise exception 'only the owner can change the deposit percentage' using errcode = 'insufficient_privilege';
+  end if;
+  if p_deposit_percent is null or p_deposit_percent not between 0 and 100 then
+    raise exception 'settings_invalid: the deposit must be a whole percentage from 0 to 100' using errcode = 'invalid_parameter_value';
+  end if;
+  select * into t from public.tenants where id = p_tenant_id for update;
+  if t.archived_at is not null then
+    raise exception 'not found' using errcode = 'no_data_found';
+  end if;
+  if t.deposit_percent = p_deposit_percent then
+    return p_deposit_percent;
+  end if;
+  update public.tenants set deposit_percent = p_deposit_percent where id = t.id;
+  perform private.audit(t.id, 'tenant', t.id, 'deposit_percent_changed', 'staff', (select auth.uid()),
+    jsonb_build_object('from', t.deposit_percent, 'to', p_deposit_percent));
+  return p_deposit_percent;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."update_deposit_percent"("p_tenant_id" "uuid", "p_deposit_percent" integer) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."update_planning_cutoff_days"("p_tenant_id" "uuid", "p_days" integer, "p_expected_version" integer) RETURNS integer
@@ -13297,7 +13373,7 @@ $_$;
 ALTER FUNCTION "public"."update_tax_settings"("p_tenant_id" "uuid", "p_expected_version" integer, "p_tax_config" "jsonb", "p_tax_categories" "jsonb") OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."update_tenant_branding"("p_tenant_id" "uuid", "p_expected_version" integer, "p_logo_id" "uuid", "p_primary_color" "text") RETURNS integer
+CREATE OR REPLACE FUNCTION "public"."update_tenant_branding"("p_tenant_id" "uuid", "p_expected_version" integer, "p_logo_id" "uuid", "p_primary_color" "text", "p_logo_size_percent" integer DEFAULT NULL::integer) RETURNS integer
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
     AS $_$
@@ -13307,6 +13383,7 @@ declare
   v_path text;
   v_color text := nullif(lower(btrim(coalesce(p_primary_color, ''))), '');
   v_colors jsonb;
+  v_size integer;
 begin
   select m.role into v_role from public.tenant_memberships m
   where m.tenant_id = p_tenant_id and m.user_id = (select auth.uid());
@@ -13326,6 +13403,9 @@ begin
   if v_color is not null and v_color !~ '^#[0-9a-f]{6}$' then
     raise exception 'branding_invalid: the colour must be a hex value like #1a2b3c' using errcode = 'invalid_parameter_value';
   end if;
+  if p_logo_size_percent is not null and p_logo_size_percent not between 100 and 130 then
+    raise exception 'branding_invalid: the logo size must be from 100%% to 130%%' using errcode = 'invalid_parameter_value';
+  end if;
   if p_logo_id is not null then
     select l.storage_path into v_path from public.tenant_logos l where l.tenant_id = p_tenant_id and l.id = p_logo_id;
     if v_path is null then
@@ -13333,19 +13413,20 @@ begin
     end if;
   end if;
   v_colors := case when v_color is null then t.brand_colors - 'primary' else t.brand_colors || jsonb_build_object('primary', v_color) end;
+  v_size := coalesce(p_logo_size_percent, t.logo_size_percent);
 
   update public.tenants
-    set logo_storage_path = v_path, brand_colors = v_colors, branding_version = branding_version + 1
+    set logo_storage_path = v_path, brand_colors = v_colors, logo_size_percent = v_size, branding_version = branding_version + 1
     where id = t.id;
   perform private.audit(t.id, 'tenant', t.id, 'branding_updated', 'staff', (select auth.uid()),
     jsonb_build_object('logo_changed', v_path is distinct from t.logo_storage_path, 'logo_storage_path', v_path,
-                       'primary_color', v_color, 'version', t.branding_version + 1));
+                       'primary_color', v_color, 'logo_size_percent', v_size, 'version', t.branding_version + 1));
   return t.branding_version + 1;
 end;
 $_$;
 
 
-ALTER FUNCTION "public"."update_tenant_branding"("p_tenant_id" "uuid", "p_expected_version" integer, "p_logo_id" "uuid", "p_primary_color" "text") OWNER TO "postgres";
+ALTER FUNCTION "public"."update_tenant_branding"("p_tenant_id" "uuid", "p_expected_version" integer, "p_logo_id" "uuid", "p_primary_color" "text", "p_logo_size_percent" integer) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."void_contract"("p_contract_id" "uuid", "p_reason" "text") RETURNS "jsonb"
@@ -14517,6 +14598,7 @@ CREATE TABLE IF NOT EXISTS "public"."tenants" (
     "branding_version" integer DEFAULT 0 NOT NULL,
     "dj_name" "text",
     "proposals_by_default" boolean DEFAULT true NOT NULL,
+    "logo_size_percent" integer DEFAULT 100 NOT NULL,
     CONSTRAINT "tenants_booking_policy_valid" CHECK (("booking_confirmation_policy" = ANY (ARRAY['on_signature'::"text", 'on_deposit'::"text"]))),
     CONSTRAINT "tenants_booking_policy_version_nonnegative" CHECK (("booking_policy_version" >= 0)),
     CONSTRAINT "tenants_brand_colors_valid" CHECK ("private"."is_valid_brand_colors"("brand_colors")),
@@ -14529,6 +14611,7 @@ CREATE TABLE IF NOT EXISTS "public"."tenants" (
     CONSTRAINT "tenants_display_name_length" CHECK ((("length"("btrim"("display_name")) >= 1) AND ("length"("btrim"("display_name")) <= 200))),
     CONSTRAINT "tenants_dj_name_length" CHECK ((("dj_name" = "btrim"("dj_name")) AND (("length"("dj_name") >= 1) AND ("length"("dj_name") <= 80)))),
     CONSTRAINT "tenants_logo_path_length" CHECK ((("length"("logo_storage_path") >= 1) AND ("length"("logo_storage_path") <= 1024))),
+    CONSTRAINT "tenants_logo_size_percent_range" CHECK ((("logo_size_percent" >= 100) AND ("logo_size_percent" <= 130))),
     CONSTRAINT "tenants_planning_lock_days_range" CHECK ((("planning_lock_days" >= 0) AND ("planning_lock_days" <= 365))),
     CONSTRAINT "tenants_planning_settings_version_nonnegative" CHECK (("planning_settings_version" >= 0)),
     CONSTRAINT "tenants_reply_to_email_valid" CHECK ("private"."is_valid_email"("reply_to_email")),
@@ -14601,6 +14684,10 @@ COMMENT ON COLUMN "public"."tenants"."dj_name" IS 'Optional name of the DJ that 
 
 
 COMMENT ON COLUMN "public"."tenants"."proposals_by_default" IS 'Whether Create event starts with "Send a proposal first" on. A starting value only; each event still chooses for itself.';
+
+
+
+COMMENT ON COLUMN "public"."tenants"."logo_size_percent" IS 'Logo height limit in the workspace header and on live client pages, as a percentage of each surface''s default.';
 
 
 
@@ -19436,9 +19523,21 @@ GRANT ALL ON FUNCTION "public"."update_booking_policy"("p_tenant_id" "uuid", "p_
 
 
 
+REVOKE ALL ON FUNCTION "public"."update_business_identity"("p_tenant_id" "uuid", "p_legal_name" "text", "p_business_address" "text", "p_contact_email" "text") FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."update_business_identity"("p_tenant_id" "uuid", "p_legal_name" "text", "p_business_address" "text", "p_contact_email" "text") TO "service_role";
+GRANT ALL ON FUNCTION "public"."update_business_identity"("p_tenant_id" "uuid", "p_legal_name" "text", "p_business_address" "text", "p_contact_email" "text") TO "authenticated";
+
+
+
 REVOKE ALL ON FUNCTION "public"."update_business_settings"("p_tenant_id" "uuid", "p_legal_name" "text", "p_business_address" "text", "p_contact_email" "text", "p_deposit_percent" integer) FROM PUBLIC;
 GRANT ALL ON FUNCTION "public"."update_business_settings"("p_tenant_id" "uuid", "p_legal_name" "text", "p_business_address" "text", "p_contact_email" "text", "p_deposit_percent" integer) TO "service_role";
 GRANT ALL ON FUNCTION "public"."update_business_settings"("p_tenant_id" "uuid", "p_legal_name" "text", "p_business_address" "text", "p_contact_email" "text", "p_deposit_percent" integer) TO "authenticated";
+
+
+
+REVOKE ALL ON FUNCTION "public"."update_deposit_percent"("p_tenant_id" "uuid", "p_deposit_percent" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."update_deposit_percent"("p_tenant_id" "uuid", "p_deposit_percent" integer) TO "service_role";
+GRANT ALL ON FUNCTION "public"."update_deposit_percent"("p_tenant_id" "uuid", "p_deposit_percent" integer) TO "authenticated";
 
 
 
@@ -19484,9 +19583,9 @@ GRANT ALL ON FUNCTION "public"."update_tax_settings"("p_tenant_id" "uuid", "p_ex
 
 
 
-REVOKE ALL ON FUNCTION "public"."update_tenant_branding"("p_tenant_id" "uuid", "p_expected_version" integer, "p_logo_id" "uuid", "p_primary_color" "text") FROM PUBLIC;
-GRANT ALL ON FUNCTION "public"."update_tenant_branding"("p_tenant_id" "uuid", "p_expected_version" integer, "p_logo_id" "uuid", "p_primary_color" "text") TO "service_role";
-GRANT ALL ON FUNCTION "public"."update_tenant_branding"("p_tenant_id" "uuid", "p_expected_version" integer, "p_logo_id" "uuid", "p_primary_color" "text") TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."update_tenant_branding"("p_tenant_id" "uuid", "p_expected_version" integer, "p_logo_id" "uuid", "p_primary_color" "text", "p_logo_size_percent" integer) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."update_tenant_branding"("p_tenant_id" "uuid", "p_expected_version" integer, "p_logo_id" "uuid", "p_primary_color" "text", "p_logo_size_percent" integer) TO "service_role";
+GRANT ALL ON FUNCTION "public"."update_tenant_branding"("p_tenant_id" "uuid", "p_expected_version" integer, "p_logo_id" "uuid", "p_primary_color" "text", "p_logo_size_percent" integer) TO "authenticated";
 
 
 
@@ -20119,6 +20218,10 @@ GRANT UPDATE("currency") ON TABLE "public"."tenants" TO "authenticated";
 
 
 GRANT SELECT("proposals_by_default") ON TABLE "public"."tenants" TO "authenticated";
+
+
+
+GRANT SELECT("logo_size_percent") ON TABLE "public"."tenants" TO "authenticated";
 
 
 

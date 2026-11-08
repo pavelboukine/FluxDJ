@@ -36,7 +36,7 @@ export function FieldGroup({ legend, hint, children }: { legend: string; hint?: 
 export function TaxCategoryField({ configured, current, slug, noun }: { configured: string[]; current?: string; slug: string; noun: "item" | "package" }) {
   const options = taxCategoryOptions(configured, current);
   const selected = current ?? (configured.includes("standard") ? "standard" : options[0]?.value);
-  const settings = `/staff/${slug}/settings#taxes`;
+  const settings = `/staff/${slug}/settings/taxes`;
   return (
     <SelectField
       label="Tax category"

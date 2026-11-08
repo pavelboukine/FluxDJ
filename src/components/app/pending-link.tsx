@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ComponentProps, type ReactNode } from "react";
 import NextLink, { useLinkStatus } from "next/link";
+import { confirmLeavingUnsaved } from "./unsaved-navigation";
 
 /*
  * Navigation feedback for the staff shell. Links from here are ordinary
@@ -41,10 +42,16 @@ function ReportPending() {
   return null;
 }
 
-/** A drop-in next/link Link whose pending navigation shows the shell's progress line. */
-export default function Link({ children, ...props }: ComponentProps<typeof NextLink>) {
+/** A drop-in next/link Link whose pending navigation shows the shell's progress line and honours an unsaved-changes guard. */
+export default function Link({ children, onNavigate, ...props }: ComponentProps<typeof NextLink>) {
   return (
-    <NextLink {...props}>
+    <NextLink
+      {...props}
+      onNavigate={(event) => {
+        if (!confirmLeavingUnsaved(typeof props.href === "string" ? props.href : undefined)) event.preventDefault();
+        else onNavigate?.(event);
+      }}
+    >
       <ReportPending />
       {children}
     </NextLink>

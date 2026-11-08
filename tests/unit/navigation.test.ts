@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isActive, platformNavigation, staffNavigation, type NavGroup } from "@/lib/navigation";
+import { isActive, legacySettingsHref, platformNavigation, settingsNavigation, staffNavigation, type NavGroup } from "@/lib/navigation";
 
 const labels = (groups: NavGroup[]) => groups.map((g) => [g.label, g.items.map((i) => i.label)]);
 const activeLabels = (groups: NavGroup[], path: string) => groups.flatMap((g) => g.items).filter((i) => isActive(i, path)).map((i) => i.label);
@@ -61,5 +61,49 @@ describe("platform navigation", () => {
     expect(labels(platformNavigation({ hasWorkspaces: false }))).toEqual([["Admin", ["DJ invitations", "Workspaces", "Operations"]]]);
     expect(labels(platformNavigation({ hasWorkspaces: true })).at(-1)).toEqual(["Workspace", ["Your businesses"]]);
     expect(activeLabels(platformNavigation({ hasWorkspaces: true }), "/staff/dj")).toEqual([]);
+  });
+});
+
+describe("settings navigation", () => {
+  it("groups the six pages, with Team and Setup still highlighting Settings in the staff menu", () => {
+    expect(settingsNavigation("dj").map((g) => [g.label, g.pages.map((p) => p.label)])).toEqual([
+      ["General", ["Business profile", "Branding", "Team & access"]],
+      ["Operations", ["Bookings", "Taxes & payments", "Client planning"]],
+    ]);
+    const nav = staffNavigation("dj", { platformAdmin: false });
+    for (const path of ["/staff/dj/settings", "/staff/dj/settings/taxes", "/staff/dj/settings/team", "/staff/dj/setup"]) {
+      expect(activeLabels(nav, path)).toEqual(["Settings"]);
+    }
+  });
+
+  it("highlights exactly one settings page", () => {
+    const pages = settingsNavigation("dj").flatMap((g) => g.pages);
+    expect(pages.filter((p) => isActive(p, "/staff/dj/settings/taxes")).map((p) => p.label)).toEqual(["Taxes & payments"]);
+    expect(pages.filter((p) => isActive(p, "/staff/dj/settings"))).toEqual([]);
+  });
+
+  it("forwards every anchor of the old single page, keeping the query", () => {
+    const expected: Record<string, string> = {
+      "#profile": "profile",
+      "#legal": "profile#legal",
+      "#reply-to": "profile#reply-to",
+      "#branding": "branding",
+      "#branding-section": "branding",
+      "#bookings": "bookings",
+      "#booking": "bookings",
+      "#proposal-default": "bookings#proposal-default",
+      "#taxes": "taxes",
+      "#planning": "planning",
+      "#planning-defaults": "planning",
+      "#dj-name": "planning#dj-name",
+      "#access": "team",
+    };
+    for (const [hash, target] of Object.entries(expected)) expect(legacySettingsHref("dj", hash)).toBe(`/staff/dj/settings/${target}`);
+    expect(legacySettingsHref("dj", "#taxes", "?from=setup")).toBe("/staff/dj/settings/taxes?from=setup");
+    expect(legacySettingsHref("dj", "#legal", "?from=setup")).toBe("/staff/dj/settings/profile?from=setup#legal");
+  });
+
+  it("ignores anything that was not an anchor of the old page", () => {
+    for (const hash of ["", "#", "#unknown", "#constructor", "#__proto__", "taxes"]) expect(legacySettingsHref("dj", hash)).toBeNull();
   });
 });

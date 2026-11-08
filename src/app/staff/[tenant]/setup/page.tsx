@@ -5,7 +5,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { PageHeader } from "@/components/app/fields";
 import { requireStaff } from "@/lib/auth/staff";
 import { UPCOMING_SHOWN, dashboardSchema } from "@/lib/dashboard";
-import { STATUS_LABEL, fromSetup, offerablePackages, readiness, setupGuide, type SetupStatus } from "@/lib/setup";
+import { fromSetup, offerablePackages, readiness, setupGuide, taskStatusLabel, type SetupStatus, type SetupTask } from "@/lib/setup";
 import { cn } from "@/lib/utils";
 import { EVENT_TYPES } from "../events/event-form";
 
@@ -15,6 +15,9 @@ const STATUS_STYLE: Record<SetupStatus, string> = {
   not_started: "text-foreground",
   optional: "text-muted-foreground",
 };
+
+/** A recommended step that isn't done yet reads calmly, like an optional one. */
+const quiet = (t: Pick<SetupTask, "level" | "done">) => t.level === "recommended" && !t.done;
 
 function StatusIcon({ status }: { status: SetupStatus }) {
   const cls = "mt-0.5 size-5 shrink-0";
@@ -80,15 +83,16 @@ export default async function SetupGuide({ params }: PageProps<"/staff/[tenant]/
   );
   const ready = readiness(s);
   const allRequired = ready.readyCount === ready.total;
+  const recommended = groups.flatMap((g) => g.tasks).filter(quiet).length;
 
   return (
     <>
       <PageHeader
-        title={allRequired ? "Your business is set up" : "Let's get your business ready"}
+        title={allRequired ? "You're ready to send proposals and contracts" : "Let's get your business ready"}
         description={
           allRequired
-            ? `Everything ${tenant.display_name} needs to send proposals and contracts is saved. Review or adjust any step below.`
-            : "Set up the essentials so you can start sending proposals and planning events. Do the steps in any order and come back any time."
+            ? `Everything ${tenant.display_name} needs to send proposals and contracts is saved. ${recommended > 0 ? "The recommended steps below are worth a look, but nothing is blocking you." : "Review or adjust any step below."}`
+            : "Set up what your bookings need: proposals, contracts or both. Do the steps in any order and come back any time."
         }
         actions={
           <Link className={buttonVariants({ variant: "outline" })} href={`/staff/${slug}`}>
@@ -100,15 +104,16 @@ export default async function SetupGuide({ params }: PageProps<"/staff/[tenant]/
       <section aria-labelledby="readiness-heading" data-testid="setup-readiness" className="grid gap-3 rounded-xl border bg-card p-4 text-sm">
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
           <h2 id="readiness-heading" className="text-base font-semibold">What you can do now</h2>
-          <span className="text-muted-foreground" data-testid="setup-progress">
-            {ready.readyCount} of {ready.total} required steps ready
+          <span className="text-muted-foreground">
+            <span data-testid="setup-progress">{ready.readyCount} of {ready.total} required steps ready</span>
+            {recommended > 0 ? <span data-testid="setup-recommended"> · {recommended} recommended {recommended === 1 ? "step" : "steps"} to review</span> : null}
           </span>
         </div>
         <dl className="grid gap-2 sm:grid-cols-2 sm:gap-x-6">
           {(
             [
               ["Proposals", ready.proposals, "proposals", "Your taxes and packages allow sending proposals."],
-              ["Contracts", ready.contracts, "contracts", "Your business details and contract template allow sending a contract once a proposal is approved."],
+              ["Contracts", ready.contracts, "contracts", "Your business details and contract template allow sending a contract, with or without a proposal first."],
             ] as const
           ).map(([label, missing, key, readyText]) => (
             <div key={key} className="flex items-start gap-2" data-testid={`ready-${key}`} data-ready={missing.length === 0}>
@@ -119,10 +124,17 @@ export default async function SetupGuide({ params }: PageProps<"/staff/[tenant]/
               </div>
             </div>
           ))}
+          <div className="flex items-start gap-2" data-testid="ready-planning" data-ready="true">
+            <StatusIcon status="ready" />
+            <div className="grid">
+              <dt className="font-medium">Planning only</dt>
+              <dd className="text-muted-foreground">Events booked elsewhere need no proposal or contract, so you can plan them with your client now.</dd>
+            </div>
+          </div>
         </dl>
         <p className="text-xs text-muted-foreground">
           Steps are checked against what&apos;s saved, not whether your terms or prices are right. Each proposal and contract is still
-          checked when you preview and send it. Optional steps never block you.
+          checked when you preview and send it. Required steps cover both proposals and contracts, so a business using only one needs only that one&apos;s steps. Recommended and optional steps never block you.
           {!isOwner ? " Steps marked “owner only” can only be completed by the business owner." : null}
         </p>
       </section>
@@ -134,11 +146,11 @@ export default async function SetupGuide({ params }: PageProps<"/staff/[tenant]/
             {group.tasks.map((t) => (
               <li key={t.key} data-testid={`setup-task-${t.key}`} data-status={t.status} className="flex flex-wrap items-start gap-x-4 gap-y-3 px-4 py-3.5 sm:flex-nowrap">
                 <div className="flex min-w-0 flex-1 items-start gap-3">
-                  <StatusIcon status={t.status} />
+                  <StatusIcon status={quiet(t) ? "optional" : t.status} />
                   <div className="grid min-w-0 gap-1 text-sm">
                     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                       <h3 className="font-medium">{t.label}</h3>
-                      <span className={cn("text-xs font-medium", STATUS_STYLE[t.status])} data-testid="setup-status">{STATUS_LABEL[t.status]}</span>
+                      <span className={cn("text-xs font-medium", STATUS_STYLE[quiet(t) ? "optional" : t.status])} data-testid="setup-status">{taskStatusLabel(t)}</span>
                     </div>
                     <p className="text-muted-foreground">{t.description}</p>
                     <p className="text-xs">

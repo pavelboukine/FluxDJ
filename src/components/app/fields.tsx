@@ -14,11 +14,11 @@ export function Field({ label, htmlFor, hint, children, className }: { label: st
   );
 }
 
-export function TextField({ label, hint, className, ...props }: ComponentProps<typeof Input> & { label: string; hint?: ReactNode; name: string }) {
+export function TextField({ label, hint, className, inputClassName, ...props }: ComponentProps<typeof Input> & { label: string; hint?: ReactNode; name: string; /** Sizes the input alone, so its hint can stay wider than a short field. */ inputClassName?: string }) {
   const id = props.id ?? props.name;
   return (
     <Field label={label} htmlFor={id} hint={hint} className={className}>
-      <Input id={id} {...props} />
+      <Input id={id} className={inputClassName} {...props} />
     </Field>
   );
 }
@@ -61,7 +61,7 @@ export function SelectField({
 export function CheckboxField({ label, name, defaultChecked, hint }: { label: string; name: string; defaultChecked?: boolean; hint?: ReactNode }) {
   return (
     <div className="grid gap-1">
-      <label className="flex items-center gap-2 text-sm">
+      <label className="flex min-h-11 items-center gap-2 text-sm md:min-h-0">
         <input type="checkbox" name={name} defaultChecked={defaultChecked} className="size-4 accent-primary" />
         {label}
       </label>

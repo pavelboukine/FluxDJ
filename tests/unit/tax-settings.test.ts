@@ -184,7 +184,7 @@ describe("readTaxSettings and the configuration error", () => {
 
   it("points staff to Settings for a missing tax mapping only", () => {
     const missing = describeDbError({ code: "22023", message: "offer_invalid: tax categories not configured for this tenant: standard" });
-    expect(missing).toMatch(/^This offer isn't ready: tax categories not configured for this tenant: standard\. .*Settings, under Taxes\.$/);
+    expect(missing).toMatch(/^This offer isn't ready: tax categories not configured for this tenant: standard\. .*Settings, under Taxes & payments\.$/);
     expect(needsTaxSetup(missing)).toBe(true);
     const other = describeDbError({ code: "22023", message: "offer_invalid: exactly three packages are required" });
     expect(needsTaxSetup(other)).toBe(false);

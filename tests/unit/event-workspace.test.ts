@@ -94,7 +94,7 @@ describe("next action", () => {
     expect(pick(facts({ ...approved, contracts: [contract("c0", "void"), contract("c00", "replaced")] })).key).toBe("prepare_contract");
     const blocked = nextAction(facts({ ...approved, identitySaved: false, usableContractVersions: 0 }));
     expect(blocked.primary).toBeNull();
-    expect(blocked.blockers.map((b) => b.link.href)).toEqual(["/staff/dj/settings", "/staff/dj/contract-templates"]);
+    expect(blocked.blockers.map((b) => b.link.href)).toEqual(["/staff/dj/settings/profile", "/staff/dj/contract-templates"]);
   });
 
   it("a contract draft: review it; one that can't be signed online: regenerate", () => {

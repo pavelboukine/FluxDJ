@@ -59,7 +59,10 @@ describe("business branding (local Supabase)", () => {
     expect(brandB.brandColors.primary).toBe("#ffff00");
     expect(sha(await download(brandA.logo!.url))).toBe(logoA.sha256);
     expect(sha(await download(brandB.logo!.url))).toBe(logoB.sha256);
-    expect([brandA.logo!.width, brandA.logo!.height]).toEqual([1024, 256]);
+    expect([brandA.logo!.width, brandA.logo!.height]).toEqual([logoA.width, logoA.height]);
+    // The fixture draws inside 10-90% of the width and 20-80% of the height: its empty edges are gone.
+    expect(logoA.width / logoA.height).toBeCloseTo((1200 * 0.8) / (300 * 0.6), 0);
+    expect(brandA.logo!.sizePercent).toBe(100); // every business starts at today's size
 
     // Neither owner can use the other business's logo.
     const crossed = await ownerA.db.rpc("update_tenant_branding", { p_tenant_id: a.tenantId, p_expected_version: 1, p_logo_id: storedB.stored.logoId, p_primary_color: null as unknown as string });

@@ -50,7 +50,7 @@ test.describe.serial("tax settings", () => {
     await expect(owner.getByText("tax categories not configured for this tenant: standard").first()).toBeVisible();
     await expect(owner.getByRole("button", { name: "Review and send…" })).toBeDisabled();
     await owner.getByRole("link", { name: "Open tax settings" }).first().click();
-    await owner.waitForURL(`**/staff/${tenant.slug}/settings#taxes`);
+    await owner.waitForURL(`**/staff/${tenant.slug}/settings/taxes`);
     await expect(owner.getByRole("heading", { name: "Taxes" }).or(owner.getByText("Taxes", { exact: true })).first()).toBeVisible();
   });
 
@@ -59,9 +59,10 @@ test.describe.serial("tax settings", () => {
     const staff = await staffContext.newPage();
     await signInStaff(staff, staffEmail);
     await staff.getByRole("navigation", { name: "Staff" }).getByRole("link", { name: "Settings" }).click();
+    await staff.getByTestId("settings-directory").getByRole("link", { name: /^Taxes & payments/ }).click();
     await expect(staff.getByText("Only the owner can change tax settings.")).toBeVisible();
     await expect(staff.getByText("Not configured: offers using it can't be sent.")).toBeVisible();
-    await expect(staff.getByRole("button", { name: "Save tax settings" })).toHaveCount(0);
+    await expect(staff.getByRole("main").getByRole("button", { name: "Save changes" })).toHaveCount(0);
     await staffContext.close();
   });
 
@@ -77,10 +78,10 @@ test.describe.serial("tax settings", () => {
     await standard.getByLabel("GST").check();
     await standard.getByLabel("QST").check();
 
-    await owner.getByRole("button", { name: "Save tax settings" }).click();
+    await owner.locator("#taxes").getByRole("button", { name: "Save changes" }).click();
     await expect(owner.getByRole("alert").filter({ hasText: "at most 4 decimals" })).toBeVisible();
     await owner.getByLabel("Tax 2 rate (%)").fill("9.975");
-    await owner.getByRole("button", { name: "Save tax settings" }).click();
+    await owner.locator("#taxes").getByRole("button", { name: "Save changes" }).click();
     await expect(owner.getByText(/Tax settings saved/)).toBeVisible();
 
     const { data } = await admin.from("tenants").select("tax_config, tax_categories, tax_settings_version").eq("id", tenant.id).single();
@@ -95,26 +96,26 @@ test.describe.serial("tax settings", () => {
 
     // Consecutive saves in the same tab use the returned version.
     await standard.getByLabel("QST").uncheck();
-    await owner.getByRole("button", { name: "Save tax settings" }).click();
+    await owner.locator("#taxes").getByRole("button", { name: "Save changes" }).click();
     await expect(owner.getByText(/Tax settings saved/)).toBeVisible();
     await expect.poll(async () => (await admin.from("tenants").select("tax_categories").eq("id", tenant.id).single()).data?.tax_categories).toEqual({
       standard: ["GST"],
     });
     await standard.getByLabel("QST").check();
-    await owner.getByRole("button", { name: "Save tax settings" }).click();
+    await owner.locator("#taxes").getByRole("button", { name: "Save changes" }).click();
     await expect(owner.getByText(/Tax settings saved/)).toBeVisible();
     await expect.poll(async () => (await admin.from("tenants").select("tax_settings_version").eq("id", tenant.id).single()).data?.tax_settings_version).toBe(4);
   });
 
   test("a stale tab cannot overwrite newer settings", async () => {
     const other = await ownerContext.newPage();
-    await other.goto(`/staff/${tenant.slug}/settings`);
+    await other.goto(`/staff/${tenant.slug}/settings/taxes`);
     await other.getByLabel("Tax 1 rate (%)").fill("6");
     await owner.reload();
     await owner.getByLabel("Tax 1 name").fill("TPS / GST");
-    await owner.getByRole("button", { name: "Save tax settings" }).click();
+    await owner.locator("#taxes").getByRole("button", { name: "Save changes" }).click();
     await expect(owner.getByText(/Tax settings saved/)).toBeVisible();
-    await other.getByRole("button", { name: "Save tax settings" }).click();
+    await other.locator("#taxes").getByRole("button", { name: "Save changes" }).click();
     await expect(other.getByRole("alert").filter({ hasText: "Someone else saved changes first" })).toBeVisible();
     await other.close();
     const { data } = await admin.from("tenants").select("tax_config").eq("id", tenant.id).single();

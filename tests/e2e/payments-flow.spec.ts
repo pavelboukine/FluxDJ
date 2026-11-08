@@ -159,7 +159,7 @@ test.describe.serial("manual payments", () => {
 
   test("signing under the deposit policy awaits the deposit; recording it confirms the booking and emails the client", async () => {
     // The policy is explained in Settings (owner) and was frozen into the contract.
-    await staff.goto(`/staff/${tenant.slug}/settings`);
+    await staff.goto(`/staff/${tenant.slug}/settings/bookings`);
     const policy = staff.locator("#booking");
     await expect(policy.getByRole("radio", { name: /signed and the deposit is received/ })).toBeChecked();
     await expect(policy).toContainText("Flux DJ confirms a booking automatically when this policy is met");

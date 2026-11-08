@@ -1,3 +1,4 @@
+import { CLIENT_PAGE_LOGO } from "@/lib/branding/logo-size";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { loginHref } from "@/lib/auth/redirects";
@@ -142,7 +143,7 @@ export default async function ClientPlanningPage({ params }: PageProps<"/[tenant
               <header className="grid gap-4">
                 <div className="flex items-center justify-between gap-3">
                   <span className="flex min-h-8 min-w-0 items-center text-sm">
-                    <BrandLogo logo={brandLogo} name={dj} className="max-h-9 max-w-36" fallbackClassName="font-semibold [overflow-wrap:anywhere]" />
+                    <BrandLogo logo={brandLogo} name={dj} className={CLIENT_PAGE_LOGO} fallbackClassName="font-semibold [overflow-wrap:anywhere]" />
                   </span>
                   <EditingChip />
                 </div>

@@ -1,4 +1,4 @@
-const TAX_SETUP_HINT = "The owner can set them up in Settings, under Taxes.";
+const TAX_SETUP_HINT = "The owner can set them up in Settings, under Taxes & payments.";
 
 /** Whether a message from describeDbError is fixed in the tax settings (pages add a link). */
 export function needsTaxSetup(message: string): boolean {

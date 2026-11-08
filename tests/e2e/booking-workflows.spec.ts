@@ -178,7 +178,7 @@ test.describe("booking workflows", () => {
       await signInStaff(otherPage, other.ownerEmail);
 
       // The owner turns it off in Settings, and it persists.
-      await staff.goto(`/staff/${tenant.slug}/settings`);
+      await staff.goto(`/staff/${tenant.slug}/settings/bookings`);
       const card = staff.getByTestId("proposal-default");
       const setting = card.getByRole("checkbox", { name: "Send proposals by default" });
       await expect(setting).toBeChecked();
@@ -240,7 +240,7 @@ test.describe("booking workflows", () => {
       clientContexts.push(staffOnly);
       const staffPage = await staffOnly.newPage();
       await signInStaff(staffPage, staffEmail);
-      await staffPage.goto(`/staff/${tenant.slug}/settings`);
+      await staffPage.goto(`/staff/${tenant.slug}/settings/bookings`);
       await expect(staffPage.getByTestId("proposal-default")).toContainText("Only the owner can change the default.");
       await expect(staffPage.getByTestId("proposal-default").getByRole("checkbox")).toHaveCount(0);
       const refused = await (await sessionFor(staffEmail)).rpc("update_proposal_default", { p_tenant_id: tenant.id, p_enabled: true });

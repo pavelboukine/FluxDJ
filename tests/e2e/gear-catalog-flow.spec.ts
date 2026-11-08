@@ -195,7 +195,7 @@ test.describe.serial("gear catalog", () => {
     const page = await staffPage(noTax);
     await page.goto(`/staff/${noTax.slug}/gear/new`);
     await expect(page.getByText("No taxes are set up yet")).toBeVisible();
-    await expect(page.getByRole("link", { name: "Open tax settings" })).toHaveAttribute("href", `/staff/${noTax.slug}/settings#taxes`);
+    await expect(page.getByRole("link", { name: "Open tax settings" })).toHaveAttribute("href", `/staff/${noTax.slug}/settings/taxes`);
     await expect(page.getByLabel("Tax category").locator("option")).toHaveText(["standard (taxes not set up)"]);
     await expect(page.getByLabel("Unit price (CAD)")).toHaveValue("");
     await shot(page, info, "gear-new-no-taxes");

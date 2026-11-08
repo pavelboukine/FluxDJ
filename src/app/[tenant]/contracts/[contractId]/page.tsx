@@ -1,3 +1,4 @@
+import { CLIENT_CONTRACT_LOGO } from "@/lib/branding/logo-size";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { loginHref } from "@/lib/auth/redirects";
@@ -170,7 +171,7 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
           <div className="grid gap-4 p-4 sm:p-6">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="flex min-h-8 min-w-0 items-center text-sm">
-                <BrandLogo logo={live?.logo ?? null} name={dj} className="max-h-10 max-w-40" fallbackClassName="font-semibold [overflow-wrap:anywhere]" />
+                <BrandLogo logo={live?.logo ?? null} name={dj} className={CLIENT_CONTRACT_LOGO} fallbackClassName="font-semibold [overflow-wrap:anywhere]" />
               </span>
               <span className={cn("rounded-full px-2.5 py-1 text-xs font-semibold", tones[status.tone])}>{status.label}</span>
             </div>

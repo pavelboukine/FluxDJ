@@ -9,7 +9,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
  */
 export const LOGO_BUCKET = "tenant-logos";
 
-export type BrandLogo = { url: string; needsDarkBackground: boolean; width: number; height: number };
+export type BrandLogo = { url: string; needsDarkBackground: boolean; width: number; height: number; sizePercent?: number };
 
 /** A short-lived (one hour) signed URL for a stored logo, after the caller's own authorization. */
 export async function signedLogoUrl(storagePath: string): Promise<string | null> {
@@ -42,10 +42,11 @@ export async function frozenOfferLogo(offer: { branding: { logo_storage_path: st
 /** The business's live logo, for client pages (after their access check) by slug. */
 export async function liveBrand(slug: string): Promise<{ logo: BrandLogo | null; brandColors: Record<string, string>; displayName: string } | null> {
   const { data } = await createAdminClient().rpc("public_tenant_brand", { p_tenant_slug: slug });
-  const brand = data as { display_name?: string; brand_colors?: Record<string, string>; logo_storage_path?: string | null; logo_needs_dark_background?: boolean; logo_width?: number; logo_height?: number } | null;
+  const brand = data as { display_name?: string; brand_colors?: Record<string, string>; logo_storage_path?: string | null; logo_needs_dark_background?: boolean; logo_width?: number; logo_height?: number; logo_size_percent?: number } | null;
   if (!brand?.display_name) return null;
-  const logo = brand.logo_storage_path
+  const stored = brand.logo_storage_path
     ? await logoUrl({ storage_path: brand.logo_storage_path, needs_dark_background: brand.logo_needs_dark_background, width: brand.logo_width, height: brand.logo_height })
     : null;
+  const logo = stored ? { ...stored, sizePercent: brand.logo_size_percent } : null;
   return { logo, brandColors: brand.brand_colors ?? {}, displayName: brand.display_name };
 }

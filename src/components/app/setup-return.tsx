@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/app/pending-link";
 import { ArrowLeft } from "lucide-react";
 
 /** Shown only when a page was opened from the setup guide (`?from=setup`), so established businesses never see it. */

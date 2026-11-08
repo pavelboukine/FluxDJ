@@ -43,10 +43,12 @@ type Props = {
   secondary?: ReactNode;
 };
 
-/** Serializes the user-editable fields, so "unsaved changes" can be detected. */
+/** Serializes the user-editable fields, so "unsaved changes" can be detected. A chosen file counts by its name and size. */
 function snapshot(form: HTMLFormElement): string {
   return JSON.stringify(
-    [...new FormData(form).entries()].filter(([name, value]) => name !== "draft_version" && typeof value === "string"),
+    [...new FormData(form).entries()]
+      .filter(([name]) => name !== "draft_version")
+      .map(([name, value]) => [name, typeof value === "string" ? value : `file:${value.name}:${value.size}`]),
   );
 }
 
@@ -85,6 +87,7 @@ export function ActionForm({
   const [pending, startTransition] = useTransition();
   const savedVersion = useRef<number | undefined>(undefined);
   const baseline = useRef<string | null>(null);
+  const rebaseline = useRef(false);
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
@@ -99,11 +102,28 @@ export function ActionForm({
     }
   }
 
+  // After a save that nothing was typed over: what's on screen once onSuccess has
+  // rendered (a cleared file field, for example) is the saved state.
+  useEffect(() => {
+    if (!rebaseline.current || !formRef.current) return;
+    rebaseline.current = false;
+    baseline.current = snapshot(formRef.current);
+    refreshDirty();
+  });
+
   // This form unmounting (e.g. remounted after a template) leaves no unsaved edits behind.
   useEffect(() => {
     if (!trackUnsaved) return;
     return () => editor?.setUnsaved(false);
   }, [trackUnsaved]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Editing again retires an earlier "saved" message, so it can't vouch for newer values.
+  function onEdited() {
+    refreshDirty();
+    if (trackUnsaved && formRef.current && baseline.current !== null && snapshot(formRef.current) !== baseline.current) {
+      setState((current) => (current.status === "success" ? idleState : current));
+    }
+  }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -136,15 +156,17 @@ export function ActionForm({
         savedVersion.current = result.version;
         if (sharedVersion) sharedVersion.current = Math.max(sharedVersion.current, result.version);
       }
+      const untouched = snapshot(form) === submitted;
       onSuccess?.(result);
       if (navigateOnSuccess) router.replace(navigateOnSuccess.replace("{version}", String(result.version ?? "")));
       // "Add another" forms clear after success, unless something was typed
       // while the save was pending: those edits are kept.
-      if (resetOnSuccess && snapshot(form) === submitted) {
+      if (resetOnSuccess && untouched) {
         form.reset();
         baseline.current = snapshot(form);
       } else {
         baseline.current = submitted;
+        rebaseline.current = untouched;
       }
       refreshDirty();
     });
@@ -154,8 +176,9 @@ export function ActionForm({
     <form
       ref={formRef}
       onSubmit={onSubmit}
-      onInput={refreshDirty}
-      onChange={refreshDirty}
+      onInput={onEdited}
+      onChange={onEdited}
+      data-unsaved={trackUnsaved && dirty ? "" : undefined}
       className={cn(inline ? "flex flex-wrap items-center gap-2" : "grid gap-4", className)}
     >
       {children}

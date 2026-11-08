@@ -71,8 +71,8 @@ The features below reflect reported completed work. Individual edge cases still 
 - Businesses, owners, staff memberships, tenant-isolated clients and events.
 - Invite-only DJ onboarding and branded staff shell/navigation.
 - Owner-managed staff invitations and membership revocation, with active membership checks.
-- Business Settings grouped into **Business Profile**, **Branding**, **Bookings & Taxes**, **Planning**, and **Legal Details**.
-- Configurable reply-to email, branding/logo, taxes, deposit percentage, and planning deadline controls.
+- Business Settings as a directory of six pages: **Business profile**, **Branding** and **Team & access** (General), and **Bookings**, **Taxes & payments** and **Client planning** (Operations), with a page navigation, forwarding of the old single-page links, and a prompt before leaving unsaved edits.
+- Configurable reply-to email, branding (logo, colour and logo size), taxes, deposit percentage (saved on its own), and planning deadline controls.
 - Guided setup/onboarding checklist.
 - Archive-aware access behavior. Hiding an event from `/my` is only presentation: the client database functions and direct routes must reject access when the event or business is archived.
 
@@ -363,6 +363,10 @@ Before expanding usage or making compliance statements, explicitly verify:
 ---
 
 ## Change log
+
+### November 8, 2026
+
+- Business Settings reorganized from one page into six focused pages; the deposit moved to Taxes & payments with its own save (`update_deposit_percent`), legal details save separately (`update_business_identity`), and owners can set a logo size (100-130%) for the staff header and client pages. Migrations `20261128000100` and `20261129000100`.
 
 ### November 5, 2026
 

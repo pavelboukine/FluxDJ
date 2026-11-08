@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { BrandLogo } from "@/components/app/brand-logo";
 import { brandStyle } from "@/lib/branding/colors";
+import { PUBLIC_CARD_LOGO } from "@/lib/branding/logo-size";
 import { cn } from "@/lib/utils";
 
 /**
@@ -12,7 +13,7 @@ import { cn } from "@/lib/utils";
  */
 export type PublicBrand = {
   displayName: string;
-  logo: { url: string; needsDarkBackground: boolean } | null;
+  logo: { url: string; needsDarkBackground: boolean; sizePercent?: number } | null;
   brandColors: Record<string, string>;
 };
 
@@ -37,7 +38,7 @@ export function TenantPublicCard({ brand, title, description, children }: { bran
             <BrandLogo
               logo={brand.logo}
               name={brand.displayName}
-              className="max-h-14 max-w-48 sm:max-h-16 sm:max-w-56"
+              className={PUBLIC_CARD_LOGO}
               fallbackClassName="text-lg leading-snug font-semibold tracking-tight [overflow-wrap:anywhere]"
             />
           </div>

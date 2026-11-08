@@ -84,7 +84,7 @@ test.describe.serial("workspace suspension", () => {
 
   test("suspending explains the effects, needs a reason and blocks the owner and client on their next request", async () => {
     // The owner has Settings open with a typed change when the suspension happens.
-    await owner.goto(`/staff/${dj.slug}/settings`);
+    await owner.goto(`/staff/${dj.slug}/settings/profile`);
     await owner.getByLabel("Contact email").fill(`changed-${run}@example.test`);
 
     const row = operator.getByTestId("workspace").filter({ hasText: `/${dj.slug}` });
@@ -104,7 +104,7 @@ test.describe.serial("workspace suspension", () => {
     expect(await operator.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
 
     // The open Settings tab: saving reaches the server, which refuses, and nothing claims it was saved.
-    await owner.getByRole("button", { name: "Save settings" }).click();
+    await owner.getByRole("region", { name: "Contract details" }).getByRole("button", { name: "Save changes" }).click();
     await owner.waitForURL("**/unavailable");
     await expect(owner.getByText("This workspace is unavailable", { exact: true })).toBeVisible();
     await expect(owner.locator("body")).not.toContainText("chargeback");

@@ -6,8 +6,10 @@ import type { DashboardFacts } from "@/lib/dashboard";
  * task is ready exactly when the business can do what it unlocks.
  *
  * - required: the app refuses the workflow without it (sending a proposal:
- *   taxes for its categories and three active packages; sending a contract:
- *   the legal identity and a template version published for client use).
+ *   taxes for its categories and three active packages; sending a contract,
+ *   with or without a proposal first: the legal identity and a template version
+ *   published for client use). A proposal-based booking needs both; an event
+ *   booked elsewhere needs neither.
  * - recommended: has a working default or a manual alternative (deposit and
  *   booking policy defaults, proposal templates, planning defaults).
  * - optional: nothing depends on it (logo, gear, questions, first event).
@@ -24,6 +26,14 @@ export const STATUS_LABEL: Record<SetupStatus, string> = {
   not_started: "Not started",
   optional: "Optional",
 };
+
+/**
+ * What a task says about itself. A recommended step that isn't done has a working
+ * default, so it never reads as a problem; "Needs attention" is for what blocks a workflow.
+ */
+export function taskStatusLabel(task: Pick<SetupTask, "level" | "done" | "status">): string {
+  return task.level === "recommended" && !task.done ? "Recommended" : STATUS_LABEL[task.status];
+}
 
 export type SetupTask = {
   key: string;
@@ -104,7 +114,7 @@ export function requiredSetup(s: Base, slug: string): SetupTask[] {
       needed: "Needed to send contracts",
       done: s.identity_saved,
       hint: s.identity_saved ? "Saved." : "Not saved yet: contracts can't be sent until they are.",
-      href: `${base}/settings`,
+      href: `${base}/settings/profile`,
       action: "Add business details",
       ownerOnly: true,
     }),
@@ -122,7 +132,7 @@ export function requiredSetup(s: Base, slug: string): SetupTask[] {
           : configured.size > 0
             ? `${plural(configured.size, "tax category", "tax categories")} configured.`
             : "Nothing configured yet: proposals can't be sent until it is.",
-      href: `${base}/settings#taxes`,
+      href: `${base}/settings/taxes`,
       action: "Set up taxes",
       ownerOnly: true,
     }),
@@ -175,7 +185,7 @@ export function setupGuide(s: Base, x: SetupExtras, slug: string): SetupGroup[] 
         task({
           key: "branding",
           label: "Customize branding",
-          description: "Your logo and brand colour, shown on your client pages and on proposals you send. Without them, clients see your business name in Flux's default style.",
+          description: "Your logo and brand colour, shown on your client pages and in emails from your business. Without them, clients see your business name in Flux's default style.",
           level: "optional",
           needed: "Optional: makes your client pages look like yours",
           done: x.hasLogo || x.hasBrandColor,
@@ -187,7 +197,7 @@ export function setupGuide(s: Base, x: SetupExtras, slug: string): SetupGroup[] 
                 : x.hasBrandColor
                   ? "Brand colour configured."
                   : "Add your logo or choose a brand colour.",
-          href: `${base}/settings#branding`,
+          href: `${base}/settings/branding`,
           action: "Add branding",
           ownerOnly: true,
         }),
@@ -200,7 +210,7 @@ export function setupGuide(s: Base, x: SetupExtras, slug: string): SetupGroup[] 
           done: s.identity_saved && x.bookingPolicyReviewed,
           started: s.identity_saved || x.bookingPolicyReviewed,
           hint: `${x.depositPercent}% deposit; bookings ${policy}.${x.bookingPolicyReviewed && s.identity_saved ? "" : " Not reviewed yet."}`,
-          href: `${base}/settings#booking`,
+          href: `${base}/settings/bookings`,
           action: "Review booking settings",
           ownerOnly: true,
         }),
@@ -290,7 +300,7 @@ export function setupGuide(s: Base, x: SetupExtras, slug: string): SetupGroup[] 
         task({
           key: "first-event",
           label: "Your first event",
-          description: "Create an event and add its client. Nothing is sent to the client until you send them a proposal.",
+          description: "Create an event and add its client. Nothing is sent to the client until you send them a proposal, a contract or a planning invitation.",
           level: "optional",
           needed: "When you're ready",
           done: x.events > 0,
@@ -304,12 +314,12 @@ export function setupGuide(s: Base, x: SetupExtras, slug: string): SetupGroup[] 
   ];
 }
 
-/** What the saved setup allows today. A contract also needs an approved proposal, so it follows proposal readiness. */
+/** What the saved setup allows today. Contracts don't depend on proposal setup: a contract-only booking needs neither taxes nor packages. */
 export function readiness(s: Base) {
   const tasks = requiredSetup(s, "");
   const missing = (keys: string[]) => tasks.filter((t) => keys.includes(t.key) && !t.done).map((t) => t.label);
   const proposals = missing(["taxes", "packages"]);
-  const contracts = [...proposals, ...missing(["identity", "contract-template"])];
+  const contracts = missing(["identity", "contract-template"]);
   return { proposals, contracts, readyCount: tasks.filter((t) => t.done).length, total: tasks.length };
 }
 

@@ -5,7 +5,7 @@ import { needsTaxSetup } from "@/lib/db-errors";
 export function TaxSetupLink({ slug, message }: { slug: string; message: string | null | undefined }) {
   if (!message || !needsTaxSetup(message)) return null;
   return (
-    <Link className="font-medium underline" href={`/staff/${slug}/settings#taxes`}>
+    <Link className="font-medium underline" href={`/staff/${slug}/settings/taxes`}>
       Open tax settings
     </Link>
   );

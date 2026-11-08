@@ -1,3 +1,4 @@
+import { CLIENT_PAGE_LOGO } from "@/lib/branding/logo-size";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -58,7 +59,7 @@ export default async function EventHub({ params }: PageProps<"/[tenant]/events/[
         <header className="grid gap-3">
           <div className="flex items-center justify-between gap-3">
             <span className="flex min-h-8 min-w-0 items-center text-sm">
-              <BrandLogo logo={live?.logo ?? null} name={dj} className="max-h-9 max-w-36" fallbackClassName="font-semibold [overflow-wrap:anywhere]" />
+              <BrandLogo logo={live?.logo ?? null} name={dj} className={CLIENT_PAGE_LOGO} fallbackClassName="font-semibold [overflow-wrap:anywhere]" />
             </span>
             <EventStatusPill label={status.label} tone={status.tone} />
           </div>

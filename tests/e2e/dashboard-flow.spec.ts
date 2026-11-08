@@ -120,8 +120,8 @@ test.describe.serial("staff dashboard", () => {
     for (const key of ["identity", "taxes", "packages", "contract-template"]) {
       await expect(checklist.getByTestId(`setup-${key}`)).toHaveAttribute("data-done", "false");
     }
-    await expect(checklist.getByRole("link", { name: "Business details" })).toHaveAttribute("href", `/staff/${empty.slug}/settings`);
-    await expect(checklist.getByRole("link", { name: "Taxes" })).toHaveAttribute("href", `/staff/${empty.slug}/settings#taxes`);
+    await expect(checklist.getByRole("link", { name: "Business details" })).toHaveAttribute("href", `/staff/${empty.slug}/settings/profile`);
+    await expect(checklist.getByRole("link", { name: "Taxes" })).toHaveAttribute("href", `/staff/${empty.slug}/settings/taxes`);
     await expect(checklist.getByRole("link", { name: "Continue setup" })).toHaveAttribute("href", `/staff/${empty.slug}/setup`);
     await expect(checklist).not.toContainText("Only the owner");
     await expect(page.getByTestId("attention-empty")).toHaveText("Nothing needs your attention right now.");

@@ -239,15 +239,21 @@ test.describe.serial("staff pages on phones", () => {
     await expectTap("question", main.getByRole("link", { name: /Where will the ceremony/ }));
 
     await page.goto(`${base}/settings`);
-    const sections = page.getByRole("navigation", { name: "Settings sections" });
-    for (const link of await sections.getByRole("link").all()) {
+    for (const link of await page.getByTestId("settings-directory").getByRole("link").all()) {
       expect((await link.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     }
     await expectTap("setup guide", main.getByRole("link", { name: "Setup guide" }));
-    await expectTap("save branding", main.getByRole("button", { name: "Save branding" }));
-    await expectTap("save booking policy", main.getByRole("button", { name: "Save booking policy" }));
-    await expectTap("booking disclosure", main.getByText("From proposal to confirmed booking"));
+    expect(await sideways(page)).toBeLessThanOrEqual(0);
+    await page.goto(`${base}/settings/branding`);
+    await expectTap("back to settings", page.getByTestId("settings-back"));
+    await expectTap("save branding", main.getByRole("button", { name: "Save changes" }));
+    await page.goto(`${base}/settings/bookings`);
+    await expectTap("save booking policy", main.getByRole("region", { name: "Booking confirmation" }).getByRole("button", { name: "Save changes" }));
+    await expectTap("booking disclosure", main.locator("summary", { hasText: "How booking works" }));
+    await page.goto(`${base}/settings/taxes`);
     await expectTap("no tax", main.getByText("No tax", { exact: true }));
+    expect(await sideways(page)).toBeLessThanOrEqual(0);
+    await page.goto(`${base}/settings/profile`);
     await expect(main.getByLabel("Legal business name")).toHaveCSS("height", "44px");
     expect(await sideways(page)).toBeLessThanOrEqual(0);
     await page.context().close();
@@ -258,7 +264,7 @@ test.describe.serial("staff pages on phones", () => {
     expect((await sidebarLink.boundingBox())!.height).toBe(36);
     expect((await desktop.getByRole("button", { name: "Account" }).boundingBox())!.height).toBe(40);
     expect((await desktop.getByRole("main").getByRole("link", { name: "Create event" }).boundingBox())!.height).toBe(32);
-    await desktop.goto(`${base}/settings`);
+    await desktop.goto(`${base}/settings/profile`);
     await expect(desktop.getByLabel("Legal business name")).toHaveCSS("height", "32px");
     await desktop.context().close();
   });

@@ -195,7 +195,7 @@ function PackageOverview({
           {taxReady ? null : (
             <span className="text-xs text-amber-800 dark:text-amber-300" data-testid="package-tax-warning">
               {configured.length > 0 ? "Taxes aren't set up for this category" : "No taxes are set up yet"}, so proposals with this package can&apos;t be sent.{" "}
-              <Link className="font-medium underline" href={`/staff/${slug}/settings#taxes`}>Open tax settings</Link> (owner only).
+              <Link className="font-medium underline" href={`/staff/${slug}/settings/taxes`}>Open tax settings</Link> (owner only).
             </span>
           )}
         </dd>
