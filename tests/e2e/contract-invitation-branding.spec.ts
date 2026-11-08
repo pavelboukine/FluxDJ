@@ -197,8 +197,8 @@ test.describe.serial("contract invitation and after signing", () => {
     await page.goto(`/${wide.slug}/contracts/${a.contractId}`);
     await expect(outcome).toHaveAttribute("data-state", "booked");
     await expect(outcome.getByRole("heading", { level: 2 })).toHaveText("Your event is officially booked!");
-    // Booked, but the DJ hasn't opened planning: said plainly, and the event page still opens.
-    await expect(outcome).toContainText(`${wide.displayName} is getting your planning ready.`);
+    // Booked, but the DJ hasn't opened planning: the contract page promises nothing about planning; the event page still opens.
+    await expect(outcome).toContainText(`${wide.displayName} will be in touch about what comes next.`);
     await expect(outcome).not.toContainText("You can now start organizing");
     await outcome.getByRole("link", { name: "Go to your event" }).click();
     await page.waitForURL(`**/${wide.slug}/events/${a.eventId}`);
@@ -216,7 +216,7 @@ test.describe.serial("contract invitation and after signing", () => {
     await context.close();
   });
 
-  test("a $0 booking is booked on signing: nothing to pay, the DJ getting planning ready, straight to the event", async ({ page }) => {
+  test("a $0 booking is booked on signing: nothing to pay, the DJ in touch about what comes next, straight to the event", async ({ page }) => {
     const free = await sent(plain, { discount: { type: "percent", percent_basis_points: 10000, label: "Complimentary" } });
     await signContractFor(plain, free.eventId, free.email, free.contractId, free.linkId, { recordDeposit: false });
     expect((await must(admin.from("events").select("lifecycle_status").eq("id", free.eventId).single())).data!.lifecycle_status).toBe("booked");
@@ -224,7 +224,7 @@ test.describe.serial("contract invitation and after signing", () => {
     await signInWithLink(page, free.email, `/${plain.slug}/contracts/${free.contractId}`);
     const outcome = page.getByTestId("signed-outcome");
     await expect(outcome).toHaveAttribute("data-state", "booked");
-    await expect(outcome).toContainText(`${plain.displayName} is getting your planning ready.`);
+    await expect(outcome).toContainText(`${plain.displayName} will be in touch about what comes next.`);
     await expect(outcome).not.toContainText(/deposit/i);
     await expect(page.locator("#payments")).toContainText("No payment due");
     await expect(page.locator("#payments")).not.toContainText(/still outstanding|Remaining balance/);

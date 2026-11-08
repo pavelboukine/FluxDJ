@@ -252,7 +252,7 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
                 <p>
                   {planningOpen
                     ? "You can now start organizing your music, timing and special moments from your event page."
-                    : `${dj} is getting your planning ready. It will open from your event page soon, and they'll let you know when it's time to get started.`}
+                    : `${dj} will be in touch about what comes next. Your event page has your booking details in the meantime.`}
                 </p>
                 {/* A booking stands even if a payment later stops covering the deposit: said plainly, never as a new step. */}
                 {payments?.deposit_outstanding_cents ? (
