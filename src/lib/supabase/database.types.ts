@@ -490,13 +490,13 @@ isOneToOne: false
                   ]
                 },"event_plan_items": {
                   Row: {
-                    "created_at": string,"disabled_at": string | null,"id": string,"key": string,"kind": string,"label": string,"parent_id": string | null,"plan_id": string,"position": number,"source_template_item_id": string | null,"tenant_id": string,"updated_at": string
+                    "created_at": string,"disabled_at": string | null,"id": string,"key": string,"kind": string,"label": string,"parent_id": string | null,"plan_id": string,"position": number,"questions": Json | null,"source_template_item_id": string | null,"tenant_id": string,"updated_at": string
                   }
                   Insert: {
-                    "created_at"?: string,"disabled_at"?: string | null,"id"?: string,"key": string,"kind": string,"label": string,"parent_id"?: string | null,"plan_id": string,"position": number,"source_template_item_id"?: string | null,"tenant_id": string,"updated_at"?: string
+                    "created_at"?: string,"disabled_at"?: string | null,"id"?: string,"key": string,"kind": string,"label": string,"parent_id"?: string | null,"plan_id": string,"position": number,"questions"?: Json | null,"source_template_item_id"?: string | null,"tenant_id": string,"updated_at"?: string
                   }
                   Update: {
-                    "created_at"?: string,"disabled_at"?: string | null,"id"?: string,"key"?: string,"kind"?: string,"label"?: string,"parent_id"?: string | null,"plan_id"?: string,"position"?: number,"source_template_item_id"?: string | null,"tenant_id"?: string,"updated_at"?: string
+                    "created_at"?: string,"disabled_at"?: string | null,"id"?: string,"key"?: string,"kind"?: string,"label"?: string,"parent_id"?: string | null,"plan_id"?: string,"position"?: number,"questions"?: Json | null,"source_template_item_id"?: string | null,"tenant_id"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -827,13 +827,13 @@ isOneToOne: false
                   ]
                 },"planning_template_items": {
                   Row: {
-                    "created_at": string,"id": string,"key": string,"kind": string,"label": string,"parent_id": string | null,"position": number,"template_id": string,"tenant_id": string,"updated_at": string
+                    "created_at": string,"id": string,"key": string,"kind": string,"label": string,"parent_id": string | null,"position": number,"questions": Json | null,"template_id": string,"tenant_id": string,"updated_at": string
                   }
                   Insert: {
-                    "created_at"?: string,"id"?: string,"key": string,"kind": string,"label": string,"parent_id"?: string | null,"position": number,"template_id": string,"tenant_id": string,"updated_at"?: string
+                    "created_at"?: string,"id"?: string,"key": string,"kind": string,"label": string,"parent_id"?: string | null,"position": number,"questions"?: Json | null,"template_id": string,"tenant_id": string,"updated_at"?: string
                   }
                   Update: {
-                    "created_at"?: string,"id"?: string,"key"?: string,"kind"?: string,"label"?: string,"parent_id"?: string | null,"position"?: number,"template_id"?: string,"tenant_id"?: string,"updated_at"?: string
+                    "created_at"?: string,"id"?: string,"key"?: string,"kind"?: string,"label"?: string,"parent_id"?: string | null,"position"?: number,"questions"?: Json | null,"template_id"?: string,"tenant_id"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -1349,6 +1349,12 @@ isOneToOne: false
 "accept_staff_invitation":
 { Args: { "p_invitation_id": string }; Returns: Json
                            },
+"add_custom_event_plan_item":
+{ Args: { "p_event_id": string,"p_expected_version": number,"p_kind": string,"p_label": string,"p_parent_key"?: string }; Returns: Json
+                           },
+"add_custom_planning_template_item":
+{ Args: { "p_expected_version": number,"p_kind": string,"p_label": string,"p_parent_key"?: string,"p_template_id": string }; Returns: Json
+                           },
 "add_event_contact":
 { Args: { "p_client_id": string,"p_event_id": string,"p_expected_primary_client_id"?: string,"p_make_primary"?: boolean,"p_make_signer"?: boolean }; Returns: Json
                            },
@@ -1707,6 +1713,9 @@ isOneToOne: false
 "set_event_plan_item_enabled":
 { Args: { "p_enabled": boolean,"p_expected_version": number,"p_item_id": string }; Returns: number
                            },
+"set_event_plan_item_questions":
+{ Args: { "p_expected_version": number,"p_item_id": string,"p_questions": Json }; Returns: number
+                           },
 "set_package_archived":
 { Args: { "p_archived": boolean,"p_package_id": string }; Returns: Json
                            },
@@ -1721,6 +1730,9 @@ isOneToOne: false
                            },
 "set_planning_template_archived":
 { Args: { "p_archived": boolean,"p_template_id": string }; Returns: number
+                           },
+"set_planning_template_item_questions":
+{ Args: { "p_expected_version": number,"p_item_id": string,"p_questions": Json }; Returns: number
                            },
 "set_proposal_template_composition":
 { Args: { "p_addons": Json,"p_default_package_id": string,"p_package_ids": Json,"p_question_ids": Json,"p_template_id": string }; Returns: undefined

@@ -145,6 +145,22 @@ test.describe.serial("planning cutoff and reopening", () => {
     await expect(client.locator("#plan-panel-party input").first()).toBeDisabled();
     await openPlanSection(client, "basics");
     expect(await noSideways(client)).toBeLessThanOrEqual(0);
+
+    // Staff "Preview as client" shows the same read-only planning: answers as text, unchosen options and
+    // empty fields set aside, nothing editable (and nothing saved).
+    await staff.goto(`${staffPlanningUrl}/preview?section=basics`);
+    const preview = staff.getByTestId("client-preview");
+    await expect(preview).toHaveAttribute("data-plan-readonly", "");
+    await expect(preview.getByTestId("editing-chip")).toHaveText("Read-only");
+    await expect(preview.getByTestId("editing-notice")).toHaveAttribute("data-state", "closed");
+    await expect(preview.getByLabel("Guest count (needed)")).toHaveValue("150");
+    await expect(preview.getByLabel("Guest count (needed)")).toBeDisabled();
+    await staff.goto(`${staffPlanningUrl}/preview?section=ceremony`);
+    const ceremonyPreview = staff.getByTestId("client-preview").locator("#plan-panel-ceremony");
+    await expect(ceremonyPreview.locator("input").first()).toBeDisabled();
+    // Nothing was chosen for the ceremony's location: its options step aside and the question reads "Not answered".
+    await expect(ceremonyPreview.locator("[data-choice-option]").first()).toBeHidden();
+    expect(await noSideways(staff)).toBeLessThanOrEqual(0);
   });
 
   test("staff still edit, see the closed status up front and open editing again for a limited time", async () => {

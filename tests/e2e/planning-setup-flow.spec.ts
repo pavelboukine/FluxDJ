@@ -137,6 +137,33 @@ test.describe.serial("planning setup after booking", () => {
     await expect(staff.getByTestId("next-action")).toHaveAttribute("data-key", "open_planning");
     await expect(staff.locator("#planning").getByRole("link", { name: "Open planning" })).toBeVisible();
 
+    // Preview as client, before opening: the client's own planning with this event's answers; nothing it does is saved.
+    await staff.goto(staffPlanningUrl);
+    await staff.getByTestId("preview-as-client").click();
+    await staff.waitForURL(`**${staffPlanningUrl}/preview`);
+    const preview = staff.getByTestId("client-preview");
+    await expect(staff.getByTestId("preview-note")).toContainText("Your client can't see this yet: planning isn't open to them.");
+    await expect(preview.getByRole("heading", { level: 1, name: title })).toBeVisible();
+    await preview.getByTestId("overview-basics").click();
+    const guests = preview.getByTestId("section-basics").getByLabel("Guest count (needed)");
+    await expect(guests).toHaveValue("140");
+    await guests.fill("155");
+    await expect(preview.getByTestId("section-basics").getByText("Preview: not saved")).toBeVisible();
+    // A conditional field appears as for the client.
+    await staff.goto(`${staffPlanningUrl}/preview?section=ceremony`);
+    const ceremony = preview.getByTestId("stage-ceremony");
+    await expect(ceremony.getByLabel("Place and address")).toHaveCount(0);
+    await ceremony.getByLabel("Somewhere else").check();
+    await expect(ceremony.getByLabel("Place and address")).toBeVisible();
+    expect((await basicsRow(eventId))!.answers).toMatchObject({ guest_count: 140 });
+    expect((await admin.from("event_plans").select("client_opened_at").eq("event_id", eventId).single()).data!.client_opened_at).toBeNull();
+    // It fits a phone.
+    await staff.setViewportSize({ width: 390, height: 844 });
+    await staff.goto(`${staffPlanningUrl}/preview`);
+    await expect(preview.getByTestId("preview-overview")).toBeVisible();
+    expect(await staff.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+    await staff.setViewportSize({ width: 1280, height: 720 });
+
     // The dashboard reminds staff, linking to the event's Planning section (nothing is opened by it).
     await staff.goto(`/staff/${tenant.slug}`);
     const reminder = staff.getByTestId("attention-item").filter({ hasText: title });

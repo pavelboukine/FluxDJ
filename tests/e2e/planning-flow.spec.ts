@@ -173,19 +173,56 @@ test.describe.serial("planning", () => {
     await expect(stale.getByLabel("Label for Cocktail", { exact: true })).toHaveValue("Cocktail hour");
     await stale.close();
 
-    // The preview shows the client's sections in the saved order, without touching any event.
+    // Each row says what clients are asked there, read-only, from the same wording as the client's form.
+    const lyrics = staff.getByTestId("questions-dj_preferences");
+    await lyrics.getByRole("button", { name: /What clients are asked \(6 questions\)/ }).click();
+    await expect(lyrics.getByRole("list", { name: "Questions in DJ expectations and overall preferences" }).locator(":scope > li")).toHaveCount(6);
+    await expect(lyrics).toContainText("Explicit lyrics");
+    await expect(lyrics).toContainText("One choice: Clean versions only · Explicit lyrics are fine · Not sure yet — discuss with the DJ");
+    await expect(lyrics.getByRole("textbox")).toHaveCount(0);
+    const entranceRow = staff.getByTestId("questions-reception_entrance");
+    await entranceRow.getByRole("button", { name: /What clients are asked/ }).click();
+    await expect(entranceRow).toContainText("Planned grand entrance time");
+    await expect(entranceRow).toContainText("Shown when: a grand entrance is planned");
+    // A placeholder answered in another moment has no questions of its own.
+    await staff.getByTestId("stage-reception_entrance").getByRole("button", { name: /moments in Reception entrance/ }).click();
+    await expect(staff.getByTestId("questions-entrance_participants")).toHaveCount(0);
+    await expect(staff.getByTestId("questions-introductions")).toBeVisible();
+
+    // The preview is the client's own planning, on a sample event: real fields, nothing saved, no event touched.
     const plansBefore = (await admin.from("event_plans").select("id").eq("tenant_id", tenant.id)).data!.length;
+    const responsesBefore = (await admin.from("event_plan_responses").select("id, revision").eq("tenant_id", tenant.id).order("id")).data;
     await staff.getByRole("link", { name: "Preview" }).click();
-    await expect(staff.getByTestId("preview-note")).toContainText("nothing is saved");
-    await expect(staff.getByTestId("preview-sections").locator(":scope > li h2")).toHaveText([
-      "Event basics", "Contacts and vendors", "DJ expectations and overall preferences",
-      "Ceremony", "Cocktail", "Reception entrance", "Dinner", "Special dances", "Dance party", "Last dance",
+    const preview = staff.getByTestId("client-preview");
+    await expect(staff.getByTestId("preview-note")).toContainText("nothing you enter is saved");
+    await expect(preview.getByRole("heading", { level: 1, name: "Sample event" })).toBeVisible();
+    await expect(preview).toContainText("Sample venue");
+    await expect(preview.getByTestId("preview-overview")).toBeVisible();
+    await expect(preview.getByTestId("plan-details").getByRole("link")).toHaveText(["Event basics", "Contacts and vendors", "DJ expectations and overall preferences"]);
+    await expect(preview.getByTestId("plan-order").getByRole("link")).toHaveText([
+      "1. Ceremony", "2. Cocktail", "3. Reception entrance", "4. Dinner", "5. Special dances", "6. Dance party", "7. Last dance",
     ]);
-    // The grand entrance order holds who is introduced and their songs: no separate Participants and names or Entrance music.
-    await expect(staff.getByTestId("preview-reception_entrance")).toContainText("Grand entrance order");
-    await expect(staff.getByTestId("preview-reception_entrance")).not.toContainText(/Participants and names|Entrance music/);
-    await expect(staff.getByTestId("preview-party")).not.toContainText("Dedications");
+    // No progress anywhere in a preview.
+    await expect(preview.getByText(/% complete|required answers|Not started/)).toHaveCount(0);
+
+    // Conditional fields work as for the client: the grand entrance's time and moments appear once it's planned.
+    await preview.getByTestId("overview-reception_entrance").click();
+    const entrance = preview.getByTestId("stage-reception_entrance");
+    await expect(entrance.getByRole("heading", { level: 2, name: "Reception entrance" })).toBeVisible();
+    await expect(entrance.locator('[data-grand-entrance="hidden"]')).toHaveCount(1);
+    await expect(entrance.getByText("Planned grand entrance time")).toHaveCount(0);
+    await entrance.getByLabel("Yes, we're planning a grand entrance").check();
+    await expect(entrance.getByText("Planned grand entrance time (needed)")).toBeVisible();
+    await expect(entrance.locator('[data-grand-entrance="shown"]')).toHaveCount(1);
+    await expect(entrance.getByTestId("moment-introductions")).toBeVisible();
+    await expect(entrance.getByTestId("moment-entrance_participants")).toHaveCount(0);
+    // What the client types is accepted on screen and never stored.
+    await entrance.getByLabel("Where will the reception take place? (optional)").fill("Main hall");
+    await expect(entrance.getByText("Preview: not saved").first()).toBeVisible();
+    await expect(preview.getByText("All changes saved")).toHaveCount(0);
+    await expect(preview.getByTestId("stage-party")).not.toContainText("Dedications");
     expect((await admin.from("event_plans").select("id").eq("tenant_id", tenant.id)).data!.length).toBe(plansBefore);
+    expect((await admin.from("event_plan_responses").select("id, revision").eq("tenant_id", tenant.id).order("id")).data).toEqual(responsesBefore);
     await staff.getByRole("link", { name: "Back to the template" }).click();
 
     // Copy it as a starting point.

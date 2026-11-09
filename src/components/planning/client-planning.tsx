@@ -45,6 +45,7 @@ export function PlanOverview({ djName, providedCount }: { djName: string; provid
   const plan = usePlanProgress();
   const saves = usePlanSaveSummary();
   if (!plan) return null;
+  if (plan.preview) return <PreviewOverview />;
   const p = plan.progress;
   const closed = plan.editing?.state === "closed";
   const next = firstIncompleteSection(nav.sections, p, plan.warnings);
@@ -204,5 +205,73 @@ function OverviewRow({ row: { s, status }, number, next, connect }: { row: Row; 
         </span>
       </NavLink>
     </li>
+  );
+}
+
+/**
+ * The overview in a staff preview: the same sheets and the plan's sections in order, without
+ * progress (a preview counts nothing) and without "Next up" (nothing has been answered).
+ */
+function PreviewOverview() {
+  const nav = useNav();
+  const first = nav.sections[0] ?? null;
+  const general = nav.sections.filter((s) => s.kind === "general");
+  const stages = nav.sections.filter((s) => s.kind === "stage");
+  const row = cn("-mx-3 grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 rounded-xl px-3 py-3 text-sm font-medium hover:bg-plan-track/60", PLAN_FOCUS);
+  return (
+    <div className="grid gap-4 sm:gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-start">
+      <section aria-labelledby="plan-heading-overview" className={cn(OVERVIEW_SHEET, "lg:sticky lg:top-6")} data-testid="preview-overview">
+        <div className="grid gap-3">
+          <PanelHeading view={null}>Planning overview</PanelHeading>
+          <p className="max-w-[65ch] text-sm text-pretty text-plan-ink-2">
+            Here your client sees their progress and what to do next. Open any section to see exactly what they&apos;re asked.
+          </p>
+        </div>
+        {first ? (
+          <NavLink
+            view={first.key}
+            className={cn("inline-flex min-h-11 items-center justify-center gap-1.5 justify-self-start rounded-[10px] px-5 text-sm font-semibold max-sm:w-full", PLAN_PRIMARY, PLAN_FOCUS)}
+            data-testid="plan-primary"
+          >
+            Start with {first.label}
+          </NavLink>
+        ) : null}
+      </section>
+      <section aria-label="Your plan" className={cn(OVERVIEW_SHEET, "gap-6")}>
+        {general.length > 0 ? (
+          <div className="grid gap-1.5">
+            <h2 id="plan-details-heading" className="text-base font-semibold">Event details</h2>
+            <ul className="grid" aria-labelledby="plan-details-heading" data-testid="plan-details">
+              {general.map((s) => (
+                <li key={s.key}>
+                  <NavLink view={s.key} data-testid={`overview-${s.key}`} className={row}>
+                    <span className="[overflow-wrap:anywhere]">{s.label}</span>
+                    <ChevronRight aria-hidden className="size-4 text-plan-ink-2" />
+                  </NavLink>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {stages.length > 0 ? (
+          <div className="grid gap-1.5">
+            <h2 id="plan-order-heading" className="text-base font-semibold">{nav.stagesHeading}</h2>
+            <ol className="grid" aria-labelledby="plan-order-heading" data-testid="plan-order">
+              {stages.map((s, i) => (
+                <li key={s.key}>
+                  <NavLink view={s.key} data-testid={`overview-${s.key}`} className={row}>
+                    <span className="[overflow-wrap:anywhere]">
+                      <span className="font-normal text-plan-ink-2 tabular-nums">{i + 1}. </span>
+                      {s.label}
+                    </span>
+                    <ChevronRight aria-hidden className="size-4 text-plan-ink-2" />
+                  </NavLink>
+                </li>
+              ))}
+            </ol>
+          </div>
+        ) : null}
+      </section>
+    </div>
   );
 }

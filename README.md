@@ -1450,6 +1450,31 @@ signed-out browser:
 - `tests/integration/planning-activation.test.ts`: concurrent openings, open
   and send racing open-only, two first invitations at once, and a client
   reading and saving while staff open planning.
+- `70_planning_custom_questions` (pgTAP): custom items and their keys, who may
+  add them and change their questions (clients, other businesses, signed out
+  and stale versions refused), definition checks (seven types, options, ids,
+  no conditions), copies (duplicating, starting from a copy, a plan's own
+  snapshot that later template edits never reach), the views, saving
+  (incomplete answers, every refused value, conflicts and replays), progress
+  from required questions only, and history (renamed, reordered, removed
+  questions and options kept with their answers, no type change once
+  answered, applying a template, hiding, archived events, closed editing).
+- `tests/integration/planning-custom-questions.test.ts`: the views parsed with
+  the app's schemas, a client and staff saving the same custom section at once,
+  staff removing a question while the client answers it, and two staff
+  changing the questions at once.
+- `tests/e2e/custom-authoring-flow.spec.ts`: creating your own section, stage
+  and moment in a template, writing, fixing, reordering and removing
+  questions, a stale tab's refused save, the template preview, one event's
+  own content before planning is open, answered questions after the client
+  answers (no type change, removed question and choice kept) and the editor on
+  a phone.
+- `tests/unit/custom-questions.test.ts` and
+  `tests/e2e/custom-questions-flow.spec.ts`: forms, answer wording, previews,
+  template summaries, sections and the run sheet (web and PDF); then a
+  template with every question type, its preview, a client answering, staff
+  removing an answered question and option, the run sheet and "Preview as
+  client".
 - `tests/unit/setup.test.ts` and `tests/e2e/setup-guide-flow.spec.ts`: every
   step's rule, the setup guidance (Skipped steps, finished steps still Ready,
   readiness unchanged), the dashboard card per guidance, and staff's
@@ -3275,6 +3300,66 @@ alike: staff prepare it first (template, sections, questions), then open it.
   booked for planning, set up and a client with event access, or a planning
   invitation that was accepted or not revoked
   (`private.plan_open_before_activation`, tested in pgTAP 69).
+
+### Custom planning questions
+
+Migration `20261202000100_custom_planning_questions.sql`. A DJ's own sections,
+stages and moments, beside the built-in library editors (which don't change).
+
+- A custom item's key is `custom_<random>` (`private.is_custom_planning_key`).
+  It has no library row: `private.planning_item_info` gives every item its
+  editor, `custom` for a section or moment and none for a stage, which only
+  groups moments. A custom moment fits any stage. Nothing nests deeper.
+- `planning_template_items.questions` and `event_plan_items.questions` hold a
+  custom section's or moment's questions, in order: `{id, type, label, help?,
+  required, options?}`. Types: `short_text`, `long_text`, `single_choice`,
+  `multi_choice` (2 to 12 options), `yes_no`, `songs` (a moment's song list:
+  up to 12, with an optional cue) and `time` (with next day). Up to 30 per
+  item. No conditions, files or nested forms.
+- Staff only, versioned like the rest of the structure:
+  `add_custom_planning_template_item`, `set_planning_template_item_questions`,
+  `add_custom_event_plan_item` and `set_event_plan_item_questions`. Renaming,
+  moving, removing and hiding use the existing item functions. A plan copies
+  its template's questions when it is set up, so editing a template never
+  changes an existing plan.
+- Answers are stored by question id and checked against the plan's own copy
+  (`private.normalize_custom_answers`, through `save_plan_item`, so revisions,
+  opening, deadlines and closed editing apply as for every section).
+  Unanswered questions are simply absent: incomplete answers save. Wrong
+  types, options that aren't offered and unknown questions are refused.
+- Progress: one requirement per required question still asked
+  (`private.plan_custom_requirements`); optional questions never hold an item
+  back.
+- History: on a plan, a removed question that holds an answer, and a removed
+  option an answer still uses, stay in the definitions with `archived: true`.
+  Clients no longer see the question (a chosen removed option still shows,
+  marked); staff, the run sheet and its PDF still read it ("no longer
+  asked"). Answers are never deleted. Changing an answered question's type is
+  refused; applying a template keeps the plan's type for answered questions.
+- Readers: `plan_structure` adds `questions` to custom items (archived ones
+  for staff only) and `moments` carries their answers.
+  `src/lib/planning/custom-questions.ts` reads them for every page, and
+  `CustomQuestionsEditor` renders them on the client's page, staff planning
+  and both previews.
+- Authoring (staff): the template editor and an event's **Structure and
+  template** panel share the same components
+  (`src/components/planning/custom-authoring.tsx`). **Create your own
+  section / stage / moment** asks only for a name. A custom section or moment
+  shows **Your questions**: each question opens on its own (wording, answer
+  type, optional help, "Needed to complete planning", choices), with up and
+  down arrows and Remove. Changes stay in the browser until **Save
+  questions**, which sends the whole list with the page's version, so a stale
+  tab gets "Someone else saved changes first" and keeps its typing. On an
+  event, answered questions are marked "Has answers" and keep their type;
+  removing them or a chosen choice says the answers are kept. Removed
+  questions are never offered for editing. Built-in items keep their
+  read-only "What clients are asked".
+- Known issue (pre-existing, unchanged by this migration):
+  `create_planning_template_once` can raise 23505 on
+  `planning_templates_tenant_id_id_key` when the same request arrives several
+  times at once, because `on conflict (id)` doesn't cover that index. The
+  integration test "ten identical requests" fails intermittently because of
+  it. The fix belongs in its own migration.
 
 ### Client access
 

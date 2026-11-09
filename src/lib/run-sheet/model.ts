@@ -8,6 +8,7 @@ import { formatInstant } from "@/lib/planning/cutoff";
 import { isHttpsUrl } from "@/lib/urls";
 import { djIdentity } from "@/lib/planning/dj";
 import { formatEventDate, formatImportedAnswer, type StaffPlanningView } from "@/lib/planning/view";
+import { customAnswerLines, type CustomQuestion, type CustomTime } from "@/lib/planning/custom-questions";
 
 /**
  * The DJ run sheet: one typed, read-only projection of the latest saved plan,
@@ -104,6 +105,8 @@ export type RunSheet = {
   stages: StageSheet[];
   vendors: { state: "listed" | "none" | "unanswered" | "hidden"; entries: { role: string; name: string; phone?: string; email?: string; notes?: string }[] };
   musicLists: MusicList[];
+  /** The DJ's own general sections: each question with its answer, in order. */
+  custom: { id: string; label: string; answers: Pair[] }[];
   imported: { capturedAt: string; answers: Pair[] } | null;
 };
 
@@ -224,6 +227,7 @@ export function buildRunSheet(input: RunSheetInput): RunSheet {
     stages: [],
     vendors: { state: "hidden", entries: [] },
     musicLists: [],
+    custom: [],
     imported: null,
   };
   if (view.plan === null) return base;
@@ -513,6 +517,9 @@ export function buildRunSheet(input: RunSheetInput): RunSheet {
             status: ms.style_choice === "dj_choice" && notes.length <= 1 ? { tone: "choice", text: "DJ's choice of styles" } : notes.length === 0 ? UNANSWERED : null });
           break;
         }
+        case "custom":
+          rows.push(customRow(m, ans));
+          break;
         default:
           break; // stage-detail placeholders and covered moments: shown with their stage
       }
@@ -573,6 +580,11 @@ export function buildRunSheet(input: RunSheetInput): RunSheet {
     if (str(p.notes)) base.preferences.push({ label: "Other preferences", value: str(p.notes)! });
   }
 
+  // -- The DJ's own sections ----------------------------------------------------
+  for (const g of general.filter((x) => x.editor === "custom")) {
+    base.custom.push({ id: g.id, label: g.label, answers: customPairs(g.questions, answersOf(g.id)) });
+  }
+
   // -- Warnings ----------------------------------------------------------------
   for (const w of view.timeline_warnings) base.warnings.push({ kind: "timing", text: `${labelById.get(w.item_id) ?? "Timing"}: ${w.message}` });
   const stageMinutes = base.stages.flatMap((s) => s.times.map((t) => minutesOf(t.when))).filter((x): x is number => x !== null);
@@ -583,10 +595,14 @@ export function buildRunSheet(input: RunSheetInput): RunSheet {
     base.warnings.push({ kind: "schedule", text: `Stage times run past the DJ service end in Event basics (${whenText(serviceEnd, date)}). Check which applies.` });
   }
   base.warnings.push(...songConflicts(base));
+  // A DJ's own questions are named by their wording.
+  const customLabels = new Map([...general, ...stages.flatMap((x) => x.moments)].filter((i) => i.editor === "custom")
+    .map((i) => [i.id, new Map((i.questions ?? []).map((q) => [q.id, q.label]))]));
   // Open answers, one line per section: "Ceremony: Start time; Microphone needs (discuss with DJ)".
   for (const item of view.progress.items) {
     const open = item.requirements.filter((r) => r.state === "unanswered").map((r) => {
-      const what = (item.key === "basics" ? BASICS_REQUIREMENT_LABELS[r.key] : undefined) ?? requirementLabel(r.key, editorById.get(item.item_id)) ?? "Detail";
+      const what = customLabels.get(item.item_id)?.get(r.key)
+        ?? (item.key === "basics" ? BASICS_REQUIREMENT_LABELS[r.key] : undefined) ?? requirementLabel(r.key, editorById.get(item.item_id)) ?? "Detail";
       const why = r.discuss ? "discuss with DJ" : r.note ? REQUIREMENT_NOTES[r.note]?.toLowerCase() : undefined;
       return why ? `${what} (${why})` : what;
     });
@@ -615,6 +631,37 @@ export function buildRunSheet(input: RunSheetInput): RunSheet {
 // ---------------------------------------------------------------------------
 
 const numbered = (p: PersonLine) => (p.order ? `${p.order}. ${p.names}` : p.names);
+
+/**
+ * A DJ's own section's questions with their answers ("Not answered yet" when open). Removed questions
+ * that still hold an answer stay, marked "(no longer asked)", so nothing the client said is lost.
+ */
+function customPairs(questions: CustomQuestion[] | undefined, a: Answers): Pair[] {
+  return customAnswerLines(questions, a, "staff").map((l) => ({
+    label: l.archived ? `${l.label} (no longer asked)` : l.label,
+    value: l.value ?? (l.required ? "Not answered yet" : "Not answered"),
+  }));
+}
+
+/**
+ * A DJ's own moment as one overview row: its first answered time question is when it happens, its song
+ * questions are its songs, and every other answer is a note ("Question: answer").
+ */
+function customRow(m: { id: string; label: string; questions?: CustomQuestion[] }, a: Answers): Row {
+  const lines = customAnswerLines(m.questions, a, "staff");
+  const timed = lines.find((l) => l.type === "time" && !l.archived && l.value !== null);
+  const t = timed ? (a[timed.id] as CustomTime) : null;
+  const answered = lines.filter((l) => l.value !== null);
+  return {
+    id: m.id,
+    when: t ? { kind: "time", time: t.time, nextDay: t.next_day === true } : { kind: "sequence" },
+    title: m.label,
+    people: [],
+    songs: lines.filter((l) => l.type === "songs" && !l.archived).flatMap((l) => songs(a[l.id])),
+    notes: answered.filter((l) => l !== timed && (l.type !== "songs" || l.archived)).map((l) => `${l.archived ? `${l.label} (no longer asked)` : l.label}: ${l.value}`),
+    status: answered.length === 0 ? UNANSWERED : null,
+  };
+}
 
 /** Consecutive people sharing one linked song become one group, so the song is shown once. `order` numbers them. */
 function groupBySong(entries: Person[], order?: Map<string, number>): { songId: string | undefined; people: PersonLine[]; notes: string[]; entries: Person[] }[] {

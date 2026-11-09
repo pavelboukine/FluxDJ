@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useState, useSyncExternalStore, type ReactNode } from "react";
+import { customSummary } from "@/lib/planning/custom-questions";
 import { answerSummary, type SummaryContext } from "@/lib/planning/summaries";
 
 /**
@@ -72,5 +73,8 @@ export function useLiveAnswers(item: string): Answers | undefined {
 export function useAnswerSummary(item: string, editor: string | null | undefined): string | null {
   const answers = useLiveAnswers(item);
   const ctx = useContext(SummaryContextValue);
-  return ctx ? answerSummary(editor, answers, ctx) : null;
+  if (!ctx) return null;
+  // A DJ's own section or moment reads its answers against its own questions.
+  if (editor === "custom") return answers ? customSummary(ctx.customQuestions?.[item], answers, ctx.audience) : null;
+  return answerSummary(editor, answers, ctx);
 }

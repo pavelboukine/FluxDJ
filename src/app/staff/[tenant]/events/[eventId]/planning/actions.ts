@@ -6,6 +6,8 @@ import { describeDbError } from "@/lib/db-errors";
 import { checkbox, fail, int, ok, text, UUID_RE, type ActionState } from "@/lib/forms";
 import { checkOptionalReason, checkReason, CUTOFF_DAYS_MAX, CUTOFF_DAYS_MIN, formatInstant, parseLocalInput, REOPEN_MAX_DAYS, staffEditingSchema } from "@/lib/planning/cutoff";
 import { saveResultSchema, type SaveItemResult } from "@/lib/planning/view";
+import { CUSTOM_KINDS, questionsField } from "@/lib/planning/custom-questions";
+import type { Json } from "@/lib/supabase/database.types";
 
 /*
  * Staff planning for one event. The database checks membership of the
@@ -203,4 +205,39 @@ export async function closeClientEditing(slug: string, eventId: string, _state: 
   const r = cutoffOutcome(slug, eventId, data);
   if (r.status === "already_closed") return ok("Client editing is already closed.", r.version);
   return ok("Client editing closed. The client can still read the plan, and you can still edit it.", r.version);
+}
+
+/** Creates the DJ's own section, stage or moment for this event only: fields kind, label, parent_key (moments), draft_version. */
+export async function addCustomPlanItem(slug: string, eventId: string, _state: ActionState, form: FormData): Promise<ActionState> {
+  const { supabase } = await requireStaff(slug);
+  const kind = text(form, "kind");
+  const version = int(form, "draft_version", 1, 1_000_000);
+  if (!(CUSTOM_KINDS as readonly string[]).includes(kind) || version === null) return fail("Reload the page and try again.");
+  const { data, error } = await supabase.rpc("add_custom_event_plan_item", {
+    p_event_id: eventId,
+    p_expected_version: version,
+    p_kind: kind,
+    p_label: text(form, "label"),
+    p_parent_key: (kind === "moment" ? text(form, "parent_key") : null) as string,
+  });
+  if (error) return fail(describeDbError(error));
+  revalidate(slug, eventId);
+  return ok("Created.", (data as { structure_version: number }).structure_version);
+}
+
+/**
+ * Replaces a custom section's or moment's questions on this plan: fields item_id, questions (JSON),
+ * draft_version. The database keeps answers: removed questions and choices that hold one are kept
+ * (archived), and an answered question's type can't change.
+ */
+export async function setPlanQuestions(slug: string, eventId: string, _state: ActionState, form: FormData): Promise<ActionState> {
+  const { supabase } = await requireStaff(slug);
+  const itemId = text(form, "item_id");
+  const version = int(form, "draft_version", 1, 1_000_000);
+  const questions = questionsField(form.get("questions"));
+  if (!UUID_RE.test(itemId) || version === null || questions === null) return fail("Reload the page and try again.");
+  const { data, error } = await supabase.rpc("set_event_plan_item_questions", { p_item_id: itemId, p_expected_version: version, p_questions: questions as Json });
+  if (error) return fail(describeDbError(error));
+  revalidate(slug, eventId);
+  return ok("Questions saved.", data as number);
 }

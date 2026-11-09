@@ -163,7 +163,7 @@ export function RunSheetDocument({ sheet, revision }: { sheet: RunSheet; revisio
   const detailed = sheet.stages.filter((st) => st.details.length > 0);
   // Do not play last, after the lists to play from, as on the planning page.
   const lists = [...sheet.musicLists.filter((l) => l.kind !== "exclusions"), ...sheet.musicLists.filter((l) => l.kind === "exclusions")];
-  const hasDetails = detailed.length > 0 || sheet.vendors.state !== "hidden" || sheet.imported !== null;
+  const hasDetails = detailed.length > 0 || sheet.vendors.state !== "hidden" || sheet.custom.length > 0 || sheet.imported !== null;
   // Two flowing parts: the header and gig overview (with its column header
   // repeated on each of its pages), then details and music lists. Long events
   // simply run onto more pages; headings keep content with them.
@@ -248,6 +248,12 @@ export function RunSheetDocument({ sheet, revision }: { sheet: RunSheet; revisio
                 : <Text style={s.note}>{sheet.vendors.state === "none" ? "No other vendors" : "Not answered yet"}</Text>}
             </View>
           ) : null}
+          {sheet.custom.map((c) => (
+            <View key={c.id} style={{ marginTop: 4 }}>
+              <Text style={[s.h2, { marginBottom: 2 }]} minPresenceAhead={30}>{c.label}</Text>
+              {c.answers.length ? <Pairs items={c.answers} /> : <Text style={s.note}>No questions in this section yet.</Text>}
+            </View>
+          ))}
           {sheet.imported ? (
             <View style={{ marginTop: 8 }}>
               <Text style={[s.h2, { marginBottom: 1 }]} minPresenceAhead={40}>From the signed proposal (frozen answers)</Text>

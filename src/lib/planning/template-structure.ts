@@ -2,6 +2,7 @@ import { isMusicEditor } from "./music";
 import { planSections } from "./navigation";
 import { INCLUDED_IN, isMomentEditor } from "./participants";
 import { isStageEditor } from "./stages";
+import type { CustomQuestion } from "./custom-questions";
 import type { PlanStructure } from "./view";
 
 /**
@@ -13,7 +14,13 @@ import type { PlanStructure } from "./view";
  * template screens describe and preview exactly what a new plan would show.
  */
 
-export type TemplateItemRow = { id: string; kind: string; key: string; parent_id: string | null; label: string; position: number };
+/** `questions`: a custom section's or moment's own questions (null for library items and custom stages). */
+export type TemplateItemRow = { id: string; kind: string; key: string; parent_id: string | null; label: string; position: number; questions?: unknown };
+
+/** A DJ's own item (no library row): its key is custom_<random>, as private.is_custom_planning_key decides. */
+export function isCustomKey(key: string): boolean {
+  return /^custom_[a-z0-9]{8,40}$/.test(key);
+}
 export type LibraryEntry = {
   kind: string;
   key: string;
@@ -29,20 +36,22 @@ const byPosition = (a: TemplateItemRow, b: TemplateItemRow) => a.position - b.po
 export function templateStructure(items: TemplateItemRow[], library: LibraryEntry[]): PlanStructure {
   const lib = new Map(library.map((l) => [l.key, l]));
   const sorted = [...items].sort(byPosition);
-  const editor = (key: string) => lib.get(key)?.editor ?? null;
+  // As private.planning_item_info: the library's editor, "custom" for a DJ's own section or moment, none for a custom stage.
+  const editor = (i: TemplateItemRow) => (isCustomKey(i.key) ? (i.kind === "stage" ? null : "custom") : (lib.get(i.key)?.editor ?? null));
+  const questions = (i: TemplateItemRow) => (isCustomKey(i.key) && i.kind !== "stage" ? { questions: (Array.isArray(i.questions) ? i.questions : []) as CustomQuestion[] } : {});
   return {
     general: sorted
       .filter((i) => i.kind === "general")
-      .map((g) => ({ id: g.id, key: g.key, label: g.label, editor: editor(g.key), removable: lib.get(g.key)?.removable ?? true, disabled: false })),
+      .map((g) => ({ id: g.id, key: g.key, label: g.label, editor: editor(g), removable: lib.get(g.key)?.removable ?? true, disabled: false, ...questions(g) })),
     stages: sorted
       .filter((i) => i.kind === "stage")
       .map((s) => ({
         id: s.id,
         key: s.key,
         label: s.label,
-        editor: editor(s.key),
+        editor: editor(s),
         disabled: false,
-        moments: sorted.filter((m) => m.parent_id === s.id).map((m) => ({ id: m.id, key: m.key, label: m.label, editor: editor(m.key), disabled: false })),
+        moments: sorted.filter((m) => m.parent_id === s.id).map((m) => ({ id: m.id, key: m.key, label: m.label, editor: editor(m), disabled: false, ...questions(m) })),
       })),
   };
 }
@@ -88,7 +97,7 @@ export function itemRoles(structure: PlanStructure, library: LibraryEntry[]): Ma
       roles.set(s.key, { kind: "group", text: `A client section with ${fills(section.moments.length)}. The stage itself has no questions.` });
     }
     for (const m of s.moments) {
-      if (isMusicEditor(m.editor) || isMomentEditor(m.editor)) {
+      if (isMusicEditor(m.editor) || isMomentEditor(m.editor) || m.editor === "custom") {
         roles.set(m.key, { kind: "fill", text: "Clients fill this in. Counts toward planning progress." });
       } else if (m.editor === "stage_details" && isStageEditor(s.editor)) {
         roles.set(m.key, { kind: "details", text: `Asked in the ${s.label} details, not as a separate moment.` });

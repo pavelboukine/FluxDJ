@@ -3,7 +3,7 @@
 A map of the current database for developers and coding agents: what is
 authoritative, how the parts fit, where each business rule lives, and how to
 change it safely. It describes the schema as of migration
-`20261201000100_manual_planning_activation`. Per-feature behaviour is in the README
+`20261202000100_custom_planning_questions`. Per-feature behaviour is in the README
 ("How tenant isolation works" onwards, and the table of pgTAP files);
 releasing a migration is in [`operations.md`](operations.md), section 2.
 
@@ -90,7 +90,7 @@ Almost every table carries `tenant_id`.
 | Events | `events`, `event_clients`, `event_access`, `access_links`, `event_billing`, `event_payments` | `event_clients` links clients (one primary contact, one signer). `event_access` is a verified client's access to one event. |
 | Proposals | `proposals`, `proposal_sessions`, `proposal_views`, `proposal_selection_drafts`, `proposal_selections`, `proposal_selection_lines`, `proposal_approvals` | `proposals.offer_snapshot` is the frozen offer (`offer_sha256`). A selection is the client's priced choice, verified against it. |
 | Contracts | `contract_templates`, `contract_template_versions`, `contracts`, `contract_signatures`, `contract_documents`, `document_jobs` | A contract freezes rendered content, commercial and party snapshots, and the content hash at generation. See [Contract shapes](#contract-shapes). |
-| Planning | `planning_templates`, `planning_template_items`, `event_plans`, `event_plan_items`, `event_plan_responses`, `event_plan_imports`, `planning_invitations` | One plan per booked event, built from a template. Answers are normalized by `private.normalize_plan_*` and scored by `private.plan_progress`. Clients see it only once staff open it (`event_plans.client_opened_at`, `private.plan_open_to_client`). |
+| Planning | `planning_templates`, `planning_template_items`, `event_plans`, `event_plan_items`, `event_plan_responses`, `event_plan_imports`, `planning_invitations` | One plan per booked event, built from a template. Answers are normalized by `private.normalize_plan_*` (a DJ's own questions by `private.normalize_custom_answers`, against the plan's own `questions`) and scored by `private.plan_progress`. Items get their editor from `private.planning_item_info`, never the library alone. Clients see it only once staff open it (`event_plans.client_opened_at`, `private.plan_open_to_client`). |
 | Communication and audit | `email_outbox`, `audit_events` | Durable outbox (below). Audit rows are written by functions, never by the app. |
 
 ## Tenant isolation and authorization

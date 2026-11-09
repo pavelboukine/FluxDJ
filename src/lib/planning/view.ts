@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { BasicsAnswers } from "./basics";
 import { clientEditingSchema, staffEditingSchema, type ClientEditing } from "./cutoff";
+import { customQuestionSchema } from "./custom-questions";
 
 /**
  * Shapes of the planning views returned by the database
@@ -39,7 +40,9 @@ export const progressSchema = z.object({
 });
 export type PlanProgress = z.infer<typeof progressSchema>;
 
-const momentSchema = z.object({ id: z.string(), key: z.string(), label: z.string(), editor: z.string().nullable(), disabled: z.boolean() });
+/** A custom section's or moment's questions (editor "custom"); absent for library items and older databases. */
+const questionsSchema = z.array(customQuestionSchema).optional();
+const momentSchema = z.object({ id: z.string(), key: z.string(), label: z.string(), editor: z.string().nullable(), disabled: z.boolean(), questions: questionsSchema });
 const stageSchema = z.object({
   id: z.string(),
   key: z.string(),
@@ -55,6 +58,7 @@ const generalSchema = z.object({
   editor: z.string().nullable(),
   removable: z.boolean(),
   disabled: z.boolean(),
+  questions: questionsSchema,
 });
 export const structureSchema = z.object({ general: z.array(generalSchema), stages: z.array(stageSchema) });
 export type PlanStructure = z.infer<typeof structureSchema>;

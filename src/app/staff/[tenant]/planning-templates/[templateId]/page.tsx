@@ -9,9 +9,11 @@ import { PageHeader, SelectField, TextAreaField, TextField } from "@/components/
 import { UnsavedGuard } from "@/components/app/unsaved-guard";
 import { requireStaff } from "@/lib/auth/staff";
 import { UUID_RE } from "@/lib/forms";
-import { addableItems, itemRoles, plural, templateStructure } from "@/lib/planning/template-structure";
+import { questionSummary } from "@/lib/planning/question-summaries";
+import type { CustomQuestion } from "@/lib/planning/custom-questions";
+import { addableItems, isCustomKey, itemRoles, plural, templateStructure } from "@/lib/planning/template-structure";
 import { EVENT_TYPES } from "../../events/event-form";
-import { addTemplateItem, setPlanningTemplateArchived, templateItemAction, updatePlanningTemplate } from "../actions";
+import { addCustomTemplateItem, addTemplateItem, setPlanningTemplateArchived, setTemplateQuestions, templateItemAction, updatePlanningTemplate } from "../actions";
 import { TemplateStructureEditor, type EditorItem, type EditorStage } from "./structure-editor";
 
 /**
@@ -28,7 +30,7 @@ export default async function PlanningTemplatePage({ params, searchParams }: Pag
   const [{ data: t }, { data: library }, { count: plansCopied }] = await Promise.all([
     supabase
       .from("planning_templates")
-      .select("id, name, description, starter_key, default_event_type, version, archived_at, planning_template_items!planning_template_items_template_fk(id, kind, key, parent_id, label, position)")
+      .select("id, name, description, starter_key, default_event_type, version, archived_at, planning_template_items!planning_template_items_template_fk(id, kind, key, parent_id, label, position, questions)")
       .eq("id", templateId)
       .eq("tenant_id", tenant.id)
       .maybeSingle(),
@@ -40,13 +42,22 @@ export default async function PlanningTemplatePage({ params, searchParams }: Pag
   const structure = templateStructure(t.planning_template_items, lib);
   const roles = itemRoles(structure, lib);
   const addable = addableItems(structure, lib);
-  const toItem = (i: { id: string; key: string; label: string }, removable = true): EditorItem => ({
-    id: i.id,
-    key: i.key,
-    label: i.label,
-    removable,
-    role: roles.get(i.key) ?? { kind: "not_shown", text: "" },
-  });
+  const toItem = (i: { id: string; key: string; label: string; editor?: string | null; questions?: CustomQuestion[] }, removable = true): EditorItem => {
+    const role = roles.get(i.key) ?? { kind: "not_shown" as const, text: "" };
+    return {
+      id: i.id,
+      key: i.key,
+      label: i.label,
+      removable,
+      role,
+      // What the client is asked here. A placeholder answered elsewhere, or an item clients don't see, has none of its own.
+      // (The DJ's own items list theirs in "Your questions" instead.)
+      summary: role.kind === "details" || role.kind === "covered" || role.kind === "not_shown" || isCustomKey(i.key) ? null : questionSummary(i.editor),
+      // The DJ's own item: its questions are edited here (a custom stage has none of its own).
+      custom: isCustomKey(i.key),
+      questions: isCustomKey(i.key) ? i.questions : undefined,
+    };
+  };
   const general = structure.general.map((g) => toItem(g, g.removable));
   const stages: EditorStage[] = structure.stages.map((s) => ({ ...toItem(s), moments: s.moments.map((m) => toItem(m)), addable: addable.momentsFor(s.key) }));
   const archived = Boolean(t.archived_at);
@@ -101,6 +112,8 @@ export default async function PlanningTemplatePage({ params, searchParams }: Pag
         version={t.version}
         itemAction={templateItemAction.bind(null, slug, t.id)}
         addAction={addTemplateItem.bind(null, slug, t.id)}
+        customAction={addCustomTemplateItem.bind(null, slug, t.id)}
+        questionsAction={setTemplateQuestions.bind(null, slug, t.id)}
         readOnly={archived}
       />
 
