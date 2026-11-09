@@ -29,6 +29,8 @@ type PlanState = {
   basics: BasicsAnswers;
   /** The client's editing state; null on staff pages (staff edit after the deadline). */
   editing: ClientEditing | null;
+  /** A staff preview of the client's page: nothing is saved and no progress is shown (see ClientPlanningWorkspace). */
+  preview: boolean;
   applySaved: (result: { progress: PlanProgress; timeline_warnings: TimelineWarning[] }) => void;
   setBasics: (answers: BasicsAnswers) => void;
   applyLocked: (editing: ClientEditing) => void;
@@ -62,11 +64,12 @@ export function usePublishLanguage(): LanguageSlot["publish"] | null {
   return useContext(LanguageContext)?.publish ?? null;
 }
 
-export function PlanProgressProvider({ initial, warnings, basics, editing = null, children }: {
+export function PlanProgressProvider({ initial, warnings, basics, editing = null, preview = false, children }: {
   initial: PlanProgress;
   warnings: TimelineWarning[];
   basics: BasicsAnswers;
   editing?: ClientEditing | null;
+  preview?: boolean;
   children: ReactNode;
 }) {
   const [state, setState] = useState({ progress: initial, warnings, basics, editing });
@@ -81,6 +84,7 @@ export function PlanProgressProvider({ initial, warnings, basics, editing = null
   }
   const value: PlanState = {
     ...state,
+    preview,
     applySaved: (r) => setState((s) => ({ ...s, progress: r.progress, warnings: r.timeline_warnings })),
     setBasics: (b) => setState((s) => ({ ...s, basics: b })),
     applyLocked: (e) => setState((s) => ({ ...s, editing: e })),
@@ -186,8 +190,8 @@ export function ProgressMeter({ progress, bar, compact = false }: { progress: Pl
 
 type ItemProgressValue = NonNullable<ReturnType<typeof itemProgress>>;
 
-function requirementText(r: Requirement, item: { key: string }, editor?: string): string {
-  const label = (BASICS_REQUIREMENT_LABELS[r.key] && item.key === "basics" ? BASICS_REQUIREMENT_LABELS[r.key] : requirementLabel(r.key, editor)) ?? r.key;
+function requirementText(r: Requirement, item: { key: string }, editor?: string, labels?: Record<string, string>): string {
+  const label = labels?.[r.key] ?? (BASICS_REQUIREMENT_LABELS[r.key] && item.key === "basics" ? BASICS_REQUIREMENT_LABELS[r.key] : requirementLabel(r.key, editor)) ?? r.key;
   // A note says why it's still open ("No event venue yet"). The language is asked in DJ expectations, so its note doesn't apply there.
   const note = r.state === "unanswered" && r.note && r.key !== "language" ? REQUIREMENT_NOTES[r.note] : undefined;
   return note ? `${label} (${note})` : label;
@@ -199,13 +203,17 @@ function requirementText(r: Requirement, item: { key: string }, editor?: string)
  * Microphone needs". Nothing once the item is complete: its status says so.
  * When planning is closed, open answers are named without asking for them.
  */
-export function ItemChecklist({ itemId, title, djName, audience, editor }: { itemId: string; title: string; djName: string; audience: "client" | "staff"; editor?: string }) {
+export function ItemChecklist({ itemId, title, djName, audience, editor, labels }: {
+  itemId: string; title: string; djName: string; audience: "client" | "staff"; editor?: string;
+  /** Names of the item's own requirements (a custom item's required questions, by question id). */
+  labels?: Record<string, string>;
+}) {
   const ctx = usePlanProgress();
   const item = ctx ? itemProgress(ctx.progress, itemId) : null;
   if (!item || item.total === 0 || item.met === item.total) return null;
   const closed = ctx?.editing?.state === "closed";
-  const discuss = item.requirements.filter((r) => r.discuss).map((r) => requirementText(r, item, editor));
-  const needed = item.requirements.filter((r) => !r.discuss && r.state === "unanswered").map((r) => requirementText(r, item, editor));
+  const discuss = item.requirements.filter((r) => r.discuss).map((r) => requirementText(r, item, editor, labels));
+  const needed = item.requirements.filter((r) => !r.discuss && r.state === "unanswered").map((r) => requirementText(r, item, editor, labels));
   void djName;
   return (
     <div className="grid gap-0.5 text-sm text-plan-ink-2" data-testid="item-needs" aria-label={`What ${title} still needs`} role="group">

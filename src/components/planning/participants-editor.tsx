@@ -70,10 +70,14 @@ export type Common<A> = {
   disabledReason?: string;
 };
 
-export function Frame({ props, hint, children, status }: { props: Common<unknown>; hint?: ReactNode; children: ReactNode; status: ReactNode }) {
+export function Frame({ props, hint, children, status, labels }: {
+  props: Common<unknown>; hint?: ReactNode; children: ReactNode; status: ReactNode;
+  /** Names for the item's requirements when the item defines its own (custom questions). */
+  labels?: Record<string, string>;
+}) {
   return (
     <div className="grid gap-3" data-testid={`editor-${props.momentKey}`}>
-      <ItemChecklist itemId={props.itemId} title={props.label} djName={props.djName} audience={props.audience} />
+      <ItemChecklist itemId={props.itemId} title={props.label} djName={props.djName} audience={props.audience} labels={labels} />
       {hint ? <p data-plan-help className="text-xs text-muted-foreground">{hint}</p> : null}
       {props.disabledReason ? (
         <p role="status" className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-sm">{props.disabledReason}</p>

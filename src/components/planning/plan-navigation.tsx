@@ -195,7 +195,8 @@ export function NavLink({ view, focusItem, className, children, onPicked, ...res
 
 export function useSectionStatus(section: PlanSection): SectionStatus | null {
   const plan = usePlanProgress();
-  return plan ? sectionStatus(section, plan.progress, plan.warnings) : null;
+  // A preview counts nothing, so it shows no status rather than an empty one ("Optional").
+  return plan && !plan.preview ? sectionStatus(section, plan.progress, plan.warnings) : null;
 }
 
 /** The item to bring into view when opening a section for its open details; the heading is enough for the first one. */
@@ -639,6 +640,7 @@ function RowGlyph({ save, state }: { save: SaveSummary; state: Parameters<typeof
  * editor's own status line (with its Retry) stays as it was, for when the question is open.
  */
 function SaveIndicator({ save }: { save: SaveSummary }) {
+  const preview = usePlanProgress()?.preview ?? false;
   const [justSaved, setJustSaved] = useState(false);
   const previous = useRef(save);
   useEffect(() => {
@@ -658,7 +660,8 @@ function SaveIndicator({ save }: { save: SaveSummary }) {
   }
   // Saving shows in the row's icon (see RowGlyph), not as a second "Saving…" line beside the editor's own.
   if (save === "pending") return <span className="sr-only">Saving</span>;
-  return justSaved ? (
+  // A preview never says "Saved": nothing it does is stored.
+  return justSaved && !preview ? (
     <span className="inline-flex items-center gap-1 text-xs text-plan-ink-2">
       <Check aria-hidden className="size-3" /> Saved
     </span>

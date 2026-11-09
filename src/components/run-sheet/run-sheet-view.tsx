@@ -224,6 +224,13 @@ export function RunSheetView({ sheet, revision, pdfHref, planningHref, refreshHr
                 </section>
               ) : null}
 
+              {sheet.custom.map((c) => (
+                <section key={c.id} aria-labelledby={`custom-${c.id}-h`} className="grid gap-2 rounded-xl border bg-card p-4 sm:p-5" data-testid="run-custom-section">
+                  <h2 id={`custom-${c.id}-h`} className="text-lg font-semibold [overflow-wrap:anywhere]">{c.label}</h2>
+                  {c.answers.length ? <Pairs items={c.answers} /> : <p className="text-sm text-muted-foreground">No questions in this section yet.</p>}
+                </section>
+              ))}
+
               {sheet.musicLists.length ? (
                 <section id="music" aria-labelledby="music-h" className="grid scroll-mt-4 gap-2">
                   <h2 id="music-h" className="text-lg font-semibold">Music lists</h2>

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CalendarDays, ClipboardList, MapPin, Phone } from "lucide-react";
+import { CalendarDays, ClipboardList, Eye, MapPin, Phone } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ActionForm } from "@/components/app/action-form";
@@ -27,6 +27,7 @@ import { ItemStatus, PlanProgressProvider } from "@/components/planning/progress
 import { SaveRegistryProvider, SaveScope } from "@/components/planning/save-registry";
 import { StaffPlanOverview } from "@/components/planning/staff-planning";
 import { AnswerPreviewProvider } from "@/components/planning/answer-preview";
+import { customQuestionsByItem } from "@/lib/planning/custom-questions";
 import { StageDetailsEditor } from "@/components/planning/stage-details-editor";
 import { StructureEditor } from "@/components/planning/structure-editor";
 import { requireStaff } from "@/lib/auth/staff";
@@ -37,7 +38,7 @@ import { CLIENT_EDITING_SECTION, PROVIDED_SECTION, STRUCTURE_SECTION, WORKSPACE_
 import type { StageEditor } from "@/lib/planning/stages";
 import { formatEventDate, planAwaitingSetup, planOpenedToClient, savedAnswersByItem, staffPlanningViewSchema } from "@/lib/planning/view";
 import { EVENT_TYPES } from "../../event-form";
-import { addPlanItem, applyPlanningTemplate, planItemAction, saveStaffItemAction, setUpPlanning } from "./actions";
+import { addCustomPlanItem, setPlanQuestions, addPlanItem, applyPlanningTemplate, planItemAction, saveStaffItemAction, setUpPlanning } from "./actions";
 import { invitationOpen } from "@/lib/events/workspace";
 import { loadPlanningAccess } from "../client-access-card";
 import { ClientEditingCard } from "./client-editing-card";
@@ -107,6 +108,12 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
           <div className="flex flex-wrap items-center gap-2">
             {archived ? <Badge variant="secondary">Archived</Badge> : null}
             <Link className={link} href={base}>Event</Link>
+            {/* What the client sees (or will see once planning is open), without saving anything. */}
+            {view.plan !== null && !awaitingSetup ? (
+              <Link className={link} href={`${base}/planning/preview`} data-testid="preview-as-client">
+                <Eye aria-hidden className="size-4" />Preview as client
+              </Link>
+            ) : null}
             {view.plan !== null ? (
               <Link className={`${link} border-primary bg-primary text-primary-foreground hover:bg-primary/90`} href={`${base}/run-sheet`}>
                 <ClipboardList aria-hidden className="size-4" />Run sheet
@@ -291,7 +298,7 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
     // max-lg:pb-0 and --plan-sheet-pad: the shared Previous/Next bar closes each section on phones (see SectionPager).
     const card = "grid min-w-0 grid-cols-1 gap-5 rounded-xl border bg-card p-4 sm:p-5 max-lg:pb-0 [--plan-sheet-pad:1rem] sm:[--plan-sheet-pad:1.25rem]";
     return (
-      <AnswerPreviewProvider context={{ djName: dj, djDisplayName, venueName: ev.venue_name, eventContacts: view.event_contacts, audience: "staff" }} saved={savedAnswersByItem(view)}>
+      <AnswerPreviewProvider context={{ djName: dj, djDisplayName, venueName: ev.venue_name, eventContacts: view.event_contacts, audience: "staff", customQuestions: customQuestionsByItem(view.structure) }} saved={savedAnswersByItem(view)}>
         <div
           id={WORKSPACE_ID}
           data-plan-shell
@@ -389,7 +396,7 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
                           disabledReason={lockedReason}
                         />
                       ) : (
-                        generalEditor(g, { moments: view.moments, eventContacts: view.event_contacts, known, djName: dj, djDisplayName, audience: "staff", save, disabledReason: lockedReason })
+                        generalEditor(g, { moments: view.moments, eventContacts: view.event_contacts, known, djName: dj, djDisplayName, audience: "staff", event: eventInfo, save, disabledReason: lockedReason })
                       );
                     return (
                       <PlanPanel key={s.key} view={s.key} testId={`staff-section-${s.key}`}>
@@ -519,6 +526,9 @@ export default async function StaffPlanningPage({ params }: PageProps<"/staff/[t
                     itemAction={planItemAction.bind(null, slug, ev.id)}
                     addAction={addPlanItem.bind(null, slug, ev.id)}
                     library={library ?? []}
+                    customAction={addCustomPlanItem.bind(null, slug, ev.id)}
+                    questionsAction={setPlanQuestions.bind(null, slug, ev.id)}
+                    answered={Object.fromEntries(Object.entries(view.moments).map(([id, m]) => [id, Object.keys(m.answers)]))}
                     readOnly={archived}
                   />
                 </CardContent>

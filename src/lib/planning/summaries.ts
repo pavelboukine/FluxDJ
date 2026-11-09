@@ -3,6 +3,7 @@ import { GENRES, INTERACTION_LABELS, LYRICS, SLOW_SONGS, roleLabel, type EventCo
 import { isMusicEditor, type MusicEditor } from "./music";
 import { grandEntranceOf, isStageEditor } from "./stages";
 import { TIMED_RULES, type TimedEditor } from "./timed";
+import type { CustomQuestion } from "./custom-questions";
 
 /**
  * One-line previews of planning answers, for collapsed questions and the
@@ -25,6 +26,8 @@ export type SummaryContext = {
   eventContacts?: EventContact[];
   /** Who reads it: the client (default) or staff, for "To discuss with your DJ" and "(your DJ)". */
   audience?: "client" | "staff";
+  /** A DJ's own sections' and moments' questions by item id (custom-questions.ts reads their answers). */
+  customQuestions?: Record<string, CustomQuestion[]>;
 };
 
 type Answers = Record<string, unknown>;

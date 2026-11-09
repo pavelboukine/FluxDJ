@@ -9,6 +9,7 @@ import { ContactsEditor, MusicStyleEditor, PreferencesEditor, type KnownPeople }
 import { ArrivalEditor, ProgramEditor, TimedEditorCard } from "./timed-editors";
 import { MusicEditor } from "./music-editor";
 import { IntroductionsEditor, McEditor, ProcessionalEditor, SpeechesEditor } from "./participants-editor";
+import { CustomQuestionsEditor } from "./custom-questions-editor";
 
 type Moment = PlanStage["moments"][number];
 
@@ -55,6 +56,8 @@ export function momentEditor(m: Moment, opts: {
     case "activities":
     case "dedications":
       return <TimedEditorCard {...common} editor={m.editor} initialAnswers={answers as TimedAnswers} save={save} event={opts.event} />;
+    case "custom":
+      return <CustomQuestionsEditor {...common} questions={m.questions ?? []} initialAnswers={answers} save={save} event={opts.event} />;
     default:
       return null;
   }
@@ -101,6 +104,8 @@ export function generalEditor(g: General, opts: {
   /** The DJ handling the event, or null (see resolveDjName). */
   djDisplayName: string | null;
   audience: "client" | "staff";
+  /** The event date, for time questions in a DJ's own section. */
+  event: { date: string };
   save: (itemId: string) => (expectedRevision: number, answers: never) => Promise<SaveItemResult>;
   disabledReason?: string;
 }): ReactNode {
@@ -113,6 +118,7 @@ export function generalEditor(g: General, opts: {
   const answers = (saved?.answers ?? {}) as Record<string, unknown>;
   if (g.editor === "contacts") return <ContactsEditor {...common} initialAnswers={answers as ContactsAnswers} eventContacts={opts.eventContacts} known={opts.known} />;
   if (g.editor === "preferences") return <PreferencesEditor {...common} initialAnswers={answers as PreferencesAnswers} />;
+  if (g.editor === "custom") return <CustomQuestionsEditor {...common} questions={g.questions ?? []} initialAnswers={answers} event={opts.event} />;
   return null;
 }
 

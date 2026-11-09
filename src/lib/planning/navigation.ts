@@ -26,8 +26,8 @@ export const panelId = (view: string | null) => `plan-panel-${view ?? "overview"
 export const headingId = (view: string | null) => `plan-heading-${view ?? "overview"}`;
 export const WORKSPACE_ID = "plan-workspace";
 
-/** General sections with an editor; others aren't offered as sections. */
-const GENERAL_EDITORS = ["basics", "contacts", "preferences"];
+/** General sections with an editor (a DJ's own sections are "custom"); others aren't offered as sections. */
+const GENERAL_EDITORS = ["basics", "contacts", "preferences", "custom"];
 
 export type SectionMoment = { id: string; key: string; label: string; editor: string };
 
@@ -37,7 +37,7 @@ export type PlanSection = {
   id: string;
   label: string;
   kind: "general" | "stage";
-  /** A general section's editor ("basics", "contacts", "preferences"); null for stages (see stageEditor). */
+  /** A general section's editor ("basics", "contacts", "preferences", "custom"); null for stages (see stageEditor). */
   editor: string | null;
   /** The stage's own details editor, when it has one. */
   stageEditor: string | null;
@@ -71,7 +71,7 @@ export function planSections(structure: PlanStructure): PlanSection[] {
     if (s.disabled) continue;
     const visible = s.moments.filter((m) => !m.disabled);
     const moments = visible
-      .filter((m) => isMusicEditor(m.editor) || isMomentEditor(m.editor))
+      .filter((m) => isMusicEditor(m.editor) || isMomentEditor(m.editor) || m.editor === "custom")
       .map((m) => ({ id: m.id, key: m.key, label: m.label, editor: m.editor as string }));
     const stageEditor = isStageEditor(s.editor) ? (s.editor as string) : null;
     // A container with nothing to fill in is not a section (no empty forms).

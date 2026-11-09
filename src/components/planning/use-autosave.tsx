@@ -200,10 +200,12 @@ export function SaveStatus({ saveState, message, retry }: { saveState: SaveState
   const alerting = saveState !== "saved" && saveState !== "unsaved" && saveState !== "saving";
   const [touched, setTouched] = useState(false);
   if (saveState !== "saved" && !touched) setTouched(true);
+  // A preview stores nothing: it never says "All changes saved".
+  const preview = usePlanProgress()?.preview ?? false;
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
       <p role={alerting ? "alert" : "status"} data-save-status={saveState} className={alerting ? "text-sm font-medium text-destructive" : "text-xs text-plan-ink-2"}>
-        {saveState === "error" && message ? message : saveState === "saved" && !touched ? null : STATUS[saveState]}
+        {saveState === "error" && message ? message : saveState === "saved" && !touched ? null : preview && saveState === "saved" ? "Preview: not saved" : STATUS[saveState]}
       </p>
       {saveState === "error" || saveState === "signed_out" ? (
         <Button type="button" size="sm" variant="outline" onClick={retry}>Retry saving</Button>

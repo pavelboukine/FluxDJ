@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/auth/staff";
 import { describeDbError } from "@/lib/db-errors";
 import { fail, int, ok, optionalText, text, UUID_RE, type ActionState } from "@/lib/forms";
+import { CUSTOM_KINDS, questionsField } from "@/lib/planning/custom-questions";
+import type { Json } from "@/lib/supabase/database.types";
 
 /*
  * Planning templates. Every change goes through a database function that
@@ -119,4 +121,35 @@ export async function addTemplateItem(slug: string, templateId: string, _state: 
   if (error) return fail(describeDbError(error));
   revalidatePath(templatePath(slug, templateId));
   return ok("Added.", data as number);
+}
+
+/** Creates the DJ's own section, stage or moment: fields kind, label, parent_key (moments), draft_version. */
+export async function addCustomTemplateItem(slug: string, templateId: string, _state: ActionState, form: FormData): Promise<ActionState> {
+  const { supabase } = await requireStaff(slug);
+  const kind = text(form, "kind");
+  const version = int(form, "draft_version", 1, 1_000_000);
+  if (!(CUSTOM_KINDS as readonly string[]).includes(kind) || version === null) return fail("Reload the page and try again.");
+  const { data, error } = await supabase.rpc("add_custom_planning_template_item", {
+    p_template_id: templateId,
+    p_expected_version: version,
+    p_kind: kind,
+    p_label: text(form, "label"),
+    p_parent_key: (kind === "moment" ? text(form, "parent_key") : null) as string,
+  });
+  if (error) return fail(describeDbError(error));
+  revalidatePath(templatePath(slug, templateId));
+  return ok("Created.", (data as { version: number }).version);
+}
+
+/** Replaces a custom section's or moment's questions: fields item_id, questions (JSON), draft_version. */
+export async function setTemplateQuestions(slug: string, templateId: string, _state: ActionState, form: FormData): Promise<ActionState> {
+  const { supabase } = await requireStaff(slug);
+  const itemId = text(form, "item_id");
+  const version = int(form, "draft_version", 1, 1_000_000);
+  const questions = questionsField(form.get("questions"));
+  if (!UUID_RE.test(itemId) || version === null || questions === null) return fail("Reload the page and try again.");
+  const { data, error } = await supabase.rpc("set_planning_template_item_questions", { p_item_id: itemId, p_expected_version: version, p_questions: questions as Json });
+  if (error) return fail(describeDbError(error));
+  revalidatePath(templatePath(slug, templateId));
+  return ok("Questions saved.", data as number);
 }

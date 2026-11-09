@@ -7,11 +7,12 @@ import type { StaffPlanningView } from "@/lib/planning/view";
  * library keys and editors, their saved answers, hidden items and progress.
  * Shapes follow the database's view (see src/lib/planning/view.ts).
  */
-type MomentSpec = { key: string; editor: string | null; label: string; answers?: Record<string, unknown>; disabled?: boolean };
+/** `questions`: a custom ("custom" editor) section's or moment's own questions. */
+type MomentSpec = { key: string; editor: string | null; label: string; answers?: Record<string, unknown>; disabled?: boolean; questions?: unknown[] };
 type StageSpec = { key: string; editor: string | null; label: string; answers?: Record<string, unknown>; disabled?: boolean; moments: MomentSpec[] };
-type GeneralSpec = { key: string; editor: string; label: string; answers?: Record<string, unknown>; disabled?: boolean };
+type GeneralSpec = { key: string; editor: string; label: string; answers?: Record<string, unknown>; disabled?: boolean; questions?: unknown[] };
 
-const MOMENT_EDITORS = ["processional", "mc", "introductions", "speeches", "contacts", "preferences", "music_style", "arrival", "program", "activities", "dedications"];
+const MOMENT_EDITORS = ["processional", "mc", "introductions", "speeches", "contacts", "preferences", "music_style", "arrival", "program", "activities", "dedications", "custom"];
 const MUSIC_EDITORS = ["music_background", "music_requests", "music_exclusions", "moment_songs", "processional"];
 
 export const id = () => randomUUID();
@@ -27,7 +28,9 @@ export function planView(spec: {
   editing?: "open" | "closed" | "reopened";
 }): StaffPlanningView {
   const basicsId = id();
-  const general = [{ id: basicsId, key: "basics", label: "Event basics", editor: "basics", removable: false, disabled: false }];
+  const general: { id: string; key: string; label: string; editor: string; removable: boolean; disabled: boolean; questions?: unknown[] }[] = [
+    { id: basicsId, key: "basics", label: "Event basics", editor: "basics", removable: false, disabled: false },
+  ];
   const moments: Record<string, { answers: Record<string, unknown>; revision: number }> = {};
   const music: Record<string, { answers: { songs?: never[]; choice?: never }; revision: number }> = {};
   const stageDetails: Record<string, { answers: Record<string, string | number | true>; revision: number }> = {};
@@ -35,7 +38,7 @@ export function planView(spec: {
   for (const g of spec.general ?? []) {
     const gid = id();
     idByKey.set(g.key, gid);
-    general.push({ id: gid, key: g.key, label: g.label, editor: g.editor, removable: true, disabled: Boolean(g.disabled) });
+    general.push({ id: gid, key: g.key, label: g.label, editor: g.editor, removable: true, disabled: Boolean(g.disabled), ...(g.questions ? { questions: g.questions } : {}) });
     if (!g.disabled && g.answers) moments[gid] = { answers: g.answers, revision: 1 };
   }
   const stages = spec.stages.map((s) => {
@@ -51,7 +54,7 @@ export function planView(spec: {
           if (MOMENT_EDITORS.includes(m.editor ?? "")) moments[mid] = { answers: m.answers, revision: 1 };
           if (MUSIC_EDITORS.includes(m.editor ?? "")) music[mid] = { answers: m.answers as never, revision: 1 };
         }
-        return { id: mid, key: m.key, label: m.label, editor: m.editor, disabled: Boolean(m.disabled) };
+        return { id: mid, key: m.key, label: m.label, editor: m.editor, disabled: Boolean(m.disabled), ...(m.questions ? { questions: m.questions } : {}) };
       }),
     };
   });
@@ -80,7 +83,7 @@ export function planView(spec: {
       scope: "available_sections_only", items: progressItems, requirements_total: progressItems.length, requirements_met: 0, percent: 0,
       available_sections: progressItems.length, complete_sections: 0, unavailable_sections: 0,
     },
-  } as StaffPlanningView;
+  } as unknown as StaffPlanningView;
 }
 
 export function input(view: StaffPlanningView, event: Partial<RunSheetInput["event"]> = {}, business = "BOUPROD Test"): RunSheetInput {

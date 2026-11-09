@@ -7,13 +7,23 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { selectClass } from "@/components/app/fields";
 import { RowAction } from "@/components/planning/row-action";
+import { CreateOwnItem, CustomQuestionsAuthor } from "@/components/planning/custom-authoring";
+import type { CustomQuestion } from "@/lib/planning/custom-questions";
 import type { ActionState } from "@/lib/forms";
+import type { QuestionSummary } from "@/lib/planning/question-summaries";
 import type { ItemRole, LibraryEntry } from "@/lib/planning/template-structure";
 import { cn } from "@/lib/utils";
 
 type Action = (state: ActionState, formData: FormData) => Promise<ActionState>;
 
-export type EditorItem = { id: string; key: string; label: string; removable: boolean; role: ItemRole };
+/**
+ * summary: what the client is asked in this item (built-in, read-only), or null when it has no form of its own.
+ * custom: the DJ's own item; `questions` are its own (a section or moment; a stage has none).
+ */
+export type EditorItem = {
+  id: string; key: string; label: string; removable: boolean; role: ItemRole; summary: QuestionSummary | null;
+  custom: boolean; questions?: CustomQuestion[];
+};
 export type EditorStage = EditorItem & { moments: EditorItem[]; addable: LibraryEntry[] };
 
 type Props = {
@@ -24,6 +34,10 @@ type Props = {
   version: number;
   itemAction: Action;
   addAction: Action;
+  /** Creates the DJ's own section, stage or moment. */
+  customAction: Action;
+  /** Saves a custom item's questions. */
+  questionsAction: Action;
   readOnly: boolean;
 };
 
@@ -44,8 +58,8 @@ const ROLE_BADGE: Record<ItemRole["kind"], string> = {
  * conflict instead of overwriting. Removed items are listed under "Not in
  * this template" and can be added back.
  */
-export function TemplateStructureEditor({ general, stages, addableGeneral, addableStages, version, itemAction, addAction, readOnly }: Props) {
-  const common = { version, itemAction, readOnly };
+export function TemplateStructureEditor({ general, stages, addableGeneral, addableStages, version, itemAction, addAction, customAction, questionsAction, readOnly }: Props) {
+  const common = { version, itemAction, questionsAction, readOnly };
   return (
     <div className="grid gap-8">
       <section aria-labelledby="general-heading" className="grid gap-3">
@@ -65,6 +79,7 @@ export function TemplateStructureEditor({ general, stages, addableGeneral, addab
         {!readOnly && addableGeneral.length > 0 ? (
           <AddPicker label="Add a general section" options={addableGeneral.map((l) => ({ value: l.key, label: l.default_label }))} version={version} addAction={addAction} />
         ) : null}
+        {!readOnly ? <CreateOwnItem kind="general" version={version} action={customAction} /> : null}
       </section>
 
       <section aria-labelledby="stages-heading" className="grid gap-3">
@@ -80,7 +95,7 @@ export function TemplateStructureEditor({ general, stages, addableGeneral, addab
           <ol className="grid gap-3" aria-label="Event stages, in order">
             {stages.map((s, i) => (
               <li key={s.id} className="min-w-0">
-                <StageBlock stage={s} index={i} count={stages.length} addAction={addAction} {...common} />
+                <StageBlock stage={s} index={i} count={stages.length} addAction={addAction} customAction={customAction} {...common} />
               </li>
             ))}
           </ol>
@@ -88,15 +103,17 @@ export function TemplateStructureEditor({ general, stages, addableGeneral, addab
         {!readOnly && addableStages.length > 0 ? (
           <AddPicker label="Add a stage" hint="New stages go last; move them into place." options={addableStages.map((l) => ({ value: l.key, label: l.default_label }))} version={version} addAction={addAction} />
         ) : null}
+        {!readOnly ? <CreateOwnItem kind="stage" version={version} action={customAction} /> : null}
       </section>
     </div>
   );
 }
 
-type Common = { version: number; itemAction: Action; readOnly: boolean };
+type Common = { version: number; itemAction: Action; questionsAction: Action; readOnly: boolean };
 
-function StageBlock({ stage, index, count, addAction, ...common }: Common & { stage: EditorStage; index: number; count: number; addAction: Action }) {
-  const [open, setOpen] = useState(false);
+function StageBlock({ stage, index, count, addAction, customAction, ...common }: Common & { stage: EditorStage; index: number; count: number; addAction: Action; customAction: Action }) {
+  // A new custom stage opens on its (empty) moments, ready for the first one.
+  const [open, setOpen] = useState(stage.custom && stage.moments.length === 0);
   const panel = `moments-${stage.key}`;
   return (
     <div className="grid min-w-0 rounded-xl border bg-card" data-testid={`stage-${stage.key}`}>
@@ -156,12 +173,13 @@ function StageBlock({ stage, index, count, addAction, ...common }: Common & { st
             </div>
           </div>
         ) : null}
+        {!common.readOnly ? <CreateOwnItem kind="moment" parentKey={stage.key} parentLabel={stage.label} version={common.version} action={customAction} /> : null}
       </div>
     </div>
   );
 }
 
-function ItemRow({ item, number, move, removeNote = "", version, itemAction, readOnly }: Common & {
+function ItemRow({ item, number, move, removeNote = "", version, itemAction, questionsAction, readOnly }: Common & {
   item: EditorItem;
   number?: number;
   move?: { first: boolean; last: boolean };
@@ -203,6 +221,7 @@ function ItemRow({ item, number, move, removeNote = "", version, itemAction, rea
                 {item.label}
               </span>
               <Badge variant={item.role.kind === "not_shown" ? "secondary" : "outline"}>{ROLE_BADGE[item.role.kind]}</Badge>
+              {item.custom ? <Badge variant="secondary">Your own</Badge> : null}
             </span>
           )}
           <p className="text-xs text-muted-foreground">{item.role.text}</p>
@@ -230,11 +249,77 @@ function ItemRow({ item, number, move, removeNote = "", version, itemAction, rea
                 variant="ghost"
                 submitLabel={<Trash2 aria-hidden />}
                 ariaLabel={`Remove ${item.label}`}
-                confirmText={`Remove "${item.label}"${removeNote} from this template? Events already planned with it keep theirs. You can add it back later from "Not in this template".`}
+                confirmText={item.custom
+                  ? `Remove "${item.label}"${removeNote} and ${item.questions ? "its questions" : "everything in it"} from this template? Events already planned with it keep theirs. This can't be undone here.`
+                  : `Remove "${item.label}"${removeNote} from this template? Events already planned with it keep theirs. You can add it back later from "Not in this template".`}
               />
             ) : null}
           </div>
         )}
+      </div>
+      {/* What the client is asked: the full row's width, so editing has room on a phone. */}
+          {item.custom && item.questions ? (
+            <CustomQuestionsAuthor
+              itemId={item.id}
+              itemKey={item.key}
+              itemLabel={item.label}
+              questions={item.questions}
+              version={version}
+              action={questionsAction}
+              readOnly={readOnly}
+              defaultOpen={item.questions.length === 0 && !readOnly}
+              savedText="Saved. Events whose planning starts from now on get these questions."
+            />
+          ) : item.summary ? <QuestionList item={item} /> : null}
+    </div>
+  );
+}
+
+const NEED: Record<QuestionSummary["questions"][number]["need"], string> = {
+  needed: "Needed",
+  optional: "Optional",
+  needed_to_complete: "Needed to complete",
+};
+
+/**
+ * What the client is asked in this item, collapsed until opened: each question's wording, how it is
+ * answered and whether it's needed. Built-in questions are read-only; the preview shows the working form.
+ */
+function QuestionList({ item }: { item: EditorItem }) {
+  const [open, setOpen] = useState(false);
+  const summary = item.summary!;
+  const panel = `questions-${item.key}`;
+  const count = summary.questions.length;
+  return (
+    <div className="grid gap-2" data-testid={`questions-${item.key}`}>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={panel}
+        onClick={() => setOpen((o) => !o)}
+        className="-mx-1 inline-flex min-h-8 items-center gap-1 justify-self-start rounded-md px-1 text-xs font-medium outline-none hover:bg-muted/60 focus-visible:ring-3 focus-visible:ring-ring/50"
+      >
+        <ChevronRight aria-hidden className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none", open && "rotate-90")} />
+        What clients are asked ({count} {count === 1 ? "question" : "questions"})
+        <span className="sr-only"> in {item.label}</span>
+      </button>
+      <div id={panel} hidden={!open} className="grid gap-2 rounded-lg border bg-muted/30 p-3 text-sm">
+        {summary.intro ? <p className="text-muted-foreground">{summary.intro}</p> : null}
+        <ol className="grid gap-2" aria-label={`Questions in ${item.label}`}>
+          {summary.questions.map((q, i) => (
+            <li key={i} className="grid gap-0.5">
+              <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <span className="font-medium [overflow-wrap:anywhere]">{q.label}</span>
+                <span className={cn("text-xs", q.need === "optional" ? "text-muted-foreground" : "font-medium text-foreground")}>{NEED[q.need]}</span>
+              </span>
+              <span className="text-xs text-muted-foreground [overflow-wrap:anywhere]">
+                {q.answer}
+                {q.when ? <> · Shown when: {q.when}</> : null}
+              </span>
+            </li>
+          ))}
+        </ol>
+        <p className="text-xs text-muted-foreground">Built-in questions can&apos;t be changed. Use Preview to try the client&apos;s form.</p>
       </div>
     </div>
   );
