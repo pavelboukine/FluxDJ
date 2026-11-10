@@ -75,10 +75,18 @@ test.describe.serial("custom planning, from template to run sheet", () => {
       ["single_choice", STYLE, true], ["songs", "Traditional songs", true], ["yes_no", "Will there be a hora?", false], ["short_text", "Family name to announce", false],
     ]);
 
+    // Without DJ expectations the announcement language isn't asked at all: not in Event basics' summary…
+    await expect(staff.getByTestId("questions-dj_preferences")).toHaveCount(0);
+    const basicsRow = staff.getByTestId("questions-basics");
+    await basicsRow.getByRole("button", { name: /What clients are asked \(6 questions\)/ }).click();
+    await expect(basicsRow).not.toContainText(/language/i);
+
     // The preview shows the real controls, and saves nothing.
     await staff.getByRole("link", { name: "Preview", exact: true }).click();
     await staff.waitForURL(/\/preview$/);
-    await staff.goto(`${staff.url()}?section=${template.key}`);
+    // …nor in its preview.
+    await expect((await openPlanSection(staff, "basics")).getByText(/language/i)).toHaveCount(0);
+    await staff.goto(`${staff.url().split("?")[0]}?section=${template.key}`);
     const preview = staff.getByTestId("client-preview").getByTestId(`editor-${template.key}`);
     await expect(preview.getByTestId(`question-${template.questions[0].id}`).getByRole("radio", { name: "Armenian" })).toBeVisible();
     await expect(preview.getByTestId(`question-${template.questions[1].id}`).getByTestId(/-add$/).locator("summary")).toBeVisible();
@@ -106,6 +114,8 @@ test.describe.serial("custom planning, from template to run sheet", () => {
     await expect(staff.getByTestId("preview-note")).toContainText("Your client can't see this yet");
     await staff.goto(`${staff.url().split("?")[0]}?section=${planItem.key}`);
     await expect(staff.getByTestId("client-preview").getByText(STYLE)).toBeVisible();
+    // The event preview matches the template's: no language question in Event basics.
+    await expect((await openPlanSection(staff, "basics")).getByText(/language/i)).toHaveCount(0);
   });
 
   test("9–12: opened without emailing, the client answers; staff and the run sheet show the answers", async ({ browser }) => {
@@ -136,6 +146,19 @@ test.describe.serial("custom planning, from template to run sheet", () => {
     });
     await expect(panel.getByTestId("item-needs")).toHaveCount(0);
     expect(await client.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+    // The client's own planning matches the previews; Event basics saves and completes without the language.
+    const basics = await openPlanSection(client, "basics");
+    await expect(basics.getByText(/language/i)).toHaveCount(0);
+    await basics.getByLabel("Guest count (needed)").fill("80");
+    await basics.getByLabel("Start time (needed)").fill("19:00");
+    await basics.getByLabel("End time (needed)").fill("23:30");
+    await basics.getByLabel("No special instructions").check();
+    await expect(basics.getByText("All changes saved")).toBeVisible();
+    await expect(basics.getByTestId("item-needs")).toHaveCount(0);
+    const saved = (await must(admin.from("event_plan_items").select("id").eq("plan_id", (await must(admin.from("event_plans").select("id").eq("event_id", eventId).single())).data!.id).eq("key", "basics").single())).data!;
+    const stored = (await admin.from("event_plan_responses").select("answers").eq("item_id", saved.id).single()).data!.answers as Record<string, unknown>;
+    expect(stored).toMatchObject({ guest_count: 80, start_time: "19:00", end_time: "23:30", access_notes_none: true });
+    expect(stored).not.toHaveProperty("announcement_language");
 
     await staff.goto(`/staff/${tenant.slug}/events/${eventId}/planning?section=${planItem.key}`);
     const staffSection = staff.getByTestId(`staff-section-${planItem.key}`);
@@ -147,6 +170,8 @@ test.describe.serial("custom planning, from template to run sheet", () => {
     const sheet = staff.getByTestId("run-custom-section");
     await expect(sheet).toContainText(SECTION);
     for (const text of [STYLE, "Lebanese", "Will there be a hora?", "Yes", "Ya Msafer Wahdak · Mohammed Abdel Wahab", "Haddad"]) await expect(sheet).toContainText(text);
+    // Not asked, so never listed as open.
+    await expect(staff.locator("main").getByText("Announcement language")).toHaveCount(0);
     await clientContext.close();
   });
 

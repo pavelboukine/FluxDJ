@@ -94,7 +94,6 @@ const SUMMARIES: Record<string, QuestionSummary> = {
   basics: {
     questions: [
       line("Guest count (needed)", "Number"),
-      line("Language for announcements (optional)", `${oneOf(ANNOUNCEMENT_LANGUAGES)}. Asked in DJ expectations instead when that section is in the plan`),
       line("Start time (needed)", "Time"),
       line("End time (needed)", "Time"),
       line("Where is the event? (needed)", "The venue staff entered, or a short answer"),

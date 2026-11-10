@@ -187,8 +187,12 @@ export function RunSheetView({ sheet, revision, pdfHref, planningHref, refreshHr
               <section id="essentials" aria-labelledby="essentials-h" className="grid scroll-mt-4 gap-3 rounded-xl border bg-card p-4">
                 <h2 id="essentials-h" className="text-lg font-semibold">Essentials</h2>
                 <Pairs items={[...sheet.times, ...sheet.essentials]} />
-                <h3 className="pt-1 font-medium">Preferences</h3>
-                <Pairs items={sheet.preferences} />
+                {sheet.preferences.length ? (
+                  <>
+                    <h3 className="pt-1 font-medium">Preferences</h3>
+                    <Pairs items={sheet.preferences} />
+                  </>
+                ) : null}
               </section>
 
               {sheet.warnings.length ? (

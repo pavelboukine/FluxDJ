@@ -54,9 +54,10 @@ export type PlanSection = {
 };
 
 /**
- * Whether the announcement language is asked in DJ expectations (when that
- * section is shown) rather than in Event basics. Either way it is one answer,
- * stored with Event basics, where the run sheet and progress read it.
+ * Whether the announcement language is asked: only in DJ expectations, when
+ * that section is shown. Event basics never asks it. The answer is stored with
+ * Event basics, where the run sheet and progress read it, so hiding or
+ * restoring DJ expectations keeps a saved answer.
  */
 export function languageAskedInPreferences(structure: PlanStructure): boolean {
   return structure.general.some((g) => !g.disabled && g.editor === "preferences");
