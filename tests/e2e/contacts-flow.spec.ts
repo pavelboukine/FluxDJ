@@ -345,16 +345,25 @@ test.describe.serial("contacts and preferences", () => {
     // Staff see the language where the client answered it.
     const prefs = await openPlanSection(staff, "dj_preferences");
     await expect(prefs.getByLabel("Announcement language (needed)")).toHaveValue("bilingual");
-    // With DJ expectations hidden, Event basics asks it again: the same stored answer.
+    // With DJ expectations hidden, nobody is asked the language (Event basics never asks it),
+    // nothing new is needed, and the saved answer is kept for when it's restored.
     await openPlanSection(staff, "plan-structure");
     await staff.getByRole("button", { name: "Hide DJ expectations and overall preferences from the client", exact: true }).click();
     await expect(staff.getByRole("button", { name: "Restore DJ expectations and overall preferences", exact: true })).toBeVisible();
     await client.reload();
     const clientBasics = await openPlanSection(client, "basics");
-    await expect(clientBasics.getByLabel("Language for announcements (optional)")).toHaveValue("bilingual");
+    await expect(clientBasics.getByText(/language/i)).toHaveCount(0);
+    await expect(clientBasics.locator("select")).toHaveCount(0);
+    expect((await answers(eventId, "basics"))?.announcement_language).toBe("bilingual");
+    await staff.reload();
+    const staffBasics = await openPlanSection(staff, "basics");
+    await expect(staffBasics.getByLabel(/language/i)).toHaveCount(0);
+    await openPlanSection(staff, "plan-structure");
     await staff.getByRole("button", { name: "Restore DJ expectations and overall preferences", exact: true }).click();
     await expect(staff.getByRole("button", { name: "Hide DJ expectations and overall preferences from the client", exact: true })).toBeVisible();
     expect((await answers(eventId, "basics"))?.announcement_language).toBe("bilingual");
+    await client.reload();
+    await expect((await openPlanSection(client, "dj_preferences")).getByLabel("Announcement language (needed)")).toHaveValue("bilingual");
 
     await staff.getByRole("button", { name: "Hide Contacts and vendors from the client", exact: true }).click();
     await expect(staff.getByRole("button", { name: "Restore Contacts and vendors", exact: true })).toBeVisible();

@@ -55,6 +55,13 @@ describe("what clients are asked (template editor)", () => {
     expect(questionSummary("dedications")!.questions[1].need).toBe("optional");
   });
 
+  it("lists the announcement language under DJ expectations only, never under Event basics", () => {
+    const labels = (editor: string) => questionSummary(editor)!.questions.map((q) => q.label);
+    expect(labels("basics")).toEqual(["Guest count", "Start time", "End time", "Where is the event?", "Room or space within the venue", "Parking, loading and access for the DJ"]);
+    expect(JSON.stringify(questionSummary("basics"))).not.toMatch(/language/i);
+    expect(questionSummary("preferences")!.questions.find((q) => q.label === "Announcement language")).toMatchObject({ need: "needed" });
+  });
+
   it("has nothing for items without a form of their own", () => {
     expect(questionSummary(null)).toBeNull();
     expect(questionSummary("stage_details")).toBeNull();

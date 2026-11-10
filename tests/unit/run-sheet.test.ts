@@ -251,6 +251,17 @@ describe("run sheet model", () => {
     expect(withClose).toEqual(without);
   });
 
+  it("lists the announcement language with DJ expectations; without it, only a saved answer (never 'Not answered yet')", () => {
+    const languageOf = (s: RunSheet) => s.preferences.find((p) => p.label === "Announcement language")?.value;
+    // No DJ expectations, a saved answer (from before the section was removed or hidden): kept.
+    expect(languageOf(buildRunSheet(input(party)))).toBe("English");
+    // No DJ expectations and nothing saved: the question isn't asked, so nothing is open.
+    expect(languageOf(buildRunSheet(input(incomplete)))).toBeUndefined();
+    const prefs = (disabled: boolean) => planView({ basics: {}, general: [{ key: "dj_preferences", editor: "preferences", label: "DJ expectations", disabled }], stages: [] });
+    expect(languageOf(buildRunSheet(input(prefs(false))))).toBe("Not answered yet");
+    expect(languageOf(buildRunSheet(input(prefs(true))))).toBeUndefined();
+  });
+
   it("a Simple Party plan and an unset plan", () => {
     const p = buildRunSheet(input(party, { title: "Fête de Sam" }));
     expect(p.stages.map((s) => s.label)).toEqual(["Party"]);

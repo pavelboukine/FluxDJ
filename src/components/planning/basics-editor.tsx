@@ -33,7 +33,7 @@ type Props = {
   /**
    * DJ expectations is part of the plan, so the announcement language is asked
    * there (see languageAskedInPreferences). It's still this item's answer,
-   * saved by this editor.
+   * saved by this editor. Without DJ expectations the language isn't asked.
    */
   languageInPreferences?: boolean;
 };
@@ -104,12 +104,7 @@ export function BasicsEditor(props: Props) {
             aria-describedby={description("guest_count")}
           />
         </FieldBox>
-        {props.languageInPreferences ? null : (
-          <FieldBox id="announcement_language" label="Language for announcements (optional)" error={errorFor("announcement_language")}>
-            <LanguageSelect id="announcement_language" value={form.announcement_language} onChange={(v) => update({ announcement_language: v })} error={errorFor("announcement_language")} />
-          </FieldBox>
-        )}
-        {/* Start and end share a row, after the guest count (and the language, when asked here). */}
+        {/* Start and end share a row, after the guest count. The announcement language is asked only in DJ expectations. */}
         <FieldBox id="start_time" className="sm:col-start-1" label="Start time (needed)" error={errorFor("start_time")} hint="When the DJ's part of the event begins, local time.">
           <Input
             id="start_time"

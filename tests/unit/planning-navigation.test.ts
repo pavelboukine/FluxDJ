@@ -146,7 +146,7 @@ describe("planning sections", () => {
 });
 
 describe("announcement language placement", () => {
-  it("is asked in DJ expectations when that section is shown, else in Event basics (one stored answer either way)", () => {
+  it("is asked only in DJ expectations, and only when that section is shown", () => {
     expect(languageAskedInPreferences(structure)).toBe(true);
     const hidden = { ...structure, general: structure.general.map((g) => (g.editor === "preferences" ? { ...g, disabled: true } : g)) };
     expect(languageAskedInPreferences(hidden)).toBe(false);

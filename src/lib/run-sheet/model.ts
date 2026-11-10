@@ -567,8 +567,10 @@ export function buildRunSheet(input: RunSheetInput): RunSheet {
   }
 
   // -- Preferences ------------------------------------------------------------
-  base.preferences.push({ label: "Announcement language", value: labelOf(ANNOUNCEMENT_LANGUAGES, basics.announcement_language) ?? "Not answered yet" });
   const prefItem = general.find((g) => g.editor === "preferences");
+  // Asked only in DJ expectations: without it, a saved answer still shows, but nothing is "not answered".
+  const language = labelOf(ANNOUNCEMENT_LANGUAGES, basics.announcement_language);
+  if (prefItem || language) base.preferences.push({ label: "Announcement language", value: language ?? "Not answered yet" });
   if (prefItem) {
     const p = answersOf(prefItem.id) as PreferencesAnswers;
     base.preferences.push(

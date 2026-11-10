@@ -180,6 +180,12 @@ test.describe.serial("planning", () => {
     await expect(lyrics).toContainText("Explicit lyrics");
     await expect(lyrics).toContainText("One choice: Clean versions only · Explicit lyrics are fine · Not sure yet — discuss with the DJ");
     await expect(lyrics.getByRole("textbox")).toHaveCount(0);
+    // The announcement language is asked in DJ expectations only; Event basics doesn't list it.
+    await expect(lyrics).toContainText("Announcement language");
+    const basicsRow = staff.getByTestId("questions-basics");
+    await basicsRow.getByRole("button", { name: /What clients are asked \(6 questions\)/ }).click();
+    await expect(basicsRow.getByRole("list", { name: "Questions in Event basics" }).locator(":scope > li")).toHaveCount(6);
+    await expect(basicsRow).not.toContainText(/language/i);
     const entranceRow = staff.getByTestId("questions-reception_entrance");
     await entranceRow.getByRole("button", { name: /What clients are asked/ }).click();
     await expect(entranceRow).toContainText("Planned grand entrance time");
@@ -204,6 +210,10 @@ test.describe.serial("planning", () => {
     ]);
     // No progress anywhere in a preview.
     await expect(preview.getByText(/% complete|required answers|Not started/)).toHaveCount(0);
+    // As in the summary: the announcement language is in DJ expectations, not in Event basics.
+    await expect((await openPlanSection(staff, "basics")).getByText(/language/i)).toHaveCount(0);
+    await expect((await openPlanSection(staff, "dj_preferences")).getByLabel("Announcement language (needed)")).toBeVisible();
+    await openPlanSection(staff, null);
 
     // Conditional fields work as for the client: the grand entrance's time and moments appear once it's planned.
     await preview.getByTestId("overview-reception_entrance").click();

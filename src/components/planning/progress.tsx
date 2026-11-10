@@ -55,7 +55,7 @@ export type LanguageBinding = {
 type LanguageSlot = { binding: LanguageBinding | null; publish: (binding: LanguageBinding | null) => void };
 const LanguageContext = createContext<LanguageSlot | null>(null);
 
-/** Event basics' language, once its editor is ready; null until then or when Event basics asks it itself. */
+/** Event basics' language, once its editor is ready; null until then. */
 export function useLanguageBinding(): LanguageBinding | null {
   return useContext(LanguageContext)?.binding ?? null;
 }
