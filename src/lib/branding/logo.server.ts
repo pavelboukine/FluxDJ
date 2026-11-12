@@ -48,18 +48,38 @@ export async function frozenOfferLogo(offer: { branding: { logo_storage_path: st
   const darkPath = offer.branding.logo_on_dark_storage_path;
   if (!logo || !darkPath || !darkPath.startsWith(`${tenantId}/`)) return logo;
   const { data: dark } = await admin.rpc("tenant_logo_details", { p_tenant_id: tenantId, p_storage_path: darkPath });
-  const variant = await logoUrl(dark as Record<string, unknown> | null);
-  return variant ? { ...logo, onDark: { url: variant.url, width: variant.width, height: variant.height } } : logo;
+  return withOnDark(logo, await logoUrl(dark as Record<string, unknown> | null));
 }
 
-/** The business's live logo, for client pages (after their access check) by slug. */
+/** The business's live logo, for client pages (after their access check) by slug, with its version for dark backgrounds if it has one. */
 export async function liveBrand(slug: string): Promise<{ logo: BrandLogo | null; brandColors: Record<string, string>; displayName: string } | null> {
   const { data } = await createAdminClient().rpc("public_tenant_brand", { p_tenant_slug: slug });
-  const brand = data as { display_name?: string; brand_colors?: Record<string, string>; logo_storage_path?: string | null; logo_needs_dark_background?: boolean; logo_width?: number; logo_height?: number; logo_size_percent?: number } | null;
+  const brand = data as {
+    display_name?: string;
+    brand_colors?: Record<string, string>;
+    logo_storage_path?: string | null;
+    logo_needs_dark_background?: boolean;
+    logo_width?: number;
+    logo_height?: number;
+    logo_size_percent?: number;
+    logo_on_dark_storage_path?: string | null;
+    logo_on_dark_width?: number;
+    logo_on_dark_height?: number;
+  } | null;
   if (!brand?.display_name) return null;
-  const stored = brand.logo_storage_path
-    ? await logoUrl({ storage_path: brand.logo_storage_path, needs_dark_background: brand.logo_needs_dark_background, width: brand.logo_width, height: brand.logo_height })
-    : null;
-  const logo = stored ? { ...stored, sizePercent: brand.logo_size_percent } : null;
+  const [stored, dark] = await Promise.all([
+    brand.logo_storage_path
+      ? logoUrl({ storage_path: brand.logo_storage_path, needs_dark_background: brand.logo_needs_dark_background, width: brand.logo_width, height: brand.logo_height })
+      : null,
+    brand.logo_storage_path && brand.logo_on_dark_storage_path
+      ? logoUrl({ storage_path: brand.logo_on_dark_storage_path, width: brand.logo_on_dark_width, height: brand.logo_on_dark_height })
+      : null,
+  ]);
+  const logo = stored ? withOnDark({ ...stored, sizePercent: brand.logo_size_percent }, dark) : null;
   return { logo, brandColors: brand.brand_colors ?? {}, displayName: brand.display_name };
+}
+
+/** A logo with its version for dark backgrounds attached, when there is one. */
+export function withOnDark(logo: BrandLogo, dark: BrandLogo | null): BrandLogo {
+  return dark ? { ...logo, onDark: { url: dark.url, width: dark.width, height: dark.height } } : logo;
 }

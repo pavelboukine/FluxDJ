@@ -3,18 +3,20 @@
 import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties } from "react";
 import { Check, ChevronDown, CircleUserRound, Menu } from "lucide-react";
 import { ActionForm } from "@/components/app/action-form";
-import { BrandLogo } from "@/components/app/brand-logo";
+import { BrandLogo, type BrandLogoImage } from "@/components/app/brand-logo";
 import { EventStatusPill } from "@/components/app/client-event-ui";
 import { Field } from "@/components/app/fields";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { brandGradientCss, brandProps, brandTheme, DEFAULT_BRAND_COLOR, GRADIENT_ON, normalizeHex, suggestLooks } from "@/lib/branding/colors";
+import { brandGradientCss, brandProps, brandTheme, DEFAULT_BRAND_COLOR, GRADIENT_ON, heroLogoSurface, normalizeHex, suggestLooks } from "@/lib/branding/colors";
 import { CLIENT_PAGE_LOGO, LOGO_SIZE, logoSizeLabel, STAFF_HEADER_LOGO } from "@/lib/branding/logo-size";
 import { cn } from "@/lib/utils";
 import type { ActionState } from "@/lib/forms";
 import type { LogoPreview } from "./actions";
 
-type Logo = { url: string; needsDarkBackground: boolean } | null;
+type Logo = BrandLogoImage | null;
+/** A file chosen on this device: `processed` once the server has prepared it as a save would store it. */
+type Chosen = { url: string; name: string; processed: boolean; dark: boolean; canTurnWhite: boolean };
 const MAX_BYTES = 4 * 1024 * 1024;
 
 /**
@@ -32,6 +34,12 @@ const MAX_BYTES = 4 * 1024 * 1024;
  *
  * The preview renders through the same brand variables, utilities and BrandLogo
  * as the client pages, so it shows what clients see today, logo backdrop included.
+ *
+ * Logo for dark backgrounds (optional, folded away): an upload, or for a
+ * single-colour logo on a transparent background a white version made from it
+ * (shown here with a CSS filter that matches the file a save creates), used
+ * where the logo sits on something dark. Without one, BrandLogo keeps the
+ * single logo readable with a light panel.
  */
 
 /** Which look is chosen: solid, the owner's own accent, or a suggested look's key. */
@@ -42,6 +50,8 @@ export function BrandingForm({
   version,
   displayName,
   currentLogo,
+  currentDarkLogo,
+  canTurnWhite,
   currentColor,
   currentAccent,
   currentGradient,
@@ -53,6 +63,10 @@ export function BrandingForm({
   version: number;
   displayName: string;
   currentLogo: Logo;
+  /** The saved logo for dark backgrounds, if any. */
+  currentDarkLogo: Logo;
+  /** Whether a white version can be made from the saved logo. */
+  canTurnWhite: boolean;
   currentColor: string | null;
   /** A stored accent: the gradient's, or one kept from earlier. */
   currentAccent: string | null;
@@ -69,45 +83,26 @@ export function BrandingForm({
   const [sizeView, setSizeView] = useState<"workspace" | "client">("workspace");
   const [size, setSize] = useState(currentSize);
   // `processed` once the server has prepared it as it will be saved; until then (or if it can't), the file as chosen.
-  const [chosen, setChosen] = useState<{ url: string; name: string; processed: boolean; dark: boolean } | null>(null);
-  const [preparing, setPreparing] = useState(false);
-  const previewRequest = useRef(0);
-  const [fileError, setFileError] = useState<string | null>(null);
+  const main = useChosenLogo(preview);
+  const chosen = main.chosen;
   const [remove, setRemove] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
-
-  useEffect(() => () => { if (chosen?.url.startsWith("blob:")) URL.revokeObjectURL(chosen.url); }, [chosen]);
+  // The logo for dark backgrounds: a file, a white version of the logo, or removal.
+  const darkFile = useChosenLogo(preview);
+  const [white, setWhite] = useState(false);
+  const [removeDark, setRemoveDark] = useState(false);
+  const darkInput = useRef<HTMLInputElement>(null);
 
   function onFile(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    const request = ++previewRequest.current;
-    setFileError(null);
-    setPreparing(false);
-    setChosen(null);
-    if (!file) return;
-    if (file.size > MAX_BYTES) {
-      setFileError("The logo must be 4 MB or smaller.");
-      event.target.value = "";
-      return;
+    if (main.choose(event)) setRemove(false);
+    // A white version is made from the logo being saved, so it follows a newly chosen logo.
+    setWhite(false);
+  }
+  function onDarkFile(event: ChangeEvent<HTMLInputElement>) {
+    if (darkFile.choose(event)) {
+      setWhite(false);
+      setRemoveDark(false);
     }
-    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
-      setFileError("Choose a PNG, JPEG or WebP image. SVG isn't supported.");
-      event.target.value = "";
-      return;
-    }
-    setRemove(false);
-    setChosen({ url: URL.createObjectURL(file), name: file.name, processed: false, dark: false });
-    // Then the same processing a save does, so trimmed edges show before saving. A newer choice wins.
-    const form = new FormData();
-    form.set("logo", file);
-    setPreparing(true);
-    preview(form)
-      .catch((): LogoPreview => ({ ok: false }))
-      .then((result) => {
-        if (request !== previewRequest.current) return;
-        setPreparing(false);
-        if (result.ok) setChosen((current) => (current && current.name === file.name ? { ...current, url: result.url, processed: true, dark: result.needsDarkBackground } : current));
-      });
   }
 
   const typed = normalizeHex(color);
@@ -125,7 +120,21 @@ export function BrandingForm({
   const theme = brandTheme(brandColors);
   const solid = brandTheme(primary);
   const deepened = solid.fill !== solid.color || (theme.gradient !== null && theme.gradient.to !== accent);
-  const previewLogo: Logo = remove ? null : chosen ? { url: chosen.url, needsDarkBackground: chosen.dark } : currentLogo;
+  const mainLogo: Logo = remove ? null : chosen ? { url: chosen.url, needsDarkBackground: chosen.dark } : currentLogo;
+  // A white version can be made from the logo that will be saved: the chosen file once prepared, else the saved one.
+  const canWhite = chosen ? chosen.processed && chosen.canTurnWhite : canTurnWhite;
+  const darkChosen = darkFile.chosen;
+  const onDark: BrandLogoImage["onDark"] = darkChosen
+    ? { url: darkChosen.url }
+    : white && canWhite && mainLogo
+      ? { url: mainLogo.url, white: true }
+      : !removeDark && currentDarkLogo
+        ? { url: currentDarkLogo.url }
+        : undefined;
+  const previewLogo: Logo = mainLogo ? { ...mainLogo, onDark } : null;
+  // A new logo with the saved logo for dark backgrounds kept: they may no longer match. Both are kept
+  // unless the owner chooses; replacing, making a white version or removing it resolves this.
+  const mismatch = chosen !== null && currentDarkLogo !== null && !darkChosen && !(white && canWhite) && !removeDark;
   const sizedLogo = previewLogo ? { ...previewLogo, sizePercent: size } : null;
   const swatchOf = (accentColor: string): CSSProperties => ({ background: brandGradientCss(brandTheme({ primary, accent: accentColor, gradient: GRADIENT_ON })), color: "#ffffff" });
 
@@ -136,13 +145,17 @@ export function BrandingForm({
         version={version}
         submitLabel="Save changes"
         trackUnsaved
-        pendingLabel={chosen ? "Uploading and saving…" : "Saving…"}
+        pendingLabel={chosen || darkChosen || white ? "Uploading and saving…" : "Saving…"}
         className="max-w-xl min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-8"
         onSuccess={() => {
-          // The saved logo now comes from the server; clear the local file.
-          setChosen(null);
+          // The saved logos now come from the server; clear the local files.
+          main.clear();
+          darkFile.clear();
           setRemove(false);
+          setWhite(false);
+          setRemoveDark(false);
           if (fileInput.current) fileInput.current.value = "";
+          if (darkInput.current) darkInput.current.value = "";
         }}
       >
         <section aria-labelledby="logo-heading" className="grid grid-cols-[minmax(0,1fr)] gap-3">
@@ -155,15 +168,78 @@ export function BrandingForm({
               <Input ref={fileInput} id="logo" name="logo" type="file" accept="image/png,image/jpeg,image/webp" onChange={onFile} className="w-full min-w-0 flex-1 basis-52" />
             </div>
           </Field>
-          {fileError ? <p role="alert" className="text-sm text-destructive">{fileError}</p> : null}
+          {main.error ? <p role="alert" className="text-sm text-destructive">{main.error}</p> : null}
           <p aria-live="polite" className="text-xs text-muted-foreground empty:hidden" data-testid="logo-preview-state">
-            {preparing ? "Preparing the preview…" : chosen?.processed ? "The preview shows the logo as it will be saved." : ""}
+            {main.preparing ? "Preparing the preview…" : chosen?.processed ? "The preview shows the logo as it will be saved." : ""}
           </p>
           {currentLogo && !chosen ? (
             <label className="flex min-h-11 w-fit items-center gap-2 text-sm md:min-h-0">
               <input type="checkbox" name="remove_logo" checked={remove} onChange={(e) => setRemove(e.target.checked)} className="size-4 accent-primary" />
               Remove the logo
             </label>
+          ) : null}
+          {mismatch ? (
+            <p role="status" className="rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm" data-testid="logo-variant-mismatch">
+              Your logo for dark backgrounds is kept, but it may no longer match the new logo. Replace or remove it below
+              {canWhite ? ", or use a white version of the new logo" : ""}.
+            </p>
+          ) : null}
+          {mainLogo ? (
+            <Advanced
+              summary="Logo for dark backgrounds"
+              open={currentDarkLogo !== null || mismatch}
+              value={onDark ? <span data-testid="logo-on-dark-value">{onDark.white ? "White version" : "Added"}</span> : null}
+              testId="logo-on-dark"
+            >
+              <div className="grid gap-3">
+                <p className="text-xs text-muted-foreground">
+                  Optional. A light version of your logo, such as white, for dark backgrounds like a gradient header. Your logo above is used everywhere else.
+                  Without one, a dark logo sits on a small white panel there.
+                </p>
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex h-16 w-28 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-neutral-900 p-2" data-testid="logo-on-dark-current">
+                    <BrandLogo surface="dark" logo={previewLogo} name={displayName} className="max-h-11 max-w-24" fallbackClassName="line-clamp-2 text-center text-xs text-white [overflow-wrap:anywhere]" />
+                  </div>
+                  <div className="grid min-w-0 flex-1 basis-52 gap-1.5">
+                    <Label htmlFor="logo_on_dark" className="sr-only">Logo for dark backgrounds</Label>
+                    <Input ref={darkInput} id="logo_on_dark" name="logo_on_dark" type="file" accept="image/png,image/jpeg,image/webp" onChange={onDarkFile} className="w-full min-w-0" />
+                  </div>
+                </div>
+                {darkFile.error ? <p role="alert" className="text-sm text-destructive">{darkFile.error}</p> : null}
+                <p aria-live="polite" className="text-xs text-muted-foreground empty:hidden" data-testid="logo-on-dark-state">
+                  {darkFile.preparing
+                    ? "Preparing the preview…"
+                    : darkChosen?.processed && !darkChosen.dark
+                      ? "This logo looks dark, so it may be hard to see on dark backgrounds. A white or light version works best."
+                      : darkChosen?.processed
+                        ? "The preview shows the logo as it will be saved."
+                        : white && onDark?.white
+                          ? "Made from your logo: its shape and transparency are kept and only the colour becomes white. Your logo itself isn't changed."
+                          : ""}
+                </p>
+                {!darkChosen && canWhite ? (
+                  <label className="flex min-h-11 w-fit items-center gap-2 text-sm md:min-h-0">
+                    <input
+                      type="checkbox"
+                      name="logo_on_dark_white"
+                      checked={white}
+                      onChange={(e) => {
+                        setWhite(e.target.checked);
+                        if (e.target.checked) setRemoveDark(false);
+                      }}
+                      className="size-4 accent-primary"
+                    />
+                    Use a white version of my logo
+                  </label>
+                ) : null}
+                {currentDarkLogo && !darkChosen && !white ? (
+                  <label className="flex min-h-11 w-fit items-center gap-2 text-sm md:min-h-0">
+                    <input type="checkbox" name="remove_logo_on_dark" checked={removeDark} onChange={(e) => setRemoveDark(e.target.checked)} className="size-4 accent-primary" />
+                    Remove the logo for dark backgrounds
+                  </label>
+                ) : null}
+              </div>
+            </Advanced>
           ) : null}
           {previewLogo ? (
             <Advanced summary="Logo size" open={currentSize !== LOGO_SIZE.default} value={<output htmlFor="logo_size_percent" data-testid="logo-size-value">{logoSizeLabel(size)}</output>} testId="logo-size-options">
@@ -338,7 +414,7 @@ export function BrandingForm({
             <div className="grid gap-4 overflow-hidden rounded-xl bg-background pb-4 text-sm shadow-xs" data-testid="proposal-preview">
               <header className="grid gap-2 bg-brand-hero p-4 brand-gradient:**:opacity-100" data-testid="preview-hero">
                 <div className="flex min-h-10 items-center">
-                  <BrandLogo onHero logo={previewLogo} name={displayName} className="max-h-12 max-w-48" fallbackClassName="text-sm font-semibold tracking-wide uppercase opacity-90" />
+                  <BrandLogo surface={heroLogoSurface(brandColors)} logo={previewLogo} name={displayName} className="max-h-12 max-w-48" fallbackClassName="text-sm font-semibold tracking-wide uppercase opacity-90" />
                 </div>
                 <p className="text-lg font-semibold">Alex &amp; Sam Wedding</p>
                 <p className="opacity-90">Saturday, June 12, 2027 · Sample venue</p>
@@ -380,6 +456,63 @@ export function BrandingForm({
       </section>
     </div>
   );
+}
+
+/**
+ * A logo file chosen on this device, shown at once and then as the server prepares it (the same
+ * checks, re-encoding and trimming a save does). A newer choice wins over a preview still in flight.
+ */
+function useChosenLogo(preview: (form: FormData) => Promise<LogoPreview>) {
+  const [chosen, setChosen] = useState<Chosen | null>(null);
+  const [preparing, setPreparing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const request = useRef(0);
+
+  useEffect(() => () => { if (chosen?.url.startsWith("blob:")) URL.revokeObjectURL(chosen.url); }, [chosen]);
+
+  /** Returns whether a usable file was chosen. */
+  function choose(event: ChangeEvent<HTMLInputElement>): boolean {
+    const file = event.target.files?.[0];
+    const current = ++request.current;
+    setError(null);
+    setPreparing(false);
+    setChosen(null);
+    if (!file) return false;
+    if (file.size > MAX_BYTES) {
+      setError("The logo must be 4 MB or smaller.");
+      event.target.value = "";
+      return false;
+    }
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      setError("Choose a PNG, JPEG or WebP image. SVG isn't supported.");
+      event.target.value = "";
+      return false;
+    }
+    setChosen({ url: URL.createObjectURL(file), name: file.name, processed: false, dark: false, canTurnWhite: false });
+    // Then the same processing a save does, so trimmed edges show before saving.
+    const form = new FormData();
+    form.set("logo", file);
+    setPreparing(true);
+    preview(form)
+      .catch((): LogoPreview => ({ ok: false }))
+      .then((result) => {
+        if (current !== request.current) return;
+        setPreparing(false);
+        if (result.ok) {
+          setChosen((c) => (c && c.name === file.name ? { ...c, url: result.url, processed: true, dark: result.needsDarkBackground, canTurnWhite: result.canTurnWhite } : c));
+        }
+      });
+    return true;
+  }
+
+  function clear() {
+    request.current++;
+    setChosen(null);
+    setPreparing(false);
+    setError(null);
+  }
+
+  return { chosen, preparing, error, choose, clear };
 }
 
 /** One look: a swatch of the real result with its text colour, and the choice itself. The whole tile is the target. */

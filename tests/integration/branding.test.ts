@@ -10,7 +10,7 @@ import { frozenOfferLogo, liveBrand, LOGO_BUCKET } from "@/lib/branding/logo.ser
 import { processLogo, storeLogo, type ProcessedLogo } from "@/lib/branding/logo-upload.server";
 import { offerSnapshotSchema } from "@/lib/pricing/offer-snapshot";
 import { adminClient, archiveTestTenants, createEvent, createTenantWithCatalog, draftAndSend, must, signedInUser, type Catalog, type Db } from "./support/fixtures";
-import { transparentPng, opaqueJpeg } from "../support/logo-fixtures";
+import { transparentPng, opaqueJpeg, whiteOnTransparentPng } from "../support/logo-fixtures";
 
 let admin: Db;
 let ownerA: { id: string; db: Db };
@@ -153,6 +153,70 @@ describe("business branding (local Supabase)", () => {
     await must(save({ p_primary_color: "#1e3a8a", p_gradient: false }));
     expect((await liveBrand(a.slug))!.brandColors).toEqual({ primary: "#1e3a8a", accent: "#7c3aed" });
     expect(usesGradient(await frozen(after.proposalId))).toBe(true);
+  });
+
+  it("a logo for dark backgrounds: live pages and new proposals get it, sent proposals keep theirs", async () => {
+    type Branding = { logo_storage_path: string | null; logo_on_dark_storage_path?: string | null };
+    const frozen = async (proposalId: string) =>
+      ((await must(admin.from("proposals").select("offer_snapshot").eq("id", proposalId).single())).data!.offer_snapshot as { branding: Branding }).branding;
+    const send = async () => (await draftAndSend(ownerB.db, b, (await createEvent(admin, b, `it-brand-dark-${randomUUID().slice(0, 8)}@example.test`)).eventId)).proposalId;
+    const save = async (logoId: string | null, dark?: { id: string | null }) =>
+      ownerB.db.rpc("update_tenant_branding", {
+        p_tenant_id: b.tenantId,
+        p_expected_version: await version(b.tenantId),
+        p_logo_id: logoId as string,
+        p_primary_color: "#111827",
+        ...(dark ? { p_logo_on_dark_id: dark.id as string, p_change_logo_on_dark: true } : {}),
+      });
+
+    const blackLogo = await processed(await transparentPng(800, 200, [17, 17, 17]));
+    const whiteLogo = await processed(await whiteOnTransparentPng(800, 200));
+    const main = await storeLogo(b.tenantId, ownerB.id, blackLogo);
+    const onDark = await storeLogo(b.tenantId, ownerB.id, whiteLogo);
+    const foreign = await storeLogo(a.tenantId, ownerA.id, whiteLogo);
+    if (!main.ok || !onDark.ok || !foreign.ok) throw new Error("upload failed");
+
+    // Before: one logo. New offers carry the key as null, which marks them as frozen under logo variants.
+    await must(save(main.stored.logoId));
+    const before = await send();
+    expect(await frozen(before)).toEqual({ display_name: expect.any(String), logo_storage_path: main.stored.path, brand_colors: expect.any(Object), logo_on_dark_storage_path: null });
+    const { data: beforeSnapshot } = await must(admin.from("proposals").select("offer_snapshot").eq("id", before).single());
+    expect(offerSnapshotSchema.safeParse(beforeSnapshot!.offer_snapshot).success).toBe(true); // the deployed reader accepts null
+    expect((await liveBrand(b.slug))!.logo).not.toHaveProperty("onDark");
+
+    // Only a logo of this business, and only by its owner.
+    expect((await save(main.stored.logoId, { id: foreign.stored.logoId })).error?.message).toMatch(/branding_invalid/);
+    const byStaff = await staffA.db.rpc("update_tenant_branding", {
+      p_tenant_id: b.tenantId, p_expected_version: await version(b.tenantId), p_logo_id: main.stored.logoId, p_primary_color: null as unknown as string,
+      p_logo_on_dark_id: onDark.stored.logoId, p_change_logo_on_dark: true,
+    });
+    expect(byStaff.error).not.toBeNull();
+
+    await must(save(main.stored.logoId, { id: onDark.stored.logoId }));
+    const live = (await liveBrand(b.slug))!.logo!;
+    expect(sha(await download(live.url))).toBe(blackLogo.sha256);
+    expect(sha(await download(live.onDark!.url))).toBe(whiteLogo.sha256);
+    expect([live.onDark!.width, live.onDark!.height]).toEqual([whiteLogo.width, whiteLogo.height]);
+
+    // A draft preview and a sent proposal carry both, and the app reads them.
+    const after = await send();
+    const branding = await frozen(after);
+    expect(branding.logo_on_dark_storage_path).toBe(onDark.stored.path);
+    const { data: sent } = await must(admin.from("proposals").select("offer_snapshot").eq("id", after).single());
+    expect(offerSnapshotSchema.safeParse(sent!.offer_snapshot).success).toBe(true);
+    const shown = await frozenOfferLogo({ branding });
+    expect(sha(await download(shown!.onDark!.url))).toBe(whiteLogo.sha256);
+    expect((await frozen(before)).logo_on_dark_storage_path).toBeNull(); // the earlier one is unchanged
+
+    // A save from the app deployed before variants keeps it; removal leaves sent proposals as they were.
+    await must(save(main.stored.logoId));
+    expect((await liveBrand(b.slug))!.logo!.onDark).toBeDefined();
+    await must(save(main.stored.logoId, { id: null }));
+    expect((await liveBrand(b.slug))!.logo).not.toHaveProperty("onDark");
+    const stillShown = await frozenOfferLogo({ branding: await frozen(after) });
+    expect(sha(await download(stillShown!.onDark!.url))).toBe(whiteLogo.sha256);
+    const { data: tenant } = await must(admin.from("tenants").select("logo_storage_path, logo_on_dark_storage_path").eq("id", b.tenantId).single());
+    expect(tenant).toEqual({ logo_storage_path: main.stored.path, logo_on_dark_storage_path: null });
   });
 
   it("a failed registration or a stale save leaves the current logo active and no stray file", async () => {

@@ -33,6 +33,9 @@ const SHARP_FORMAT: Record<string, string> = { "image/png": "png", "image/jpeg":
 export type ProcessedLogo = { png: Buffer; sha256: string; width: number; height: number; needsDarkBackground: boolean };
 export type LogoResult = { ok: true; logo: ProcessedLogo } | { ok: false; message: string };
 
+/** Mostly light artwork (average visible luminance above this) is shown on a dark backdrop on light surfaces. */
+const LIGHT_LOGO = 0.85;
+
 const INVALID = "That file isn't a PNG, JPEG or WebP image we can read. SVG isn't supported.";
 
 export async function processLogo(bytes: Buffer): Promise<LogoResult> {
@@ -74,7 +77,7 @@ export async function processLogo(bytes: Buffer): Promise<LogoResult> {
     if (weight < 1) return { ok: false, message: "This image is empty (fully transparent)." };
     return {
       ok: true,
-      logo: { png, sha256: createHash("sha256").update(png).digest("hex"), width: info.width, height: info.height, needsDarkBackground: light / weight > 0.85 },
+      logo: { png, sha256: createHash("sha256").update(png).digest("hex"), width: info.width, height: info.height, needsDarkBackground: light / weight > LIGHT_LOGO },
     };
   } catch {
     return { ok: false, message: INVALID };
@@ -107,6 +110,72 @@ async function trimTransparentEdges(logo: EncodedLogo): Promise<EncodedLogo> {
   if (right < 0 || (box.width === width && box.height === height)) return logo;
   const data = await sharp(logo.data).extract(box).png({ compressionLevel: 9, adaptiveFiltering: true }).toBuffer();
   return { data, info: { width: box.width, height: box.height } };
+}
+
+/**
+ * A white version of a single-colour logo on a transparent background, for dark backgrounds.
+ *
+ * Only for artwork where turning it white loses nothing: a real transparent background (at least
+ * WHITE_MIN_TRANSPARENT of the pixels can't be seen) and one ink (every solid pixel within
+ * WHITE_INK_TOLERANCE of the ink on each channel, allowing WHITE_STRAY_SHARE of strays for
+ * compression noise). A logo that is already light needs no white version. Anything else (several
+ * colours, a photo, an opaque background) returns null and is never recoloured.
+ *
+ * The result keeps every pixel's transparency, so the shape and its smooth edges are exactly the
+ * original's; only the colour becomes white. It is a new PNG: the original is never changed.
+ */
+const WHITE_MIN_TRANSPARENT = 0.1;
+const WHITE_INK_TOLERANCE = 48;
+const WHITE_STRAY_SHARE = 0.01;
+/** Pixels at least this opaque decide the ink; softer edge pixels only keep their transparency. */
+const SOLID_ALPHA = 128;
+
+export async function whiteLogoVersion(png: Buffer): Promise<ProcessedLogo | null> {
+  try {
+    const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    if (info.channels !== 4) return null;
+    const pixels = info.width * info.height;
+    let transparent = 0;
+    let solid = 0;
+    const sum = [0, 0, 0];
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] < VISIBLE_ALPHA) transparent++;
+      if (data[i + 3] < SOLID_ALPHA) continue;
+      solid++;
+      sum[0] += data[i];
+      sum[1] += data[i + 1];
+      sum[2] += data[i + 2];
+    }
+    if (solid === 0 || transparent / pixels < WHITE_MIN_TRANSPARENT) return null;
+    const ink = sum.map((c) => c / solid);
+    if ((0.2126 * ink[0] + 0.7152 * ink[1] + 0.0722 * ink[2]) / 255 > LIGHT_LOGO) return null;
+    let strays = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] < SOLID_ALPHA) continue;
+      if (Math.abs(data[i] - ink[0]) > WHITE_INK_TOLERANCE || Math.abs(data[i + 1] - ink[1]) > WHITE_INK_TOLERANCE || Math.abs(data[i + 2] - ink[2]) > WHITE_INK_TOLERANCE) strays++;
+    }
+    if (strays / solid > WHITE_STRAY_SHARE) return null;
+
+    const white = Buffer.from(data);
+    for (let i = 0; i < white.length; i += 4) {
+      white[i] = 255;
+      white[i + 1] = 255;
+      white[i + 2] = 255;
+    }
+    const out = await sharp(white, { raw: { width: info.width, height: info.height, channels: 4 } })
+      .png({ compressionLevel: 9, adaptiveFiltering: true })
+      .toBuffer();
+    if (out.length > LOGO_MAX_OUTPUT_BYTES) return null;
+    return { png: out, sha256: createHash("sha256").update(out).digest("hex"), width: info.width, height: info.height, needsDarkBackground: true };
+  } catch {
+    return null;
+  }
+}
+
+/** A stored logo's bytes (service role), after the caller's own authorization. Null if it can't be read. */
+export async function storedLogoBytes(storagePath: string): Promise<Buffer | null> {
+  const { data } = await createAdminClient().storage.from(LOGO_BUCKET).download(storagePath);
+  return data ? Buffer.from(await data.arrayBuffer()) : null;
 }
 
 export type StoredLogo = { logoId: string; path: string };

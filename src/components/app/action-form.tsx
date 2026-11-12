@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useDraftEditorState, useSharedDraftVersion } from "@/components/app/draft-version";
 import { idleState, type ActionState } from "@/lib/forms";
 import { cn } from "@/lib/utils";
+import { formSnapshot } from "./form-snapshot";
 
 type Props = {
   action: (state: ActionState, formData: FormData) => Promise<ActionState>;
@@ -43,13 +44,9 @@ type Props = {
   secondary?: ReactNode;
 };
 
-/** Serializes the user-editable fields, so "unsaved changes" can be detected. A chosen file counts by its name and size. */
+/** Serializes the user-editable fields, so "unsaved changes" can be detected (formSnapshot). */
 function snapshot(form: HTMLFormElement): string {
-  return JSON.stringify(
-    [...new FormData(form).entries()]
-      .filter(([name]) => name !== "draft_version")
-      .map(([name, value]) => [name, typeof value === "string" ? value : `file:${value.name}:${value.size}`]),
-  );
+  return formSnapshot(new FormData(form).entries());
 }
 
 /**

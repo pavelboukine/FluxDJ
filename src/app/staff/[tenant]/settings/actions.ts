@@ -6,7 +6,7 @@ import { describeDbError } from "@/lib/db-errors";
 import { checkbox, fail, int, ok, text, type ActionState } from "@/lib/forms";
 import { normalizeHex } from "@/lib/branding/colors";
 import { LOGO_SIZE } from "@/lib/branding/logo-size";
-import { processLogo, storeLogo } from "@/lib/branding/logo-upload.server";
+import { processLogo, storedLogoBytes, storeLogo, whiteLogoVersion, type ProcessedLogo } from "@/lib/branding/logo-upload.server";
 import { allowRequest } from "@/lib/rate-limit.server";
 import { CUTOFF_DAYS_MAX, CUTOFF_DAYS_MIN } from "@/lib/planning/cutoff";
 import { parseTaxSettingsForm } from "@/lib/pricing/tax-settings";
@@ -149,10 +149,12 @@ export async function savePlanningDjName(slug: string, _state: ActionState, form
 
 /**
  * Saves branding: an optional new logo (verified, re-encoded and registered
- * first), logo removal, the primary colour and the colour style (solid, or a
- * gradient with an accent colour), all checked against the
- * branding version so a stale tab can't overwrite newer branding. Owner only;
- * the database checks again. Any failure leaves the current logo active.
+ * first), logo removal, the optional logo for dark backgrounds (an upload, a
+ * white version made from a single-colour logo, or removal), the primary
+ * colour and the colour style (solid, or a gradient with an accent colour),
+ * all checked against the branding version so a stale tab can't overwrite
+ * newer branding. Owner only; the database checks again. Every file is checked
+ * before anything is stored, and any failure leaves the current logos active.
  */
 export async function saveBranding(slug: string, _state: ActionState, form: FormData): Promise<ActionState> {
   const { supabase, user, tenant, membership } = await requireStaff(slug);
@@ -178,15 +180,36 @@ export async function saveBranding(slug: string, _state: ActionState, form: Form
   if (rawSize !== "" && logoSize === null) return fail(`Choose a logo size from ${LOGO_SIZE.min}% to ${LOGO_SIZE.max}%.`);
 
   const file = form.get("logo");
+  const newMain = file instanceof File && file.size > 0 ? file : null;
+  const removeMain = !newMain && checkbox(form, "remove_logo");
+  // The logo for dark backgrounds. None of these fields (a tab from before variants existed, or no
+  // change): the database keeps it. Removing the main logo removes it too.
+  const darkFile = form.get("logo_on_dark");
+  const newDark = !removeMain && darkFile instanceof File && darkFile.size > 0 ? darkFile : null;
+  const whiteDark = !removeMain && !newDark && checkbox(form, "logo_on_dark_white");
+  const removeDark = !removeMain && !newDark && !whiteDark && checkbox(form, "remove_logo_on_dark");
+
+  if ((newMain || newDark || whiteDark) && !(await allowRequest("logo_upload", user.id, 20, 3600))) return fail("Too many logo uploads. Try again in an hour.");
+  const main = newMain ? await processLogo(Buffer.from(await newMain.arrayBuffer())) : null;
+  if (main && !main.ok) return fail(`${main.message} Your current logo is unchanged.`);
+  let dark: ProcessedLogo | null = null;
+  if (newDark) {
+    const processed = await processLogo(Buffer.from(await newDark.arrayBuffer()));
+    if (!processed.ok) return fail(`Logo for dark backgrounds: ${processed.message} Your current logos are unchanged.`);
+    dark = processed.logo;
+  } else if (whiteDark) {
+    const { data: current } = await supabase.from("tenants").select("logo_storage_path").eq("id", tenant.id).single();
+    const source = main?.ok ? main.logo.png : current?.logo_storage_path ? await storedLogoBytes(current.logo_storage_path) : null;
+    dark = source ? await whiteLogoVersion(source) : null;
+    if (!dark) return fail("A white version can only be made from a single-colour logo on a transparent background. Upload a logo for dark backgrounds instead. Your current logos are unchanged.");
+  }
+
   let logoId: string | null;
-  if (file instanceof File && file.size > 0) {
-    if (!(await allowRequest("logo_upload", user.id, 20, 3600))) return fail("Too many logo uploads. Try again in an hour.");
-    const processed = await processLogo(Buffer.from(await file.arrayBuffer()));
-    if (!processed.ok) return fail(`${processed.message} Your current logo is unchanged.`);
-    const stored = await storeLogo(tenant.id, user.id, processed.logo);
+  if (main?.ok) {
+    const stored = await storeLogo(tenant.id, user.id, main.logo);
     if (!stored.ok) return fail(`${stored.error ? describeDbError(stored.error) : "The logo couldn't be stored."} Your current logo is unchanged.`);
     logoId = stored.stored.logoId;
-  } else if (checkbox(form, "remove_logo")) {
+  } else if (removeMain) {
     logoId = null;
   } else {
     // Keep the active logo (if any).
@@ -197,6 +220,13 @@ export async function saveBranding(slug: string, _state: ActionState, form: Form
     logoId = logo?.id ?? null;
   }
 
+  let darkId: string | null = null;
+  if (dark) {
+    const stored = await storeLogo(tenant.id, user.id, dark);
+    if (!stored.ok) return fail(`${stored.error ? describeDbError(stored.error) : "The logo for dark backgrounds couldn't be stored."} Your current logos are unchanged.`);
+    darkId = stored.stored.logoId;
+  }
+
   const { data: newVersion, error } = await supabase.rpc("update_tenant_branding", {
     p_tenant_id: tenant.id,
     p_expected_version: version,
@@ -205,20 +235,23 @@ export async function saveBranding(slug: string, _state: ActionState, form: Form
     p_logo_size_percent: logoSize as number,
     p_accent_color: accent as string,
     p_gradient: gradient as boolean,
+    p_logo_on_dark_id: darkId as string,
+    p_change_logo_on_dark: dark !== null || removeDark,
   });
   if (error) return fail(`${describeDbError(error)} Your current branding is unchanged.`);
   revalidatePath(`/staff/${slug}`, "layout");
   return ok("Branding saved. Proposals already sent keep the branding they were sent with.", newVersion ?? undefined);
 }
 
-export type LogoPreview = { ok: true; url: string; width: number; height: number; needsDarkBackground: boolean } | { ok: false };
+export type LogoPreview = { ok: true; url: string; width: number; height: number; needsDarkBackground: boolean; canTurnWhite: boolean } | { ok: false };
 
 /**
  * The logo exactly as a save would store it (the same checks, re-encoding and
- * trimming of empty transparent edges), for the branding preview. Nothing is
- * stored or registered, and the active logo is unchanged. Owner only, with its
- * own rate limit. Any refusal returns { ok: false }: the preview then shows the
- * chosen file as it is, and saving reports the problem as before.
+ * trimming of empty transparent edges), for the branding preview, and whether a
+ * white version can be made from it for dark backgrounds. Nothing is stored or
+ * registered, and the active logo is unchanged. Owner only, with its own rate
+ * limit. Any refusal returns { ok: false }: the preview then shows the chosen
+ * file as it is, and saving reports the problem as before.
  */
 export async function previewLogo(slug: string, form: FormData): Promise<LogoPreview> {
   const { user, membership } = await requireStaff(slug);
@@ -228,7 +261,8 @@ export async function previewLogo(slug: string, form: FormData): Promise<LogoPre
   if (!(await allowRequest("logo_preview", user.id, 60, 3600))) return { ok: false };
   const processed = await processLogo(Buffer.from(await file.arrayBuffer()));
   if (!processed.ok) return { ok: false };
-  return { ok: true, url: `data:image/png;base64,${processed.logo.png.toString("base64")}`, width: processed.logo.width, height: processed.logo.height, needsDarkBackground: processed.logo.needsDarkBackground };
+  const { png, width, height, needsDarkBackground } = processed.logo;
+  return { ok: true, url: `data:image/png;base64,${png.toString("base64")}`, width, height, needsDarkBackground, canTurnWhite: (await whiteLogoVersion(png)) !== null };
 }
 
 /**

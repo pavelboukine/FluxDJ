@@ -52,3 +52,14 @@ export const svgLogo = () => Buffer.from('<svg xmlns="http://www.w3.org/2000/svg
 export const htmlDisguisedAsPng = () => Buffer.from("<!doctype html><html><body><script>alert(1)</script></body></html>");
 /** A real PNG signature followed by garbage. */
 export const corruptPng = () => Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(2048, 7)]);
+
+/** Two inks side by side on transparency: a multicolour logo that must never be turned white. */
+export async function twoColourPng(width = 400, height = 100): Promise<Buffer> {
+  const pixels = Buffer.alloc(width * height * 4);
+  for (let y = Math.round(height * 0.2); y < height * 0.8; y++) {
+    for (let x = Math.round(width * 0.05); x < width * 0.95; x++) {
+      pixels.set(x < width / 2 ? [17, 17, 17, 255] : [225, 29, 72, 255], (y * width + x) * 4);
+    }
+  }
+  return sharp(pixels, { raw: { width, height, channels: 4 } }).png().toBuffer();
+}

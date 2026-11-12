@@ -2,10 +2,10 @@
 
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { Camera, Check, ChevronDown, Minus, Plus, Tag } from "lucide-react";
-import { BrandLogo } from "@/components/app/brand-logo";
+import { BrandLogo, type BrandLogoImage } from "@/components/app/brand-logo";
 import { Button } from "@/components/ui/button";
 import { discountRateLabel, priceSelection, recommendedSelection, type AnswerValue, type OfferSnapshot, type PricedSelection, type PricingResult, type ProposalSelectionState } from "@/lib/pricing";
-import { brandProps } from "@/lib/branding/colors";
+import { brandProps, frozenHeroLogoSurface } from "@/lib/branding/colors";
 import { shortDate } from "@/lib/dates";
 import { groupByCategory } from "@/lib/catalog/categories";
 import { countText, perUnitText, piecesText, quantityText } from "@/lib/catalog/quantity";
@@ -17,7 +17,7 @@ import { PriceSummaryCard } from "./price-summary";
 
 export type { ProposalSelectionState } from "@/lib/pricing";
 
-type Logo = { url: string; needsDarkBackground: boolean } | null;
+type Logo = BrandLogoImage | null;
 type EventInfo = { title: string; event_date: string; venue_name: string | null };
 
 type ViewProps = {
@@ -87,7 +87,7 @@ export function ProposalView(props: ViewProps) {
         {/* On a Brand Gradient the softened lines are full white: the gradient guarantees contrast for white, not for 80% of it. */}
         <header data-testid="proposal-hero" className="grid gap-3 rounded-2xl bg-brand-hero p-5 sm:p-8 brand-gradient:**:opacity-100">
           <div className="flex min-h-6 items-center">
-            <BrandLogo onHero logo={logo ?? null} name={offer.branding.display_name} className="max-h-12 max-w-48" fallbackClassName="text-sm font-semibold tracking-wide uppercase opacity-90" />
+            <BrandLogo surface={frozenHeroLogoSurface(offer.branding)} logo={logo ?? null} name={offer.branding.display_name} className="max-h-12 max-w-48" fallbackClassName="text-sm font-semibold tracking-wide uppercase opacity-90" />
           </div>
           <p className="text-xs font-medium tracking-wide uppercase opacity-80">{logo ? `Proposal from ${offer.branding.display_name}` : "Your proposal"}</p>
           <H1 className="text-2xl font-semibold text-balance sm:text-3xl">{event.title}</H1>

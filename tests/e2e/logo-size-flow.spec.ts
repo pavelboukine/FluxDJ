@@ -239,7 +239,11 @@ test.describe.serial("logo size", () => {
     await page.goto(`/staff/${light.slug}/settings/branding`);
     await page.getByLabel("Logo", { exact: true }).setInputFiles(files["light.png"]);
     await expect(page.getByTestId("logo-preview-state")).toHaveText("The preview shows the logo as it will be saved.");
-    await expect(page.getByTestId("branding-preview").getByRole("img", { name: light.displayName }).locator("xpath=..")).toHaveClass(/bg-neutral-900/);
+    // On the proposal's dark header it needs none; on the light event page it has its dark plate.
+    const previewImg = page.getByTestId("branding-preview").getByRole("img", { name: light.displayName });
+    await expect(previewImg.locator("xpath=..")).not.toHaveClass(/bg-neutral-900|bg-white/);
+    await page.getByRole("tab", { name: "Event page" }).click();
+    await expect(previewImg.locator("xpath=..")).toHaveClass(/bg-neutral-900/);
     await upload(page, light, files["light.png"], "130");
     for (const viewport of WIDTHS) {
       await page.setViewportSize(viewport);

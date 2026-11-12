@@ -319,7 +319,10 @@ begin
       'display_name', v_tenant.display_name,
       'logo_storage_path', v_tenant.logo_storage_path,
       'brand_colors', v_tenant.brand_colors
-    ),
+    )
+    -- The logo for dark backgrounds, or null. Always present: an offer without the
+    -- key was sent before logo variants, and keeps the logo backdrops it had then.
+    || jsonb_build_object('logo_on_dark_storage_path', v_tenant.logo_on_dark_storage_path),
     'tax', jsonb_build_object(
       'rounding', 'per_line_per_tax_half_up',
       'rates', v_tenant.tax_config,
@@ -7398,9 +7401,12 @@ CREATE OR REPLACE FUNCTION "private"."unused_tenant_logos"() RETURNS TABLE("tena
     AS $_$
   select l.tenant_id, l.storage_path, true, l.created_at
   from public.tenant_logos l
-  where not exists (select 1 from public.tenants t where t.id = l.tenant_id and t.logo_storage_path = l.storage_path)
+  where not exists (select 1 from public.tenants t
+                    where t.id = l.tenant_id and l.storage_path in (t.logo_storage_path, t.logo_on_dark_storage_path))
     and not exists (select 1 from public.proposals p
-                    where p.tenant_id = l.tenant_id and p.offer_snapshot -> 'branding' ->> 'logo_storage_path' = l.storage_path)
+                    where p.tenant_id = l.tenant_id
+                      and l.storage_path in (p.offer_snapshot -> 'branding' ->> 'logo_storage_path',
+                                             p.offer_snapshot -> 'branding' ->> 'logo_on_dark_storage_path'))
   union all
   select (split_part(o.name, '/', 1))::uuid, o.name, false, o.created_at
   from storage.objects o
@@ -11259,9 +11265,11 @@ CREATE OR REPLACE FUNCTION "public"."public_tenant_brand"("p_tenant_slug" "text"
     AS $$
   select jsonb_build_object('display_name', t.display_name, 'brand_colors', t.brand_colors,
            'logo_storage_path', l.storage_path, 'logo_needs_dark_background', l.needs_dark_background,
-           'logo_width', l.width, 'logo_height', l.height, 'logo_size_percent', t.logo_size_percent)
+           'logo_width', l.width, 'logo_height', l.height, 'logo_size_percent', t.logo_size_percent,
+           'logo_on_dark_storage_path', d.storage_path, 'logo_on_dark_width', d.width, 'logo_on_dark_height', d.height)
   from public.tenants t
   left join public.tenant_logos l on l.tenant_id = t.id and l.storage_path = t.logo_storage_path
+  left join public.tenant_logos d on d.tenant_id = t.id and d.storage_path = t.logo_on_dark_storage_path
   where t.slug = p_tenant_slug and t.archived_at is null and t.suspended_at is null;
 $$;
 
@@ -14166,7 +14174,7 @@ $_$;
 ALTER FUNCTION "public"."update_tax_settings"("p_tenant_id" "uuid", "p_expected_version" integer, "p_tax_config" "jsonb", "p_tax_categories" "jsonb") OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."update_tenant_branding"("p_tenant_id" "uuid", "p_expected_version" integer, "p_logo_id" "uuid", "p_primary_color" "text", "p_logo_size_percent" integer DEFAULT NULL::integer, "p_accent_color" "text" DEFAULT NULL::"text", "p_gradient" boolean DEFAULT NULL::boolean) RETURNS integer
+CREATE OR REPLACE FUNCTION "public"."update_tenant_branding"("p_tenant_id" "uuid", "p_expected_version" integer, "p_logo_id" "uuid", "p_primary_color" "text", "p_logo_size_percent" integer DEFAULT NULL::integer, "p_accent_color" "text" DEFAULT NULL::"text", "p_gradient" boolean DEFAULT NULL::boolean, "p_logo_on_dark_id" "uuid" DEFAULT NULL::"uuid", "p_change_logo_on_dark" boolean DEFAULT false) RETURNS integer
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
     AS $_$
@@ -14174,6 +14182,7 @@ declare
   v_role text;
   t public.tenants%rowtype;
   v_path text;
+  v_dark_path text;
   v_color text := nullif(lower(btrim(coalesce(p_primary_color, ''))), '');
   v_accent text := nullif(lower(btrim(coalesce(p_accent_color, ''))), '');
   v_colors jsonb;
@@ -14209,6 +14218,22 @@ begin
       raise exception 'branding_invalid: that logo is not available' using errcode = 'invalid_parameter_value';
     end if;
   end if;
+
+  -- The logo for dark backgrounds: kept unless the caller changes it, and never without a main logo.
+  if p_change_logo_on_dark is true then
+    if p_logo_on_dark_id is not null then
+      select l.storage_path into v_dark_path from public.tenant_logos l where l.tenant_id = p_tenant_id and l.id = p_logo_on_dark_id;
+      if v_dark_path is null then
+        raise exception 'branding_invalid: that logo for dark backgrounds is not available' using errcode = 'invalid_parameter_value';
+      end if;
+      if v_path is null then
+        raise exception 'branding_invalid: add your main logo before a logo for dark backgrounds' using errcode = 'invalid_parameter_value';
+      end if;
+    end if;
+  else
+    v_dark_path := case when v_path is null then null else t.logo_on_dark_storage_path end;
+  end if;
+
   v_colors := case when v_color is null then t.brand_colors - 'primary' else t.brand_colors || jsonb_build_object('primary', v_color) end;
   -- An accent is stored whenever one is given, so turning the gradient off keeps the owner's choice.
   if v_accent is not null then
@@ -14226,10 +14251,13 @@ begin
   v_size := coalesce(p_logo_size_percent, t.logo_size_percent);
 
   update public.tenants
-    set logo_storage_path = v_path, brand_colors = v_colors, logo_size_percent = v_size, branding_version = branding_version + 1
+    set logo_storage_path = v_path, logo_on_dark_storage_path = v_dark_path, brand_colors = v_colors,
+        logo_size_percent = v_size, branding_version = branding_version + 1
     where id = t.id;
   perform private.audit(t.id, 'tenant', t.id, 'branding_updated', 'staff', (select auth.uid()),
     jsonb_build_object('logo_changed', v_path is distinct from t.logo_storage_path, 'logo_storage_path', v_path,
+                       'logo_on_dark_changed', v_dark_path is distinct from t.logo_on_dark_storage_path,
+                       'logo_on_dark_storage_path', v_dark_path,
                        'primary_color', v_color, 'accent_color', v_colors ->> 'accent', 'gradient', v_colors ? 'gradient',
                        'logo_size_percent', v_size, 'version', t.branding_version + 1));
   return t.branding_version + 1;
@@ -14237,7 +14265,7 @@ end;
 $_$;
 
 
-ALTER FUNCTION "public"."update_tenant_branding"("p_tenant_id" "uuid", "p_expected_version" integer, "p_logo_id" "uuid", "p_primary_color" "text", "p_logo_size_percent" integer, "p_accent_color" "text", "p_gradient" boolean) OWNER TO "postgres";
+ALTER FUNCTION "public"."update_tenant_branding"("p_tenant_id" "uuid", "p_expected_version" integer, "p_logo_id" "uuid", "p_primary_color" "text", "p_logo_size_percent" integer, "p_accent_color" "text", "p_gradient" boolean, "p_logo_on_dark_id" "uuid", "p_change_logo_on_dark" boolean) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."void_contract"("p_contract_id" "uuid", "p_reason" "text") RETURNS "jsonb"
@@ -15417,6 +15445,7 @@ CREATE TABLE IF NOT EXISTS "public"."tenants" (
     "proposals_by_default" boolean DEFAULT true NOT NULL,
     "logo_size_percent" integer DEFAULT 100 NOT NULL,
     "setup_guidance" "text" DEFAULT 'proposals_and_contracts'::"text" NOT NULL,
+    "logo_on_dark_storage_path" "text",
     CONSTRAINT "tenants_booking_policy_valid" CHECK (("booking_confirmation_policy" = ANY (ARRAY['on_signature'::"text", 'on_deposit'::"text"]))),
     CONSTRAINT "tenants_booking_policy_version_nonnegative" CHECK (("booking_policy_version" >= 0)),
     CONSTRAINT "tenants_brand_colors_valid" CHECK ("private"."is_valid_brand_colors"("brand_colors")),
@@ -15428,6 +15457,8 @@ CREATE TABLE IF NOT EXISTS "public"."tenants" (
     CONSTRAINT "tenants_deposit_percent_range" CHECK ((("deposit_percent" >= 0) AND ("deposit_percent" <= 100))),
     CONSTRAINT "tenants_display_name_length" CHECK ((("length"("btrim"("display_name")) >= 1) AND ("length"("btrim"("display_name")) <= 200))),
     CONSTRAINT "tenants_dj_name_length" CHECK ((("dj_name" = "btrim"("dj_name")) AND (("length"("dj_name") >= 1) AND ("length"("dj_name") <= 80)))),
+    CONSTRAINT "tenants_logo_on_dark_needs_logo" CHECK ((("logo_on_dark_storage_path" IS NULL) OR ("logo_storage_path" IS NOT NULL))),
+    CONSTRAINT "tenants_logo_on_dark_path_length" CHECK ((("logo_on_dark_storage_path" IS NULL) OR (("length"("logo_on_dark_storage_path") >= 1) AND ("length"("logo_on_dark_storage_path") <= 1024)))),
     CONSTRAINT "tenants_logo_path_length" CHECK ((("length"("logo_storage_path") >= 1) AND ("length"("logo_storage_path") <= 1024))),
     CONSTRAINT "tenants_logo_size_percent_range" CHECK ((("logo_size_percent" >= 100) AND ("logo_size_percent" <= 130))),
     CONSTRAINT "tenants_planning_lock_days_range" CHECK ((("planning_lock_days" >= 0) AND ("planning_lock_days" <= 365))),
@@ -15511,6 +15542,10 @@ COMMENT ON COLUMN "public"."tenants"."logo_size_percent" IS 'Logo height limit i
 
 
 COMMENT ON COLUMN "public"."tenants"."setup_guidance" IS 'Which workflows setup reminders cover: proposals_and_contracts (default), contracts_only or none. Guidance only: never read for sending, booking or planning.';
+
+
+
+COMMENT ON COLUMN "public"."tenants"."logo_on_dark_storage_path" IS 'Optional version of the logo for dark backgrounds (a registered tenant_logos path of this business). Requires logo_storage_path. Changed only by update_tenant_branding.';
 
 
 
@@ -17959,6 +17994,11 @@ ALTER TABLE ONLY "public"."tenant_memberships"
 
 ALTER TABLE ONLY "public"."tenant_memberships"
     ADD CONSTRAINT "tenant_memberships_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."tenants"
+    ADD CONSTRAINT "tenants_logo_on_dark_registered" FOREIGN KEY ("id", "logo_on_dark_storage_path") REFERENCES "public"."tenant_logos"("tenant_id", "storage_path") ON DELETE RESTRICT;
 
 
 
@@ -20512,9 +20552,9 @@ GRANT ALL ON FUNCTION "public"."update_tax_settings"("p_tenant_id" "uuid", "p_ex
 
 
 
-REVOKE ALL ON FUNCTION "public"."update_tenant_branding"("p_tenant_id" "uuid", "p_expected_version" integer, "p_logo_id" "uuid", "p_primary_color" "text", "p_logo_size_percent" integer, "p_accent_color" "text", "p_gradient" boolean) FROM PUBLIC;
-GRANT ALL ON FUNCTION "public"."update_tenant_branding"("p_tenant_id" "uuid", "p_expected_version" integer, "p_logo_id" "uuid", "p_primary_color" "text", "p_logo_size_percent" integer, "p_accent_color" "text", "p_gradient" boolean) TO "service_role";
-GRANT ALL ON FUNCTION "public"."update_tenant_branding"("p_tenant_id" "uuid", "p_expected_version" integer, "p_logo_id" "uuid", "p_primary_color" "text", "p_logo_size_percent" integer, "p_accent_color" "text", "p_gradient" boolean) TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."update_tenant_branding"("p_tenant_id" "uuid", "p_expected_version" integer, "p_logo_id" "uuid", "p_primary_color" "text", "p_logo_size_percent" integer, "p_accent_color" "text", "p_gradient" boolean, "p_logo_on_dark_id" "uuid", "p_change_logo_on_dark" boolean) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."update_tenant_branding"("p_tenant_id" "uuid", "p_expected_version" integer, "p_logo_id" "uuid", "p_primary_color" "text", "p_logo_size_percent" integer, "p_accent_color" "text", "p_gradient" boolean, "p_logo_on_dark_id" "uuid", "p_change_logo_on_dark" boolean) TO "service_role";
+GRANT ALL ON FUNCTION "public"."update_tenant_branding"("p_tenant_id" "uuid", "p_expected_version" integer, "p_logo_id" "uuid", "p_primary_color" "text", "p_logo_size_percent" integer, "p_accent_color" "text", "p_gradient" boolean, "p_logo_on_dark_id" "uuid", "p_change_logo_on_dark" boolean) TO "authenticated";
 
 
 
