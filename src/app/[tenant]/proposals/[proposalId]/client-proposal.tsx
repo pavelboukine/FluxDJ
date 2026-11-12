@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ProposalView, usePricing, type ProposalSelectionState } from "@/components/proposal/proposal-preview";
 import { PriceLines } from "@/components/proposal/price-summary";
 import type { OfferSnapshot, PricedSelection } from "@/lib/pricing";
-import { brandStyle } from "@/lib/branding/colors";
+import { brandProps } from "@/lib/branding/colors";
 import { cn } from "@/lib/utils";
 import { saveSelectionDraftAction, submitSelectionAction } from "./actions";
 
@@ -229,7 +229,7 @@ export function ClientProposal(props: Props) {
 
   if (reviewing && pricing.result.ok) {
     return (
-      <div style={brandStyle(props.offer.branding.brand_colors.primary)} className="mx-auto grid w-full max-w-2xl gap-5 text-sm">
+      <div {...brandProps(props.offer.branding.brand_colors)} className="mx-auto grid w-full max-w-2xl gap-5 text-sm">
         <div className="grid gap-1">
           <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{props.event.title}</p>
           <h1 ref={reviewTop} tabIndex={-1} className="text-2xl font-semibold outline-none">
@@ -416,7 +416,7 @@ function ReviewChoices({ offer, priced }: { offer: OfferSnapshot; priced: Priced
         <p className="text-lg font-semibold">{pkg?.name}</p>
         {pkg?.description ? <p className="text-muted-foreground">{pkg.description}</p> : null}
       </section>
-      <section aria-labelledby="review-price" className="grid gap-3 rounded-2xl border-2 p-4 sm:p-6" style={{ borderColor: "var(--brand)" }}>
+      <section aria-labelledby="review-price" className="grid gap-3 rounded-2xl border-2 p-4 sm:p-6" style={{ borderColor: "var(--brand-ink)" }}>
         <h2 id="review-price" className="text-base font-semibold">
           Your price
         </h2>

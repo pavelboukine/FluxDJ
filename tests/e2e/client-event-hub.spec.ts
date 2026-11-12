@@ -289,6 +289,69 @@ test.describe.serial("client event hub", () => {
     await expect(page.locator("body")).not.toContainText(titles.deposit);
   });
 
+  test("gradient branding: only a business that chose it gets the wash, the gradient progress and the contract band", async ({ page }) => {
+    const solid = brandTheme("#cbc7ff");
+    const colors = { primary: "#cbc7ff", accent: "#c79ecb", gradient: "on" };
+    const theme = brandTheme(colors);
+    const wash = `linear-gradient(135deg, ${rgb(theme.wash!.from)}, ${rgb(theme.wash!.to)})`;
+    const gradient = `linear-gradient(135deg, ${rgb(theme.gradient!.from)}, ${rgb(theme.gradient!.to)})`;
+    const planning = `/${lumiere.slug}/planning/${ids.booked}`;
+    const contract = `/${lumiere.slug}/contracts/${bookedContract}`;
+    const hubFill = page.getByTestId("hub-progress").locator("[role=progressbar] > div");
+    const planFill = page.getByTestId("plan-overview").locator("[role=progressbar] > div").first();
+    await signInWithLink(page, clientEmail, hub(lumiere, ids.booked));
+
+    // Solid, although this business holds an accent from before gradients: everything as it was.
+    expect((await must(admin.from("tenants").select("brand_colors").eq("id", lumiere.id).single())).data!.brand_colors).toEqual({ primary: "#cbc7ff", accent: "#E11D48" });
+    await expect(page.getByTestId("hub-next-step")).toHaveCSS("background-image", "none");
+    await expect(page.getByTestId("hub-next-step")).toHaveCSS("background-color", rgb(solid.tint));
+    await expect(hubFill).toHaveCSS("background-image", "none");
+    await expect(hubFill).toHaveCSS("background-color", rgb(solid.ink));
+    await page.goto(planning);
+    await expect(page.getByTestId("plan-header")).toHaveCSS("background-image", "none");
+    await expect(page.getByTestId("plan-header")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect(page.getByTestId("plan-header")).toHaveCSS("padding-top", "0px");
+    await expect(planFill).toHaveCSS("background-color", rgb(solid.ink));
+    await page.goto(contract);
+    await expect(page.getByTestId("contract-brand-band")).toHaveCSS("background-image", "none");
+    await expect(page.getByTestId("contract-brand-band")).toHaveCSS("background-color", rgb("#cbc7ff"));
+
+    // The owner chooses a gradient.
+    await must(admin.from("tenants").update({ brand_colors: colors }).eq("id", lumiere.id));
+    try {
+      for (const width of [390, 1280]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto(hub(lumiere, ids.booked));
+        await page.mouse.move(0, 0);
+        await expect(page.getByTestId("hub-next-step")).toHaveCSS("background-image", wash);
+        await expect(hubFill).toHaveCSS("background-image", gradient);
+        // Buttons stay solid, on the same Brand Ink as before.
+        await expect(page.getByTestId("hub-primary")).toHaveCSS("background-image", "none");
+        await expect(page.getByTestId("hub-primary")).toHaveCSS("background-color", rgb(solid.ink));
+        await expect(page.getByRole("img", { name: lumiere.displayName })).toBeVisible();
+        expect(await sideways(page)).toBeLessThanOrEqual(0);
+
+        await page.goto(planning);
+        await expect(page.getByTestId("plan-header")).toHaveCSS("background-image", wash);
+        await expect(page.getByTestId("plan-header").getByRole("heading", { level: 1 })).toHaveText(titles.booked);
+        await expect(planFill).toHaveCSS("background-image", gradient);
+        await expect(page.getByTestId("plan-primary")).toHaveCSS("background-image", "none");
+        await expect(page.getByTestId("plan-primary")).toHaveCSS("background-color", rgb(solid.ink));
+        expect(await sideways(page)).toBeLessThanOrEqual(0);
+
+        await page.goto(contract);
+        await expect(page.getByTestId("contract-brand-band")).toHaveCSS("background-image", gradient);
+        expect(await sideways(page)).toBeLessThanOrEqual(0);
+      }
+      // Another business the same client works with is untouched.
+      await page.goto(hub(rose, ids.external));
+      await expect(page.getByTestId("hub-next-step")).toHaveCSS("background-image", "none");
+      await expect(page.getByTestId("hub-next-step")).toHaveCSS("background-color", rgb(brandTheme("#E11D48").tint));
+    } finally {
+      await must(admin.from("tenants").update({ brand_colors: { primary: "#cbc7ff", accent: "#E11D48" } }).eq("id", lumiere.id));
+    }
+  });
+
   test("archived, another business's address or an unknown event: one neutral answer naming nothing", async ({ page }) => {
     await signInWithLink(page, clientEmail);
     for (const path of [hub(lumiere, ids.archived), hub(rose, ids.booked), hub(lumiere, randomUUID())]) {

@@ -143,6 +143,38 @@ test.describe.serial("planning invitation branding", () => {
     });
   }
 
+  test("gradient branding puts the logo on the Brand Wash; a business without it keeps its plain sheet", async ({ page }) => {
+    const brandRow = (p: typeof page) => p.getByTestId("public-card-brand");
+    // Solid: no wash and no extra spacing, for a business with a colour and for one with an accent but no preference.
+    await must(admin.from("tenants").update({ brand_colors: { primary: "#E11D48", accent: "#7c3aed" } }).eq("id", rose.id));
+    await openLink(page, `/${rose.slug}/planning-invite#${b.token}`);
+    await expect(brandRow(page)).toHaveCSS("background-image", "none");
+    await expect(brandRow(page)).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect(brandRow(page)).toHaveCSS("padding-top", "0px");
+
+    const colors = { primary: "#cbc7ff", accent: "#c79ecb", gradient: "on" };
+    const theme = brandTheme(colors);
+    await must(admin.from("tenants").update({ brand_colors: colors }).eq("id", wide.id));
+    try {
+      for (const width of [390, 1280]) {
+        await page.setViewportSize({ width, height: 900 });
+        await openLink(page, `/${wide.slug}/planning-invite#${a.token}`);
+        await expect(brandRow(page)).toHaveCSS("background-image", `linear-gradient(135deg, ${rgb(theme.wash!.from)}, ${rgb(theme.wash!.to)})`);
+        await expect(brandRow(page).getByRole("img", { name: wide.displayName })).toBeVisible();
+        // The wash runs the full width of the sheet.
+        const [row, sheet] = [(await brandRow(page).boundingBox())!, (await page.locator("main section").boundingBox())!];
+        expect(Math.abs(row.width - sheet.width)).toBeLessThanOrEqual(2);
+        const button = page.getByRole("button", { name: "Email me a sign-in link" });
+        await expect(button).toHaveCSS("background-image", "none");
+        await expect(button).toHaveCSS("background-color", rgb(brandTheme("#cbc7ff").ink));
+        expect(await sideways(page)).toBeLessThanOrEqual(0);
+      }
+    } finally {
+      await must(admin.from("tenants").update({ brand_colors: { primary: "#cbc7ff" } }).eq("id", wide.id));
+      await must(admin.from("tenants").update({ brand_colors: { primary: "#E11D48" } }).eq("id", rose.id));
+    }
+  });
+
   test("a colour without a logo, a logo without a colour, and neither", async ({ page }) => {
     await openLink(page, `/${rose.slug}/planning-invite#${b.token}`);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("You're invited to plan your event");

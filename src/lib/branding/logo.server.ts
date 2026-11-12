@@ -9,7 +9,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
  */
 export const LOGO_BUCKET = "tenant-logos";
 
-export type BrandLogo = { url: string; needsDarkBackground: boolean; width: number; height: number; sizePercent?: number };
+/** `onDark`: the business's own version of this logo for dark backgrounds, when it has one. */
+export type LogoVariant = { url: string; width: number; height: number };
+export type BrandLogo = { url: string; needsDarkBackground: boolean; width: number; height: number; sizePercent?: number; onDark?: LogoVariant };
 
 /** A short-lived (one hour) signed URL for a stored logo, after the caller's own authorization. */
 export async function signedLogoUrl(storagePath: string): Promise<string | null> {
@@ -30,13 +32,24 @@ export async function logoUrl(details: { storage_path?: unknown; needs_dark_back
   };
 }
 
-/** The logo frozen into a proposal offer when it was sent (still shown after the owner changes it). */
-export async function frozenOfferLogo(offer: { branding: { logo_storage_path: string | null } }): Promise<BrandLogo | null> {
+/**
+ * The logo frozen into a proposal offer when it was sent (still shown after the owner changes it), with
+ * the version for dark backgrounds if the offer froze one. An offer from before logo variants has no such
+ * key and gets the logo alone, exactly as before. Each path must be a registered logo of the one business
+ * whose folder the main logo is in; a variant that isn't is left out, never an error.
+ */
+export async function frozenOfferLogo(offer: { branding: { logo_storage_path: string | null; logo_on_dark_storage_path?: string | null } }): Promise<BrandLogo | null> {
   const path = offer.branding.logo_storage_path;
   const tenantId = path?.split("/")[0];
   if (!path || !tenantId || !/^[0-9a-f-]{36}$/.test(tenantId)) return null;
-  const { data } = await createAdminClient().rpc("tenant_logo_details", { p_tenant_id: tenantId, p_storage_path: path });
-  return logoUrl(data as Record<string, unknown> | null);
+  const admin = createAdminClient();
+  const { data } = await admin.rpc("tenant_logo_details", { p_tenant_id: tenantId, p_storage_path: path });
+  const logo = await logoUrl(data as Record<string, unknown> | null);
+  const darkPath = offer.branding.logo_on_dark_storage_path;
+  if (!logo || !darkPath || !darkPath.startsWith(`${tenantId}/`)) return logo;
+  const { data: dark } = await admin.rpc("tenant_logo_details", { p_tenant_id: tenantId, p_storage_path: darkPath });
+  const variant = await logoUrl(dark as Record<string, unknown> | null);
+  return variant ? { ...logo, onDark: { url: variant.url, width: variant.width, height: variant.height } } : logo;
 }
 
 /** The business's live logo, for client pages (after their access check) by slug. */

@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { Camera, Check, ChevronDown, Minus, Plus, Tag } from "lucide-react";
 import { BrandLogo } from "@/components/app/brand-logo";
 import { Button } from "@/components/ui/button";
 import { discountRateLabel, priceSelection, recommendedSelection, type AnswerValue, type OfferSnapshot, type PricedSelection, type PricingResult, type ProposalSelectionState } from "@/lib/pricing";
-import { brandStyle } from "@/lib/branding/colors";
+import { brandProps } from "@/lib/branding/colors";
 import { shortDate } from "@/lib/dates";
 import { groupByCategory } from "@/lib/catalog/categories";
 import { countText, perUnitText, piecesText, quantityText } from "@/lib/catalog/quantity";
@@ -72,8 +72,8 @@ export function ProposalView(props: ViewProps) {
   const pricing = usePricing(offer, selection);
   const { priced } = pricing;
   const money = (cents: number) => formatCents(cents, offer.currency);
-  const brand = offer.branding.brand_colors;
-  const style: CSSProperties = brandStyle(brand.primary);
+  // The offer's own branding (frozen once sent): a gradient only if the offer carries the preference.
+  const branded = brandProps(offer.branding.brand_colors);
   const H1 = asPage ? "h1" : "h2";
   const H2 = asPage ? "h2" : "h3";
   const pkg = offer.packages.find((p) => p.key === selection.package_key) ?? null;
@@ -83,10 +83,11 @@ export function ProposalView(props: ViewProps) {
 
   return (
     <ProposalMediaProvider base={mediaBase} offer={offer} onAccessLost={onAccessLost}>
-      <div style={style} className="@container/proposal grid gap-8 text-sm">
-        <header className="grid gap-3 rounded-2xl p-5 sm:p-8" style={{ background: "var(--brand)", color: "var(--brand-foreground)" }}>
+      <div {...branded} className="@container/proposal grid gap-8 text-sm">
+        {/* On a Brand Gradient the softened lines are full white: the gradient guarantees contrast for white, not for 80% of it. */}
+        <header data-testid="proposal-hero" className="grid gap-3 rounded-2xl bg-brand-hero p-5 sm:p-8 brand-gradient:**:opacity-100">
           <div className="flex min-h-6 items-center">
-            <BrandLogo logo={logo ?? null} name={offer.branding.display_name} className="max-h-12 max-w-48" fallbackClassName="text-sm font-semibold tracking-wide uppercase opacity-90" />
+            <BrandLogo onHero logo={logo ?? null} name={offer.branding.display_name} className="max-h-12 max-w-48" fallbackClassName="text-sm font-semibold tracking-wide uppercase opacity-90" />
           </div>
           <p className="text-xs font-medium tracking-wide uppercase opacity-80">{logo ? `Proposal from ${offer.branding.display_name}` : "Your proposal"}</p>
           <H1 className="text-2xl font-semibold text-balance sm:text-3xl">{event.title}</H1>
@@ -198,7 +199,7 @@ function PackageCard({ offer, packageKey, selected, disabled, onSelect, headingT
     <article
       data-testid="package-card"
       className={cn("relative flex min-w-0 flex-col rounded-xl border-2 bg-card transition-shadow @4xl/proposal:rounded-2xl", selected ? "shadow-lg" : "border-border")}
-      style={selected ? { borderColor: "var(--brand)" } : undefined}
+      style={selected ? { borderColor: "var(--brand-ink)" } : undefined}
     >
       {p.is_popular ? (
         <span className="absolute -top-2.5 left-1/2 z-10 -translate-x-1/2 rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold whitespace-nowrap shadow-sm @4xl/proposal:-top-3 @4xl/proposal:left-4 @4xl/proposal:translate-x-0 @4xl/proposal:px-3 @4xl/proposal:py-1 @4xl/proposal:text-xs" style={{ background: "var(--brand)", color: "var(--brand-foreground)" }}>
@@ -394,7 +395,7 @@ function Questions({
   disabled?: boolean;
   headingTag: "h2" | "h3";
 }) {
-  const option = "flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border px-3 py-2 has-[:checked]:border-[var(--brand)] has-[:checked]:bg-muted/60 has-[:disabled]:cursor-not-allowed has-[:focus-visible]:ring-3 has-[:focus-visible]:ring-ring/50";
+  const option = "flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border px-3 py-2 has-[:checked]:border-[var(--brand-ink)] has-[:checked]:bg-muted/60 has-[:disabled]:cursor-not-allowed has-[:focus-visible]:ring-3 has-[:focus-visible]:ring-ring/50";
   return (
     <section aria-labelledby="q-heading" className="grid gap-4">
       <div className="grid gap-1">
@@ -416,7 +417,7 @@ function Questions({
               <div className="grid grid-cols-2 gap-2">
                 {([["Yes", true], ["No", false]] as const).map(([label, value]) => (
                   <label key={label} className={option}>
-                    <input type="radio" name={`q-${q.key}`} checked={answers[q.key] === value} onChange={() => onAnswers({ ...answers, [q.key]: value })} className="size-4 accent-[var(--brand)]" />
+                    <input type="radio" name={`q-${q.key}`} checked={answers[q.key] === value} onChange={() => onAnswers({ ...answers, [q.key]: value })} className="size-4 accent-[var(--brand-ink)]" />
                     {label}
                   </label>
                 ))}
@@ -425,7 +426,7 @@ function Questions({
               <div className="grid gap-2 @md/main:grid-cols-2">
                 {q.options.map((o) => (
                   <label key={o.value} className={option}>
-                    <input type="radio" name={`q-${q.key}`} checked={answers[q.key] === o.value} onChange={() => onAnswers({ ...answers, [q.key]: o.value })} className="size-4 accent-[var(--brand)]" />
+                    <input type="radio" name={`q-${q.key}`} checked={answers[q.key] === o.value} onChange={() => onAnswers({ ...answers, [q.key]: o.value })} className="size-4 accent-[var(--brand-ink)]" />
                     {o.label}
                   </label>
                 ))}
@@ -440,7 +441,7 @@ function Questions({
                         type="checkbox"
                         checked={current.includes(o.value)}
                         onChange={(e) => onAnswers({ ...answers, [q.key]: e.target.checked ? [...current, o.value] : current.filter((v) => v !== o.value) })}
-                        className="size-4 accent-[var(--brand)]"
+                        className="size-4 accent-[var(--brand-ink)]"
                       />
                       {o.label}
                     </label>

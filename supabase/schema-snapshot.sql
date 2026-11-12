@@ -3007,10 +3007,15 @@ CREATE OR REPLACE FUNCTION "private"."is_valid_brand_colors"("colors" "jsonb") R
      and not exists (
        select 1
        from jsonb_each(colors) as e(key, value)
-       where e.key not in ('primary', 'accent', 'background', 'foreground', 'muted')
-          or jsonb_typeof(e.value) <> 'string'
-          or (e.value #>> '{}') !~ '^#[0-9A-Fa-f]{6}$'
-     );
+       where case
+         when e.key = 'gradient' then e.value is distinct from '"on"'::jsonb
+         when e.key in ('primary', 'accent', 'background', 'foreground', 'muted')
+           then jsonb_typeof(e.value) <> 'string' or (e.value #>> '{}') !~ '^#[0-9A-Fa-f]{6}$'
+         else true
+       end
+     )
+     -- A gradient always has its second colour.
+     and (not colors ? 'gradient' or colors ? 'accent');
 $_$;
 
 
@@ -14161,7 +14166,7 @@ $_$;
 ALTER FUNCTION "public"."update_tax_settings"("p_tenant_id" "uuid", "p_expected_version" integer, "p_tax_config" "jsonb", "p_tax_categories" "jsonb") OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."update_tenant_branding"("p_tenant_id" "uuid", "p_expected_version" integer, "p_logo_id" "uuid", "p_primary_color" "text", "p_logo_size_percent" integer DEFAULT NULL::integer) RETURNS integer
+CREATE OR REPLACE FUNCTION "public"."update_tenant_branding"("p_tenant_id" "uuid", "p_expected_version" integer, "p_logo_id" "uuid", "p_primary_color" "text", "p_logo_size_percent" integer DEFAULT NULL::integer, "p_accent_color" "text" DEFAULT NULL::"text", "p_gradient" boolean DEFAULT NULL::boolean) RETURNS integer
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO ''
     AS $_$
@@ -14170,6 +14175,7 @@ declare
   t public.tenants%rowtype;
   v_path text;
   v_color text := nullif(lower(btrim(coalesce(p_primary_color, ''))), '');
+  v_accent text := nullif(lower(btrim(coalesce(p_accent_color, ''))), '');
   v_colors jsonb;
   v_size integer;
 begin
@@ -14191,6 +14197,9 @@ begin
   if v_color is not null and v_color !~ '^#[0-9a-f]{6}$' then
     raise exception 'branding_invalid: the colour must be a hex value like #1a2b3c' using errcode = 'invalid_parameter_value';
   end if;
+  if v_accent is not null and v_accent !~ '^#[0-9a-f]{6}$' then
+    raise exception 'branding_invalid: the accent colour must be a hex value like #1a2b3c' using errcode = 'invalid_parameter_value';
+  end if;
   if p_logo_size_percent is not null and p_logo_size_percent not between 100 and 130 then
     raise exception 'branding_invalid: the logo size must be from 100%% to 130%%' using errcode = 'invalid_parameter_value';
   end if;
@@ -14201,6 +14210,19 @@ begin
     end if;
   end if;
   v_colors := case when v_color is null then t.brand_colors - 'primary' else t.brand_colors || jsonb_build_object('primary', v_color) end;
+  -- An accent is stored whenever one is given, so turning the gradient off keeps the owner's choice.
+  if v_accent is not null then
+    v_colors := v_colors || jsonb_build_object('accent', v_accent);
+  end if;
+  -- Null: a caller from before gradients existed. The preference stays as it is.
+  if p_gradient then
+    if not v_colors ? 'accent' then
+      raise exception 'branding_invalid: choose an accent colour to use a gradient' using errcode = 'invalid_parameter_value';
+    end if;
+    v_colors := v_colors || jsonb_build_object('gradient', 'on');
+  elsif p_gradient is not null then
+    v_colors := v_colors - 'gradient';
+  end if;
   v_size := coalesce(p_logo_size_percent, t.logo_size_percent);
 
   update public.tenants
@@ -14208,13 +14230,14 @@ begin
     where id = t.id;
   perform private.audit(t.id, 'tenant', t.id, 'branding_updated', 'staff', (select auth.uid()),
     jsonb_build_object('logo_changed', v_path is distinct from t.logo_storage_path, 'logo_storage_path', v_path,
-                       'primary_color', v_color, 'logo_size_percent', v_size, 'version', t.branding_version + 1));
+                       'primary_color', v_color, 'accent_color', v_colors ->> 'accent', 'gradient', v_colors ? 'gradient',
+                       'logo_size_percent', v_size, 'version', t.branding_version + 1));
   return t.branding_version + 1;
 end;
 $_$;
 
 
-ALTER FUNCTION "public"."update_tenant_branding"("p_tenant_id" "uuid", "p_expected_version" integer, "p_logo_id" "uuid", "p_primary_color" "text", "p_logo_size_percent" integer) OWNER TO "postgres";
+ALTER FUNCTION "public"."update_tenant_branding"("p_tenant_id" "uuid", "p_expected_version" integer, "p_logo_id" "uuid", "p_primary_color" "text", "p_logo_size_percent" integer, "p_accent_color" "text", "p_gradient" boolean) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."void_contract"("p_contract_id" "uuid", "p_reason" "text") RETURNS "jsonb"
@@ -20489,9 +20512,9 @@ GRANT ALL ON FUNCTION "public"."update_tax_settings"("p_tenant_id" "uuid", "p_ex
 
 
 
-REVOKE ALL ON FUNCTION "public"."update_tenant_branding"("p_tenant_id" "uuid", "p_expected_version" integer, "p_logo_id" "uuid", "p_primary_color" "text", "p_logo_size_percent" integer) FROM PUBLIC;
-GRANT ALL ON FUNCTION "public"."update_tenant_branding"("p_tenant_id" "uuid", "p_expected_version" integer, "p_logo_id" "uuid", "p_primary_color" "text", "p_logo_size_percent" integer) TO "service_role";
-GRANT ALL ON FUNCTION "public"."update_tenant_branding"("p_tenant_id" "uuid", "p_expected_version" integer, "p_logo_id" "uuid", "p_primary_color" "text", "p_logo_size_percent" integer) TO "authenticated";
+REVOKE ALL ON FUNCTION "public"."update_tenant_branding"("p_tenant_id" "uuid", "p_expected_version" integer, "p_logo_id" "uuid", "p_primary_color" "text", "p_logo_size_percent" integer, "p_accent_color" "text", "p_gradient" boolean) FROM PUBLIC;
+GRANT ALL ON FUNCTION "public"."update_tenant_branding"("p_tenant_id" "uuid", "p_expected_version" integer, "p_logo_id" "uuid", "p_primary_color" "text", "p_logo_size_percent" integer, "p_accent_color" "text", "p_gradient" boolean) TO "service_role";
+GRANT ALL ON FUNCTION "public"."update_tenant_branding"("p_tenant_id" "uuid", "p_expected_version" integer, "p_logo_id" "uuid", "p_primary_color" "text", "p_logo_size_percent" integer, "p_accent_color" "text", "p_gradient" boolean) TO "authenticated";
 
 
 

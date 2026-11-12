@@ -78,7 +78,7 @@ export default async function EventPlanningPreview({ params }: PageProps<"/staff
   return (
     <>
       {header}
-      <PreviewCanvas brandColor={view.brand.brand_colors.primary} readOnly={view.editing?.state === "closed"}>
+      <PreviewCanvas brandColors={view.brand.brand_colors} readOnly={view.editing?.state === "closed"}>
         <ClientPlanningWorkspace
           view={view}
           logo={brand?.logo ?? null}

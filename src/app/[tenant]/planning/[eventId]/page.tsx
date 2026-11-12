@@ -12,7 +12,7 @@ import { SLUG_PATTERN } from "@/lib/proposals/client-session.server";
 import { clientPlanningViewSchema, formatEventDate } from "@/lib/planning/view";
 import { createClient } from "@/lib/supabase/server";
 import { saveClientItemAction } from "./actions";
-import { brandStyle } from "@/lib/branding/colors";
+import { brandProps } from "@/lib/branding/colors";
 import { eventHubPath } from "@/lib/client-event";
 import { liveBrand } from "@/lib/branding/logo.server";
 
@@ -87,7 +87,7 @@ export default async function ClientPlanningPage({ params }: PageProps<"/[tenant
     );
   }
 
-  const pageStyle = brandStyle(view.brand.brand_colors.primary);
+  const branded = brandProps(view.brand.brand_colors);
   const brandLogo = (await liveBrand(slug))?.logo ?? null;
 
   return (
@@ -95,7 +95,7 @@ export default async function ClientPlanningPage({ params }: PageProps<"/[tenant
     // that closes while open keeps its editors on screen, unsaved input marked as such.
     <div data-plan-shell data-plan-readonly={view.editing?.state === "closed" ? "" : undefined} className="flex min-h-dvh flex-col bg-plan-canvas">
       <ClientHeader email={email} back={{ href: eventHubPath(slug, eventId), label: "Your event" }} title="Your planning" wide signOut={signOut} />
-      <main style={pageStyle} className="mx-auto grid w-full max-w-5xl gap-5 px-4 pt-5 pb-[max(2.5rem,env(safe-area-inset-bottom))] sm:gap-8 sm:pt-8">
+      <main {...branded} className="mx-auto grid w-full max-w-5xl gap-5 px-4 pt-5 pb-[max(2.5rem,env(safe-area-inset-bottom))] sm:gap-8 sm:pt-8">
         {/* The same workspace staff previews use; every save goes through the client save action (checked in the database). */}
         <ClientPlanningWorkspace view={view} logo={brandLogo} saveAction={saveClientItemAction.bind(null, slug, eventId)} />
       </main>

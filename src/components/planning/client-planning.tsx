@@ -70,7 +70,7 @@ export function PlanOverview({ djName, providedCount }: { djName: string; provid
         <section aria-labelledby="plan-heading-overview" className={OVERVIEW_SHEET}>
           <div className="grid gap-3">
             <PanelHeading view={null}>Planning progress</PanelHeading>
-            <ProgressMeter progress={p} bar="bg-brand-ink" />
+            <ProgressMeter progress={p} bar="bg-brand-gradient" />
             <p className="max-w-[65ch] text-sm text-pretty text-plan-ink-2">
               {counted.length > 0 ? `${done} of ${counted.length} ${counted.length === 1 ? "section" : "sections"} complete. ` : null}
               {p.unavailable_sections > 0 ? "Some parts open later and aren't counted yet. " : null}

@@ -118,7 +118,7 @@ export function PriceSummaryCard({
 }) {
   const Heading = headingLevel === 2 ? "h2" : "h3";
   return (
-    <section id={id} aria-labelledby={id ? `${id}-heading` : undefined} className="grid scroll-mt-4 gap-3 rounded-2xl border-2 bg-card p-4 shadow-sm" style={{ borderColor: "var(--brand)" }}>
+    <section id={id} aria-labelledby={id ? `${id}-heading` : undefined} className="grid scroll-mt-4 gap-3 rounded-2xl border-2 bg-card p-4 shadow-sm" style={{ borderColor: "var(--brand-ink)" }}>
       <Heading id={id ? `${id}-heading` : undefined} className="text-base font-semibold">
         {title}
       </Heading>

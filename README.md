@@ -1459,6 +1459,11 @@ signed-out browser:
   from required questions only, and history (renamed, reordered, removed
   questions and options kept with their answers, no type change once
   answered, applying a template, hiding, archived events, closed editing).
+- `71_brand_gradient` (pgTAP): the gradient preference inside `brand_colors`
+  (`"on"` or absent, always with an accent), opt-in only (an accent from
+  before gradients is never one), owner-only and versioned, kept by saves
+  from the earlier app, the accent remembered when turned off, and a
+  proposal sent before the choice keeping its solid branding.
 - `tests/integration/planning-custom-questions.test.ts`: the views parsed with
   the app's schemas, a client and staff saving the same custom section at once,
   staff removing a question while the client answers it, and two staff

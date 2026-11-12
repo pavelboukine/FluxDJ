@@ -10,7 +10,7 @@ import { CLIENT_FOCUS, CLIENT_PRIMARY, CLIENT_SHEET, EventStatusPill } from "@/c
 import { ClientPayments } from "@/components/payments/client-payments";
 import { signOut } from "@/app/auth/confirm/actions";
 import { loginHref } from "@/lib/auth/redirects";
-import { brandStyle } from "@/lib/branding/colors";
+import { brandProps } from "@/lib/branding/colors";
 import { liveBrand } from "@/lib/branding/logo.server";
 import { eventHubPath, hubNextStep, hubStatus, type HubStep } from "@/lib/client-event";
 import { hubFacts, loadClientEvents, type ClientEventFacts } from "@/lib/client-event.server";
@@ -55,7 +55,7 @@ export default async function EventHub({ params }: PageProps<"/[tenant]/events/[
   return (
     <div data-plan-shell className="flex min-h-dvh flex-col bg-plan-canvas">
       <ClientHeader email={auth.user.email ?? null} back wide signOut={signOut} />
-      <main style={brandStyle(live?.brandColors.primary)} className="mx-auto grid w-full max-w-5xl gap-5 px-4 pt-5 pb-[max(2.5rem,env(safe-area-inset-bottom))] sm:gap-8 sm:pt-8">
+      <main {...brandProps(live?.brandColors)} className="mx-auto grid w-full max-w-5xl gap-5 px-4 pt-5 pb-[max(2.5rem,env(safe-area-inset-bottom))] sm:gap-8 sm:pt-8">
         <header className="grid gap-3">
           <div className="flex items-center justify-between gap-3">
             <span className="flex min-h-8 min-w-0 items-center text-sm">
@@ -128,7 +128,7 @@ function StepAction({ step }: { step: HubStep }) {
 }
 
 /**
- * The one next step, full width on the business's Brand Tint: what to do and the way to do it. When planning is
+ * The one next step, full width on the business's Brand Wash (its Brand Tint for solid branding): what to do and the way to do it. When planning is
  * the step it adds a one-line progress summary and the deadline, never the planning workspace itself.
  */
 function NextStep({ step, plan, dj }: { step: HubStep; plan: ClientEventFacts["plan"]; dj: string }) {
@@ -137,7 +137,7 @@ function NextStep({ step, plan, dj }: { step: HubStep; plan: ClientEventFacts["p
     <section
       aria-labelledby="next-step-heading"
       data-testid="hub-next-step"
-      className="grid gap-4 bg-brand-tint p-4 max-sm:-mx-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-8 sm:rounded-2xl sm:p-6"
+      className="grid gap-4 bg-brand-wash p-4 max-sm:-mx-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-8 sm:rounded-2xl sm:p-6"
     >
       <div className="grid min-w-0 gap-2">
         <h2 id="next-step-heading" className="text-lg leading-snug font-semibold text-balance">{step.title}</h2>
@@ -156,7 +156,7 @@ function NextStep({ step, plan, dj }: { step: HubStep; plan: ClientEventFacts["p
               aria-valuenow={percent}
               className="h-1.5 overflow-hidden rounded-full bg-plan-surface"
             >
-              <div className="h-full rounded-full bg-brand-ink" style={{ width: `${percent}%` }} />
+              <div className="h-full rounded-full bg-brand-gradient" style={{ width: `${percent}%` }} />
             </div>
           </div>
         ) : null}

@@ -98,7 +98,8 @@ export function ClientPlanningWorkspace({ view, logo, saveAction, preview }: {
           context={{ djName: dj, djDisplayName, venueName: view.event.venue_name, eventContacts: view.event_contacts, customQuestions: customQuestionsByItem(view.structure) }}
           saved={savedAnswersByItem(view)}
         >
-          <header className="grid gap-4">
+          {/* With gradient branding the header sits on the Brand Wash: the page's one branded moment. */}
+          <header data-testid="plan-header" className="grid gap-4 brand-gradient:bg-brand-wash brand-gradient:p-4 max-sm:brand-gradient:-mx-4 sm:brand-gradient:rounded-2xl sm:brand-gradient:p-6">
             {preview}
             <div className="flex items-center justify-between gap-3">
               <span className="flex min-h-8 min-w-0 items-center text-sm">

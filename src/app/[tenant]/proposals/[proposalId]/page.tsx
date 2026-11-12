@@ -5,7 +5,7 @@ import { loadClientView, SLUG_PATTERN, type ClientView } from "@/lib/proposals/c
 import { recommendedSelection, type ProposalSelectionState } from "@/lib/pricing";
 import { SelectionSummary } from "@/components/proposal/selection-summary";
 import { BrandLogo } from "@/components/app/brand-logo";
-import { brandStyle } from "@/lib/branding/colors";
+import { brandProps } from "@/lib/branding/colors";
 import { frozenOfferLogo } from "@/lib/branding/logo.server";
 import { shortDate } from "@/lib/dates";
 import { ClientProposal } from "./client-proposal";
@@ -80,15 +80,16 @@ export default async function ClientProposalPage({ params }: PageProps<"/[tenant
   const offer = view.proposal.offer;
   const logo = await frozenOfferLogo(offer);
   const dj = view.tenant.display_name;
-  const style = brandStyle(offer.branding.brand_colors.primary);
+  // The branding this proposal was sent with: a gradient only if it was sent with one.
+  const branded = brandProps(offer.branding.brand_colors);
 
   if (view.state === "submitted" || view.state === "approved") {
     const approved = view.state === "approved";
     return (
-      <main style={style} className="mx-auto grid w-full max-w-3xl gap-6 px-4 py-8 text-sm">
-        <header className="grid gap-2 rounded-2xl p-5 sm:p-8" style={{ background: "var(--brand)", color: "var(--brand-foreground)" }}>
+      <main {...branded} className="mx-auto grid w-full max-w-3xl gap-6 px-4 py-8 text-sm">
+        <header data-testid="proposal-hero" className="grid gap-2 rounded-2xl bg-brand-hero p-5 sm:p-8 brand-gradient:**:opacity-100">
           <div className="flex min-h-6 items-center">
-            <BrandLogo logo={logo} name={dj} className="max-h-12 max-w-48" fallbackClassName="text-sm font-semibold tracking-wide uppercase opacity-90" />
+            <BrandLogo onHero logo={logo} name={dj} className="max-h-12 max-w-48" fallbackClassName="text-sm font-semibold tracking-wide uppercase opacity-90" />
           </div>
           <h1 className="text-2xl font-semibold text-balance">{view.event.title}</h1>
           <p className="opacity-90">
@@ -96,7 +97,7 @@ export default async function ClientProposalPage({ params }: PageProps<"/[tenant
             {view.event.venue_name ? ` · ${view.event.venue_name}` : ""}
           </p>
         </header>
-        <section role="status" className="flex gap-3 rounded-2xl border-2 p-4 sm:p-5" style={{ borderColor: "var(--brand)" }}>
+        <section role="status" className="flex gap-3 rounded-2xl border-2 p-4 sm:p-5" style={{ borderColor: "var(--brand-ink)" }}>
           <CheckCircle2 aria-hidden className="mt-0.5 size-6 shrink-0 text-emerald-600" />
           <div className="grid gap-1">
             {approved ? (

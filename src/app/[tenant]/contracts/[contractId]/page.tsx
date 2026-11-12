@@ -15,7 +15,7 @@ import { signOut } from "@/app/auth/confirm/actions";
 import { renderedContentSchema } from "@/lib/contracts/content";
 import { clientContractViewSchema, contractTerms } from "@/lib/contracts/responses";
 import { SIGNATURE_BUCKET } from "@/lib/contracts/signing";
-import { brandStyle } from "@/lib/branding/colors";
+import { brandProps } from "@/lib/branding/colors";
 import { liveBrand } from "@/lib/branding/logo.server";
 import { parseDbResponse } from "@/lib/db-response";
 import { UUID_RE } from "@/lib/forms";
@@ -95,7 +95,7 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
   const dj = view.brand.display_name;
   // Live branding (current logo and colour), shown only after the access check above.
   const live = await liveBrand(slug);
-  const pageStyle = brandStyle(view.brand.brand_colors.primary);
+  const branded = brandProps(view.brand.brand_colors);
   // From the contract's frozen signing mode, never from its wording.
   const isDemo = c.signing_mode === "demo";
   const signing = view.signing;
@@ -159,7 +159,7 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
   return (
     <div data-plan-shell className="flex min-h-dvh flex-col bg-plan-canvas">
       <ClientHeader email={auth.user.email ?? null} back={back} signOut={signOut} />
-      <main style={pageStyle} className="mx-auto grid w-full max-w-3xl gap-5 px-4 pt-5 pb-[max(2.5rem,env(safe-area-inset-bottom))] sm:gap-6 sm:pt-8">
+      <main {...branded} className="mx-auto grid w-full max-w-3xl gap-5 px-4 pt-5 pb-[max(2.5rem,env(safe-area-inset-bottom))] sm:gap-6 sm:pt-8">
         {isDemo ? (
           <p role="alert" className="rounded-xl border-2 border-destructive bg-card p-3 text-sm font-semibold text-destructive">
             DEMO, NOT FOR CLIENT USE. This is test wording, not a real agreement.
@@ -167,7 +167,7 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
         ) : null}
 
         <section aria-label="Contract overview" className="overflow-hidden rounded-2xl border bg-card shadow-sm">
-          <div aria-hidden className="h-1.5 bg-[var(--brand)]" />
+          <div aria-hidden className="h-1.5 bg-brand-hero" data-testid="contract-brand-band" />
           <div className="grid gap-4 p-4 sm:p-6">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="flex min-h-8 min-w-0 items-center text-sm">

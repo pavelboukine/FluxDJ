@@ -3,7 +3,7 @@ import { BrandLogo } from "@/components/app/brand-logo";
 import { PageHeader } from "@/components/app/fields";
 import { SetupReturn } from "@/components/app/setup-return";
 import { requireStaff } from "@/lib/auth/staff";
-import { brandTheme, normalizeHex } from "@/lib/branding/colors";
+import { brandGradientCss, brandTheme, normalizeHex, usesGradient } from "@/lib/branding/colors";
 import { LOGO_SIZE, logoSizeLabel } from "@/lib/branding/logo-size";
 import { logoUrl } from "@/lib/branding/logo.server";
 import { previewLogo, saveBranding } from "../../actions";
@@ -21,14 +21,17 @@ export default async function BrandingSettings({ params, searchParams }: PagePro
     ? await supabase.from("tenant_logos").select("storage_path, needs_dark_background, width, height").eq("tenant_id", tenant.id).eq("storage_path", settings.logo_storage_path).maybeSingle()
     : { data: null };
   const currentLogo = await logoUrl(activeLogo);
-  const primaryColor = normalizeHex((settings?.brand_colors as Record<string, unknown> | null)?.primary);
+  const brandColors = (settings?.brand_colors as Record<string, unknown> | null) ?? {};
+  const primaryColor = normalizeHex(brandColors.primary);
+  const accentColor = normalizeHex(brandColors.accent);
+  const gradient = usesGradient(brandColors);
 
   return (
     <>
       <SetupReturn slug={slug} from={from} />
       <PageHeader
         title="Branding"
-        description="Your logo and colour are optional. They appear on client pages and in emails from your business, and your logo also appears in your workspace header. Proposals already sent keep the branding they were sent with. Signed contract PDFs don't display your logo."
+        description="How your business looks to clients: on their pages, in emails from you, and in your workspace header. Proposals already sent keep the branding they were sent with."
       />
 
       <div id="branding" className="scroll-mt-20 border-t pt-8">
@@ -40,6 +43,8 @@ export default async function BrandingSettings({ params, searchParams }: PagePro
             displayName={settings?.display_name ?? tenant.display_name}
             currentLogo={currentLogo}
             currentColor={primaryColor}
+            currentAccent={accentColor}
+            currentGradient={gradient}
             currentSize={settings?.logo_size_percent ?? LOGO_SIZE.default}
           />
         ) : (
@@ -55,6 +60,16 @@ export default async function BrandingSettings({ params, searchParams }: PagePro
                   <span aria-hidden className="size-4 rounded border" style={{ background: brandTheme(primaryColor).color }} />
                   {primaryColor ?? "Default"}
                 </span>
+              </ReadOnlyRow>
+              <ReadOnlyRow label="Colour style">
+                {gradient ? (
+                  <span className="inline-flex items-center gap-2">
+                    <span aria-hidden className="h-4 w-10 rounded border" style={{ background: brandGradientCss(brandTheme(brandColors)) }} />
+                    Gradient, with the accent colour {accentColor}
+                  </span>
+                ) : (
+                  "Solid"
+                )}
               </ReadOnlyRow>
             </ReadOnlyRows>
           </div>
