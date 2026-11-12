@@ -54,7 +54,7 @@ Planning is not a standalone questionnaire. It is the client-facing half of a wo
 - Answer schemas, planning questions, autosave behaviour and business rules are stable; presentation work must not change them.
 - Recent planning work that must be preserved: DJ microphone interaction levels, MC responsibilities including shared MC, configurable business and event DJ names, legacy answers kept readable (Batch 6A); consistent song entry (title, artist, version, link, playback instructions), collapsible optional music fields, song links in run sheets, disclosures reset when leaving a section, protected pending and failed saves (Batch 6B).
 - Terminology in use: "section", "stage" ("part of your event"), "moment", "Discuss with your DJ", "Not applicable", "DJ's choice", "Already provided".
-- Undecided: whether client pages should support dark mode (they are light-only today).
+- Decided (Phase 3B): client pages follow the viewer's Light / Dark / System choice like staff pages; contracts stay light paper and the marketing home page stays light.
 
 ## Brand Commitments
 

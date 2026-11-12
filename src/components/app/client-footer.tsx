@@ -23,7 +23,9 @@ export function ClientFooter({ wide, width = wide ? "wide" : "narrow", className
           Powered by
           {/* 452 x 160 trimmed artwork: height set here, width follows (never stretched). */}
           {/* eslint-disable-next-line @next/next/no-img-element -- small static PNG; next/image adds nothing here */}
-          <img src="/brand/flux-wordmark-black.png" alt="Flux DJ" width={452} height={160} className="block h-3.5 w-auto" data-testid="footer-flux-logo" />
+          <img src="/brand/flux-wordmark-black.png" alt="Flux DJ" width={452} height={160} className="block h-3.5 w-auto dark:hidden" data-testid="footer-flux-logo" />
+          {/* eslint-disable-next-line @next/next/no-img-element -- small static PNG; next/image adds nothing here */}
+          <img src="/brand/flux-wordmark-white.png" alt="Flux DJ" width={452} height={160} className="hidden h-3.5 w-auto dark:block" data-testid="footer-flux-logo-dark" />
         </p>
         <p>© {new Date().getFullYear()} Flux DJ. All rights reserved.</p>
       </div>

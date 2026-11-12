@@ -1,3 +1,4 @@
+import type { Viewport } from "next";
 import Link from "next/link";
 import { ArrowRight, CalendarHeart, Headphones } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -6,6 +7,9 @@ import { signOut } from "@/app/auth/confirm/actions";
 import { loginHref } from "@/lib/auth/redirects";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
+
+/** Always light (lib/theme.ts), so the browser chrome is too, whatever the device setting. */
+export const viewport: Viewport = { themeColor: "#ffffff" };
 
 /**
  * The public front door, for DJs and for their clients: what Flux DJ is and

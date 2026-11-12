@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties } from "react";
 import { Check, ChevronDown, CircleUserRound, Menu } from "lucide-react";
 import { ActionForm } from "@/components/app/action-form";
+import { FluxWordmarkArt } from "@/components/app/app-shell";
 import { BrandLogo, type BrandLogoImage } from "@/components/app/brand-logo";
 import { EventStatusPill } from "@/components/app/client-event-ui";
 import { Field } from "@/components/app/fields";
@@ -163,7 +164,7 @@ export function BrandingForm({
           <Field className="grid-cols-[minmax(0,1fr)]" label="Logo" htmlFor="logo" hint="PNG, JPEG or WebP, up to 4 MB. Without a logo, your business name is shown.">
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex h-16 w-28 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted p-2" data-testid="logo-current">
-                <BrandLogo logo={previewLogo} name={displayName} className="max-h-11 max-w-24" fallbackClassName="line-clamp-2 text-center text-xs text-muted-foreground [overflow-wrap:anywhere]" />
+                <BrandLogo surface="theme" logo={previewLogo} name={displayName} className="max-h-11 max-w-24" fallbackClassName="line-clamp-2 text-center text-xs text-muted-foreground [overflow-wrap:anywhere]" />
               </div>
               <Input ref={fileInput} id="logo" name="logo" type="file" accept="image/png,image/jpeg,image/webp" onChange={onFile} className="w-full min-w-0 flex-1 basis-52" />
             </div>
@@ -283,21 +284,21 @@ export function BrandingForm({
                     </div>
                   </div>
                   {sizeView === "workspace" ? (
+                    // The workspace header follows the staff theme, as the real one does.
                     <div className="grid h-14 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 overflow-hidden rounded-xl border bg-background px-2 lg:px-5" data-testid="header-preview">
                       <div className="flex min-w-0 items-center gap-1">
                         <Menu aria-hidden className="size-5 shrink-0 text-muted-foreground lg:hidden" />
-                        {/* eslint-disable-next-line @next/next/no-img-element -- small static PNG, as in the real header */}
-                        <img src="/brand/flux-wordmark-black.png" alt="" width={452} height={160} className="h-5 w-auto lg:h-[1.625rem]" />
+                        <FluxWordmarkArt className="h-5 lg:h-[1.625rem]" />
                       </div>
                       <div className="flex min-w-0 items-center justify-center">
-                        <BrandLogo logo={sizedLogo} name={displayName} className={STAFF_HEADER_LOGO} fallbackClassName="block truncate text-sm font-semibold" />
+                        <BrandLogo surface="theme" logo={sizedLogo} name={displayName} className={STAFF_HEADER_LOGO} fallbackClassName="block truncate text-sm font-semibold" />
                       </div>
                       <CircleUserRound aria-hidden className="size-6 justify-self-end text-muted-foreground" strokeWidth={1.6} />
                     </div>
                   ) : (
                     <div className="flex min-h-14 items-center justify-between gap-3 overflow-hidden rounded-xl border bg-plan-canvas px-4 py-2" data-testid="client-header-preview">
                       <span className="flex min-h-8 min-w-0 items-center text-sm">
-                        <BrandLogo logo={sizedLogo} name={displayName} className={CLIENT_PAGE_LOGO} fallbackClassName="font-semibold [overflow-wrap:anywhere]" />
+                        <BrandLogo surface="theme" logo={sizedLogo} name={displayName} className={CLIENT_PAGE_LOGO} fallbackClassName="font-semibold [overflow-wrap:anywhere]" />
                       </span>
                       <EventStatusPill label="Booked" tone="done" />
                     </div>
@@ -429,7 +430,7 @@ export function BrandingForm({
             <div className="grid gap-4 rounded-xl bg-plan-canvas p-4 text-sm" data-testid="client-preview">
               <div className="flex items-center justify-between gap-3">
                 <span className="flex min-h-8 min-w-0 items-center text-sm">
-                  <BrandLogo logo={sizedLogo} name={displayName} className={CLIENT_PAGE_LOGO} fallbackClassName="font-semibold [overflow-wrap:anywhere]" />
+                  <BrandLogo surface="theme" logo={sizedLogo} name={displayName} className={CLIENT_PAGE_LOGO} fallbackClassName="font-semibold [overflow-wrap:anywhere]" />
                 </span>
                 <EventStatusPill label="Booked" tone="done" />
               </div>
@@ -448,7 +449,7 @@ export function BrandingForm({
                 <div aria-hidden className="h-1.5 overflow-hidden rounded-full bg-plan-surface">
                   <div className="h-full w-3/5 rounded-full bg-brand-gradient" data-testid="preview-progress" />
                 </div>
-                <span className="inline-flex w-fit rounded-[10px] bg-brand-ink px-4 py-2.5 font-semibold text-white">Open planning</span>
+                <span className="inline-flex w-fit rounded-[10px] bg-brand-fill px-4 py-2.5 font-semibold text-brand-fill-foreground">Open planning</span>
               </div>
             </div>
           )}
@@ -524,6 +525,8 @@ function LookChoice({ value, label, checked, onChange, swatch }: { value: string
         style={swatch ?? undefined}
         className={cn(
           "relative flex h-14 items-end rounded-lg px-2.5 pb-1.5 text-sm font-semibold ring-offset-2 ring-offset-background transition-shadow motion-reduce:transition-none",
+          // On a dark page a dark brand colour needs an edge of its own.
+          "dark:shadow-[inset_0_0_0_1px_rgb(255_255_255/0.1)]",
           "group-has-[:checked]/look:ring-2 group-has-[:checked]/look:ring-foreground group-has-[:focus-visible]/look:ring-3 group-has-[:focus-visible]/look:ring-ring",
           swatch ? null : "border border-dashed text-muted-foreground",
         )}

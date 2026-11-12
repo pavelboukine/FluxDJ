@@ -52,8 +52,28 @@ describe("brand colours", () => {
     expect(b - g).toBeGreaterThan(40);
   });
 
-  it("puts every brand token in the page's CSS variables", () => {
-    expect(brandStyle("#cbc7ff")).toMatchObject({ "--brand": "#cbc7ff", "--brand-foreground": "#000000", "--brand-ink": brandTheme("#cbc7ff").ink, "--brand-tint": brandTheme("#cbc7ff").tint });
+  it("puts every brand token in the page's CSS variables, with Ink, Tint and Wash for both themes", () => {
+    const [light, dark] = [brandTheme("#cbc7ff"), brandTheme("#cbc7ff", "dark")];
+    expect(brandStyle("#cbc7ff")).toMatchObject({
+      "--brand": "#cbc7ff",
+      "--brand-foreground": "#000000",
+      "--brand-fill": light.fill,
+      "--brand-fill-foreground": "#ffffff",
+      "--brand-ink-light": light.ink,
+      "--brand-ink-dark": dark.ink,
+      "--brand-tint-light": light.tint,
+      "--brand-tint-dark": dark.tint,
+      "--brand-wash-light": light.tint,
+      "--brand-wash-dark": dark.tint,
+    });
+    // The theme picks one in globals.css ([data-brand]), so the server render needs no theme.
+    expect(brandStyle("#cbc7ff")).not.toHaveProperty("--brand-ink");
+    expect(brandProps("#cbc7ff")).toMatchObject({ "data-brand": "" });
+    // In light mode, Fill is exactly the Ink white-text buttons used before dark mode.
+    expect(light.fill).toBe(light.ink);
+    for (const brand of ["#111827", "#facc15", "#dc2626", "#cbc7ff", "#ffff00"]) {
+      expect(contrastRatio(brandTheme(brand).fill, "#ffffff"), brand).toBeGreaterThanOrEqual(BRAND_INK_CONTRAST);
+    }
   });
 
   it("keeps solid branding exactly as it was for a business without the gradient preference", () => {
@@ -66,7 +86,7 @@ describe("brand colours", () => {
     expect(brandTheme(legacy)).toEqual(brandTheme("#cbc7ff"));
     expect(brandStyle(legacy)).toEqual(brandStyle("#cbc7ff"));
     // The gradient variables still exist, as the solid fill and tint, so a surface can use them without asking.
-    expect(brandStyle("#cbc7ff")).toMatchObject({ "--brand-gradient": "#6d62b0", "--brand-wash": brandTheme("#cbc7ff").tint });
+    expect(brandStyle("#cbc7ff")).toMatchObject({ "--brand-gradient": "#6d62b0", "--brand-wash-light": brandTheme("#cbc7ff").tint });
     // Only the exact preference with a usable accent turns it on.
     for (const colors of [{ primary: "#1e3a8a", gradient: "on" }, { primary: "#1e3a8a", accent: "purple", gradient: "on" }, { primary: "#1e3a8a", accent: "#7c3aed", gradient: "off" }, { primary: "#1e3a8a", accent: "#7c3aed", gradient: true }, null, 42, []]) {
       expect(usesGradient(colors), JSON.stringify(colors)).toBe(false);
@@ -111,7 +131,13 @@ describe("brand colours", () => {
       // Still a wash: barely darker than the page.
       for (const stop of [theme.wash!.from, theme.wash!.to]) expect(contrastRatio(stop, "#ffffff")).toBeLessThan(1.25);
       expect(brandWashCss(theme)).toBe(`linear-gradient(135deg, ${theme.wash!.from}, ${theme.wash!.to})`);
-      expect(brandStyle(gradientOf(primary, accent))).toMatchObject({ "--brand": primary, "--brand-ink": theme.ink, "--brand-gradient": brandGradientCss(theme), "--brand-wash": brandWashCss(theme) });
+      expect(brandStyle(gradientOf(primary, accent))).toMatchObject({
+        "--brand": primary,
+        "--brand-ink-light": theme.ink,
+        "--brand-gradient": brandGradientCss(theme),
+        "--brand-wash-light": brandWashCss(theme),
+        "--brand-wash-dark": brandWashCss(brandTheme(gradientOf(primary, accent), "dark")),
+      });
     }
   });
 
@@ -142,7 +168,7 @@ describe("brand colours", () => {
       expect(contrastRatio(theme.color, theme.foreground)).toBeGreaterThanOrEqual(4.5);
       const props = brandProps(brand);
       expect(props).not.toHaveProperty("data-brand-gradient");
-      expect(props.style).toMatchObject({ "--brand-hero": theme.color, "--brand-hero-foreground": theme.foreground, "--brand-gradient": theme.ink, "--brand-wash": theme.tint });
+      expect(props.style).toMatchObject({ "--brand-hero": theme.color, "--brand-hero-foreground": theme.foreground, "--brand-gradient": theme.ink, "--brand-wash-light": theme.tint });
     }
     // Gradient: the hero is the Brand Gradient under white, and the page is marked for the brand-gradient variant.
     for (const [primary, accent] of PAIRS) {

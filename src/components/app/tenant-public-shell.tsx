@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { BrandLogo } from "@/components/app/brand-logo";
+import { BrandLogo, type BrandLogoImage } from "@/components/app/brand-logo";
 import { brandProps } from "@/lib/branding/colors";
 import { PUBLIC_CARD_LOGO } from "@/lib/branding/logo-size";
 import { cn } from "@/lib/utils";
@@ -14,14 +14,15 @@ import { cn } from "@/lib/utils";
  */
 export type PublicBrand = {
   displayName: string;
-  logo: { url: string; needsDarkBackground: boolean; sizePercent?: number } | null;
+  /** With the business's logo for dark backgrounds, when it has one (the card follows the theme). */
+  logo: BrandLogoImage | null;
   brandColors: Record<string, string>;
 };
 
-/** The primary action, filled with Brand Ink (white text stays readable on any brand colour, as in planning). */
+/** The primary action, filled with Brand Fill (white text stays readable on any brand colour, in either theme, as in planning). */
 export const BRAND_BUTTON = cn(
   "inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[10px] px-5 text-sm font-semibold",
-  "bg-brand-ink text-white hover:bg-[color-mix(in_oklab,var(--brand-ink),black_14%)] active:bg-[color-mix(in_oklab,var(--brand-ink),black_22%)]",
+  "bg-brand-fill text-brand-fill-foreground hover:bg-[color-mix(in_oklab,var(--color-brand-fill),black_14%)] active:bg-[color-mix(in_oklab,var(--color-brand-fill),black_22%)]",
   "transition-colors motion-reduce:transition-none disabled:pointer-events-none disabled:opacity-60",
   "outline-none focus-visible:ring-2 focus-visible:ring-brand-ink focus-visible:ring-offset-2",
 );
@@ -38,6 +39,7 @@ export function TenantPublicCard({ brand, title, description, children }: { bran
               gradient branding it sits on the Brand Wash, across the top of the sheet. */}
           <div data-testid="public-card-brand" className="flex min-h-10 items-center brand-gradient:-mx-6 brand-gradient:-mt-6 brand-gradient:bg-brand-wash brand-gradient:px-6 brand-gradient:py-5 sm:brand-gradient:-mx-8 sm:brand-gradient:-mt-8 sm:brand-gradient:px-8">
             <BrandLogo
+              surface="theme"
               logo={brand.logo}
               name={brand.displayName}
               className={PUBLIC_CARD_LOGO}

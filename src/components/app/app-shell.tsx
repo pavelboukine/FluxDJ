@@ -33,6 +33,7 @@ import { signOut } from "@/app/auth/confirm/actions";
 import { isActive, type NavGroup, type NavIcon } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import Link, { NavigationPendingProvider, NavigationProgress } from "./pending-link";
+import { ThemeRadioGroup } from "./theme-menu";
 
 /*
  * The signed-in staff and platform shell: a white top bar (Flux wordmark,
@@ -133,10 +134,24 @@ export function AppShell({
 export function FluxWordmark({ href, className }: { href: string; className?: string }) {
   return (
     <Link href={href} aria-label="Flux DJ home" className="inline-flex shrink-0 items-center rounded-md px-1 py-1.5 outline-none active:opacity-70 focus-visible:ring-3 focus-visible:ring-ring/50">
-      {/* 452 x 160 trimmed artwork: height set here, width follows (never stretched). */}
-      {/* eslint-disable-next-line @next/next/no-img-element -- small static PNG; next/image adds nothing here */}
-      <img src="/brand/flux-wordmark-black.png" alt="" width={452} height={160} className={cn("block w-auto", className)} />
+      <FluxWordmarkArt className={className} />
     </Link>
+  );
+}
+
+/**
+ * The wordmark artwork for the page's theme: black on light, white in dark mode. Both are in the page
+ * and CSS shows one, so the server render is right before the theme is known. 452 x 160 trimmed
+ * artwork: height set by the caller, width follows (never stretched).
+ */
+export function FluxWordmarkArt({ className }: { className?: string }) {
+  return (
+    <>
+      {/* eslint-disable-next-line @next/next/no-img-element -- small static PNG; next/image adds nothing here */}
+      <img src="/brand/flux-wordmark-black.png" alt="" width={452} height={160} className={cn("block w-auto dark:hidden", className)} />
+      {/* eslint-disable-next-line @next/next/no-img-element -- small static PNG; next/image adds nothing here */}
+      <img src="/brand/flux-wordmark-white.png" alt="" width={452} height={160} className={cn("hidden w-auto dark:block", className)} />
+    </>
   );
 }
 
@@ -193,7 +208,7 @@ function NavDrawer({ navLabel, groups, homeHref }: { navLabel: string; groups: N
       {/* Kept mounted (hidden while closed) so a link tapped in the drawer, which closes it at once,
           keeps reporting its pending navigation to the header's progress line. */}
       <Dialog.Portal keepMounted>
-        <Dialog.Backdrop className="fixed inset-0 z-50 min-h-dvh bg-black/30 transition-opacity duration-200 data-ending-style:opacity-0 data-starting-style:opacity-0 supports-[-webkit-touch-callout:none]:absolute lg:hidden" />
+        <Dialog.Backdrop className="fixed inset-0 z-50 min-h-dvh bg-black/30 dark:bg-black/60 transition-opacity duration-200 data-ending-style:opacity-0 data-starting-style:opacity-0 supports-[-webkit-touch-callout:none]:absolute lg:hidden" />
         <Dialog.Popup
           initialFocus={closeButton}
           data-testid="nav-drawer"
@@ -282,6 +297,8 @@ function AccountMenu({ account }: { account: ShellAccount }) {
                 </Menu.LinkItem>
               </>
             ) : null}
+            <Menu.Separator className="my-1 h-px bg-border" />
+            <ThemeRadioGroup itemClassName={menuItem} />
             <Menu.Separator className="my-1 h-px bg-border" />
             <form ref={signOutForm} action={signOut}>
               <Menu.Item className={menuItem} closeOnClick={false} onClick={() => signOutForm.current?.requestSubmit()}>

@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { expect, test, type Browser, type Page } from "@playwright/test";
-import { admin, signInStaff, waitForEmail } from "./support";
+import { admin, pageScheme, signInStaff, waitForEmail } from "./support";
 import { archiveTestTenant, createTestTenant, sendProposalFromEventPage, type TestTenant } from "./tenant";
 import { paddedDiscPng, twoColourPng, whiteOnTransparentPng } from "../support/logo-fixtures";
 
@@ -117,9 +117,10 @@ test.describe.serial("logo for dark backgrounds", () => {
     await expect(heroLogo).toHaveCSS("filter", "none"); // a real file, never recoloured in the browser
     expect(await noSideScroll(client)).toBeLessThanOrEqual(0);
 
-    // The staff workspace header is light: the logo itself.
+    // The staff workspace header follows the staff theme: the logo itself in light, the version for dark
+    // backgrounds in dark.
     const header = owner.getByTestId("workspace-brand").getByRole("img", { name: t.displayName });
-    expect(logoPathOf(await header.getAttribute("src"))).toBe(main);
+    expect(logoPathOf(await header.getAttribute("src"))).toBe((await pageScheme(owner)) === "dark" ? variant : main);
   });
 
   test("the owner replaces and then removes it; the sent proposal keeps the one it was sent with", async () => {

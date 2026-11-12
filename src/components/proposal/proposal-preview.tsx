@@ -231,7 +231,7 @@ function PackageCard({ offer, packageKey, selected, disabled, onSelect, headingT
               const gear = offer.gear[i.gear_key];
               return (
                 <li key={i.gear_key} className="flex items-center gap-2">
-                  <Check aria-hidden className="size-4 shrink-0 text-emerald-600" />
+                  <Check aria-hidden className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
                   <span className="min-w-0 flex-1">{gear ? quantityText(gear, i.quantity) : `${i.quantity} ×`}</span>
                   {gear && gear.media.length > 0 ? (
                     <button

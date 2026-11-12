@@ -180,7 +180,7 @@ export function OfflineNotice() {
     <div
       role="status"
       data-testid="offline-notice"
-      className="fixed inset-x-0 bottom-0 z-50 border-t border-amber-500/60 bg-amber-50 px-4 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] text-center text-sm text-amber-950"
+      className="fixed inset-x-0 bottom-0 z-50 border-t border-amber-500/60 bg-amber-50 px-4 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] text-center text-sm text-amber-950 dark:bg-amber-950 dark:text-amber-50"
     >
       You&apos;re offline. Flux DJ needs a connection: what&apos;s on screen may be out of date, and changes can&apos;t be saved until you&apos;re back
       online.

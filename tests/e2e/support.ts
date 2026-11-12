@@ -140,3 +140,12 @@ export async function openPlanMoment(page: Page, stageKey: string, momentKey: st
   if (!(await card.evaluate((el) => (el as HTMLDetailsElement).open))) await card.locator("summary").first().click();
   return card;
 }
+
+/**
+ * The theme the page is showing ("dark" on a dark device or with Dark chosen; E2E_COLOR_SCHEME=dark runs a
+ * spec that way). Brand Ink, Tint and Wash differ by theme (brandTheme(colors, scheme)); gradients, heroes and
+ * Brand Fill don't.
+ */
+export function pageScheme(page: Page): Promise<"light" | "dark"> {
+  return page.evaluate(() => (document.documentElement.classList.contains("dark") ? "dark" : "light"));
+}

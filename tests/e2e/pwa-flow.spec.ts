@@ -96,7 +96,13 @@ test.describe.serial("installable app shell", () => {
 
     await page.goto("/login");
     await expect(page.locator('link[rel="manifest"]')).toHaveAttribute("href", "/manifest.webmanifest");
+    // Browser chrome follows the device's light or dark setting (the top bar's own colour in each).
+    await expect(page.locator('meta[name="theme-color"][media="(prefers-color-scheme: light)"]')).toHaveAttribute("content", "#ffffff");
+    await expect(page.locator('meta[name="theme-color"][media="(prefers-color-scheme: dark)"]')).toHaveAttribute("content", "#151619");
+    // The marketing home page is always light, so its chrome is white whatever the device setting.
+    await page.goto("/");
     await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#ffffff");
+    await page.goto("/login");
     await expect(page.locator('meta[name="apple-mobile-web-app-title"]')).toHaveAttribute("content", "Flux DJ");
     // Zoom stays available.
     const viewport = await page.locator('meta[name="viewport"]').getAttribute("content");

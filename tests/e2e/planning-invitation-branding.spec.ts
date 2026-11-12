@@ -17,7 +17,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { brandTheme } from "../../src/lib/branding/colors";
 import { transparentPng } from "../support/logo-fixtures";
 import { bookEvent, must, sessionFor } from "./booking";
-import { admin, signInWithLink } from "./support";
+import { admin, pageScheme, signInWithLink } from "./support";
 import { archiveTestTenant, createTestTenant, type TestTenant } from "./tenant";
 
 const sideways = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -128,7 +128,7 @@ test.describe.serial("planning invitation branding", () => {
       expect(Math.abs(box.width / box.height - 4)).toBeLessThan(0.1);
       await expect(page.locator("main")).toContainText(`the address ${wide.displayName} has on file`);
       const button = page.getByRole("button", { name: "Email me a sign-in link" });
-      await expect(button).toHaveCSS("background-color", rgb(brandTheme("#cbc7ff").ink));
+      await expect(button).toHaveCSS("background-color", rgb(brandTheme("#cbc7ff").fill));
       await expect(button).toHaveCSS("color", "rgb(255, 255, 255)");
       expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(44);
       await expect(page.getByText("Powered by Flux DJ")).toBeVisible();
@@ -153,12 +153,13 @@ test.describe.serial("planning invitation branding", () => {
     await expect(brandRow(page)).toHaveCSS("padding-top", "0px");
 
     const colors = { primary: "#cbc7ff", accent: "#c79ecb", gradient: "on" };
-    const theme = brandTheme(colors);
     await must(admin.from("tenants").update({ brand_colors: colors }).eq("id", wide.id));
     try {
       for (const width of [390, 1280]) {
         await page.setViewportSize({ width, height: 900 });
         await openLink(page, `/${wide.slug}/planning-invite#${a.token}`);
+        // The Wash is the page's theme's (light, or dark on a dark device).
+        const theme = brandTheme(colors, await pageScheme(page));
         await expect(brandRow(page)).toHaveCSS("background-image", `linear-gradient(135deg, ${rgb(theme.wash!.from)}, ${rgb(theme.wash!.to)})`);
         await expect(brandRow(page).getByRole("img", { name: wide.displayName })).toBeVisible();
         // The wash runs the full width of the sheet.
@@ -166,7 +167,7 @@ test.describe.serial("planning invitation branding", () => {
         expect(Math.abs(row.width - sheet.width)).toBeLessThanOrEqual(2);
         const button = page.getByRole("button", { name: "Email me a sign-in link" });
         await expect(button).toHaveCSS("background-image", "none");
-        await expect(button).toHaveCSS("background-color", rgb(brandTheme("#cbc7ff").ink));
+        await expect(button).toHaveCSS("background-color", rgb(brandTheme("#cbc7ff").fill));
         expect(await sideways(page)).toBeLessThanOrEqual(0);
       }
     } finally {
@@ -180,18 +181,18 @@ test.describe.serial("planning invitation branding", () => {
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("You're invited to plan your event");
     await expect(page.locator("main").getByRole("img")).toHaveCount(0);
     await expect(page.locator("main section > div").first()).toHaveText(rose.displayName);
-    await expect(page.getByRole("button", { name: "Email me a sign-in link" })).toHaveCSS("background-color", rgb(brandTheme("#E11D48").ink));
+    await expect(page.getByRole("button", { name: "Email me a sign-in link" })).toHaveCSS("background-color", rgb(brandTheme("#E11D48").fill));
 
     await openLink(page, `/${square.slug}/planning-invite#${c.token}`);
     const logo = page.getByRole("img", { name: square.displayName });
     await expect(logo).toBeVisible();
     const box = (await logo.boundingBox())!;
     expect(Math.abs(box.width - box.height)).toBeLessThan(1);
-    await expect(page.getByRole("button", { name: "Email me a sign-in link" })).toHaveCSS("background-color", rgb(brandTheme(null).ink));
+    await expect(page.getByRole("button", { name: "Email me a sign-in link" })).toHaveCSS("background-color", rgb(brandTheme(null).fill));
 
     await openLink(page, `/${plain.slug}/planning-invite#${d.token}`);
     await expect(page.locator("main section > div").first()).toHaveText(plain.displayName);
-    await expect(page.getByRole("button", { name: "Email me a sign-in link" })).toHaveCSS("background-color", rgb(brandTheme(null).ink));
+    await expect(page.getByRole("button", { name: "Email me a sign-in link" })).toHaveCSS("background-color", rgb(brandTheme(null).fill));
   });
 
   test("incomplete, unknown and another business's links stay neutral and name no business", async ({ page }) => {
@@ -254,7 +255,7 @@ test.describe.serial("planning invitation branding", () => {
     await expect(client.getByRole("img", { name: wide.displayName })).toBeVisible();
     await expect(client.getByText("Let's plan the details.")).toBeVisible();
     const open = client.getByRole("button", { name: "Open my planning" });
-    await expect(open).toHaveCSS("background-color", rgb(brandTheme("#cbc7ff").ink));
+    await expect(open).toHaveCSS("background-color", rgb(brandTheme("#cbc7ff").fill));
     expect(await sideways(client)).toBeLessThanOrEqual(0);
     await open.click();
     await client.waitForURL(`**/${wide.slug}/planning/${a.eventId}`);

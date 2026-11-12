@@ -59,7 +59,7 @@ export default async function EventHub({ params }: PageProps<"/[tenant]/events/[
         <header className="grid gap-3">
           <div className="flex items-center justify-between gap-3">
             <span className="flex min-h-8 min-w-0 items-center text-sm">
-              <BrandLogo logo={live?.logo ?? null} name={dj} className={CLIENT_PAGE_LOGO} fallbackClassName="font-semibold [overflow-wrap:anywhere]" />
+              <BrandLogo surface="theme" logo={live?.logo ?? null} name={dj} className={CLIENT_PAGE_LOGO} fallbackClassName="font-semibold [overflow-wrap:anywhere]" />
             </span>
             <EventStatusPill label={status.label} tone={status.tone} />
           </div>

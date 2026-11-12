@@ -993,6 +993,7 @@ reserved for release checkpoints.
 | Work on one browser spec | `pnpm test:e2e tests/e2e/planning-flow.spec.ts` |
 | Rerun only what just failed | `pnpm test:e2e --last-failed` |
 | Need screenshots for review | `E2E_SCREENSHOTS=1 pnpm test:e2e <spec>` (PNG files under `test-results/`) |
+| Check a workflow in dark mode | `E2E_COLOR_SCHEME=dark pnpm test:e2e <spec>` (a dark device; the default System theme follows it). Colour assertions use `pageScheme(page)` and `brandTheme(colors, scheme)` so they hold in both themes |
 | Change unit-tested code | `pnpm test:unit` (about a second), or `pnpm exec vitest related --run <changed files>` |
 | Change server code with integration tests | `pnpm exec vitest run tests/integration/planning.test.ts --no-file-parallelism` (`pnpm test:integration` with a file still runs every integration file) |
 | Change SQL | `pnpm db:test` (pgTAP, about 12 seconds) and `pnpm db:lint` |

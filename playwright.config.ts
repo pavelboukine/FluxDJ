@@ -18,6 +18,9 @@ export default defineConfig({
     // test in the run, so review screenshots need no extra run (test-results/).
     screenshot: process.env.E2E_SCREENSHOTS ? "on" : "only-on-failure",
     ...devices["Desktop Chrome"],
+    // E2E_COLOR_SCHEME=dark runs a spec on a device set to dark: the app's default theme (System)
+    // follows it, so existing workflows can be checked in dark mode without their own copies.
+    colorScheme: process.env.E2E_COLOR_SCHEME === "dark" ? "dark" : "light",
   },
   webServer: {
     command: "pnpm dev --hostname 127.0.0.1 --port 3000",

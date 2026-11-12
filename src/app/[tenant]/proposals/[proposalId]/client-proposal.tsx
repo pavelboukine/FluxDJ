@@ -372,7 +372,7 @@ function SaveStatus({ state, message, onRetry }: { state: SaveState; message: st
   return (
     <div className="flex flex-wrap items-center gap-2">
       <p role={problem ? "alert" : "status"} className={cn("flex items-center gap-1.5 text-sm", problem ? "font-medium text-destructive" : "text-muted-foreground")}>
-        <Icon aria-hidden className={cn("size-4 shrink-0", state === "saving" && "animate-spin", state === "saved" && "text-emerald-600")} />
+        <Icon aria-hidden className={cn("size-4 shrink-0", state === "saving" && "animate-spin", state === "saved" && "text-emerald-600 dark:text-emerald-400")} />
         {text}
       </p>
       {state === "error" ? (

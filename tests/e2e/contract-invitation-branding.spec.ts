@@ -111,7 +111,7 @@ test.describe.serial("contract invitation and after signing", () => {
       const box = (await logo.boundingBox())!;
       expect(Math.abs(box.width / box.height - 4)).toBeLessThan(0.1);
       const button = page.getByRole("button", { name: "Email me a sign-in link" });
-      await expect(button).toHaveCSS("background-color", rgb(brandTheme("#cbc7ff").ink));
+      await expect(button).toHaveCSS("background-color", rgb(brandTheme("#cbc7ff").fill));
       expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(44);
       await expect(page.getByText("Powered by Flux DJ")).toBeVisible();
       for (const secret of [a.title, "Private Client Name", "Private Venue", a.email]) await expect(page.locator("body")).not.toContainText(secret);
@@ -126,10 +126,10 @@ test.describe.serial("contract invitation and after signing", () => {
     await openLink(page, `/${rose.slug}/invite#${b.token}`);
     await expect(page.locator("main").getByRole("img")).toHaveCount(0);
     await expect(page.locator("main section > div").first()).toHaveText(rose.displayName);
-    await expect(page.getByRole("button", { name: "Email me a sign-in link" })).toHaveCSS("background-color", rgb(brandTheme("#E11D48").ink));
+    await expect(page.getByRole("button", { name: "Email me a sign-in link" })).toHaveCSS("background-color", rgb(brandTheme("#E11D48").fill));
     await openLink(page, `/${plain.slug}/invite#${c.token}`);
     await expect(page.locator("main section > div").first()).toHaveText(plain.displayName);
-    await expect(page.getByRole("button", { name: "Email me a sign-in link" })).toHaveCSS("background-color", rgb(brandTheme(null).ink));
+    await expect(page.getByRole("button", { name: "Email me a sign-in link" })).toHaveCSS("background-color", rgb(brandTheme(null).fill));
   });
 
   test("incomplete, unknown and another business's links stay neutral", async ({ page }) => {
@@ -156,7 +156,7 @@ test.describe.serial("contract invitation and after signing", () => {
     await signInWithLink(page, a.email, `/${wide.slug}/invitations/${a.linkId}`);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Your agreement is ready");
     await expect(page.getByRole("img", { name: wide.displayName })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Open my contract" })).toHaveCSS("background-color", rgb(brandTheme("#cbc7ff").ink));
+    await expect(page.getByRole("button", { name: "Open my contract" })).toHaveCSS("background-color", rgb(brandTheme("#cbc7ff").fill));
     // Opening the emailed link again while signed in: no second verification email.
     await openLink(page, `/${wide.slug}/invite#${a.token}`);
     await expect(page.getByRole("button", { name: "Email me a sign-in link" })).toHaveCount(0);

@@ -255,7 +255,7 @@ export const PLAN_FOCUS = "outline-none focus-visible:ring-2 focus-visible:ring-
  * gives a button that stands out from the page; white text on it is at least 5.2:1.
  */
 export const PLAN_PRIMARY =
-  "bg-brand-ink text-white hover:bg-[color-mix(in_oklab,var(--brand-ink,var(--foreground)),black_14%)] active:bg-[color-mix(in_oklab,var(--brand-ink,var(--foreground)),black_22%)] aria-disabled:opacity-50";
+  "bg-brand-fill text-brand-fill-foreground hover:bg-[color-mix(in_oklab,var(--color-brand-fill),black_14%)] active:bg-[color-mix(in_oklab,var(--color-brand-fill),black_22%)] aria-disabled:opacity-50";
 
 const navItem = (current: boolean) =>
   cn(
@@ -625,7 +625,7 @@ function RowGlyph({ save, state }: { save: SaveSummary; state: Parameters<typeof
   }
   if (save === "not_saved") {
     return (
-      <span aria-hidden className="inline-grid size-4 shrink-0 place-items-center rounded-full bg-destructive text-white">
+      <span aria-hidden className="inline-grid size-4 shrink-0 place-items-center rounded-full bg-destructive text-background">
         <TriangleAlert className="size-2.5" strokeWidth={3} />
       </span>
     );
