@@ -16,6 +16,12 @@
 export const LOGO_SIZE = { min: 100, max: 130, step: 5, default: 100 } as const;
 
 export const STAFF_HEADER_LOGO_HEIGHT = "max-h-[calc(2rem*var(--logo-scale,1))] lg:max-h-[calc(2.25rem*var(--logo-scale,1))]";
+/**
+ * The logo in the staff header: its height limit, bounded on every side so it never meets the wordmark or
+ * the account button, even at 320 px. The header and the Branding page's size preview both use it, so the
+ * preview is the header's own sizing.
+ */
+export const STAFF_HEADER_LOGO = `${STAFF_HEADER_LOGO_HEIGHT} max-w-[calc(100vw-16rem)] sm:max-w-[calc(100vw-20rem)] lg:max-w-72`;
 /** The logo above a client event, proposal or planning page. */
 export const CLIENT_PAGE_LOGO = "max-h-[calc(2.25rem*var(--logo-scale,1))] max-w-36";
 export const CLIENT_CONTRACT_LOGO = "max-h-[min(calc(2.5rem*var(--logo-scale,1)),3rem)] max-w-40";

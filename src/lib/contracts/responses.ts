@@ -83,7 +83,7 @@ export const clientContractViewSchema = z.discriminatedUnion("state", [
       state: z.literal("available"),
       brand: z.object({
         display_name: z.string(),
-        brand_colors: z.object({ primary: z.string().optional(), accent: z.string().optional() }),
+        brand_colors: z.object({ primary: z.string().optional(), accent: z.string().optional(), gradient: z.string().optional() }),
       }),
       contract: z
         .object({

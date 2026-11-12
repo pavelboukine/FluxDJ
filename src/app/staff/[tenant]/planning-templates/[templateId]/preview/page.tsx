@@ -63,7 +63,7 @@ export default async function PlanningTemplatePreview({ params }: PageProps<"/st
         }
         actions={t.archived_at ? <Badge variant="secondary">Archived</Badge> : null}
       />
-      <PreviewCanvas brandColor={view.brand.brand_colors.primary}>
+      <PreviewCanvas brandColors={view.brand.brand_colors}>
         <ClientPlanningWorkspace
           view={view}
           logo={brand?.logo ?? null}

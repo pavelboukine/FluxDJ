@@ -1813,7 +1813,7 @@ isOneToOne: false
 { Args: { "p_expected_version": number,"p_tax_categories": Json,"p_tax_config": Json,"p_tenant_id": string }; Returns: number
                            },
 "update_tenant_branding":
-{ Args: { "p_expected_version": number,"p_logo_id": string,"p_logo_size_percent"?: number,"p_primary_color": string,"p_tenant_id": string }; Returns: number
+{ Args: { "p_accent_color"?: string,"p_expected_version": number,"p_gradient"?: boolean,"p_logo_id": string,"p_logo_size_percent"?: number,"p_primary_color": string,"p_tenant_id": string }; Returns: number
                            },
 "void_contract":
 { Args: { "p_contract_id": string,"p_reason": string }; Returns: Json

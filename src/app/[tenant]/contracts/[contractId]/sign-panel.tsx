@@ -256,7 +256,7 @@ export function SignPanel(props: Props) {
         </div>
       ) : null}
       {confirming ? (
-        <div role="dialog" aria-label="Confirm signing" className="grid gap-3 rounded-xl border-2 border-[var(--brand)] p-4">
+        <div role="dialog" aria-label="Confirm signing" className="grid gap-3 rounded-xl border-2 border-[var(--brand-ink)] p-4">
           <p className="font-medium">Sign this contract as {typedName.trim()}?</p>
           <p className="text-sm text-muted-foreground">Your typed name, drawn signature and consent will be recorded with this exact contract. A signed contract can&apos;t be changed.</p>
           <div className="flex flex-col-reverse gap-2 sm:flex-row">

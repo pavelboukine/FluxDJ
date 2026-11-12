@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Your events", robots: { index: false, follow: false } };
 
-type Brand = { logo: Logo | null; primary: string | undefined };
+type Brand = { logo: Logo | null; colors: Record<string, string> | undefined };
 
 /**
  * The client's events, across every business they work with: each card
@@ -45,7 +45,7 @@ export default async function MyEvents() {
   await Promise.all(
     [...new Set(facts.map((f) => f.home.tenantSlug))].map(async (slug) => {
       const live = await liveBrand(slug);
-      brands.set(slug, { logo: live?.logo ?? null, primary: live?.brandColors.primary });
+      brands.set(slug, { logo: live?.logo ?? null, colors: live?.brandColors });
     }),
   );
 
@@ -113,7 +113,7 @@ function EventCard({ facts, brand, past }: { facts: ClientEventFacts; brand: Bra
   const step = hubNextStep(hubFacts(facts));
   const progress = facts.plan?.progress && facts.plan.editing?.state !== "closed" ? progressPercentText(facts.plan.progress) : null;
   return (
-    <li style={brandStyle(brand?.primary)} className="rounded-2xl border border-plan-hairline bg-plan-surface">
+    <li style={brandStyle(brand?.colors)} className="rounded-2xl border border-plan-hairline bg-plan-surface">
       <div className="grid gap-4 p-4 sm:p-6">
         <div className="flex items-center justify-between gap-3">
           <span className="flex min-h-8 min-w-0 items-center text-sm">

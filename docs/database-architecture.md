@@ -3,7 +3,7 @@
 A map of the current database for developers and coding agents: what is
 authoritative, how the parts fit, where each business rule lives, and how to
 change it safely. It describes the schema as of migration
-`20261202000100_custom_planning_questions`. Per-feature behaviour is in the README
+`20261203000100_brand_gradient`. Per-feature behaviour is in the README
 ("How tenant isolation works" onwards, and the table of pgTAP files);
 releasing a migration is in [`operations.md`](operations.md), section 2.
 

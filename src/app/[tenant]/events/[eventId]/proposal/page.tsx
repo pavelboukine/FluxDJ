@@ -7,7 +7,7 @@ import { ClientHeader } from "@/components/app/client-header";
 import { SelectionSummary } from "@/components/proposal/selection-summary";
 import { signOut } from "@/app/auth/confirm/actions";
 import { loginHref } from "@/lib/auth/redirects";
-import { brandStyle } from "@/lib/branding/colors";
+import { brandProps } from "@/lib/branding/colors";
 import { liveBrand } from "@/lib/branding/logo.server";
 import { eventHubPath } from "@/lib/client-event";
 import { loadClientEvents } from "@/lib/client-event.server";
@@ -66,7 +66,7 @@ export default async function ApprovedProposal({ params }: PageProps<"/[tenant]/
   return (
     <div data-plan-shell className="flex min-h-dvh flex-col bg-plan-canvas">
       <ClientHeader email={auth.user.email ?? null} back={{ href: hub, label: "Your event" }} signOut={signOut} />
-      <main style={brandStyle(live?.brandColors.primary)} className="mx-auto grid w-full max-w-3xl gap-5 px-4 pt-5 pb-[max(2.5rem,env(safe-area-inset-bottom))] sm:gap-6 sm:pt-8">
+      <main {...brandProps(live?.brandColors)} className="mx-auto grid w-full max-w-3xl gap-5 px-4 pt-5 pb-[max(2.5rem,env(safe-area-inset-bottom))] sm:gap-6 sm:pt-8">
         <header className="grid gap-3">
           <span className="flex min-h-8 min-w-0 items-center text-sm">
             <BrandLogo logo={live?.logo ?? null} name={dj} className={CLIENT_PAGE_LOGO} fallbackClassName="font-semibold [overflow-wrap:anywhere]" />

@@ -158,6 +158,24 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+/*
+ * Brand backgrounds (lib/branding/colors.ts sets the variables per business). Every
+ * gradient on a client page comes from these three, never from a page's own CSS.
+ * For solid branding they are the Brand Tint, the solid fill and the brand colour.
+ */
+@utility bg-brand-wash {
+  background: var(--brand-wash, var(--color-brand-tint));
+}
+@utility bg-brand-gradient {
+  background: var(--brand-gradient, var(--color-brand-ink));
+}
+@utility bg-brand-hero {
+  background: var(--brand-hero, var(--color-brand));
+  color: var(--brand-hero-foreground, var(--color-brand-foreground));
+}
+/* Inside a page of a business that chose gradient branding (brandProps). */
+@custom-variant brand-gradient (&:is([data-brand-gradient] *));
+
 /* A text link's tap area below lg: 44px tall for one line of 14px text, with no change to the layout. */
 @utility tap-target-y {
   @media (width < 64rem) {

@@ -205,7 +205,19 @@ The palette is neutral with a single tenant accent. Everything else is semantic.
 - **Error:** red, only for failed saves and invalid input.
 
 #### Named Rules
-**The One Accent Rule.** On client pages the only chromatic colour besides semantic status is the business's brand colour, always used through Solid, Ink or Tint. No platform blue, no gradients.
+**The One Accent Rule.** On client pages the only chromatic colour besides semantic status is the business's brand, always used through Solid, Ink, Tint, Wash or Gradient. No platform blue.
+
+**One Branded Moment per Page** (approved 2026-11-11; replaces "no gradients"). A business may choose gradient branding: its primary colour blending into an accent colour (`brand_colors.accent` with `brand_colors.gradient = "on"`; Settings → Branding). It is opt-in, and a business without the preference looks exactly as before. A page gets one branded moment, never a gradient on every button, card or background.
+- **Brand Wash** (`--brand-wash`): the primary's tint blending into the accent's, behind ordinary text. Both inks and secondary text keep 4.5:1 at every point.
+- **Brand Gradient** (`--brand-gradient`): the primary's fill blending into the accent's, for one hero with white text (at least 5.2:1 at every point). Light colours are deepened first; the raw colours never sit behind text.
+- Both variables always exist: for solid branding they are the Brand Tint and the solid fill, so a surface uses them without asking which.
+- Emails and PDFs stay solid. The derivations (`src/lib/branding/colors.ts`) also take a dark scheme, for dark mode later.
+- **Hero** (`--brand-hero`, `--brand-hero-foreground`): a proposal's header and a contract's top band. The Brand Gradient under white text for a gradient business; for solid branding the brand colour with its own readable text, as before.
+- Pages use the utilities `bg-brand-wash`, `bg-brand-gradient` and `bg-brand-hero` (`globals.css`) and never write a gradient of their own. `brandProps()` marks a gradient business's page with `data-brand-gradient`; the `brand-gradient:` variant styles what only a gradient page has (the wash behind a header), so a solid page keeps its layout as well as its colours.
+- Where it appears: the event hub's next step (wash, gradient progress), the planning header (wash) and planning progress (gradient), the proposal header (hero), the contract's top band (hero) and the logo row of branded invitations (wash). Buttons, navigation, fields and ordinary cards stay solid.
+- **Suggested looks** (`suggestLooks`): Settings → Branding offers Solid and about four gradients made for the primary colour. Each is only an accent colour (nothing else is stored), already deep enough for white text, so a swatch shows exactly what is saved. Most colours get their two neighbouring hues, a deeper shade and a softer one; dark colours get lighter partners; greys and black borrow a little cool colour or stay graphite; yellows and limes, which turn olive when deepened, pair with amber, ember, forest and charcoal instead. Looks that come out alike are dropped. An accent of the owner's own is the "Custom" look.
+- **Branding settings** are three parts: Business logo, Brand colours, and one Preview (Proposal or Event page) rendered with the client pages' own variables, utilities and `BrandLogo`. Less-used settings (logo size, custom accent) are folded away.
+- On a gradient hero a logo that isn't light sits on a white backdrop (`BrandLogo onHero`), mirroring the dark backdrop light logos already get, and softened text is fully opaque.
 
 **The Calm Gap Rule.** An unanswered question is not an error. It uses neutral text and never amber or red.
 
@@ -328,7 +340,8 @@ A documented two-step scale. Sheets and sheet-like layers use 16px. Interactive 
 - **Don't** use an outline circle, dotted circle or ringed dot as a status indicator anywhere near radio buttons.
 - **Don't** colour unanswered questions amber or red.
 - **Don't** add an uppercase eyebrow above every block.
-- **Don't** introduce gradients, glows, heavy shadows, decorative icons or a platform blue on client pages.
+- **Don't** introduce glows, heavy shadows, decorative icons or a platform blue on client pages. The only gradients are the business's own Brand Wash and Brand Gradient, once per page.
+- **Don't** use raw `--brand` for borders, outlines, radio accents or text. Use Brand Ink, which stays readable for a pale brand.
 - **Don't** add wedding motifs (rings, florals, script fonts) to shared planning UI.
 - **Don't** use `transition-all`. Name the properties.
 

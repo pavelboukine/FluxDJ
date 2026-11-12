@@ -3,7 +3,7 @@ import { BrandLogo } from "@/components/app/brand-logo";
 import { isPlatformAdmin } from "@/lib/auth/platform";
 import { signedLogoUrl, type BrandLogo as Logo } from "@/lib/branding/logo.server";
 import { requireStaff, type StaffContext } from "@/lib/auth/staff";
-import { STAFF_HEADER_LOGO_HEIGHT } from "@/lib/branding/logo-size";
+import { STAFF_HEADER_LOGO } from "@/lib/branding/logo-size";
 import { staffNavigation } from "@/lib/navigation";
 
 const ROLE_LABEL: Record<string, string> = { owner: "Owner", staff: "Staff" };
@@ -19,8 +19,7 @@ export default async function StaffTenantLayout({ children, params }: LayoutProp
     supabase.rpc("my_contracts").limit(1),
     activeLogo(supabase, tenant.id, tenant.logo_storage_path, tenant.logo_size_percent),
   ]);
-  // Bounded on every side so the logo never meets the wordmark or the account button, even at 320 px.
-  const logoBox = `${STAFF_HEADER_LOGO_HEIGHT} max-w-[calc(100vw-16rem)] sm:max-w-[calc(100vw-20rem)] lg:max-w-72`;
+  const logoBox = STAFF_HEADER_LOGO;
 
   return (
     <AppShell

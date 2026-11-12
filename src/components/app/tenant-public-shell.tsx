@@ -1,12 +1,13 @@
 import type { ReactNode } from "react";
 import { BrandLogo } from "@/components/app/brand-logo";
-import { brandStyle } from "@/lib/branding/colors";
+import { brandProps } from "@/lib/branding/colors";
 import { PUBLIC_CARD_LOGO } from "@/lib/branding/logo-size";
 import { cn } from "@/lib/utils";
 
 /**
  * A DJ business's own public page for one client step (a planning invitation today; other
- * client invitations can follow): the business's logo or name, its colour as the only accent,
+ * client invitations can follow): the business's logo or name, its colour as the only accent
+ * (and its Brand Wash behind the logo, if it chose gradient branding),
  * the planning portal's neutral canvas and sheet, and "Powered by Flux DJ" at the foot. The
  * caller resolves the brand on the server (liveBrand: public branding by URL slug, for an
  * active business only) and falls back to PublicCard's neutral Flux frame when it can't.
@@ -27,14 +28,15 @@ export const BRAND_BUTTON = cn(
 
 export function TenantPublicCard({ brand, title, description, children }: { brand: PublicBrand; title: string; description?: ReactNode; children: ReactNode }) {
   return (
-    <div data-plan-shell style={brandStyle(brand.brandColors.primary)} className="flex min-h-dvh flex-col bg-plan-canvas">
+    <div data-plan-shell {...brandProps(brand.brandColors)} className="flex min-h-dvh flex-col bg-plan-canvas">
       <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 pt-6 pb-8 sm:justify-center sm:py-12">
         <section
           aria-labelledby="public-card-heading"
-          className="grid gap-6 border-plan-hairline bg-plan-surface p-6 max-sm:-mx-4 max-sm:border-y sm:rounded-2xl sm:border sm:p-8"
+          className="grid gap-6 overflow-hidden border-plan-hairline bg-plan-surface p-6 max-sm:-mx-4 max-sm:border-y sm:rounded-2xl sm:border sm:p-8"
         >
-          {/* The business's name is on the door: its logo, contained whatever its shape, or its name. */}
-          <div className="flex min-h-10 items-center">
+          {/* The business's name is on the door: its logo, contained whatever its shape, or its name. With
+              gradient branding it sits on the Brand Wash, across the top of the sheet. */}
+          <div data-testid="public-card-brand" className="flex min-h-10 items-center brand-gradient:-mx-6 brand-gradient:-mt-6 brand-gradient:bg-brand-wash brand-gradient:px-6 brand-gradient:py-5 sm:brand-gradient:-mx-8 sm:brand-gradient:-mt-8 sm:brand-gradient:px-8">
             <BrandLogo
               logo={brand.logo}
               name={brand.displayName}

@@ -108,6 +108,10 @@ export const offerSnapshotSchema = z
     branding: z.strictObject({
       display_name: z.string().min(1),
       logo_storage_path: z.string().nullable(),
+      // The business's logo for dark backgrounds, frozen with the offer like the logo above. Optional:
+      // every offer frozen before logo variants has no such key, and a business without one never gets it.
+      // This object is strict, so the app must accept the key before any snapshot may carry it.
+      logo_on_dark_storage_path: z.string().nullable().optional(),
       brand_colors: z.record(z.string(), z.string()),
     }),
     tax: z.strictObject({

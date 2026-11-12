@@ -334,6 +334,22 @@ describe("offer snapshot validation", () => {
   it("accepts the demo offer", () => {
     expect(() => parseOfferSnapshot(demoOffer())).not.toThrow();
   });
+  it("accepts a frozen logo for dark backgrounds, with or without one, and still nothing else in branding", () => {
+    const withBranding = (extra: Record<string, unknown>) => ({ ...demoOffer(), branding: { ...demoOffer().branding, ...extra } });
+    // Every offer frozen before logo variants: no such key.
+    expect(demoOffer().branding).not.toHaveProperty("logo_on_dark_storage_path");
+    expect(offerSnapshotSchema.safeParse(demoOffer()).success).toBe(true);
+    // Offers frozen after: the path, or null for a business without one.
+    const path = "5b3a8c1e-0000-4000-8000-000000000001/logos/5b3a8c1e-0000-4000-8000-000000000002.png";
+    expect(parseOfferSnapshot(withBranding({ logo_on_dark_storage_path: path })).branding.logo_on_dark_storage_path).toBe(path);
+    expect(parseOfferSnapshot(withBranding({ logo_on_dark_storage_path: null })).branding.logo_on_dark_storage_path).toBeNull();
+    // A snapshot keeps the key it was frozen with through a JSON round trip (how the client page receives it).
+    expect(JSON.parse(JSON.stringify(parseOfferSnapshot(withBranding({ logo_on_dark_storage_path: path })))).branding.logo_on_dark_storage_path).toBe(path);
+    // The branding object stays strict: a wrong type or any other key is still refused.
+    expect(offerSnapshotSchema.safeParse(withBranding({ logo_on_dark_storage_path: 7 })).success).toBe(false);
+    expect(offerSnapshotSchema.safeParse(withBranding({ logo_on_dark: path })).success).toBe(false);
+    expect(offerSnapshotSchema.safeParse(withBranding({ logo_dark_storage_path: path })).success).toBe(false);
+  });
   it("requires exactly three packages", () => {
     expect(invalid((o) => o.packages.pop())).toBe(false);
   });

@@ -1,6 +1,6 @@
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Eye } from "lucide-react";
-import { brandStyle } from "@/lib/branding/colors";
+import { brandProps } from "@/lib/branding/colors";
 
 /**
  * Staff previews of the client's planning (a template on a sample event, or an event's plan as its
@@ -8,8 +8,9 @@ import { brandStyle } from "@/lib/branding/colors";
  * at the top of the client's page, that this is a preview and nothing is saved.
  */
 
-export function PreviewCanvas({ brandColor, readOnly = false, children }: {
-  brandColor: string | undefined;
+export function PreviewCanvas({ brandColors, readOnly = false, children }: {
+  /** The business's brand_colors, as the client's page gets them. */
+  brandColors: Record<string, string> | undefined;
   /** The client's planning is closed: answers read as a review, as on the client's page (globals.css). */
   readOnly?: boolean;
   children: ReactNode;
@@ -21,7 +22,7 @@ export function PreviewCanvas({ brandColor, readOnly = false, children }: {
       data-testid="client-preview"
       // The business's colours, the planning field styles (data-plan-shell), and the planning bars kept
       // below the staff shell's own sticky bar.
-      style={{ ...brandStyle(brandColor), "--plan-sticky-top": "calc(3.5rem + env(safe-area-inset-top))" } as CSSProperties}
+      {...brandProps(brandColors, { "--plan-sticky-top": "calc(3.5rem + env(safe-area-inset-top))" })}
       className="grid gap-5 rounded-2xl bg-plan-canvas px-4 pt-5 pb-8 max-sm:-mx-4 max-sm:rounded-none sm:gap-8 sm:px-6 sm:pt-6"
     >
       {children}

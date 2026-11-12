@@ -149,7 +149,8 @@ export async function savePlanningDjName(slug: string, _state: ActionState, form
 
 /**
  * Saves branding: an optional new logo (verified, re-encoded and registered
- * first), logo removal, and the primary colour, all checked against the
+ * first), logo removal, the primary colour and the colour style (solid, or a
+ * gradient with an accent colour), all checked against the
  * branding version so a stale tab can't overwrite newer branding. Owner only;
  * the database checks again. Any failure leaves the current logo active.
  */
@@ -161,6 +162,15 @@ export async function saveBranding(slug: string, _state: ActionState, form: Form
   const rawColor = text(form, "primary_color");
   const color = rawColor === "" ? null : normalizeHex(rawColor);
   if (rawColor !== "" && !color) return fail("Enter the colour as a hex value like #1a2b3c.");
+
+  // The colour style: solid, or a gradient with an accent colour. Absent from a tab opened before the
+  // choice existed: the database keeps the current style and accent. Solid sends no accent, so one the
+  // owner chose earlier stays stored for when they return to a gradient.
+  const style = text(form, "brand_style");
+  if (style !== "" && style !== "solid" && style !== "gradient") return fail("Choose solid or gradient.");
+  const gradient = style === "" ? null : style === "gradient";
+  const accent = gradient ? normalizeHex(text(form, "accent_color")) : null;
+  if (gradient && !accent) return fail("Enter the accent colour as a hex value like #1a2b3c.");
 
   // Absent from a tab opened before this setting existed: the database keeps the current size.
   const rawSize = text(form, "logo_size_percent");
@@ -193,6 +203,8 @@ export async function saveBranding(slug: string, _state: ActionState, form: Form
     p_logo_id: logoId as string,
     p_primary_color: color as string,
     p_logo_size_percent: logoSize as number,
+    p_accent_color: accent as string,
+    p_gradient: gradient as boolean,
   });
   if (error) return fail(`${describeDbError(error)} Your current branding is unchanged.`);
   revalidatePath(`/staff/${slug}`, "layout");

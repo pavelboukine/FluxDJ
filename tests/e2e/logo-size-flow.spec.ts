@@ -52,10 +52,15 @@ test.describe.serial("logo size", () => {
     await signInStaff(page, tenant.ownerEmail);
     return page;
   }
+  /** Logo size is an advanced setting: folded away until opened. */
+  const openSize = (page: Page) => page.getByTestId("logo-size-options").locator("summary").click();
   async function upload(page: Page, tenant: TestTenant, file: string, size?: string) {
     await page.goto(`/staff/${tenant.slug}/settings/branding`);
     await page.getByLabel("Logo", { exact: true }).setInputFiles(file);
-    if (size) await page.getByRole("slider", { name: "Logo size" }).fill(size);
+    if (size) {
+      await openSize(page);
+      await page.getByRole("slider", { name: "Logo size" }).fill(size);
+    }
     await page.getByRole("button", { name: "Save changes" }).click();
     await expect(page.getByRole("status").filter({ hasText: "Branding saved." })).toBeVisible();
     await expect(brand(page)).toBeVisible();
@@ -92,7 +97,7 @@ test.describe.serial("logo size", () => {
     // Before saving, the preview already shows the logo as the save will store it: the same processing, margin trimmed.
     await page.getByLabel("Logo", { exact: true }).setInputFiles(files["square.png"]);
     await expect(page.getByTestId("logo-preview-state")).toHaveText("The preview shows the logo as it will be saved.");
-    const chosenPreview = page.getByTestId("header-preview").getByRole("img", { name: square.displayName });
+    const chosenPreview = page.getByTestId("branding-preview").getByRole("img", { name: square.displayName });
     await expect(chosenPreview).toHaveAttribute("src", /^data:image\/png;base64,/);
     await loaded(chosenPreview);
     const previewed = await chosenPreview.evaluate((el: HTMLImageElement) => ({ w: el.naturalWidth, h: el.naturalHeight }));
@@ -108,19 +113,47 @@ test.describe.serial("logo size", () => {
     expect(data!.width).toBeGreaterThanOrEqual(505);
     expect(previewed).toEqual({ w: data!.width, h: data!.height }); // what was previewed is what was saved
 
-    // Moving the slider changes the previews at once, and only them.
-    const previewLogo = page.getByTestId("header-preview").getByRole("img", { name: square.displayName });
-    await loaded(previewLogo);
-    expect((await box(previewLogo)).height).toBeCloseTo(36, 0);
-    const clientLogo = page.getByTestId("client-preview").getByRole("img", { name: square.displayName });
-    expect((await box(clientLogo)).height).toBeCloseTo(36, 0);
-    await page.getByRole("slider", { name: "Logo size" }).fill("130");
+    // Logo size is folded away until opened. Inside it the logo sits in a copy of the workspace header, at the
+    // header's own sizing: the same height as the real one above, before anything is changed.
+    const slider = page.getByRole("slider", { name: "Logo size" });
+    const height = async (image: Locator) => Math.round((await box(image)).height);
+    await expect(slider).toBeHidden();
+    await expect(page.getByTestId("logo-size-preview")).toBeHidden();
+    await openSize(page);
+    const sized = page.getByTestId("header-preview").getByRole("img", { name: square.displayName });
+    await loaded(sized);
+    expect(await height(sized)).toBe(36);
+    expect(await height(sized)).toBe(await height(brand(page)));
+
+    // Moving the slider changes that copy at once, step by step, and nothing else: the real header waits for a save.
+    await slider.fill("115");
+    await expect(page.getByTestId("logo-size-value")).toHaveText("115%");
+    await expect.poll(() => height(sized)).toBe(41);
+    await slider.fill("130");
     await expect(page.getByTestId("logo-size-value")).toHaveText("130%");
-    await expect.poll(async () => Math.round((await box(previewLogo)).height)).toBe(47);
-    expect(Math.round((await box(clientLogo)).height)).toBe(47);
-    expect((await box(brand(page))).height).toBeCloseTo(36, 0);
+    await expect.poll(() => height(sized)).toBe(47);
+    expect(await height(brand(page))).toBe(36);
+    // The copy keeps the header's fixed height, the logo inside it.
     const previewBar = await box(page.getByTestId("header-preview"));
     expect(previewBar.height).toBeLessThanOrEqual(57);
+    const sizedBox = await box(sized);
+    expect(sizedBox.y).toBeGreaterThanOrEqual(previewBar.y);
+    expect(sizedBox.y + sizedBox.height).toBeLessThanOrEqual(previewBar.y + previewBar.height);
+    // The main preview stays where the owner left it.
+    await expect(page.getByRole("tab", { name: "Proposal" })).toHaveAttribute("aria-selected", "true");
+
+    // The same size on a client page's header, one tap away, and on the Event page preview.
+    await page.getByRole("button", { name: "Client pages" }).click();
+    await expect(page.getByTestId("header-preview")).toHaveCount(0);
+    const clientSized = page.getByTestId("client-header-preview").getByRole("img", { name: square.displayName });
+    await loaded(clientSized);
+    expect(await height(clientSized)).toBe(47);
+    await page.getByRole("tab", { name: "Event page" }).click();
+    const clientLogo = page.getByTestId("client-preview").getByRole("img", { name: square.displayName });
+    await loaded(clientLogo);
+    expect(await height(clientLogo)).toBe(47);
+    await page.getByRole("button", { name: "Workspace header" }).click();
+    await expect(sized).toBeVisible();
 
     // Undoing it leaves nothing unsaved; keeping it does.
     const form = page.locator("form").filter({ has: page.getByLabel("Logo", { exact: true }) });
@@ -135,8 +168,24 @@ test.describe.serial("logo size", () => {
     await expect.poll(async () => Math.round((await box(brand(page))).height)).toBe(47);
     await expect(page.getByRole("slider", { name: "Logo size" })).toHaveValue("130");
     expect((await admin.from("tenants").select("logo_size_percent").eq("id", square.id).single()).data!.logo_size_percent).toBe(130);
+    // Saved: the real header now matches what the copy showed, and a reload brings the setting back, open.
     await page.reload();
-    await expect(page.getByRole("slider", { name: "Logo size" })).toHaveValue("130");
+    await expect(slider).toHaveValue("130");
+    await loaded(sized);
+    expect(await height(sized)).toBe(47);
+    expect(await height(sized)).toBe(await height(brand(page)));
+
+    // A change that isn't saved is gone after leaving: the copy showed it, the header and the database never did.
+    await slider.fill("105");
+    await expect.poll(() => height(sized)).toBe(38);
+    await expect(form.getByRole("status").filter({ hasText: "Unsaved changes" })).toBeVisible();
+    expect(await height(brand(page))).toBe(47);
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.reload();
+    await expect(slider).toHaveValue("130");
+    await loaded(sized);
+    expect(await height(sized)).toBe(47);
+    expect((await admin.from("tenants").select("logo_size_percent").eq("id", square.id).single()).data!.logo_size_percent).toBe(130);
     await page.context().close();
   });
 
@@ -148,6 +197,22 @@ test.describe.serial("logo size", () => {
         await page.goto(`/staff/${square.slug}${path}`);
         await expectFitsHeader(page);
         await expectRatioKept(brand(page));
+        if (path) {
+          // The size preview is the header's own sizing at this width too (32px-based on phones, 36px from 1024),
+          // inside the page, with a full tap target on its switch.
+          const sized = page.getByTestId("header-preview").getByRole("img", { name: square.displayName });
+          await loaded(sized);
+          expect(Math.round((await box(sized)).height)).toBe(Math.round((await box(brand(page))).height));
+          const bar = await box(page.getByTestId("header-preview"));
+          expect(bar.height).toBeLessThanOrEqual(57);
+          expect(bar.x).toBeGreaterThanOrEqual(0);
+          expect(bar.x + bar.width).toBeLessThanOrEqual(viewport.width);
+          if (viewport.width < 768) expect((await box(page.getByRole("button", { name: "Client pages" }))).height).toBeGreaterThanOrEqual(44);
+          await page.getByRole("button", { name: "Client pages" }).click();
+          const client = await box(page.getByTestId("client-header-preview"));
+          expect(client.x + client.width).toBeLessThanOrEqual(viewport.width);
+          expect(await sideways(page)).toBeLessThanOrEqual(0);
+        }
       }
       expect(Math.round((await box(brand(page))).height)).toBe(viewport.width >= 1024 ? 47 : 42);
     }
@@ -174,7 +239,7 @@ test.describe.serial("logo size", () => {
     await page.goto(`/staff/${light.slug}/settings/branding`);
     await page.getByLabel("Logo", { exact: true }).setInputFiles(files["light.png"]);
     await expect(page.getByTestId("logo-preview-state")).toHaveText("The preview shows the logo as it will be saved.");
-    await expect(page.getByTestId("header-preview").getByRole("img", { name: light.displayName }).locator("xpath=..")).toHaveClass(/bg-neutral-900/);
+    await expect(page.getByTestId("branding-preview").getByRole("img", { name: light.displayName }).locator("xpath=..")).toHaveClass(/bg-neutral-900/);
     await upload(page, light, files["light.png"], "130");
     for (const viewport of WIDTHS) {
       await page.setViewportSize(viewport);
@@ -189,7 +254,7 @@ test.describe.serial("logo size", () => {
     await page.goto(`/staff/${light.slug}/settings/branding`);
     await page.getByRole("checkbox", { name: /Remove the logo/ }).check();
     await expect(page.getByRole("slider", { name: "Logo size" })).toHaveCount(0);
-    await expect(page.getByTestId("header-preview")).toContainText(light.displayName);
+    await expect(page.getByTestId("branding-preview")).toContainText(light.displayName);
     await page.getByRole("button", { name: "Save changes" }).click();
     await expect(page.getByRole("status").filter({ hasText: "Branding saved." })).toBeVisible();
     expect((await admin.from("tenants").select("logo_size_percent, logo_storage_path").eq("id", light.id).single()).data).toEqual({ logo_size_percent: 130, logo_storage_path: null });

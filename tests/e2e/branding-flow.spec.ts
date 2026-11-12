@@ -8,6 +8,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { expect, test, type Browser, type Page } from "@playwright/test";
+import { brandTheme, suggestLooks } from "@/lib/branding/colors";
 import { admin, signInStaff, waitForEmail } from "./support";
 import { archiveTestTenant, createTestTenant, sendProposalFromEventPage, type TestTenant } from "./tenant";
 import { htmlDisguisedAsPng, opaqueJpeg, transparentPng, whiteOnTransparentPng } from "../support/logo-fixtures";
@@ -22,6 +23,7 @@ async function chooseLogo(page: Page, file: string) {
 }
 const headerLogo = (page: Page, name: string) => page.getByTestId("workspace-brand").getByRole("img", { name });
 const noSideScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+const rgb = (hex: string) => `rgb(${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(", ")})`;
 const logoPathOf = (src: string | null) => /tenant-logos\/([^?]+)/.exec(src ?? "")?.[1];
 
 test.describe.serial("business branding", () => {
@@ -29,6 +31,8 @@ test.describe.serial("business branding", () => {
   let a: TestTenant;
   let b: TestTenant;
   let ownerA: Page;
+  /** The client's page of the proposal sent with solid branding, kept open to see that it never changes. */
+  let sentProposal: Page;
   let eventId = "";
 
   test.beforeAll(async ({ browser: br }, info) => {
@@ -62,12 +66,24 @@ test.describe.serial("business branding", () => {
     await ownerA.goto(`/staff/${a.slug}/settings/branding`);
     await expect(headerLogo(ownerA, a.displayName)).toHaveCount(0); // the name until a logo exists
     const preview = ownerA.getByTestId("branding-preview");
-    await expect(preview).toContainText("Preview · not saved, nothing is sent");
+    await expect(preview).toContainText("What clients see. Nothing is saved or sent.");
+    // Three parts, and none of the old header strips.
+    for (const heading of ["Business logo", "Brand colours", "Preview"]) await expect(ownerA.getByRole("heading", { level: 2, name: heading })).toBeVisible();
+    await expect(ownerA.getByTestId("header-preview")).toHaveCount(0);
     await chooseLogo(ownerA, files["wide.png"]);
-    await expect(preview.getByRole("img", { name: a.displayName })).toBeVisible();
+    const previewLogo = preview.getByRole("img", { name: a.displayName });
+    await expect(previewLogo).toBeVisible();
     await ownerA.getByLabel("Primary colour", { exact: true }).fill("#ffff00");
-    await expect(ownerA.getByTestId("contrast-note")).toContainText("Button text on this colour: dark");
+    await expect(ownerA.getByTestId("contrast-note")).toContainText("Light colours are deepened");
     await expect(preview.getByText("Submit my selection")).toHaveCSS("color", "rgb(0, 0, 0)");
+    // The preview is the client's page: on a gradient header a logo that isn't light gets the same white
+    // backdrop the real proposal gives it, and on the solid header it has none.
+    await expect(previewLogo.locator("xpath=..")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await ownerA.getByTestId(`look-${suggestLooks("#ffff00")[0].key}`).click();
+    await expect(previewLogo.locator("xpath=..")).toHaveCSS("background-color", "rgb(255, 255, 255)");
+    await expect(ownerA.getByTestId("preview-hero")).toHaveCSS("color", "rgb(255, 255, 255)");
+    await ownerA.getByTestId("look-solid").click();
+    await expect(previewLogo.locator("xpath=..")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     expect(await noSideScroll(ownerA)).toBeLessThanOrEqual(0);
 
     await ownerA.getByRole("button", { name: "Save changes" }).click();
@@ -89,7 +105,7 @@ test.describe.serial("business branding", () => {
     const sentAt = Date.now();
     await sendProposalFromEventPage(ownerA, a, eventId);
     const email = await waitForEmail(clientEmail, { after: sentAt, subject: /sent you a proposal/ });
-    const client = await (await browser.newContext({ viewport: PHONE })).newPage();
+    const client = (sentProposal = await (await browser.newContext({ viewport: PHONE })).newPage());
     await client.goto(/(http:\/\/\S+\/p#\S+)/.exec(email.text)![1]);
     await client.waitForURL("**/proposals/**");
     const sentLogo = client.getByRole("img", { name: a.displayName }).first();
@@ -109,7 +125,6 @@ test.describe.serial("business branding", () => {
 
     await client.reload();
     expect(logoPathOf(await client.getByRole("img", { name: a.displayName }).first().getAttribute("src"))).toBe(sentPath);
-    await client.context().close();
   });
 
   test("disguised and oversized files are refused and the current logo stays", async () => {
@@ -139,6 +154,124 @@ test.describe.serial("business branding", () => {
     const { data } = await admin.from("tenants").select("brand_colors").eq("id", a.id).single();
     expect(data!.brand_colors).toMatchObject({ primary: "#0f766e" });
     await stale.close();
+  });
+
+  test("the owner chooses a suggested look, makes an accent their own, and can return to solid", async () => {
+    const colors = async () => (await admin.from("tenants").select("brand_colors").eq("id", a.id).single()).data!.brand_colors;
+    const gradientOf = (primary: string, accent: string) => brandTheme({ primary, accent, gradient: "on" });
+    const css = (g: { from: string; to: string }) => `linear-gradient(135deg, ${rgb(g.from)}, ${rgb(g.to)})`;
+    await ownerA.goto(`/staff/${a.slug}/settings/branding`);
+    const preview = ownerA.getByTestId("branding-preview");
+    const hero = ownerA.getByTestId("preview-hero");
+    const radio = (name: string) => ownerA.getByRole("radio", { name, exact: true });
+    const accent = ownerA.getByLabel("Accent colour", { exact: true });
+    const savedAccent = ownerA.locator('input[name="accent_color"]');
+
+    // Solid until the owner chooses otherwise, although this business already holds an accent from before
+    // gradients: that accent is offered as the Custom look, not chosen.
+    expect(await colors()).toEqual({ primary: "#0f766e", accent: "#E11D48" });
+    const teal = suggestLooks("#0f766e");
+    await expect(radio("Solid")).toBeChecked();
+    await expect(preview).toHaveAttribute("data-style", "solid");
+    await expect(hero).toHaveCSS("background-image", "none");
+    await expect(ownerA.getByTestId("brand-looks").getByRole("radio")).toHaveCount(teal.length + 2);
+    for (const look of teal) await expect(radio(look.label)).not.toBeChecked();
+    await expect(radio("Custom")).not.toBeChecked();
+    await expect(savedAccent).toHaveCount(0);
+    // Each swatch is the real, contrast-safe gradient it would save.
+    await expect(ownerA.getByTestId(`look-${teal[1].key}`).locator("span").first()).toHaveCSS("background-image", css(gradientOf("#0f766e", teal[1].accent).gradient!));
+
+    // One tap chooses a look; the preview follows.
+    await ownerA.getByTestId(`look-${teal[0].key}`).click();
+    await expect(radio(teal[0].label)).toBeChecked();
+    await expect(preview).toHaveAttribute("data-style", "gradient");
+    await expect(savedAccent).toHaveValue(teal[0].accent);
+    await expect(hero).toHaveCSS("background-image", css(gradientOf("#0f766e", teal[0].accent).gradient!));
+
+    // The looks are made for the primary colour: a new one brings new looks, and the chosen kind stays chosen.
+    await ownerA.getByLabel("Primary colour", { exact: true }).fill("#cbc7ff");
+    const pale = suggestLooks("#cbc7ff");
+    const followed = pale.find((l) => l.key === teal[0].key)!;
+    const theme = gradientOf("#cbc7ff", followed.accent);
+    await expect(radio(followed.label)).toBeChecked();
+    await expect(savedAccent).toHaveValue(followed.accent);
+    await expect(ownerA.getByTestId("contrast-note")).toContainText("Light colours are deepened");
+    await expect(hero).toHaveCSS("color", "rgb(255, 255, 255)");
+    await expect(hero).toHaveCSS("background-image", css(theme.gradient!));
+    expect(await noSideScroll(ownerA)).toBeLessThanOrEqual(0);
+
+    // The other preview: the client's event page, with the wash and the gradient progress.
+    await ownerA.getByRole("tab", { name: "Event page" }).click();
+    await expect(hero).toHaveCount(0);
+    await expect(ownerA.getByTestId("preview-wash")).toHaveCSS("background-image", css(theme.wash!));
+    await expect(ownerA.getByTestId("preview-progress")).toHaveCSS("background-image", css(theme.gradient!));
+    await expect(ownerA.getByTestId("preview-wash").getByText("Open planning")).toHaveCSS("background-color", rgb(theme.ink));
+    expect(await noSideScroll(ownerA)).toBeLessThanOrEqual(0);
+    await ownerA.getByRole("tab", { name: "Proposal" }).click();
+
+    // Advanced: an accent of the owner's own. One that isn't a colour is refused before anything is saved.
+    await expect(accent).toBeHidden();
+    await ownerA.getByTestId("custom-accent").locator("summary").click();
+    await expect(accent).toHaveValue("#e11d48"); // the accent it already had
+    await accent.fill("#12");
+    await expect(radio("Custom")).toBeChecked();
+    await expect(ownerA.getByRole("alert").filter({ hasText: "Enter the accent colour as a hex value" })).toBeVisible();
+    await ownerA.getByRole("button", { name: "Save changes" }).click();
+    await expect(ownerA.getByRole("alert").filter({ hasText: "Enter the accent colour as a hex value" }).first()).toBeVisible();
+    expect(await colors()).toEqual({ primary: "#0f766e", accent: "#E11D48" });
+
+    await accent.fill("#FACC15");
+    await expect(hero).toHaveCSS("background-image", css(gradientOf("#cbc7ff", "#facc15").gradient!));
+    await ownerA.getByRole("button", { name: "Save changes" }).click();
+    await expect(ownerA.getByRole("status").filter({ hasText: "Branding saved." })).toBeVisible();
+    expect(await colors()).toEqual({ primary: "#cbc7ff", accent: "#facc15", gradient: "on" });
+    // A saved custom accent comes back as the Custom look, its field open.
+    await ownerA.reload();
+    await expect(radio("Custom")).toBeChecked();
+    await expect(accent).toHaveValue("#facc15");
+    for (const look of pale) await expect(radio(look.label)).not.toBeChecked();
+
+    // The proposal sent earlier keeps the solid branding it was sent with.
+    const { data: sent } = await admin.from("proposals").select("offer_snapshot").eq("event_id", eventId).eq("status", "sent").single();
+    expect((sent!.offer_snapshot as { branding: { brand_colors: Record<string, string> } }).branding.brand_colors).not.toHaveProperty("gradient");
+
+    // In the browser too: its header is still the solid yellow it was sent with, dark text on it.
+    await sentProposal.reload();
+    await expect(sentProposal.getByTestId("proposal-hero")).toHaveCSS("background-image", "none");
+    await expect(sentProposal.getByTestId("proposal-hero")).toHaveCSS("background-color", "rgb(255, 255, 0)");
+    await expect(sentProposal.getByTestId("proposal-hero")).toHaveCSS("color", "rgb(0, 0, 0)");
+    await sentProposal.context().close();
+
+    // A proposal sent now carries the gradient: white text on the deepened colours, none of it softened.
+    const laterEmail = `e2e-brand-later-${run}@example.test`;
+    const [laterEvent, laterClient] = [randomUUID(), randomUUID()];
+    await admin.from("clients").insert({ id: laterClient, tenant_id: a.id, name: "Kim & Ari", email: laterEmail });
+    await admin.from("events").insert({ id: laterEvent, tenant_id: a.id, title: `E2E Gradient Wedding ${run}`, event_type: "wedding", event_date: "2027-09-04" });
+    await admin.from("event_clients").insert({ tenant_id: a.id, event_id: laterEvent, client_id: laterClient, is_primary: true, can_sign: true });
+    const sentAt = Date.now();
+    await sendProposalFromEventPage(ownerA, a, laterEvent);
+    const email = await waitForEmail(laterEmail, { after: sentAt, subject: /sent you a proposal/ });
+    const later = await (await browser.newContext({ viewport: PHONE })).newPage();
+    await later.goto(/(http:\/\/\S+\/p#\S+)/.exec(email.text)![1]);
+    await later.waitForURL("**/proposals/**");
+    const sentTheme = brandTheme({ primary: "#cbc7ff", accent: "#facc15", gradient: "on" });
+    const laterHero = later.getByTestId("proposal-hero");
+    await expect(laterHero).toHaveCSS("background-image", `linear-gradient(135deg, ${rgb(sentTheme.gradient!.from)}, ${rgb(sentTheme.gradient!.to)})`);
+    await expect(laterHero).toHaveCSS("color", "rgb(255, 255, 255)");
+    await expect(laterHero.getByRole("list", { name: "How this works" })).toHaveCSS("opacity", "1");
+    expect(await noSideScroll(later)).toBeLessThanOrEqual(0);
+
+    // Back to solid: the pages are as before, and the accent is kept for next time.
+    await ownerA.goto(`/staff/${a.slug}/settings/branding`);
+    await ownerA.getByTestId("look-solid").click();
+    await expect(hero).toHaveCSS("background-image", "none");
+    await ownerA.getByRole("button", { name: "Save changes" }).click();
+    await expect(ownerA.getByRole("status").filter({ hasText: "Branding saved." })).toBeVisible();
+    expect(await colors()).toEqual({ primary: "#cbc7ff", accent: "#facc15" });
+    // The proposal sent with the gradient keeps it.
+    await later.reload();
+    await expect(laterHero).toHaveCSS("background-image", `linear-gradient(135deg, ${rgb(sentTheme.gradient!.from)}, ${rgb(sentTheme.gradient!.to)})`);
+    await later.context().close();
   });
 
   test("another business shows its own logo; staff can only view branding", async () => {
