@@ -10,6 +10,7 @@ import type { OfferSnapshot, PricedSelection } from "@/lib/pricing";
 import { brandProps } from "@/lib/branding/colors";
 import { cn } from "@/lib/utils";
 import { saveSelectionDraftAction, submitSelectionAction } from "./actions";
+import type { BrandLogoImage } from "@/components/app/brand-logo";
 
 type SaveState = "saved" | "unsaved" | "saving" | "error" | "conflict";
 
@@ -18,7 +19,7 @@ type Props = {
   proposalId: string;
   djName: string;
   offer: OfferSnapshot;
-  logo: { url: string; needsDarkBackground: boolean } | null;
+  logo: BrandLogoImage | null;
   event: { title: string; event_date: string; venue_name: string | null };
   expiresAt: string;
   initialSelection: ProposalSelectionState;

@@ -15,7 +15,7 @@ select col_default_is('public', 'tenants', 'logo_size_percent', '100', 'and defa
 select is((select count(*)::int from public.tenants where id in (tests.id('tenant_a'), tests.id('tenant_b')) and logo_size_percent <> 100), 0, 'a new business starts at 100%');
 select is(has_column_privilege('authenticated', 'public.tenants', 'logo_size_percent', 'update'), false, 'no one updates the column directly');
 select is(has_column_privilege('authenticated', 'public.tenants', 'logo_size_percent', 'select'), true, 'staff can read it');
-select is(has_function_privilege('anon', 'public.update_tenant_branding(uuid, integer, uuid, text, integer, text, boolean)', 'execute'), false, 'anonymous visitors can''t change it');
+select is(has_function_privilege('anon', 'public.update_tenant_branding(uuid, integer, uuid, text, integer, text, boolean, uuid, boolean)', 'execute'), false, 'anonymous visitors can''t change it');
 select throws_ok($$ update public.tenants set logo_size_percent = 131 where id = tests.id('tenant_a') $$, '23514', null, 'the column constraint bounds it above');
 select throws_ok($$ update public.tenants set logo_size_percent = 99 where id = tests.id('tenant_a') $$, '23514', null, 'and below');
 

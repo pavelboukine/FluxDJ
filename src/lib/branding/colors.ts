@@ -153,6 +153,34 @@ export function brandHero(theme: BrandTheme): { background: string; foreground: 
 }
 
 /**
+ * What a business logo sits on, stated by the surface that shows it (never guessed from pixels):
+ * - "light": a page, card or Brand Wash, or a hero in a light brand colour.
+ * - "dark": a hero under white text (the Brand Gradient, or a solid hero in a dark brand colour),
+ *   and dark mode later.
+ */
+export type LogoSurface = "light" | "dark";
+
+/**
+ * The surface of the page's hero (brandHero) for a logo, from the same contrast decision as its
+ * text: dark whenever the hero carries white text (always for the Brand Gradient), light otherwise.
+ */
+export function heroLogoSurface(brand: unknown): LogoSurface {
+  return brandHero(brandTheme(brand)).foreground === LIGHT_TEXT ? "dark" : "light";
+}
+
+/**
+ * The hero surface of a proposal's frozen offer. Offers frozen with logo variants always carry
+ * `logo_on_dark_storage_path` (null without one) and use heroLogoSurface. An offer sent before
+ * has no such key and keeps the logo backdrops it was sent with: a solid hero as a light surface
+ * (a light logo on its dark plate, any other logo as it is) and a gradient hero as a dark one
+ * (any other logo on its white panel).
+ */
+export function frozenHeroLogoSurface(branding: { brand_colors: unknown; logo_on_dark_storage_path?: string | null }): LogoSurface {
+  if (branding.logo_on_dark_storage_path !== undefined) return heroLogoSurface(branding.brand_colors);
+  return usesGradient(branding.brand_colors) ? "dark" : "light";
+}
+
+/**
  * CSS variables for client-facing pages: --brand for branded buttons,
  * --brand-foreground for text on them, --brand-ink for legible accents on
  * white and --brand-tint for selected surfaces. --brand-gradient (white text)

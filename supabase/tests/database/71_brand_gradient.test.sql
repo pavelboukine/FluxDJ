@@ -32,7 +32,7 @@ select throws_ok($$ update public.tenants set brand_colors = '{"gradient":"on"}'
 update public.tenants set brand_colors = '{"accent":"#e11d48"}', tax_categories = '{"standard": ["GST", "QST"]}' where id = tests.id('tenant_a');
 select is(tests.colors('tenant_a') ? 'accent', true, 'a business can already hold an accent');
 select is(tests.colors('tenant_a') ? 'gradient', false, 'and it is not a gradient until its owner chooses one');
-select is(has_function_privilege('anon', 'public.update_tenant_branding(uuid, integer, uuid, text, integer, text, boolean)', 'execute'), false, 'anonymous visitors can''t change branding');
+select is(has_function_privilege('anon', 'public.update_tenant_branding(uuid, integer, uuid, text, integer, text, boolean, uuid, boolean)', 'execute'), false, 'anonymous visitors can''t change branding');
 
 select tests.login_as(tests.id('staff_a'));
 select throws_ok($$ select tests.brand('tenant_a', 0, '#1e3a8a', '#7c3aed', true) $$, '42501', null, 'staff cannot turn it on');

@@ -3,13 +3,14 @@
 import { Clock } from "lucide-react";
 import { ProposalView, type ProposalSelectionState } from "@/components/proposal/proposal-preview";
 import type { OfferSnapshot } from "@/lib/pricing";
+import type { BrandLogoImage } from "@/components/app/brand-logo";
 
 /** Read-only view of an expired offer: the client can still look, nothing can change. */
 export function ExpiredOffer(props: {
   slug: string;
   proposalId: string;
   offer: OfferSnapshot;
-  logo: { url: string; needsDarkBackground: boolean } | null;
+  logo: BrandLogoImage | null;
   event: { title: string; event_date: string; venue_name: string | null };
   selection: ProposalSelectionState;
   djName: string;

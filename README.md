@@ -1464,6 +1464,19 @@ signed-out browser:
   before gradients is never one), owner-only and versioned, kept by saves
   from the earlier app, the accent remembered when turned off, and a
   proposal sent before the choice keeping its solid branding.
+- `72_logo_on_dark` (pgTAP): the optional logo for dark backgrounds
+  (`tenants.logo_on_dark_storage_path`): a registered logo of the same
+  business, never without a main logo, owner-only and versioned, audited,
+  kept by saves that don't change it (including the earlier app's), removed
+  with the main logo, returned by `public_tenant_brand`, frozen into every
+  new proposal (null without one, so an offer without the key was sent
+  before variants and keeps its original logo backdrops), and kept by sent
+  proposals after replacement or removal.
+- `tests/unit/logo-variants.test.ts`, `tests/integration/branding.test.ts` and
+  `tests/e2e/logo-variants-flow.spec.ts`: which logo each surface shows, the
+  white version of a single-colour logo (shape and transparency kept,
+  multicolour or opaque artwork refused, the original untouched), live pages
+  and proposals reading the variant, and the Branding control on a phone.
 - `tests/integration/planning-custom-questions.test.ts`: the views parsed with
   the app's schemas, a client and staff saving the same custom section at once,
   staff removing a question while the client answers it, and two staff

@@ -5,7 +5,8 @@ import { SetupReturn } from "@/components/app/setup-return";
 import { requireStaff } from "@/lib/auth/staff";
 import { brandGradientCss, brandTheme, normalizeHex, usesGradient } from "@/lib/branding/colors";
 import { LOGO_SIZE, logoSizeLabel } from "@/lib/branding/logo-size";
-import { logoUrl } from "@/lib/branding/logo.server";
+import { logoUrl, withOnDark } from "@/lib/branding/logo.server";
+import { storedLogoBytes, whiteLogoVersion } from "@/lib/branding/logo-upload.server";
 import { previewLogo, saveBranding } from "../../actions";
 import { BrandingForm } from "../../branding-form";
 import { ReadOnlyRow, ReadOnlyRows } from "../../settings-section";
@@ -16,11 +17,24 @@ export default async function BrandingSettings({ params, searchParams }: PagePro
   const { tenant: slug } = await params;
   const { from } = await searchParams;
   const { supabase, tenant, membership } = await requireStaff(slug);
-  const { data: settings } = await supabase.from("tenants").select("display_name, brand_colors, logo_storage_path, branding_version, logo_size_percent").eq("id", tenant.id).single();
-  const { data: activeLogo } = settings?.logo_storage_path
-    ? await supabase.from("tenant_logos").select("storage_path, needs_dark_background, width, height").eq("tenant_id", tenant.id).eq("storage_path", settings.logo_storage_path).maybeSingle()
-    : { data: null };
-  const currentLogo = await logoUrl(activeLogo);
+  const { data: settings } = await supabase
+    .from("tenants")
+    .select("display_name, brand_colors, logo_storage_path, logo_on_dark_storage_path, branding_version, logo_size_percent")
+    .eq("id", tenant.id)
+    .single();
+  const paths = [settings?.logo_storage_path, settings?.logo_on_dark_storage_path].filter((p): p is string => !!p);
+  const { data: logos } = paths.length
+    ? await supabase.from("tenant_logos").select("storage_path, needs_dark_background, width, height").eq("tenant_id", tenant.id).in("storage_path", paths)
+    : { data: [] };
+  const row = (path: string | null | undefined) => (path ? logos?.find((l) => l.storage_path === path) : null);
+  const [currentLogo, currentDarkLogo, canTurnWhite] = await Promise.all([
+    logoUrl(row(settings?.logo_storage_path)),
+    logoUrl(row(settings?.logo_on_dark_storage_path)),
+    // Whether a white version can be made from the current logo (owners only: it reads the file).
+    membership.role === "owner" && settings?.logo_storage_path
+      ? storedLogoBytes(settings.logo_storage_path).then(async (bytes) => (bytes ? (await whiteLogoVersion(bytes)) !== null : false))
+      : false,
+  ]);
   const brandColors = (settings?.brand_colors as Record<string, unknown> | null) ?? {};
   const primaryColor = normalizeHex(brandColors.primary);
   const accentColor = normalizeHex(brandColors.accent);
@@ -42,6 +56,8 @@ export default async function BrandingSettings({ params, searchParams }: PagePro
             version={settings?.branding_version ?? 0}
             displayName={settings?.display_name ?? tenant.display_name}
             currentLogo={currentLogo}
+            currentDarkLogo={currentDarkLogo}
+            canTurnWhite={canTurnWhite}
             currentColor={primaryColor}
             currentAccent={accentColor}
             currentGradient={gradient}
@@ -54,6 +70,17 @@ export default async function BrandingSettings({ params, searchParams }: PagePro
               <ReadOnlyRow label="Logo">
                 {currentLogo ? <BrandLogo logo={currentLogo} name={tenant.display_name} className="max-h-12 max-w-48" /> : "None (the business name is shown)"}
               </ReadOnlyRow>
+              {currentLogo ? (
+                <ReadOnlyRow label="Logo for dark backgrounds">
+                  {currentDarkLogo ? (
+                    <span className="inline-flex rounded-lg bg-neutral-900 p-2">
+                      <BrandLogo surface="dark" logo={withOnDark(currentLogo, currentDarkLogo)} name={tenant.display_name} className="max-h-12 max-w-48" />
+                    </span>
+                  ) : (
+                    "None"
+                  )}
+                </ReadOnlyRow>
+              ) : null}
               {currentLogo ? <ReadOnlyRow label="Logo size">{logoSizeLabel(settings?.logo_size_percent ?? LOGO_SIZE.default)}</ReadOnlyRow> : null}
               <ReadOnlyRow label="Primary colour">
                 <span className="inline-flex items-center gap-2">

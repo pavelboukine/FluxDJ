@@ -5,7 +5,7 @@ import { loadClientView, SLUG_PATTERN, type ClientView } from "@/lib/proposals/c
 import { recommendedSelection, type ProposalSelectionState } from "@/lib/pricing";
 import { SelectionSummary } from "@/components/proposal/selection-summary";
 import { BrandLogo } from "@/components/app/brand-logo";
-import { brandProps } from "@/lib/branding/colors";
+import { brandProps, frozenHeroLogoSurface } from "@/lib/branding/colors";
 import { frozenOfferLogo } from "@/lib/branding/logo.server";
 import { shortDate } from "@/lib/dates";
 import { ClientProposal } from "./client-proposal";
@@ -89,7 +89,7 @@ export default async function ClientProposalPage({ params }: PageProps<"/[tenant
       <main {...branded} className="mx-auto grid w-full max-w-3xl gap-6 px-4 py-8 text-sm">
         <header data-testid="proposal-hero" className="grid gap-2 rounded-2xl bg-brand-hero p-5 sm:p-8 brand-gradient:**:opacity-100">
           <div className="flex min-h-6 items-center">
-            <BrandLogo onHero logo={logo} name={dj} className="max-h-12 max-w-48" fallbackClassName="text-sm font-semibold tracking-wide uppercase opacity-90" />
+            <BrandLogo surface={frozenHeroLogoSurface(offer.branding)} logo={logo} name={dj} className="max-h-12 max-w-48" fallbackClassName="text-sm font-semibold tracking-wide uppercase opacity-90" />
           </div>
           <h1 className="text-2xl font-semibold text-balance">{view.event.title}</h1>
           <p className="opacity-90">
