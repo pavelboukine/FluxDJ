@@ -40,7 +40,11 @@ const MAX_BYTES = 4 * 1024 * 1024;
  * single-colour logo on a transparent background a white version made from it
  * (shown here with a CSS filter that matches the file a save creates), used
  * where the logo sits on something dark. Without one, BrandLogo keeps the
- * single logo readable with a light panel.
+ * single logo readable with a light panel. Making a white version is an action
+ * for the next save, not a setting: once one is saved the section says a logo
+ * for dark backgrounds is added (Flux doesn't record whether it was made or
+ * uploaded) and offers replacing or removing it; a white version is offered
+ * again only for a newly chosen logo, so a save never stores the same file twice.
  */
 
 /** Which look is chosen: solid, the owner's own accent, or a suggested look's key. */
@@ -125,9 +129,14 @@ export function BrandingForm({
   // A white version can be made from the logo that will be saved: the chosen file once prepared, else the saved one.
   const canWhite = chosen ? chosen.processed && chosen.canTurnWhite : canTurnWhite;
   const darkChosen = darkFile.chosen;
+  // With a logo for dark backgrounds saved, a white version of the same logo would be that file again (or would
+  // replace an upload): it is offered only when there is none, or for a newly chosen logo.
+  const offerWhite = !darkChosen && canWhite && (currentDarkLogo === null || chosen !== null);
+  // The saved logo for dark backgrounds stays in use after this save.
+  const keepsSavedDark = currentDarkLogo !== null && !darkChosen && !(white && offerWhite) && !removeDark;
   const onDark: BrandLogoImage["onDark"] = darkChosen
     ? { url: darkChosen.url }
-    : white && canWhite && mainLogo
+    : white && offerWhite && mainLogo
       ? { url: mainLogo.url, white: true }
       : !removeDark && currentDarkLogo
         ? { url: currentDarkLogo.url }
@@ -135,7 +144,7 @@ export function BrandingForm({
   const previewLogo: Logo = mainLogo ? { ...mainLogo, onDark } : null;
   // A new logo with the saved logo for dark backgrounds kept: they may no longer match. Both are kept
   // unless the owner chooses; replacing, making a white version or removing it resolves this.
-  const mismatch = chosen !== null && currentDarkLogo !== null && !darkChosen && !(white && canWhite) && !removeDark;
+  const mismatch = chosen !== null && keepsSavedDark;
   const sizedLogo = previewLogo ? { ...previewLogo, sizePercent: size } : null;
   const swatchOf = (accentColor: string): CSSProperties => ({ background: brandGradientCss(brandTheme({ primary, accent: accentColor, gradient: GRADIENT_ON })), color: "#ffffff" });
 
@@ -146,7 +155,7 @@ export function BrandingForm({
         version={version}
         submitLabel="Save changes"
         trackUnsaved
-        pendingLabel={chosen || darkChosen || white ? "Uploading and saving…" : "Saving…"}
+        pendingLabel={chosen || darkChosen || (white && offerWhite) ? "Uploading and saving…" : "Saving…"}
         className="max-w-xl min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-8"
         onSuccess={() => {
           // The saved logos now come from the server; clear the local files.
@@ -182,7 +191,7 @@ export function BrandingForm({
           {mismatch ? (
             <p role="status" className="rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm" data-testid="logo-variant-mismatch">
               Your logo for dark backgrounds is kept, but it may no longer match the new logo. Replace or remove it below
-              {canWhite ? ", or use a white version of the new logo" : ""}.
+              {canWhite ? ", or create a white version of the new logo" : ""}.
             </p>
           ) : null}
           {mainLogo ? (
@@ -206,6 +215,12 @@ export function BrandingForm({
                     <Input ref={darkInput} id="logo_on_dark" name="logo_on_dark" type="file" accept="image/png,image/jpeg,image/webp" onChange={onDarkFile} className="w-full min-w-0" />
                   </div>
                 </div>
+                {keepsSavedDark ? (
+                  <p className="flex items-center gap-1.5 text-sm" data-testid="logo-on-dark-saved">
+                    <Check aria-hidden className="size-4 shrink-0 text-status-done" />
+                    Logo for dark backgrounds added. Choose a file above to replace it, or remove it.
+                  </p>
+                ) : null}
                 {darkFile.error ? <p role="alert" className="text-sm text-destructive">{darkFile.error}</p> : null}
                 <p aria-live="polite" className="text-xs text-muted-foreground empty:hidden" data-testid="logo-on-dark-state">
                   {darkFile.preparing
@@ -214,11 +229,11 @@ export function BrandingForm({
                       ? "This logo looks dark, so it may be hard to see on dark backgrounds. A white or light version works best."
                       : darkChosen?.processed
                         ? "The preview shows the logo as it will be saved."
-                        : white && onDark?.white
+                        : onDark?.white
                           ? "Made from your logo: its shape and transparency are kept and only the colour becomes white. Your logo itself isn't changed."
                           : ""}
                 </p>
-                {!darkChosen && canWhite ? (
+                {offerWhite ? (
                   <label className="flex min-h-11 w-fit items-center gap-2 text-sm md:min-h-0">
                     <input
                       type="checkbox"
@@ -230,10 +245,10 @@ export function BrandingForm({
                       }}
                       className="size-4 accent-primary"
                     />
-                    Use a white version of my logo
+                    {chosen && currentLogo ? "Create a white version of the new logo" : "Create a white version of my logo"}
                   </label>
                 ) : null}
-                {currentDarkLogo && !darkChosen && !white ? (
+                {currentDarkLogo && !darkChosen && !(white && offerWhite) ? (
                   <label className="flex min-h-11 w-fit items-center gap-2 text-sm md:min-h-0">
                     <input type="checkbox" name="remove_logo_on_dark" checked={removeDark} onChange={(e) => setRemoveDark(e.target.checked)} className="size-4 accent-primary" />
                     Remove the logo for dark backgrounds

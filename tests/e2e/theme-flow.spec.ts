@@ -179,7 +179,7 @@ test.describe.serial("staff theme", () => {
     await page.getByLabel("Logo", { exact: true }).setInputFiles(files["black-disc.png"]);
     await expect(page.getByTestId("logo-preview-state")).toHaveText("The preview shows the logo as it will be saved.");
     await page.getByTestId("logo-on-dark").locator("summary").click();
-    await page.getByLabel("Use a white version of my logo").check();
+    await page.getByLabel("Create a white version of my logo").check();
     await page.getByRole("button", { name: "Save changes" }).click();
     await expect(page.getByRole("status").filter({ hasText: "Branding saved." })).toBeVisible();
 

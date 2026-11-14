@@ -198,10 +198,15 @@ export async function saveBranding(slug: string, _state: ActionState, form: Form
     if (!processed.ok) return fail(`Logo for dark backgrounds: ${processed.message} Your current logos are unchanged.`);
     dark = processed.logo;
   } else if (whiteDark) {
-    const { data: current } = await supabase.from("tenants").select("logo_storage_path").eq("id", tenant.id).single();
+    const { data: current } = await supabase.from("tenants").select("logo_storage_path, logo_on_dark_storage_path").eq("id", tenant.id).single();
     const source = main?.ok ? main.logo.png : current?.logo_storage_path ? await storedLogoBytes(current.logo_storage_path) : null;
     dark = source ? await whiteLogoVersion(source) : null;
     if (!dark) return fail("A white version can only be made from a single-colour logo on a transparent background. Upload a logo for dark backgrounds instead. Your current logos are unchanged.");
+    // The very file already saved for dark backgrounds (a request from a stale tab, say): keep it rather than store a copy.
+    if (current?.logo_on_dark_storage_path) {
+      const { data: saved } = await supabase.from("tenant_logos").select("sha256").eq("tenant_id", tenant.id).eq("storage_path", current.logo_on_dark_storage_path).maybeSingle();
+      if (saved?.sha256 === dark.sha256) dark = null;
+    }
   }
 
   let logoId: string | null;
