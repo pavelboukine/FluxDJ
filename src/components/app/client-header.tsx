@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { FluxWordmark } from "@/components/app/app-shell";
 import { Button } from "@/components/ui/button";
+import { ThemeMenu } from "@/components/app/theme-menu";
 
 /**
  * The client pages' top bar: neutral Flux identity (a client can have events
@@ -53,6 +54,8 @@ export function ClientHeader({
               <span className="sr-only">Go to your </span>Staff workspace
             </Link>
           ) : null}
+          {/* Signed-in clients choose Light, Dark or System here (kept in this browser). */}
+          {email ? <ThemeMenu /> : null}
           {signOut ? (
             <form action={signOut}>
               <Button variant="outline" type="submit" className="min-h-11 sm:min-h-9">

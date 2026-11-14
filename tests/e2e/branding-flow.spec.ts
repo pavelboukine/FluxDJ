@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import { brandTheme, suggestLooks } from "@/lib/branding/colors";
-import { admin, signInStaff, waitForEmail } from "./support";
+import { admin, pageScheme, signInStaff, waitForEmail } from "./support";
 import { archiveTestTenant, createTestTenant, sendProposalFromEventPage, type TestTenant } from "./tenant";
 import { htmlDisguisedAsPng, opaqueJpeg, transparentPng, whiteOnTransparentPng } from "../support/logo-fixtures";
 
@@ -119,8 +119,9 @@ test.describe.serial("business branding", () => {
     await ownerA.getByLabel("Primary colour", { exact: true }).fill("#1e3a8a");
     await ownerA.getByRole("button", { name: "Save changes" }).click();
     await expect(ownerA.getByRole("status").filter({ hasText: "Branding saved." })).toBeVisible();
-    // Light artwork sits on a dark backdrop in the header.
-    await expect(headerLogo(ownerA, a.displayName).locator("xpath=..")).toHaveClass(/bg-neutral-900/);
+    // Light artwork sits on a dark backdrop in the light header, and as it is in the dark one.
+    if ((await pageScheme(ownerA)) === "dark") await expect(headerLogo(ownerA, a.displayName).locator("xpath=..")).not.toHaveClass(/bg-neutral-900|bg-white/);
+    else await expect(headerLogo(ownerA, a.displayName).locator("xpath=..")).toHaveClass(/bg-neutral-900/);
     expect(logoPathOf(await headerLogo(ownerA, a.displayName).getAttribute("src"))).not.toBe(sentPath);
 
     await client.reload();
@@ -203,9 +204,10 @@ test.describe.serial("business branding", () => {
     // The other preview: the client's event page, with the wash and the gradient progress.
     await ownerA.getByRole("tab", { name: "Event page" }).click();
     await expect(hero).toHaveCount(0);
-    await expect(ownerA.getByTestId("preview-wash")).toHaveCSS("background-image", css(theme.wash!));
+    // The preview shows the Wash for the page's theme, like the client's page in the same theme.
+    await expect(ownerA.getByTestId("preview-wash")).toHaveCSS("background-image", css(brandTheme({ primary: "#cbc7ff", accent: followed.accent, gradient: "on" }, await pageScheme(ownerA)).wash!));
     await expect(ownerA.getByTestId("preview-progress")).toHaveCSS("background-image", css(theme.gradient!));
-    await expect(ownerA.getByTestId("preview-wash").getByText("Open planning")).toHaveCSS("background-color", rgb(theme.ink));
+    await expect(ownerA.getByTestId("preview-wash").getByText("Open planning")).toHaveCSS("background-color", rgb(theme.fill));
     expect(await noSideScroll(ownerA)).toBeLessThanOrEqual(0);
     await ownerA.getByRole("tab", { name: "Proposal" }).click();
 

@@ -17,7 +17,7 @@ export default async function StaffTenantLayout({ children, params }: LayoutProp
     // Client access (as on /my): only what this verified identity may read as a client.
     supabase.rpc("my_plans").limit(1),
     supabase.rpc("my_contracts").limit(1),
-    activeLogo(supabase, tenant.id, tenant.logo_storage_path, tenant.logo_size_percent),
+    activeLogo(supabase, tenant.id, tenant.logo_storage_path, tenant.logo_on_dark_storage_path, tenant.logo_size_percent),
   ]);
   const logoBox = STAFF_HEADER_LOGO;
 
@@ -28,7 +28,8 @@ export default async function StaffTenantLayout({ children, params }: LayoutProp
       homeHref={`/staff/${tenant.slug}`}
       center={
         <div data-testid="workspace-brand" className="flex min-w-0 items-center justify-center">
-          <BrandLogo logo={logo} name={tenant.display_name} className={logoBox} fallbackClassName={`block truncate text-sm font-semibold ${logoBox}`} />
+          {/* The header follows the staff theme: the logo for its light or dark background. */}
+          <BrandLogo surface="theme" logo={logo} name={tenant.display_name} className={logoBox} fallbackClassName={`block truncate text-sm font-semibold ${logoBox}`} />
         </div>
       }
       account={{
@@ -46,17 +47,28 @@ export default async function StaffTenantLayout({ children, params }: LayoutProp
 }
 
 /**
- * The active workspace's own logo: its registered details (RLS: only the
- * business's members read them) and a signed URL, fetched together. The path
- * comes from the tenant row requireStaff read as this member; the URL is used
- * only when the logo is registered for this business.
+ * The active workspace's own logo, with its logo for dark backgrounds when it has one: registered
+ * details (RLS: only the business's members read them) and signed URLs, fetched together. The paths
+ * come from the tenant row requireStaff read as this member; a URL is used only when its logo is
+ * registered for this business.
  */
-async function activeLogo(supabase: StaffContext["supabase"], tenantId: string, path: string | null, sizePercent: number): Promise<Logo | null> {
+async function activeLogo(
+  supabase: StaffContext["supabase"],
+  tenantId: string,
+  path: string | null,
+  darkPath: string | null,
+  sizePercent: number,
+): Promise<Logo | null> {
   if (!path) return null;
-  const [{ data: row }, url] = await Promise.all([
-    supabase.from("tenant_logos").select("needs_dark_background, width, height").eq("tenant_id", tenantId).eq("storage_path", path).maybeSingle(),
+  const paths = darkPath ? [path, darkPath] : [path];
+  const [{ data: rows }, url, darkUrl] = await Promise.all([
+    supabase.from("tenant_logos").select("storage_path, needs_dark_background, width, height").eq("tenant_id", tenantId).in("storage_path", paths),
     signedLogoUrl(path),
+    darkPath ? signedLogoUrl(darkPath) : null,
   ]);
+  const row = rows?.find((r) => r.storage_path === path);
   if (!row || !url) return null;
-  return { url, needsDarkBackground: row.needs_dark_background === true, width: row.width, height: row.height, sizePercent };
+  const logo: Logo = { url, needsDarkBackground: row.needs_dark_background === true, width: row.width, height: row.height, sizePercent };
+  const dark = rows?.find((r) => r.storage_path === darkPath);
+  return dark && darkUrl ? { ...logo, onDark: { url: darkUrl, width: dark.width, height: dark.height } } : logo;
 }

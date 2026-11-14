@@ -65,7 +65,7 @@ export async function openPlanningInvitation(slug: string, token: string): Promi
   // Null for an archived or suspended business.
   const live = await liveBrand(slug);
   if (!live) return none;
-  const brand: PublicBrand = { displayName: live.displayName, brandColors: live.brandColors, logo: live.logo ? { url: live.logo.url, needsDarkBackground: live.logo.needsDarkBackground, sizePercent: live.logo.sizePercent } : null };
+  const brand: PublicBrand = { displayName: live.displayName, brandColors: live.brandColors, logo: live.logo ? { url: live.logo.url, needsDarkBackground: live.logo.needsDarkBackground, sizePercent: live.logo.sizePercent, onDark: live.logo.onDark ? { url: live.logo.onDark.url } : undefined } : null };
   return { brand, signedIn: await signedInPlanningInvitation(slug, token) };
 }
 

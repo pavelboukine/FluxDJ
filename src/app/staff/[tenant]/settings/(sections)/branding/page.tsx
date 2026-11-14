@@ -68,7 +68,7 @@ export default async function BrandingSettings({ params, searchParams }: PagePro
             <p role="status" className="text-sm text-muted-foreground">Only the owner can change branding.</p>
             <ReadOnlyRows>
               <ReadOnlyRow label="Logo">
-                {currentLogo ? <BrandLogo logo={currentLogo} name={tenant.display_name} className="max-h-12 max-w-48" /> : "None (the business name is shown)"}
+                {currentLogo ? <BrandLogo surface="theme" logo={withOnDark(currentLogo, currentDarkLogo)} name={tenant.display_name} className="max-h-12 max-w-48" /> : "None (the business name is shown)"}
               </ReadOnlyRow>
               {currentLogo ? (
                 <ReadOnlyRow label="Logo for dark backgrounds">

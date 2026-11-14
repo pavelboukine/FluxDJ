@@ -155,7 +155,7 @@ export default async function Dashboard({ params, searchParams }: PageProps<"/st
           </div>
           {tasks.length === 0 ? (
             <p className="flex items-center gap-2 rounded-xl border border-dashed px-4 py-6 text-sm text-muted-foreground" data-testid="attention-empty">
-              <CheckCircle2 aria-hidden className="size-4 text-emerald-600" />
+              <CheckCircle2 aria-hidden className="size-4 text-emerald-600 dark:text-emerald-400" />
               Nothing needs your attention right now.
             </p>
           ) : (

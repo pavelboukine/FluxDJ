@@ -29,6 +29,10 @@ export type BrandLogoImage = {
  *   Otherwise a light logo as it is, and any other logo on a compact white
  *   backdrop, so a single logo always stays readable. "Light" is the upload's
  *   own classification (needsDarkBackground); no image is analysed here.
+ * - theme: a surface that follows the staff theme (the workspace header): the
+ *   light rendering in light mode and the dark one in dark mode. Both are in
+ *   the page and CSS shows one, so the server render is right before the theme
+ *   is known and nothing changes on hydration.
  * Logos are never recoloured.
  */
 export function BrandLogo({
@@ -43,9 +47,22 @@ export function BrandLogo({
   /** Size of the image box, for example "h-8 max-w-40". */
   className?: string;
   fallbackClassName?: string;
-  surface?: LogoSurface;
+  surface?: LogoSurface | "theme";
 }) {
   const [failed, setFailed] = useState<string | null>(null);
+  if (surface === "theme" && logo) {
+    const props = { logo, name, className, fallbackClassName };
+    return (
+      <>
+        <span className="inline-flex min-w-0 items-center dark:hidden" data-logo-theme="light">
+          <BrandLogo {...props} surface="light" />
+        </span>
+        <span className="hidden min-w-0 items-center dark:inline-flex" data-logo-theme="dark">
+          <BrandLogo {...props} surface="dark" />
+        </span>
+      </>
+    );
+  }
   const variant = logo && surface !== "light" ? logo.onDark : undefined;
   const src = variant?.url ?? logo?.url;
   if (!logo || !src || failed === src) return <span className={fallbackClassName}>{name}</span>;

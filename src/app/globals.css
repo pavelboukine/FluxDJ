@@ -2,7 +2,18 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
+/*
+ * Dark mode (lib/theme.ts): next-themes puts `dark` on <html>. A surface that must stay light paper
+ * (a contract's text, the signature pad) carries `light`: the light tokens apply again there and
+ * `dark:` utilities don't reach inside it. Screen only: printing is always the light paper look.
+ */
+@custom-variant dark {
+  @media screen {
+    &:is(.dark *):not(:is(.light, .light *)) {
+      @slot;
+    }
+  }
+}
 
 /* The staff shell's navigation progress line (components/app/pending-link.tsx): indeterminate, no percentages. */
 @theme {
@@ -68,10 +79,14 @@
   --color-brand: var(--brand, var(--primary));
   --color-brand-foreground: var(--brand-foreground, var(--primary-foreground));
   --color-brand-ink: var(--brand-ink, var(--foreground));
+  /* Buttons in white text: the brand deepened for it (the same in both themes), or the primary colour. */
+  --color-brand-fill: var(--brand-fill, var(--primary));
+  --color-brand-fill-foreground: var(--brand-fill-foreground, var(--primary-foreground));
   --color-brand-tint: var(--brand-tint, var(--muted));
 }
 
-:root {
+:root,
+.light {
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -88,8 +103,11 @@
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  /* Field outlines at 3:1 on white, muted and the planning canvas (like planning's fields); cards and
+     dividers keep --border. Focus: near-black, so the half-strength halo controls draw still reaches
+     3:1 on white and a focused field's border is unmistakable. */
+  --input: oklch(0.65 0.01 264);
+  --ring: oklch(0.27 0.01 264);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -107,7 +125,7 @@
   --sidebar-accent: oklch(0.97 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-ring: oklch(0.27 0.01 264);
   /* Planning: a quiet, slightly cool canvas behind white sheets; hairlines instead of boxes. */
   --plan-canvas: oklch(0.975 0.003 264);
   --plan-surface: oklch(1 0 0);
@@ -123,39 +141,95 @@
   --status-attention-tint: oklch(0.97 0.035 85);
 }
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --shell: oklch(0.145 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+@media screen {
+  .dark {
+    /* A quiet, slightly cool graphite rather than black: the shell is the darkest layer, content
+       surfaces sit a step above it, cards and menus a step above those. Text tokens keep at least
+       4.5:1 on every surface they sit on (muted-foreground on --muted included). */
+    --background: oklch(0.2 0.006 264);
+    --foreground: oklch(0.955 0.003 264);
+    --card: oklch(0.225 0.006 264);
+    --card-foreground: oklch(0.955 0.003 264);
+    --popover: oklch(0.235 0.007 264);
+    --popover-foreground: oklch(0.955 0.003 264);
+    --primary: oklch(0.93 0.004 264);
+    --primary-foreground: oklch(0.205 0.006 264);
+    --secondary: oklch(0.27 0.007 264);
+    --secondary-foreground: oklch(0.955 0.003 264);
+    --muted: oklch(0.265 0.007 264);
+    --muted-foreground: oklch(0.73 0.01 264);
+    --accent: oklch(0.285 0.008 264);
+    --accent-foreground: oklch(0.955 0.003 264);
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: oklch(1 0 0 / 11%);
+    /* Field outlines at 3:1 on the page and on cards, like planning's fields; the focus colour lifted so
+       its half-strength halo reaches 3:1 too (focused fields also get a solid border in it). */
+    --input: oklch(0.52 0.012 264);
+    --ring: oklch(0.8 0.012 264);
+    --chart-1: oklch(0.87 0 0);
+    --chart-2: oklch(0.556 0 0);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --shell: oklch(0.165 0.006 264);
+    --sidebar: oklch(0.18 0.007 264);
+    --sidebar-foreground: oklch(0.955 0.003 264);
+    --sidebar-primary: oklch(0.93 0.004 264);
+    --sidebar-primary-foreground: oklch(0.205 0.006 264);
+    --sidebar-accent: oklch(0.265 0.007 264);
+    --sidebar-accent-foreground: oklch(0.955 0.003 264);
+    --sidebar-border: oklch(1 0 0 / 9%);
+    --sidebar-ring: oklch(0.8 0.012 264);
+    /* Planning (the staff planning editor; client pages stay light). */
+    --plan-canvas: oklch(0.175 0.006 264);
+    --plan-surface: oklch(0.21 0.006 264);
+    --plan-hairline: oklch(1 0 0 / 10%);
+    --plan-ink-2: oklch(0.74 0.012 264);
+    --plan-track: oklch(0.31 0.008 264);
+    --plan-field-border: oklch(0.52 0.012 264);
+    --plan-field-border-hover: oklch(0.64 0.012 264);
+    --status-done: oklch(0.74 0.13 155);
+    --status-attention: oklch(0.8 0.12 78);
+    --status-attention-tint: oklch(0.29 0.045 78);
+  }
+}
+
+/* Light paper inside a dark page (a contract's text, the signature pad): light tokens (above), light
+   text and light native controls. */
+.light {
+  color: var(--foreground);
+  color-scheme: light;
+}
+
+/*
+ * Business colours that depend on the page (brandStyle, lib/branding/colors.ts): Ink, Tint and Wash
+ * for the page's theme. Light paper inside a dark page gets the light ones.
+ */
+[data-brand] {
+  --brand-ink: var(--brand-ink-light);
+  --brand-tint: var(--brand-tint-light);
+  --brand-wash: var(--brand-wash-light);
+}
+@media screen {
+  .dark [data-brand] {
+    --brand-ink: var(--brand-ink-dark);
+    --brand-tint: var(--brand-tint-dark);
+    --brand-wash: var(--brand-wash-dark);
+  }
+  .dark .light,
+  .dark .light [data-brand],
+  .dark [data-brand].light {
+    --brand-ink: var(--brand-ink-light);
+    --brand-tint: var(--brand-tint-light);
+    --brand-wash: var(--brand-wash-light);
+  }
+}
+
+/* Printing (a contract, a run sheet) is always light paper, whatever the theme on screen. */
+@media print {
+  html {
+    color-scheme: light !important;
+  }
 }
 
 /*

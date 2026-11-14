@@ -171,7 +171,7 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
           <div className="grid gap-4 p-4 sm:p-6">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="flex min-h-8 min-w-0 items-center text-sm">
-                <BrandLogo logo={live?.logo ?? null} name={dj} className={CLIENT_CONTRACT_LOGO} fallbackClassName="font-semibold [overflow-wrap:anywhere]" />
+                <BrandLogo surface="theme" logo={live?.logo ?? null} name={dj} className={CLIENT_CONTRACT_LOGO} fallbackClassName="font-semibold [overflow-wrap:anywhere]" />
               </span>
               <span className={cn("rounded-full px-2.5 py-1 text-xs font-semibold", tones[status.tone])}>{status.label}</span>
             </div>
@@ -199,7 +199,7 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
                     <span className="font-medium">Next:</span> {c.total_cents === null ? "read the agreement" : "read the agreement and payment terms"}, then sign at the end of this page.
                   </p>
                   {canSign ? (
-                    <a href="#sign" className="inline-flex min-h-11 items-center gap-1.5 rounded-[10px] bg-brand-ink px-4 font-semibold text-white outline-none hover:bg-[color-mix(in_oklab,var(--brand-ink),black_14%)] focus-visible:ring-2 focus-visible:ring-brand-ink focus-visible:ring-offset-2 max-sm:w-full max-sm:justify-center">
+                    <a href="#sign" className="inline-flex min-h-11 items-center gap-1.5 rounded-[10px] bg-brand-fill px-4 font-semibold text-brand-fill-foreground outline-none hover:bg-[color-mix(in_oklab,var(--color-brand-fill),black_14%)] focus-visible:ring-2 focus-visible:ring-brand-ink focus-visible:ring-offset-2 max-sm:w-full max-sm:justify-center">
                       <PenLine aria-hidden className="size-4" />
                       Go to signing
                     </a>
@@ -224,7 +224,7 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
           >
             <div className="grid gap-1.5">
               <div className="flex items-center gap-2">
-                <CheckCircle2 aria-hidden className="size-6 shrink-0 text-emerald-600" />
+                <CheckCircle2 aria-hidden className="size-6 shrink-0 text-emerald-600 dark:text-emerald-400" />
                 <h2 id="signed-heading" className="text-lg font-semibold">
                   {outcome.heading}
                 </h2>
@@ -319,7 +319,8 @@ export default async function ClientContractPage({ params }: PageProps<"/[tenant
 
         {signing.signed ? paymentsCard : null}
 
-        <section aria-labelledby="agreement-heading" className="grid gap-4 rounded-2xl border bg-card px-4 py-5 shadow-sm sm:px-8 sm:py-8">
+        {/* The agreement and the signature pad are a document: light paper in either theme (`light`, globals.css). */}
+        <section aria-labelledby="agreement-heading" data-testid="agreement-paper" className="light grid gap-4 rounded-2xl border bg-card px-4 py-5 shadow-sm sm:px-8 sm:py-8">
           {/* Same font size as the agreement, so both share one reading width. */}
           <div className="mx-auto grid w-full max-w-prose gap-4 text-base">
             <h2 id="agreement-heading" className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">

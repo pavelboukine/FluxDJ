@@ -103,7 +103,7 @@ export function ClientPlanningWorkspace({ view, logo, saveAction, preview }: {
             {preview}
             <div className="flex items-center justify-between gap-3">
               <span className="flex min-h-8 min-w-0 items-center text-sm">
-                <BrandLogo logo={logo} name={dj} className={CLIENT_PAGE_LOGO} fallbackClassName="font-semibold [overflow-wrap:anywhere]" />
+                <BrandLogo surface="theme" logo={logo} name={dj} className={CLIENT_PAGE_LOGO} fallbackClassName="font-semibold [overflow-wrap:anywhere]" />
               </span>
               <EditingChip />
             </div>

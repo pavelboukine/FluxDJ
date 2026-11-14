@@ -164,7 +164,8 @@ export default async function ContractPreview({ params }: PageProps<"/staff/[ten
       )}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <Card>
+        {/* The agreement is a document: light paper in either theme, as the client sees it (`light`, globals.css). */}
+        <Card className="light" data-testid="agreement-paper">
           <CardContent className="py-2">
             <ContractDocument title={content.title} sections={content.sections} />
           </CardContent>

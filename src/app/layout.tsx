@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { InstallPromptCapture, OfflineNotice } from "@/components/app/pwa";
+import { AppThemeProvider } from "@/components/app/theme-provider";
 import { STARTUP_IMAGES } from "@/lib/pwa-startup-images";
 
 const geistSans = Geist({
@@ -30,19 +31,29 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#ffffff",
+  // Browser and phone chrome: the top bar's own colour (--background) for the device's light or dark
+  // setting, which is what "System" shows. The marketing home page, always light, sets white alone.
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#151619" },
+  ],
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
+    // suppressHydrationWarning: next-themes sets the theme class and color-scheme on <html> before React
+    // hydrates (see AppThemeProvider); only this element's own attributes are exempt.
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        {children}
-        <InstallPromptCapture />
-        <OfflineNotice />
+        <AppThemeProvider>
+          {children}
+          <InstallPromptCapture />
+          <OfflineNotice />
+        </AppThemeProvider>
       </body>
     </html>
   );

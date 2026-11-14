@@ -14,7 +14,7 @@ export const CLIENT_FOCUS = "outline-none focus-visible:ring-2 focus-visible:rin
 /** The primary action, on Brand Ink (white text stays readable on any brand colour). */
 export const CLIENT_PRIMARY = cn(
   "inline-flex min-h-11 items-center justify-center gap-1.5 rounded-[10px] px-5 text-sm font-semibold max-sm:w-full",
-  "bg-brand-ink text-white hover:bg-[color-mix(in_oklab,var(--brand-ink),black_14%)] active:bg-[color-mix(in_oklab,var(--brand-ink),black_22%)]",
+  "bg-brand-fill text-brand-fill-foreground hover:bg-[color-mix(in_oklab,var(--color-brand-fill),black_14%)] active:bg-[color-mix(in_oklab,var(--color-brand-fill),black_22%)]",
   "transition-colors motion-reduce:transition-none outline-none focus-visible:ring-2 focus-visible:ring-brand-ink focus-visible:ring-offset-2",
 );
 
@@ -28,7 +28,7 @@ export const CLIENT_SECONDARY = cn(
 const TONES: Record<HomeTone, string> = {
   action: "bg-status-attention-tint text-status-attention",
   waiting: "bg-plan-track text-foreground",
-  done: "bg-[color-mix(in_oklab,var(--status-done)_14%,white)] text-[color-mix(in_oklab,var(--status-done),black_25%)]",
+  done: "bg-[color-mix(in_oklab,var(--status-done)_14%,var(--plan-surface))] text-[color-mix(in_oklab,var(--status-done),black_25%)] dark:text-status-done",
   neutral: "bg-plan-track text-plan-ink-2",
 };
 

@@ -42,7 +42,7 @@ export function ChoiceOption({ type = "radio", name, checked, disabled, onChange
         // chosen (a little stronger than Brand Tint, so it still shows on an open question's wash).
         "flex min-h-11 cursor-pointer items-start gap-3 rounded-lg px-2 py-2.5 transition-colors duration-150 motion-reduce:transition-none",
         "hover:bg-plan-track/60",
-        "has-[:checked]:bg-[color-mix(in_oklab,var(--brand-ink,var(--foreground))_10%,white)] has-[:checked]:hover:bg-[color-mix(in_oklab,var(--brand-ink,var(--foreground))_14%,white)]",
+        "has-[:checked]:bg-[color-mix(in_oklab,var(--brand-ink,var(--foreground))_10%,var(--plan-surface))] has-[:checked]:hover:bg-[color-mix(in_oklab,var(--brand-ink,var(--foreground))_14%,var(--plan-surface))]",
         "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-ink",
         "has-[:disabled]:cursor-not-allowed has-[:disabled]:hover:bg-transparent",
       )}

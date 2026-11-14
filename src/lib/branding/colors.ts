@@ -181,27 +181,36 @@ export function frozenHeroLogoSurface(branding: { brand_colors: unknown; logo_on
 }
 
 /**
- * CSS variables for client-facing pages: --brand for branded buttons,
- * --brand-foreground for text on them, --brand-ink for legible accents on
- * white and --brand-tint for selected surfaces. --brand-gradient (white text)
- * and --brand-wash (ordinary text) are backgrounds: gradients for a business
- * that chose them, the solid fill and tint otherwise, so a surface can use
- * them without asking which. --brand-hero and --brand-hero-foreground are the
- * hero's background and text (brandHero). Errors, warnings and disabled
- * controls keep their own styles; nothing else is recoloured.
+ * CSS variables for client-facing pages: --brand for branded buttons and --brand-foreground for text
+ * on them; --brand-fill (the brand deepened for white text, --brand-fill-foreground) for buttons in
+ * white text; --brand-ink for legible accents on the page and --brand-tint for selected surfaces.
+ * --brand-gradient (white text) and --brand-wash (ordinary text) are backgrounds: gradients for a
+ * business that chose them, the solid fill and tint otherwise, so a surface can use them without
+ * asking which. --brand-hero and --brand-hero-foreground are the hero's background and text
+ * (brandHero). Errors, warnings and disabled controls keep their own styles.
  *
- * The utilities bg-brand-wash, bg-brand-gradient and bg-brand-hero
- * (globals.css) read these; pages never write a gradient of their own.
+ * Ink, Tint and Wash depend on the page they sit on, so they come for both themes (`-light`,
+ * `-dark`), and globals.css picks one for the page's theme ([data-brand], set by brandProps): the
+ * server render is right before the theme is known. The other variables read the same on both.
+ *
+ * The utilities bg-brand-wash, bg-brand-gradient and bg-brand-hero (globals.css) read these; pages
+ * never write a gradient of their own.
  */
 export function brandStyle(brand: unknown, extra: Record<string, string> = {}): CSSProperties {
   const theme = brandTheme(brand);
+  const dark = brandTheme(brand, "dark");
   return {
     "--brand": theme.color,
     "--brand-foreground": theme.foreground,
-    "--brand-ink": theme.ink,
-    "--brand-tint": theme.tint,
+    "--brand-fill": theme.fill,
+    "--brand-fill-foreground": LIGHT_TEXT,
+    "--brand-ink-light": theme.ink,
+    "--brand-ink-dark": dark.ink,
+    "--brand-tint-light": theme.tint,
+    "--brand-tint-dark": dark.tint,
+    "--brand-wash-light": brandWashCss(theme),
+    "--brand-wash-dark": brandWashCss(dark),
     "--brand-gradient": brandGradientCss(theme),
-    "--brand-wash": brandWashCss(theme),
     "--brand-hero": brandHero(theme).background,
     "--brand-hero-foreground": brandHero(theme).foreground,
     ...extra,
@@ -209,14 +218,15 @@ export function brandStyle(brand: unknown, extra: Record<string, string> = {}): 
 }
 
 /**
- * What a client page's branded root element carries: the variables above and,
- * only for a business that chose gradient branding, data-brand-gradient. The
- * `brand-gradient:` variant (globals.css) styles the few places a gradient adds
- * something a solid page doesn't have (a wash behind a header), so a business
- * without the preference keeps its exact layout as well as its colours.
+ * What a branded element carries: the variables above, `data-brand` (globals.css resolves Ink, Tint
+ * and Wash for the theme there) and, only for a business that chose gradient branding,
+ * data-brand-gradient. The `brand-gradient:` variant styles the few places a gradient adds something
+ * a solid page doesn't have (a wash behind a header), so a business without the preference keeps its
+ * exact layout as well as its colours.
  */
-export function brandProps(brand: unknown, extra: Record<string, string> = {}): { style: CSSProperties; "data-brand-gradient"?: "" } {
-  return usesGradient(brand) ? { style: brandStyle(brand, extra), "data-brand-gradient": "" } : { style: brandStyle(brand, extra) };
+export function brandProps(brand: unknown, extra: Record<string, string> = {}): { style: CSSProperties; "data-brand": ""; "data-brand-gradient"?: "" } {
+  const props = { style: brandStyle(brand, extra), "data-brand": "" as const };
+  return usesGradient(brand) ? { ...props, "data-brand-gradient": "" } : props;
 }
 
 /**

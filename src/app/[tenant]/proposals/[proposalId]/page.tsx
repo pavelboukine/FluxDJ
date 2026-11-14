@@ -98,7 +98,7 @@ export default async function ClientProposalPage({ params }: PageProps<"/[tenant
           </p>
         </header>
         <section role="status" className="flex gap-3 rounded-2xl border-2 p-4 sm:p-5" style={{ borderColor: "var(--brand-ink)" }}>
-          <CheckCircle2 aria-hidden className="mt-0.5 size-6 shrink-0 text-emerald-600" />
+          <CheckCircle2 aria-hidden className="mt-0.5 size-6 shrink-0 text-emerald-600 dark:text-emerald-400" />
           <div className="grid gap-1">
             {approved ? (
               <>

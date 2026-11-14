@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties } from "react";
 import { Check, ChevronDown, CircleUserRound, Menu } from "lucide-react";
 import { ActionForm } from "@/components/app/action-form";
+import { FluxWordmarkArt } from "@/components/app/app-shell";
 import { BrandLogo, type BrandLogoImage } from "@/components/app/brand-logo";
 import { EventStatusPill } from "@/components/app/client-event-ui";
 import { Field } from "@/components/app/fields";
@@ -39,7 +40,11 @@ const MAX_BYTES = 4 * 1024 * 1024;
  * single-colour logo on a transparent background a white version made from it
  * (shown here with a CSS filter that matches the file a save creates), used
  * where the logo sits on something dark. Without one, BrandLogo keeps the
- * single logo readable with a light panel.
+ * single logo readable with a light panel. Making a white version is an action
+ * for the next save, not a setting: once one is saved the section says a logo
+ * for dark backgrounds is added (Flux doesn't record whether it was made or
+ * uploaded) and offers replacing or removing it; a white version is offered
+ * again only for a newly chosen logo, so a save never stores the same file twice.
  */
 
 /** Which look is chosen: solid, the owner's own accent, or a suggested look's key. */
@@ -124,9 +129,14 @@ export function BrandingForm({
   // A white version can be made from the logo that will be saved: the chosen file once prepared, else the saved one.
   const canWhite = chosen ? chosen.processed && chosen.canTurnWhite : canTurnWhite;
   const darkChosen = darkFile.chosen;
+  // With a logo for dark backgrounds saved, a white version of the same logo would be that file again (or would
+  // replace an upload): it is offered only when there is none, or for a newly chosen logo.
+  const offerWhite = !darkChosen && canWhite && (currentDarkLogo === null || chosen !== null);
+  // The saved logo for dark backgrounds stays in use after this save.
+  const keepsSavedDark = currentDarkLogo !== null && !darkChosen && !(white && offerWhite) && !removeDark;
   const onDark: BrandLogoImage["onDark"] = darkChosen
     ? { url: darkChosen.url }
-    : white && canWhite && mainLogo
+    : white && offerWhite && mainLogo
       ? { url: mainLogo.url, white: true }
       : !removeDark && currentDarkLogo
         ? { url: currentDarkLogo.url }
@@ -134,7 +144,7 @@ export function BrandingForm({
   const previewLogo: Logo = mainLogo ? { ...mainLogo, onDark } : null;
   // A new logo with the saved logo for dark backgrounds kept: they may no longer match. Both are kept
   // unless the owner chooses; replacing, making a white version or removing it resolves this.
-  const mismatch = chosen !== null && currentDarkLogo !== null && !darkChosen && !(white && canWhite) && !removeDark;
+  const mismatch = chosen !== null && keepsSavedDark;
   const sizedLogo = previewLogo ? { ...previewLogo, sizePercent: size } : null;
   const swatchOf = (accentColor: string): CSSProperties => ({ background: brandGradientCss(brandTheme({ primary, accent: accentColor, gradient: GRADIENT_ON })), color: "#ffffff" });
 
@@ -145,7 +155,7 @@ export function BrandingForm({
         version={version}
         submitLabel="Save changes"
         trackUnsaved
-        pendingLabel={chosen || darkChosen || white ? "Uploading and saving…" : "Saving…"}
+        pendingLabel={chosen || darkChosen || (white && offerWhite) ? "Uploading and saving…" : "Saving…"}
         className="max-w-xl min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-8"
         onSuccess={() => {
           // The saved logos now come from the server; clear the local files.
@@ -163,7 +173,7 @@ export function BrandingForm({
           <Field className="grid-cols-[minmax(0,1fr)]" label="Logo" htmlFor="logo" hint="PNG, JPEG or WebP, up to 4 MB. Without a logo, your business name is shown.">
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex h-16 w-28 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted p-2" data-testid="logo-current">
-                <BrandLogo logo={previewLogo} name={displayName} className="max-h-11 max-w-24" fallbackClassName="line-clamp-2 text-center text-xs text-muted-foreground [overflow-wrap:anywhere]" />
+                <BrandLogo surface="theme" logo={previewLogo} name={displayName} className="max-h-11 max-w-24" fallbackClassName="line-clamp-2 text-center text-xs text-muted-foreground [overflow-wrap:anywhere]" />
               </div>
               <Input ref={fileInput} id="logo" name="logo" type="file" accept="image/png,image/jpeg,image/webp" onChange={onFile} className="w-full min-w-0 flex-1 basis-52" />
             </div>
@@ -181,7 +191,7 @@ export function BrandingForm({
           {mismatch ? (
             <p role="status" className="rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm" data-testid="logo-variant-mismatch">
               Your logo for dark backgrounds is kept, but it may no longer match the new logo. Replace or remove it below
-              {canWhite ? ", or use a white version of the new logo" : ""}.
+              {canWhite ? ", or create a white version of the new logo" : ""}.
             </p>
           ) : null}
           {mainLogo ? (
@@ -205,6 +215,12 @@ export function BrandingForm({
                     <Input ref={darkInput} id="logo_on_dark" name="logo_on_dark" type="file" accept="image/png,image/jpeg,image/webp" onChange={onDarkFile} className="w-full min-w-0" />
                   </div>
                 </div>
+                {keepsSavedDark ? (
+                  <p className="flex items-center gap-1.5 text-sm" data-testid="logo-on-dark-saved">
+                    <Check aria-hidden className="size-4 shrink-0 text-status-done" />
+                    Logo for dark backgrounds added. Choose a file above to replace it, or remove it.
+                  </p>
+                ) : null}
                 {darkFile.error ? <p role="alert" className="text-sm text-destructive">{darkFile.error}</p> : null}
                 <p aria-live="polite" className="text-xs text-muted-foreground empty:hidden" data-testid="logo-on-dark-state">
                   {darkFile.preparing
@@ -213,11 +229,11 @@ export function BrandingForm({
                       ? "This logo looks dark, so it may be hard to see on dark backgrounds. A white or light version works best."
                       : darkChosen?.processed
                         ? "The preview shows the logo as it will be saved."
-                        : white && onDark?.white
+                        : onDark?.white
                           ? "Made from your logo: its shape and transparency are kept and only the colour becomes white. Your logo itself isn't changed."
                           : ""}
                 </p>
-                {!darkChosen && canWhite ? (
+                {offerWhite ? (
                   <label className="flex min-h-11 w-fit items-center gap-2 text-sm md:min-h-0">
                     <input
                       type="checkbox"
@@ -229,10 +245,10 @@ export function BrandingForm({
                       }}
                       className="size-4 accent-primary"
                     />
-                    Use a white version of my logo
+                    {chosen && currentLogo ? "Create a white version of the new logo" : "Create a white version of my logo"}
                   </label>
                 ) : null}
-                {currentDarkLogo && !darkChosen && !white ? (
+                {currentDarkLogo && !darkChosen && !(white && offerWhite) ? (
                   <label className="flex min-h-11 w-fit items-center gap-2 text-sm md:min-h-0">
                     <input type="checkbox" name="remove_logo_on_dark" checked={removeDark} onChange={(e) => setRemoveDark(e.target.checked)} className="size-4 accent-primary" />
                     Remove the logo for dark backgrounds
@@ -283,21 +299,21 @@ export function BrandingForm({
                     </div>
                   </div>
                   {sizeView === "workspace" ? (
+                    // The workspace header follows the staff theme, as the real one does.
                     <div className="grid h-14 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 overflow-hidden rounded-xl border bg-background px-2 lg:px-5" data-testid="header-preview">
                       <div className="flex min-w-0 items-center gap-1">
                         <Menu aria-hidden className="size-5 shrink-0 text-muted-foreground lg:hidden" />
-                        {/* eslint-disable-next-line @next/next/no-img-element -- small static PNG, as in the real header */}
-                        <img src="/brand/flux-wordmark-black.png" alt="" width={452} height={160} className="h-5 w-auto lg:h-[1.625rem]" />
+                        <FluxWordmarkArt className="h-5 lg:h-[1.625rem]" />
                       </div>
                       <div className="flex min-w-0 items-center justify-center">
-                        <BrandLogo logo={sizedLogo} name={displayName} className={STAFF_HEADER_LOGO} fallbackClassName="block truncate text-sm font-semibold" />
+                        <BrandLogo surface="theme" logo={sizedLogo} name={displayName} className={STAFF_HEADER_LOGO} fallbackClassName="block truncate text-sm font-semibold" />
                       </div>
                       <CircleUserRound aria-hidden className="size-6 justify-self-end text-muted-foreground" strokeWidth={1.6} />
                     </div>
                   ) : (
                     <div className="flex min-h-14 items-center justify-between gap-3 overflow-hidden rounded-xl border bg-plan-canvas px-4 py-2" data-testid="client-header-preview">
                       <span className="flex min-h-8 min-w-0 items-center text-sm">
-                        <BrandLogo logo={sizedLogo} name={displayName} className={CLIENT_PAGE_LOGO} fallbackClassName="font-semibold [overflow-wrap:anywhere]" />
+                        <BrandLogo surface="theme" logo={sizedLogo} name={displayName} className={CLIENT_PAGE_LOGO} fallbackClassName="font-semibold [overflow-wrap:anywhere]" />
                       </span>
                       <EventStatusPill label="Booked" tone="done" />
                     </div>
@@ -429,7 +445,7 @@ export function BrandingForm({
             <div className="grid gap-4 rounded-xl bg-plan-canvas p-4 text-sm" data-testid="client-preview">
               <div className="flex items-center justify-between gap-3">
                 <span className="flex min-h-8 min-w-0 items-center text-sm">
-                  <BrandLogo logo={sizedLogo} name={displayName} className={CLIENT_PAGE_LOGO} fallbackClassName="font-semibold [overflow-wrap:anywhere]" />
+                  <BrandLogo surface="theme" logo={sizedLogo} name={displayName} className={CLIENT_PAGE_LOGO} fallbackClassName="font-semibold [overflow-wrap:anywhere]" />
                 </span>
                 <EventStatusPill label="Booked" tone="done" />
               </div>
@@ -448,7 +464,7 @@ export function BrandingForm({
                 <div aria-hidden className="h-1.5 overflow-hidden rounded-full bg-plan-surface">
                   <div className="h-full w-3/5 rounded-full bg-brand-gradient" data-testid="preview-progress" />
                 </div>
-                <span className="inline-flex w-fit rounded-[10px] bg-brand-ink px-4 py-2.5 font-semibold text-white">Open planning</span>
+                <span className="inline-flex w-fit rounded-[10px] bg-brand-fill px-4 py-2.5 font-semibold text-brand-fill-foreground">Open planning</span>
               </div>
             </div>
           )}
@@ -524,6 +540,8 @@ function LookChoice({ value, label, checked, onChange, swatch }: { value: string
         style={swatch ?? undefined}
         className={cn(
           "relative flex h-14 items-end rounded-lg px-2.5 pb-1.5 text-sm font-semibold ring-offset-2 ring-offset-background transition-shadow motion-reduce:transition-none",
+          // On a dark page a dark brand colour needs an edge of its own.
+          "dark:shadow-[inset_0_0_0_1px_rgb(255_255_255/0.1)]",
           "group-has-[:checked]/look:ring-2 group-has-[:checked]/look:ring-foreground group-has-[:focus-visible]/look:ring-3 group-has-[:focus-visible]/look:ring-ring",
           swatch ? null : "border border-dashed text-muted-foreground",
         )}

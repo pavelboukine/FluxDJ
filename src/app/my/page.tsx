@@ -9,7 +9,7 @@ import { ClientFooter } from "@/components/app/client-footer";
 import { ClientHeader } from "@/components/app/client-header";
 import { signOut, signOutToClientSignIn } from "@/app/auth/confirm/actions";
 import { loginHref } from "@/lib/auth/redirects";
-import { brandStyle } from "@/lib/branding/colors";
+import { brandProps } from "@/lib/branding/colors";
 import { liveBrand, type BrandLogo as Logo } from "@/lib/branding/logo.server";
 import { eventHubPath, hubNextStep } from "@/lib/client-event";
 import { hubFacts, loadClientEvents, type ClientEventFacts } from "@/lib/client-event.server";
@@ -113,11 +113,11 @@ function EventCard({ facts, brand, past }: { facts: ClientEventFacts; brand: Bra
   const step = hubNextStep(hubFacts(facts));
   const progress = facts.plan?.progress && facts.plan.editing?.state !== "closed" ? progressPercentText(facts.plan.progress) : null;
   return (
-    <li style={brandStyle(brand?.colors)} className="rounded-2xl border border-plan-hairline bg-plan-surface">
+    <li {...brandProps(brand?.colors)} className="rounded-2xl border border-plan-hairline bg-plan-surface">
       <div className="grid gap-4 p-4 sm:p-6">
         <div className="flex items-center justify-between gap-3">
           <span className="flex min-h-8 min-w-0 items-center text-sm">
-            <BrandLogo logo={brand?.logo ?? null} name={e.tenantName} className="max-h-8 max-w-36" fallbackClassName="font-semibold [overflow-wrap:anywhere]" />
+            <BrandLogo surface="theme" logo={brand?.logo ?? null} name={e.tenantName} className="max-h-8 max-w-36" fallbackClassName="font-semibold [overflow-wrap:anywhere]" />
           </span>
           <EventStatusPill label={card.status} tone={card.tone} />
         </div>
